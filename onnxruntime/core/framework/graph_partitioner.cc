@@ -10,6 +10,8 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/func_kernel.h"
+#include "core/framework/session_state.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -54,7 +56,7 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
   return builder;
 }
 
-Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
+Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState& session_state) const {
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
@@ -66,6 +68,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
   for (auto& provider : providers_) {
     auto capability_results = provider->GetCapability(GraphViewer(graph), kernel_registries);
     int count = 0;
+    std::vector<Node*> fused_nodes;
     for (auto& capability : capability_results) {
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
@@ -88,13 +91,28 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
         auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
         fused_node.SetExecutionProviderType(provider->Type());
-        auto fused_kernel_func = capability->fuse_kernel_function;
-        if (fused_kernel_func != nullptr) {
-          // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
-          KernelDefBuilder builder;
-          BuildFusedKernelDef(builder, fused_node);
-          fused_kernel_registry->Register(builder, fused_kernel_func);
-        }
+
+        fused_nodes.push_back(&fused_node);
+      }
+    }
+    if (fused_nodes.size() > 0) {
+      if (session_state.ExportDll()) {
+        std::string dll_path;
+        ORT_RETURN_IF_ERROR(provider->Compile(fused_nodes, dll_path));
+        for (auto* node : fused_nodes)
+          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(node->Name(), dll_path));
+      } else {
+        std::vector<NodeComputeInfo> node_compute_funcs;
+        ORT_RETURN_IF_ERROR(provider->Compile(fused_nodes, node_compute_funcs));
+        ORT_ENFORCE(node_compute_funcs.size() == fused_nodes.size(), "Provider doesn't return correct number of compiled functions");
+        for (auto i = 0; i < fused_nodes.size(); i++)
+          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(fused_nodes[i]->Name(), node_compute_funcs[i].compute_func, node_compute_funcs[i].create_state_func, node_compute_funcs[i].release_state_func));
+      }
+      for (auto* node : fused_nodes) {
+        //prepare the func kernel
+        KernelDefBuilder builder;
+        BuildFusedKernelDef(builder, *node);
+        fused_kernel_registry->Register(builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); });
       }
     }
     // all done with this provider, resolve the graph before we move on to the next provider.
@@ -123,7 +141,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    this->Partition(graph);
+    this->Partition(graph, session_state);
   }
 
   //For some cases, like fp16 on cpu, right now we don't have any kernel support that.

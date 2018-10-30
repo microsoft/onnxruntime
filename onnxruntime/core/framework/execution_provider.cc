@@ -64,4 +64,15 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   }
   allocators_.insert(iter, {key, allocator});
 }
+
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                       std::vector<NodeComputeInfo>& node_compute_funcs) {
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+}
+
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                           std::string& dll_path) {
+  return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+}
+
 }  // namespace onnxruntime

@@ -7,9 +7,11 @@
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
+#include "core/framework/func_api.h"
 
 namespace onnxruntime {
 class GraphViewer;
+class Node;
 }  // namespace onnxruntime
 namespace onnxruntime {
 
@@ -21,6 +23,18 @@ class KernelRegistryManager;
    Logical device representation.
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
+
+// if we are export the fused function to dll, the function will still in the same binary as lotus
+// use std function to give execution provider some chance to capture some state.
+using CreateFunctionState = std::function<int(ComputeContext*, FunctionState*)>;
+using ComputeFunc = std::function<int(FunctionState, ONNXRunTimeTensor*, size_t, ONNXRunTimeTensor*, size_t)>;
+using ReleaseFunctionState = std::function<void(FunctionState)>;
+
+struct NodeComputeInfo {
+  CreateFunctionState create_state_func;
+  ComputeFunc compute_func;
+  ReleaseFunctionState release_state_func;
+};
 
 class IExecutionProvider {
  public:
@@ -120,6 +134,22 @@ class IExecutionProvider {
   virtual common::Status OnRunEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
+
+  /**
+  Given a list of fused_node, return create_state/compute/release_state func for each node.
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  /**
+  Given a list of fused_node, return a dll that expose functions for each node.
+  For each node, there should be three symbols:
+     Create_State_${node_name}
+	 Compute_${node_name}
+	 Release_State_${node_name}
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                 std::string& dll_path);
 
  private:
   AllocatorMap allocators_;
