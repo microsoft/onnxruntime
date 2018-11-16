@@ -113,15 +113,15 @@ void ReverseSequence(gsl::span<const T> inputs,
 
     if (seq_len == 0)
       continue;
-    
-    // Parallel execute the loop.  
+
+    // Parallel execute the loop.
     #pragma omp for
     for (int j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
-      
+
       // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest); 
+      gsl::copy(src, dest);
     }
 
     #pragma omp for
@@ -258,7 +258,7 @@ class ActivationFuncs {
                   const std::vector<float>& alphas,
                   const std::vector<float>& betas);
 
-  const std::vector<Entry> Entries() const {
+  const std::vector<Entry>& Entries() const {
     return entries_;
   }
 

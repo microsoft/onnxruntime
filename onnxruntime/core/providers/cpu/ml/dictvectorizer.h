@@ -19,8 +19,7 @@ class DictVectorizerOp final : public OpKernel {
   }
   common::Status Compute(OpKernelContext* ctx) const override {
     auto map = ctx->Input<std::map<AttrType, TargetType> >(0);
-    std::vector<int64_t> dims{1, static_cast<int64_t>(vocabulary_.size())};
-    auto Y = ctx->Output(0, TensorShape(dims));
+    auto Y = ctx->Output(0, TensorShape({1, static_cast<int64_t>(vocabulary_.size())}));
     auto* y_data = Y->template MutableData<TargetType>();
     for (size_t i = 0, end = vocabulary_.size(); i < end; ++i) {
       auto index = map->find(vocabulary_[i]);

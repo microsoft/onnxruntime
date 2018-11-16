@@ -46,8 +46,7 @@ Use the individual flags to only run the specified stages.
 
     # enable ONNX tests
     parser.add_argument("--enable_onnx_tests", action='store_true',
-                        help='''When running the Update phase, enable running ONNX tests in the generated makefiles.
-                        When running the Test phase, run onnx_test_running against available test data directories.''')
+                        help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--pb_home", help="Path to protobuf installation")
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
@@ -79,7 +78,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--ctest_path", default="ctest", help="Path to the CTest program.")
     parser.add_argument("--skip_submodule_sync", action='store_true', help="Don't do a 'git submodule update'. Makes the Update phase faster.")
     
-    parser.add_argument("--use_jemalloc", action='store_true', help="use jemalloc")
+    parser.add_argument("--use_jemalloc", action='store_true', help="use jemalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
@@ -231,6 +230,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             os.environ["PATH"] += os.pathsep + os.path.join(config_build_dir, "external", "tvm", config)
 
         run_subprocess(cmake_args  + ["-DCMAKE_BUILD_TYPE={}".format(config)], cwd=config_build_dir)
+        #create a shortcut for test models if there is a 'models' folder in build_dir
+        if is_windows():
+           dest_model_dir = os.path.join(config_build_dir, 'models')
+           src_model_dir = os.path.join(build_dir, 'models')
+           if os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
+               subprocess.run(['mklink', '/D', '/J', dest_model_dir, src_model_dir],shell=True, check=True)
+
 
 def clean_targets(cmake_path, build_dir, configs):
     for config in configs:
@@ -370,17 +376,24 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             if is_ubuntu_1604():
                 run_subprocess([cwd+'/onnxruntime_shared_lib_test'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, use_cuda):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider):
+    #TODO: enable multiple threaded executor test
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
            exe = os.path.join(cwd, config, 'onnx_test_runner')
+           model_dir = os.path.join(cwd, "models")
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
-        if onnx_test_data_dir:
-            run_subprocess([exe, onnx_test_data_dir], cwd=cwd)
-            if use_cuda:
-                run_subprocess([exe, "-e", "cuda", onnx_test_data_dir], cwd=cwd)
+           model_dir = os.path.join(build_dir, "models")
+        cmd = [exe]
+        if provider:
+          cmd += ["-e", provider]
+        if config != 'Debug' and os.path.exists(model_dir):
+          cmd.append(model_dir)
+        if os.path.exists(onnx_test_data_dir):
+          cmd.append(onnx_test_data_dir)
+        run_subprocess(cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -422,7 +435,9 @@ def main():
     cuda_home, cudnn_home = setup_cuda_vars(args)
 
     # directory from ONNX submodule with ONNX test data
-    onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
+    onnx_test_data_dir = '/data/onnx'
+    if is_windows() or not os.path.exists(onnx_test_data_dir):
+        onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
 
     os.makedirs(build_dir, exist_ok=True)
 
@@ -436,7 +451,7 @@ def main():
         cmake_extra_args = ['-A','x64','-T', 'host=x64', '-G', 'Visual Studio 15 2017']
 
     #Add python to PATH. Please remove this after https://github.com/onnx/onnx/issues/1080 is fixed ()
-    os.environ["PATH"] += os.pathsep + os.path.dirname(sys.executable)
+    os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
 
     if (args.update):
         if is_ubuntu_1604():
@@ -459,10 +474,14 @@ def main():
     if (args.test):
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm)
 
-    # run the onnx tests if requested explicitly.
-    # it could be done implicitly by user installing onnx but currently the tests fail so that doesn't work for CI
+    # run the onnx model tests if requested explicitly.
     if (args.enable_onnx_tests):
-        run_onnx_tests(build_dir, configs, onnx_test_data_dir, args.use_cuda)
+        if args.use_cuda:
+          run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda')
+        else:
+          run_onnx_tests(build_dir, configs, onnx_test_data_dir, None)
+          if args.use_mkldnn:
+            run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn')
 
     if args.build_wheel:
         build_python_wheel(source_dir, build_dir, configs, args.use_cuda)

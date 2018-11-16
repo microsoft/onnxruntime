@@ -74,24 +74,23 @@ class LRNPrimitive : public PrimitiveBase {
 
   mkldnn::memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
 
-  std::shared_ptr<mkldnn::memory::desc> GetDstMemoryDesc() const { return context_.dst_md; }
-  std::shared_ptr<mkldnn::lrn_forward::primitive_desc> GetPrimitiveDesc() const {
-    return context_.fwd_primitive_desc;
+  mkldnn::lrn_forward::primitive_desc* GetPrimitiveDesc() const {
+    return context_.fwd_primitive_desc.get();
   }
 
  private:
   struct LRNContext {
     mkldnn::memory::format src_fmt;
-    std::shared_ptr<mkldnn::memory::desc> src_md;
+    std::unique_ptr<mkldnn::memory::desc> src_md;
 
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::unique_ptr<mkldnn::memory> src_mem;
+    std::unique_ptr<mkldnn::memory> dst_mem;
 
-    std::shared_ptr<mkldnn::lrn_forward::desc> fwd_desc;
-    std::shared_ptr<mkldnn::lrn_forward::primitive_desc> fwd_primitive_desc;
-    std::shared_ptr<mkldnn::primitive> lrn_fwd;
+    std::unique_ptr<mkldnn::lrn_forward::desc> fwd_desc;
+    std::unique_ptr<mkldnn::lrn_forward::primitive_desc> fwd_primitive_desc;
+    std::unique_ptr<mkldnn::primitive> lrn_fwd;
 
-    std::shared_ptr<mkldnn::stream> stream;
+    std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
 
     LRNContext()
@@ -107,11 +106,11 @@ class LRNPrimitive : public PrimitiveBase {
 
   void Initialize(const LRNParams& params) {
     context_.src_md.reset(new mkldnn::memory::desc({params.dims_}, MklDnnType<T>(), mkldnn::memory::format::nchw));
-    
-    mkldnn::algorithm algo = mkldnn::algorithm::lrn_across_channels; 
+
+    mkldnn::algorithm algo = mkldnn::algorithm::lrn_across_channels;
     context_.fwd_desc.reset(new mkldnn::lrn_forward::desc(
-      mkldnn::prop_kind::forward_scoring, algo, *context_.src_md, 
-      params.size_, params.alpha_, params.beta_, params.bias_));
+        mkldnn::prop_kind::forward_scoring, algo, *context_.src_md,
+        params.size_, params.alpha_, params.beta_, params.bias_));
 
     context_.fwd_primitive_desc.reset(new mkldnn::lrn_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
@@ -122,7 +121,7 @@ class LRNPrimitive : public PrimitiveBase {
     context_.src_mem.reset(new mkldnn::memory(context_.fwd_primitive_desc.get()->src_primitive_desc(), nullptr));
     context_.dst_mem.reset(new mkldnn::memory(context_.fwd_primitive_desc.get()->dst_primitive_desc(), nullptr));
     context_.lrn_fwd.reset(
-      new mkldnn::lrn_forward(*context_.fwd_primitive_desc, *context_.src_mem, *context_.dst_mem));
+        new mkldnn::lrn_forward(*context_.fwd_primitive_desc, *context_.src_mem, *context_.dst_mem));
     context_.net.push_back(*context_.lrn_fwd);
   }
 
@@ -181,7 +180,7 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
   try {
     LRNParams lrn_params(dims_mkl, this->alpha_, this->beta_, this->bias_, this->size_);
     LRNPrimitive<T>* lrn_primitive = LRNPrimitivePool<T>::Get(lrn_params);
-    std::shared_ptr<mkldnn::lrn_forward::primitive_desc> fwd_primitive_desc = lrn_primitive->GetPrimitiveDesc();
+    auto fwd_primitive_desc = lrn_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
     mkldnn::memory::format mem_format = dims_mkl.size() == 5 ? mkldnn::memory::format::ncdhw : mkldnn::memory::format::nchw;
@@ -224,5 +223,4 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
 }
 
 }  // namespace onnxruntime
-
 }

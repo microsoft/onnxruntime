@@ -17,7 +17,8 @@
 
 namespace onnxruntime {
 
-ParallelExecutor::ParallelExecutor(const SessionState& session_state) : out_standings_(0) {
+ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
+    : out_standings_(0), terminate_flag_{terminate_flag} {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
@@ -78,6 +79,17 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
 void ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                     const SessionState& session_state,
                                     const logging::Logger& logger) {
+  try {
+    RunNodeAsyncInternal(p_node_index, session_state, logger);
+  } catch (...) {
+    FinishNodeRun();
+	throw;
+  }
+}
+
+void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
+                                            const SessionState& session_state,
+                                            const logging::Logger& logger) {
   LOGS(logger, INFO) << "Begin execution";
 
   size_t node_index = p_node_index;
@@ -85,15 +97,24 @@ void ParallelExecutor::RunNodeAsync(size_t p_node_index,
   auto graph_viewer = session_state.GetGraphViewer();
   // Avoid context switching if possible.
   while (keep_running) {
+    // TODO: Convert RunNodeAsync return Status.
+    // to also handle exception propagation
+    if (terminate_flag_) {
+      LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
+      ONNXRUNTIME_THROW("Exiting due to terminate flag being set to true.");
+    }
+
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
-    if (p_op_kernel == nullptr)
+    if (p_op_kernel == nullptr) {
       ONNXRUNTIME_THROW("Got nullptr from GetKernel for node: ",
-	                    graph_viewer->GetNode(node_index)->Name());
+                        graph_viewer->GetNode(node_index)->Name());
+    }
 
     OpKernelContextInternal op_kernel_context(*root_frame_, *p_op_kernel, logger,
-                                              p_op_kernel->Node().ImplicitInputDefs());
+                                              p_op_kernel->Node().ImplicitInputDefs(),
+                                              terminate_flag_);
 
     auto sync_time_begin = session_state.Profiler().StartTime();
     // sync before compute
@@ -136,8 +157,9 @@ void ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     // Execute the kernel.
     auto status = p_op_kernel->Compute(&op_kernel_context);
-    if (!status.IsOK())
+    if (!status.IsOK()) {
       ONNXRUNTIME_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
+    }
 
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_kernel_time",
@@ -182,7 +204,7 @@ void ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
       std::lock_guard<std::mutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
-        auto idx = (*it)->GetNode().Index();
+        auto idx = (*it).GetNode().Index();
         if ((--node_refs_[idx]) == 0) {
           if (!keep_running) {
             node_index = idx;
@@ -197,10 +219,7 @@ void ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
   }
 
-  if (--out_standings_ == 0) {
-    //std::cout << "all out standing nodes are completed." << std::endl;
-    complete_cv_.notify_all();
-  }
+  FinishNodeRun();
 }
 
 void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger) {

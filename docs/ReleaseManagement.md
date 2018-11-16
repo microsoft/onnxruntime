@@ -5,7 +5,7 @@ released to the public.
 
 ## Releases
 Releases are versioned according to
-[docs/Versioning.md](doc/Versioning/md). Initially ONNX Runtime releases will be
-aligned with [ONNX](https://github.com/onnx/onnx) releases.
+[docs/Versioning.md](Versioning/md). We plan to release ONNX Runtime packages
+every 6 months.
 
 (TBD: Add more here later)

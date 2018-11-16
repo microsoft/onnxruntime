@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// copied from gsl_algorithm, gsl disable 4996 for gsl::copy()
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
 #ifdef _MSC_VER
-#pragma warning(disable : 4996) 
+#pragma warning(push)
+#pragma warning(disable : 4996)
 #endif
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
@@ -15,6 +18,10 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 /*
 ONNX_OPERATOR_SCHEMA(GRU)
@@ -296,10 +303,10 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   ONNXRUNTIME_RETURN_IF_ERROR(status);
 
   // GRU outputs are optional but must be in the same order
-  std::vector<int64_t> Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
+  TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
   Tensor* Y = context.Output(/*index*/ 0, Y_dims);  // TODO: Adjust for however optional outputs gets implemented
 
-  std::vector<int64_t> Y_h_dims{num_directions_, batch_size, hidden_size_};
+  TensorShape Y_h_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_h = context.Output(/*index*/ 1, Y_h_dims);
 
   AllocatorPtr alloc;
@@ -348,9 +355,6 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   gsl::span<T> hidden_output_1 = hidden_output.subspan(0, hidden_output_size_per_direction);
 
-  std::unique_ptr<detail::UniDirectionalGru<T>> fw;
-  std::unique_ptr<detail::UniDirectionalGru<T>> bw;
-
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
     gsl::span<const T> input_weights_2 = input_weights.subspan(input_weights_size_per_direction,
@@ -370,30 +374,39 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
-    fw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
-        bias_1, initial_hidden_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        clip_, ttp_);
+    // run backward first as it needs an extra reverse sequence operation
+    std::packaged_task<void()> task_bw{
+        [&]() {
+          std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
+              alloc, logger,
+              seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+              bias_2, initial_hidden_2,
+              activation_funcs_.Entries()[2],
+              activation_funcs_.Entries()[3],
+              clip_, ttp_);
+          bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+        }};
+    auto task_results_bw = task_bw.get_future();
+    ttp_.RunTask(std::move(task_bw));
 
-    bw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
-        bias_2, initial_hidden_2,
-        activation_funcs_.Entries()[2],
-        activation_funcs_.Entries()[3],
-        clip_, ttp_);
+    std::packaged_task<void()> task_fw{
+        [&]() {
+          std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
+              alloc, logger,
+              seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
+              bias_1, initial_hidden_1,
+              activation_funcs_.Entries()[0],
+              activation_funcs_.Entries()[1],
+              clip_, ttp_);
+          fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+        }};
+    auto task_results_fw = task_fw.get_future();
+    ttp_.RunTask(std::move(task_fw));
 
-    // TODO: Investigate running two calls to Compute in parallel
-    // TODO: Or alternatively if we split out the buffers into a separate class we could re-use them for both
-    // forward and reverse calculations if they're done sequentially.
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
-
+    task_results_fw.get();
+    task_results_bw.get();
   } else {
-    fw = std::make_unique<detail::UniDirectionalGru<T>>(
+    std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
         seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
         bias_1, initial_hidden_1,
@@ -401,7 +414,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[1],
         clip_, ttp_);
 
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
   }
 
   if (!output.empty())
@@ -478,8 +491,8 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
       // replicate what we just wrote to the start of the output span so we have batch_size_ copies
       auto values = output.cbegin();
       ONNXRUNTIME_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(values, values + hidden_size_,
-                                                           output.begin() + hidden_size_,  // skip the first batch
-                                                           batch_size_ - 1));              // and replicate batch size - 1 times
+                                                                   output.begin() + hidden_size_,  // skip the first batch
+                                                                   batch_size_ - 1));              // and replicate batch size - 1 times
     };
 
     // we can always combine the z and r weights
@@ -647,7 +660,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
         if (linear_before_reset_) {
           // copy Rbh to linear output
-          gsl::copy(batched_bias_Rh_.subspan(batched_bias_Rh_local - batched_bias_Rh_.begin(), local_fused_hidden_rows * hidden_size_), 
+          gsl::copy(batched_bias_Rh_.subspan(batched_bias_Rh_local - batched_bias_Rh_.begin(), local_fused_hidden_rows * hidden_size_),
                     linear_output_.subspan(linear_output_local - linear_output_.begin(), linear_output_local_end - linear_output_local));
 
           // compute Ht-1 * (Rh^T) + Rbh

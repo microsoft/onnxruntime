@@ -24,14 +24,7 @@ constexpr ONNXObject mkl_cls = {
     ReleaseRunOptions,
 };
 
-ONNXRuntimeRunOptions::ONNXRuntimeRunOptions() : cls(&mkl_cls), ref_count(1) {
-}
-
-ONNXRuntimeRunOptions& ONNXRuntimeRunOptions::operator=(const ONNXRuntimeRunOptions&) {
-  throw std::runtime_error("not implemented");
-}
-ONNXRuntimeRunOptions::ONNXRuntimeRunOptions(const ONNXRuntimeRunOptions& other)
-    : cls(&mkl_cls), ref_count(1), run_log_verbosity_level(other.run_log_verbosity_level), run_tag(other.run_tag) {
+ONNXRuntimeRunOptions::ONNXRuntimeRunOptions() : cls(&mkl_cls), ref_count(1), terminate(false) {
 }
 
 ONNXRUNTIME_API(ONNXRuntimeRunOptions*, ONNXRuntimeCreateRunOptions) {
@@ -55,4 +48,8 @@ ONNXRUNTIME_API(unsigned int, ONNXRuntimeRunOptionsGetRunLogVerbosityLevel, _In_
 }
 ONNXRUNTIME_API(const char*, ONNXRuntimeRunOptionsGetRunTag, _In_ ONNXRuntimeRunOptions* options) {
   return options->run_tag.c_str();
+}
+
+ONNXRUNTIME_API(void, ONNXRuntimeRunOptionsSetTerminate, _In_ ONNXRuntimeRunOptions* options, bool value) {
+  options->terminate = value;
 }

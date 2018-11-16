@@ -10,7 +10,7 @@ namespace onnxruntime {
 template <typename T, typename PoolType>
 Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  TensorShape x_shape = X->Shape();
+  const TensorShape& x_shape = X->Shape();
 
   ONNXRUNTIME_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
@@ -28,6 +28,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   const float* X_data = X->template Data<float>();
   float* Y_data = Y->template MutableData<float>();
+
   // The main loop
   int64_t channels = x_shape[1];
   int64_t height = x_shape[2];
@@ -160,10 +161,57 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& x_shape = X->Shape();
+
+  size_t input_dims = x_shape.NumDimensions();
+  ONNXRUNTIME_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
+
+  size_t pooling_dims = input_dims - 2;
+  if (pooling_dims > 3) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
+  }
+  if (!global_pooling_) {
+    ONNXRUNTIME_RETURN_IF_NOT(pooling_dims == kernel_shape_.size(), "kernel_shape num_dims is not compatible with X num_dims.");
+  }
+
+  std::vector<int64_t> pads = pads_;
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+  Tensor* Y = context->Output(0, TensorShape(output_dims));
+
+  MlasPool(kind,
+           pooling_dims,
+           X->Shape().GetDims().data(),
+           global_pooling_ ? nullptr : kernel_shape_.data(),
+           global_pooling_ ? nullptr : pads.data(),
+           global_pooling_ ? nullptr : strides_.data(),
+           output_dims.data(),
+           X->template Data<float>(),
+           Y->template MutableData<float>());
+
+  return Status::OK();
+}
+
+template <>
+Status Pool<float, MaxPool<1 /*VERSION*/>>::Compute(OpKernelContext* context) const {
+  return PoolBase::Compute(context, MlasMaximumPooling);
+}
+
+template <>
+Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
+  return PoolBase::Compute(context, count_include_pad_ ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
+}
+
 template <>
 Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) const {
+  // Use MLAS pooling if the index output tensor is not used.
+  if (OpKernel::Node().OutputDefs().size() == 1) {
+    return PoolBase::Compute(context, MlasMaximumPooling);
+  }
+
   const Tensor* X = context->Input<Tensor>(0);
-  TensorShape x_shape = X->Shape();
+  const TensorShape& x_shape = X->Shape();
 
   ONNXRUNTIME_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 

@@ -309,12 +309,22 @@ int real_main(int argc, char* argv[]) {
       {"operator_rnn_single_layer", "disable reason"},
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
-      {"maxpool_with_argmax_2d_precomputed_pads", "mkldnn test failed"},
-      {"maxpool_with_argmax_2d_precomputed_strides", "mkldnn test failed"},
-      {"bvlc_reference_rcnn_ilsvrc13", "failed when mkldnn is enabled"},
+      {"cntk_simple_seg", "mkldnn test failed"},
       {"maxunpool_export_with_output_shape", "opset 9 not supported yet"},
       {"maxunpool_export_without_output_shape", "opset 9 not supported yet"},
-      {"upsample_nearest", "opset 9 not supported yet"}};
+      {"upsample_nearest", "opset 9 not supported yet"},
+      {"onehot_with_axis", "opset 9 not supported yet"},
+      {"onehot_without_axis", "opset 9 not supported yet"},  // also has bug in current test re: output type. Spandan to fix.
+      {"sinh", "opset 9 not supported yet"},
+      {"cosh", "opset 9 not supported yet"},
+      {"asinh", "opset 9 not supported yet"},
+      {"acosh", "opset 9 not supported yet"},
+      {"atanh", "opset 9 not supported yet"},
+      {"sinh_example", "opset 9 not supported yet"},
+      {"cosh_example", "opset 9 not supported yet"},
+      {"asinh_example", "opset 9 not supported yet"},
+      {"acosh_example", "opset 9 not supported yet"},
+      {"atanh_example", "opset 9 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
@@ -344,10 +354,10 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  try{
-    return real_main(argc,argv);
-  } catch(std::exception& ex){
-    fprintf(stderr,"%s\n", ex.what());
+  try {
+    return real_main(argc, argv);
+  } catch (std::exception& ex) {
+    fprintf(stderr, "%s\n", ex.what());
     return -1;
   }
 }

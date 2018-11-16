@@ -44,19 +44,25 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
   //std::cout << std::make_pair(p_seq_exec_plan, &session_state) << "\n";
 
   for (const auto& node_exec_plan : exec_plan_vec) {
+    if (terminate_flag_) {
+      LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
+      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+    }
+
     auto node_index = node_exec_plan.node_index;
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                             session_state.GetGraphViewer()->GetNode(node_index)->Name());
+                                     session_state.GetGraphViewer()->GetNode(node_index)->Name());
 
     const std::string& node_name = p_op_kernel->Node().Name();
     const std::string& op_name = p_op_kernel->KernelDef().OpName();
     // construct OpKernelContext
     // TODO: log kernel inputs?
-    OpKernelContextInternal op_kernel_context(frame, *p_op_kernel, logger, p_op_kernel->Node().ImplicitInputDefs());
+    OpKernelContextInternal op_kernel_context(frame, *p_op_kernel, logger, p_op_kernel->Node().ImplicitInputDefs(),
+                                              terminate_flag_);
     // TODO: log kernel outputs?
 
     auto sync_time_begin = session_state.Profiler().StartTime();

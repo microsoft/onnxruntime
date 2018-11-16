@@ -3,7 +3,6 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
-// #include "core/framework/customregistry.h"
 #include "core/framework/session_state.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/session/inference_session.h"
@@ -14,15 +13,14 @@ namespace onnxruntime {
 namespace test {
 
 struct RunOptions {
-  bool include_shapes_in_main_graph = false;
-
-  bool include_shapes_in_subgraph = true;
+  bool include_dim_values_in_main_graph = false;
+  bool include_dim_values_in_subgraph = true;
   bool include_types_in_subgraph = true;
-
   bool include_outer_scope_add = false;
+  bool add_bad_shape = false;
 };
 
-static void CreateSubgraph(Graph& graph, RunOptions options);
+static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
 
 static const float kOuterNodeAddValue = 42.f;
 
@@ -45,7 +43,8 @@ class ScanOpTester : public OpTester {
 
       {
         auto& output_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_scalar);
-        auto* constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value -1", {}, {&output_arg});
+        auto* constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue",
+                                       {}, {&output_arg});
 
         TensorProto value_tensor;
         value_tensor.add_dims(1);
@@ -61,8 +60,8 @@ class ScanOpTester : public OpTester {
   }
 };
 
-static void CreateSubgraph(Graph& graph, RunOptions options) {
-  bool include_shapes = options.include_shapes_in_subgraph;
+static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message) {
+  bool include_shapes = options.include_dim_values_in_subgraph;
   bool include_types = options.include_types_in_subgraph;
 
   std::vector<NodeArg*> inputs;
@@ -122,7 +121,7 @@ static void CreateSubgraph(Graph& graph, RunOptions options) {
 
     // as this is a subgraph output we need a shape to come from somewhere, so if the main graph isn't providing it,
     // it has to come from here.
-    bool type_and_shape_required = options.include_shapes_in_main_graph == false;
+    bool type_and_shape_required = options.include_dim_values_in_main_graph == false;
 
     if (include_shapes || type_and_shape_required)
       loop_state_output_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -148,8 +147,13 @@ static void CreateSubgraph(Graph& graph, RunOptions options) {
     // inputs must have type information and rank, but dimension can have no value if we're not providing shape info.
     concat_input_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
     auto mutable_dim = concat_input_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
-    if (include_shapes)
+    if (include_shapes) {
       mutable_dim->set_dim_value(2);
+
+      if (options.add_bad_shape) {
+        concat_input_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(99);
+      }
+    }
 
     for (int i = 0, num_inputs = 2; i < num_inputs; ++i) {
       auto& input_arg = graph.GetOrCreateNodeArg("concat_in_" + std::to_string(i), &concat_input_tensor);
@@ -223,7 +227,12 @@ static void CreateSubgraph(Graph& graph, RunOptions options) {
 
   auto status = graph.Resolve();
 
-  EXPECT_EQ(status, Status::OK());
+  if (failure_message.empty()) {
+    EXPECT_EQ(status, Status::OK());
+  } else {
+    EXPECT_TRUE(!status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(failure_message));
+  }
 }
 
 void RunTest(const std::string test_name, int64_t batch_size, int64_t max_sequence_len, int64_t input_size,
@@ -243,12 +252,12 @@ void RunTest(const std::string test_name, int64_t batch_size, int64_t max_sequen
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
   Model model(test_name);
   auto& graph = model.MainGraph();
-  CreateSubgraph(graph, options);
+  CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   auto& proto = graph.ToGraphProto();
 
   ScanOpTester test;
 
-  test.AddShapeToTensorData(options.include_shapes_in_main_graph);
+  test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
 
   test.AddAttribute("body", proto);
   test.AddAttribute<int64_t>("num_scan_inputs", 2);
@@ -281,7 +290,7 @@ void RunTest(const std::string test_name, int64_t batch_size, int64_t max_sequen
   test.Run(expect_result, failure_message);
 }
 
-void ShortSequenceOneInBatchOneLoopStateVar(RunOptions options) {
+void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, const std::string& expected_error = "") {
   const int64_t batch_size = 1;
   const int64_t sequence_len = 2;
   const int64_t input_size = 2;
@@ -308,42 +317,44 @@ void ShortSequenceOneInBatchOneLoopStateVar(RunOptions options) {
           nullptr, nullptr,
           iteration_count_in, input_0, input_1,
           iteration_count_out, output_0, output_1, output_2, output_3,
-          options);
+          options,
+          expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+          expected_error);
 }
 
 TEST(Scan, ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
-  RunOptions options;
-  options.include_shapes_in_main_graph = false;
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
   options.include_types_in_subgraph = true;
-  options.include_shapes_in_subgraph = true;
+  options.include_dim_values_in_subgraph = true;
 
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
 
 TEST(Scan, ShortSequenceOneInBatchOneLoopStateVar_ShapeInMainGraph_NoTypeAndShapeInSubgraph) {
-  RunOptions options;
-  options.include_shapes_in_main_graph = true;
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = true;
   options.include_types_in_subgraph = false;
-  options.include_shapes_in_subgraph = false;
+  options.include_dim_values_in_subgraph = false;
 
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
 
 TEST(Scan, ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_NoTypeAndShapeInSubgraph) {
-  RunOptions options;
-  options.include_shapes_in_main_graph = false;
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
   options.include_types_in_subgraph = false;
-  options.include_shapes_in_subgraph = false;
+  options.include_dim_values_in_subgraph = false;
 
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
 
 // test when there is an operator in the subgraph that uses a value coming from outer scope
 TEST(Scan, OuterScopeAccess_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
-  RunOptions options;
-  options.include_shapes_in_main_graph = false;
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
   options.include_types_in_subgraph = true;
-  options.include_shapes_in_subgraph = true;
+  options.include_dim_values_in_subgraph = true;
 
   options.include_outer_scope_add = true;
 
@@ -351,10 +362,10 @@ TEST(Scan, OuterScopeAccess_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
 }
 
 TEST(Scan, OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph) {
-  RunOptions options;
-  options.include_shapes_in_main_graph = true;
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = true;
   options.include_types_in_subgraph = false;
-  options.include_shapes_in_subgraph = false;
+  options.include_dim_values_in_subgraph = false;
 
   options.include_outer_scope_add = true;
 
@@ -362,14 +373,27 @@ TEST(Scan, OuterScopeAccess_ShapeInMainGraph_NoTypeAndShapeInSubgraph) {
 }
 
 TEST(Scan, OuterScopeAccess_NoShapeInMainGraph_NoTypeAndShapeInSubgraph) {
-  RunOptions options;
-  options.include_shapes_in_main_graph = false;
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
   options.include_types_in_subgraph = false;
-  options.include_shapes_in_subgraph = false;
+  options.include_dim_values_in_subgraph = false;
 
   options.include_outer_scope_add = true;
 
   ShortSequenceOneInBatchOneLoopStateVar(options);
+}
+
+TEST(Scan, BadShape) {
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = false;
+  options.include_types_in_subgraph = true;
+  options.include_dim_values_in_subgraph = true;
+  options.add_bad_shape = true;
+
+  ShortSequenceOneInBatchOneLoopStateVar(
+      options,
+      "Node:concat Output:concat_out_1 [ShapeInferenceError] Mismatch between number of source and target dimensions. "
+      "Source=2 Target=1");
 }
 
 TEST(Scan, ShortSequenceTwoInBatchOneLoopStateVar) {
@@ -443,6 +467,50 @@ TEST(Scan, MixedSequenceLens) {
 
   RunTest("MixedSequenceLens", batch_size, max_sequence_len, input_size,
           nullptr, &sequence_lens,
+          iteration_count_in, input_0, input_1,
+          iteration_count_out, output_0, output_1, output_2, output_3);
+}
+
+TEST(Scan, MixedSequenceLensReverse) {
+  const int64_t batch_size = 2;
+  const int64_t max_sequence_len = 2;
+  const int64_t input_size = 2;
+
+  std::vector<int64_t> sequence_lens{1, 2};
+  std::vector<int64_t> directions{1, 1};  // reverse both inputs
+
+  std::vector<float> iteration_count_in{0.f, 10.f};  // start at 0 for first item in batch, and 10 for second
+
+  // batch_size, max_sequence_len, input_size
+  std::vector<float> input_0{1.f, 2.f,
+                             400.f, 300.f,  // <- this should be ignored
+
+                             -1.f, -2.f,
+                             -4.f, -3.f};
+
+  std::vector<float> input_1{3.f, 4.f,
+                             200.f, 100.f,  // <- this should be ignored
+
+                             -3.f, -4.f,
+                             -2.f, -1.f};
+
+  // iteration_count_in + 1 for each item in sequence.
+  // as sequence_len is 1 for the first item in the batch, the final value should be 0 + 1.
+  // as sequence_len is 2 for the second item in the batch, the final value should be 10 + 1 + 1.
+  std::vector<float> iteration_count_out{1.f, 12.f};
+
+  // batch_size, max_sequence_len, 1
+  // as sequence_len is 1 for the first item in the batch we expect 0.f's for the second value in the output
+  // (which technically is undefined, but 0.f is consistent with other RNN ops)
+  // as the first sequence only contains one entry, the output should actually be the same as if the direction
+  // was forward.
+  std::vector<float> output_0{1.f, 0.f, -4.f, -1.f};
+  std::vector<float> output_1{2.f, 0.f, -3.f, -2.f};
+  std::vector<float> output_2{3.f, 0.f, -2.f, -3.f};
+  std::vector<float> output_3{4.f, 0.f, -1.f, -4.f};
+
+  RunTest("MixedSequenceLensReverse", batch_size, max_sequence_len, input_size,
+          &directions, &sequence_lens,
           iteration_count_in, input_0, input_1,
           iteration_count_out, output_0, output_1, output_2, output_3);
 }
@@ -525,6 +593,72 @@ TEST(Scan, InvalidInput) {
           {},
           OpTester::ExpectResult::kExpectFailure,
           "Number of entries in 'directions' was 3. Must match 'num_scan_inputs' of 2");
+}
+
+// Test usage of multiple inputs of different types for variadic inputs
+TEST(Scan, MixedTypeInputs) {
+  // Construct scan body subgraph with 2 state variables, 2 scan inputs, 2 scan outputs
+  // of different types (1 float and 1 int64 of each):
+  // state-in-1 => scan-out-1
+  // scan-in-1 => state-out-1
+  // state-in-2 => scan-out-2
+  // scan-in-2 => state-out-2
+
+  Model model("ScanBody");
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  TypeProto int_tensor;
+  int_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  int_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& state_in_1 = graph.GetOrCreateNodeArg("state_in_1", &float_tensor);
+  auto& state_in_2 = graph.GetOrCreateNodeArg("state_in_2", &int_tensor);
+  auto& scan_in_1 = graph.GetOrCreateNodeArg("scan_in_1", &float_tensor);
+  auto& scan_in_2 = graph.GetOrCreateNodeArg("scan_in_2", &int_tensor);
+
+  auto& state_out_1 = graph.GetOrCreateNodeArg("state_out_1", &float_tensor);
+  auto& state_out_2 = graph.GetOrCreateNodeArg("state_out_2", &int_tensor);
+  auto& scan_out_1 = graph.GetOrCreateNodeArg("scan_out_1", &float_tensor);
+  auto& scan_out_2 = graph.GetOrCreateNodeArg("scan_out_2", &int_tensor);
+
+  graph.AddNode("node1", "Identity", "Copy state_in_1 to scan_out_1", {&state_in_1}, {&scan_out_1});
+  graph.AddNode("node2", "Identity", "Copy state_in_2 to scan_out_2", {&state_in_2}, {&scan_out_2});
+  graph.AddNode("node3", "Identity", "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
+  graph.AddNode("node4", "Identity", "Copy scan_in_2 to state_out_2", {&scan_in_2}, {&state_out_2});
+
+  graph.SetInputOrder({&state_in_1, &state_in_2, &scan_in_1, &scan_in_2});
+  graph.SetOutputOrder({&state_out_1, &state_out_2, &scan_out_1, &scan_out_2});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto& scan_body = graph.ToGraphProto();
+
+  // Construct and run scan test
+  ScanOpTester test;
+
+  int64_t batch_size = 1, sequence_len = 3, input_size = 1;
+  std::vector<int64_t> seq_shape{batch_size, sequence_len, input_size};
+  std::vector<int64_t> state_shape{batch_size, input_size};
+
+  test.AddAttribute("body", scan_body);
+  test.AddAttribute<int64_t>("num_scan_inputs", 2);
+
+  test.AddMissingOptionalInput<int64_t>();
+  test.AddInput<float>("initial_state_1", state_shape, {0.0});
+  test.AddInput<int64_t>("initial_state_2", state_shape, {0});
+  test.AddInput<float>("scan_input_1", seq_shape, {1.0, 2.0, 3.0});
+  test.AddInput<int64_t>("scan_input_2", seq_shape, {1, 2, 3});
+
+  test.AddOutput<float>("final_state_1", state_shape, {3.0});
+  test.AddOutput<int64_t>("final_state_2", state_shape, {3});
+  test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
+  test.AddOutput<int64_t>("scan_output_2", seq_shape, {0, 1, 2});
+
+  test.Run();
 }
 
 }  // namespace test

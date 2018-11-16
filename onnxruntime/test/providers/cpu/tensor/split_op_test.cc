@@ -279,7 +279,7 @@ TEST(SplitOperatorTest, InvalidAxis) {
 
   outputs.push_back({{1}, {0.f}});
 
-  RunTest(axis, {}, input, outputs, true, "axis 2 is not in valid range");
+  RunTest(axis, {}, input, outputs, true, "Invalid value of attribute 'axis'");
 }
 
 // sum of values in splits is too small

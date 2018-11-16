@@ -50,6 +50,47 @@
 */
 
 namespace onnxruntime {
+namespace profiling {
+
+enum EventCategory {
+  SESSION_EVENT = 0,
+  NODE_EVENT,
+  EVENT_CATEGORY_MAX
+};
+
+/*
+Event descriptions for the above session events.
+*/
+static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
+    "Session",
+    "Node"};
+
+/*
+Timing record for all events.
+*/
+struct EventRecord {
+  EventRecord(EventCategory category,
+              int process_id,
+              int thread_id,
+              std::string event_name,
+              long long time_stamp,
+              long long duration,
+              std::unordered_map<std::string, std::string>&& event_args) : cat(category),
+                                                                           pid(process_id),
+                                                                           tid(thread_id),
+                                                                           name(std::move(event_name)),
+                                                                           ts(time_stamp),
+                                                                           dur(duration),
+                                                                           args(event_args) {}
+  EventCategory cat;
+  int pid;
+  int tid;
+  std::string name;
+  long long ts;
+  long long dur;
+  std::unordered_map<std::string, std::string> args;
+};
+}  // namespace profiling
 namespace logging {
 
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
@@ -153,6 +194,11 @@ class LoggingManager final {
   */
   void Log(const std::string& logger_id, const Capture& message) const;
 
+  /**
+    Sends a Profiling Event Record to the sink.
+    @param Profiling Event Record
+  */
+  void SendProfileEvent(profiling::EventRecord& eventRecord) const;
   ~LoggingManager();
 
  private:
@@ -223,6 +269,14 @@ class Logger {
   */
   void Log(const Capture& message) const {
     logging_manager_->Log(id_, message);
+  }
+
+  /**
+    Sends a Profiling Event Record to the sink.
+    @param Profiling Event Record
+  */
+  void SendProfileEvent(profiling::EventRecord& eventRecord) const {
+    logging_manager_->SendProfileEvent(eventRecord);
   }
 
  private:

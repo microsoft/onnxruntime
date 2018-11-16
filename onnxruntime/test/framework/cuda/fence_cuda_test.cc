@@ -19,7 +19,6 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/function_container.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"

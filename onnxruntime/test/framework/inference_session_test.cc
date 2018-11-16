@@ -23,8 +23,6 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/IOBinding.h"
-#include "core/graph/function_container.h"
-
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test_utils.h"
@@ -114,7 +112,6 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 };
 namespace test {
-static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg);
 static void VerifyOutputs(const std::vector<MLValue>& fetches,
                           const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
@@ -324,6 +321,7 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunModel(session_object, run_options);
 }
 
+#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
     cout << "Sizes differ: f_arg size: " << f_arg.size() << " s_arg size: " << s_arg.size() << endl;
@@ -355,7 +353,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
 
   so.session_logid = "InferenceSessionTests.ModelMetadata";
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  string model_uri = "testdata/squeezenet/model.onnx";
+  string model_uri = "../models/opset8/test_squeezenet/model.onnx";
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<onnxruntime::Model> p_model;
@@ -410,7 +408,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
     ASSERT_TRUE(Compare(outputs, *retval.second));
   }
 }
-
+#endif
 TEST(InferenceSessionTests, CheckRunLogger) {
   SessionOptions so;
 
@@ -889,6 +887,99 @@ TEST(ExecutionProviderTest, FunctionTest) {
   status = session_object_2.Initialize();
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+  VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+}
+
+TEST(ExecutionProviderTest, FunctionInlineTest) {
+  onnxruntime::Model model("graph_1");
+
+  ONNX_NAMESPACE::FunctionProto fc_proto;
+  fc_proto.set_name("FC");
+  fc_proto.set_doc_string("this is a full connection function.");
+  fc_proto.set_since_version(7);
+  fc_proto.add_input("w");
+  fc_proto.add_input("x");
+  fc_proto.add_input("b");
+  fc_proto.add_output("y");
+  NodeProto* node0 = fc_proto.add_node();
+  node0->set_name("node0");
+  node0->set_domain("");
+  node0->set_doc_string("This is a matmul testing node ");
+  node0->set_op_type("MatMul");
+  node0->add_input("w");
+  node0->add_input("x");
+  node0->add_output("y_1");
+  NodeProto* node1 = fc_proto.add_node();
+  node1->set_name("node1");
+  node1->set_domain("");
+  node1->set_doc_string("This is a add testing node ");
+  node1->set_op_type("Add");
+  node1->add_input("y_1");
+  node1->add_input("b");
+  node1->add_output("y");
+  model.AddFunction(fc_proto);
+
+  auto& graph = model.MainGraph();
+  std::vector<onnxruntime::NodeArg*> inputs;
+  std::vector<onnxruntime::NodeArg*> outputs;
+
+  // FLOAT tensor.
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);
+  inputs.push_back(&input_arg_1);
+  inputs.push_back(&input_arg_2);
+  inputs.push_back(&input_arg_3);
+  auto& output_arg = graph.GetOrCreateNodeArg("M", &float_tensor);
+  outputs.push_back(&output_arg);
+  graph.AddNode("node_1", "FC", "node 1.", inputs, outputs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK());
+  std::string model_file_name = "inline_test_graph.onnx";
+  status = onnxruntime::Model::Save(model, model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "ExecutionProviderTest.FunctionInlineTest";
+  InferenceSession session_object{so};
+  status = session_object.Load(model_file_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  std::vector<int64_t> dims_mul_x = {2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f};
+  MLValue ml_value_x;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  MLValue ml_value_y;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
+  MLValue ml_value_z;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("Y", ml_value_y));
+  feeds.insert(std::make_pair("Z", ml_value_z));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("M");
+  std::vector<MLValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul_m = {2, 2};
+  std::vector<float> expected_values_mul_m = {8.0f, 12.0f, 18.0f, 26.0f};
+
+  // Now run
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }

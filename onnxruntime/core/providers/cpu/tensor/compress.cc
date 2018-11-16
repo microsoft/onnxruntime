@@ -22,9 +22,9 @@ Status Compress::Compute(OpKernelContext* ctx) const {
 
   const Tensor* condition = ctx->Input<Tensor>(1);
   auto condition_length = condition->Shape().Size();
-  auto condition_data = condition->Data<bool>();
+  auto condition_data = condition->template Data<bool>();
 
-  int64_t compress_output_length = 0;
+  int64_t positive_condition_count = 0;
   // if has axis, we need to compress on dimension[axis], otherwise compress on the flattened input data
   int64_t compress_input_length = has_axis_ ? input_dimensions[axis_] : input_tensor->Shape().Size();
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
@@ -32,20 +32,24 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   // Figure out output shape
   for (int i = 0; i < valid_condition_length; ++i) {
     if (condition_data[i]) {
-      ++compress_output_length;
+      ++positive_condition_count;
     }
   }
 
   std::vector<int64_t> output_dims(input_dimensions);
   if (has_axis_) {
-    output_dims[axis_] = compress_output_length;
+    output_dims[axis_] = positive_condition_count;
   } else {
     output_dims.resize(1);
-    output_dims[0] = compress_output_length;
+    output_dims[0] = positive_condition_count;
   }
 
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);
+  if (positive_condition_count <= 0) {
+    return Status::OK();
+  }
+
   const uint8_t* input_data = static_cast<const uint8_t*>(input_tensor->DataRaw());
   uint8_t* output_data = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   auto element_bytes = input_tensor->DataType()->Size();

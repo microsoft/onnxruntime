@@ -26,15 +26,6 @@ const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
   return kernel_def;
 }
 
-const KernelDef* GetKernelDef(const onnxruntime::Graph& graph,
-                              const KernelRegistryManager& kernel_registry,
-                              const onnxruntime::NodeIndex node_id) {
-  auto node = graph.GetNode(node_id);
-  ONNXRUNTIME_ENFORCE(nullptr != node);
-
-  return GetKernelDef(kernel_registry, *node);
-}
-
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const ONNXRuntimeAllocatorInfo& allocator_info) {
   auto exec_provider = exec_providers.Get(allocator_info);
   if (exec_provider == nullptr) {

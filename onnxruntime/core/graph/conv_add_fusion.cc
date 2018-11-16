@@ -14,12 +14,12 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
   for (auto& node : graph.Nodes()) {
     if (node.OpType() != "Add" ||
         node.GetInputEdgesCount() != 1 ||
-        (*node.InputEdgesBegin())->GetNode().OpType() != "Conv" ||
+        (*node.InputEdgesBegin()).GetNode().OpType() != "Conv" ||
         graph.IsNodeOutputsInGraphOutputs(node)) {
       continue;
     }
 
-    const auto& conv_node = (*node.InputEdgesBegin())->GetNode();
+    const auto& conv_node = (*node.InputEdgesBegin()).GetNode();
     const auto& conv_inputs = conv_node.InputDefs();
     // For now, fusion is only done when conv has bias.
     if (conv_inputs.size() != 3) {

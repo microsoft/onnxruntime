@@ -7,6 +7,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/autopad_type.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -215,6 +216,8 @@ class PoolBase {
           static_cast<float>(in_size + *pad_head + *pad_tail - kernel) / stride + 1);
     }
   }
+
+  Status Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const;
 
  protected:
   std::string op_name_;

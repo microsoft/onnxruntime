@@ -16,7 +16,7 @@ class TreeEnsembleClassifier final : public OpKernel {
 
  private:
   void Initialize();
-  common::Status ProcessTreeNode(std::unordered_map<int64_t, float>& classes,
+  common::Status ProcessTreeNode(std::map<int64_t, float>& classes,
                                  int64_t treeindex,
                                  const T* x_data,
                                  int64_t feature_base) const;

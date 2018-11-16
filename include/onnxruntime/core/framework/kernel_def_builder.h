@@ -118,15 +118,11 @@ class KernelDefBuilder {
   explicit KernelDefBuilder()
       : kernel_def_(new KernelDef()) {}
 
-  KernelDefBuilder& SetName(const std::string& op_name) {
-    kernel_def_->op_name_ = op_name;
-    return *this;
-  }
+  KernelDefBuilder& SetName(const std::string& op_name);
+  KernelDefBuilder& SetName(const char* op_name);
 
-  KernelDefBuilder& SetDomain(const std::string& domain) {
-    kernel_def_->op_domain_ = domain;
-    return *this;
-  }
+  KernelDefBuilder& SetDomain(const std::string& domain);
+  KernelDefBuilder& SetDomain(const char* domain);
 
   /**
      This kernel supports operator definition since <since_version> (to latest).
@@ -152,10 +148,8 @@ class KernelDefBuilder {
   /**
      The execution provider type of the kernel.
   */
-  KernelDefBuilder& Provider(onnxruntime::ProviderType provider_type) {
-    kernel_def_->provider_type_ = provider_type;
-    return *this;
-  }
+  KernelDefBuilder& Provider(onnxruntime::ProviderType provider_type);
+  KernelDefBuilder& Provider(const char* provider_type);
 
   /**
      Specify the set of types that this kernel supports. A further restriction
@@ -164,53 +158,31 @@ class KernelDefBuilder {
      argument name specified in op schema, say "T".
   */
   KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   const std::vector<MLDataType>& supported_types) {
-    kernel_def_->type_constraints_[arg_name] = supported_types;
-    return *this;
-  }
+                                   const std::vector<MLDataType>& supported_types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name,
+                                   const std::vector<MLDataType>& supported_types);
 
   /**
      Like TypeConstraint but supports just a single type.
   */
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   MLDataType supported_type) {
-    kernel_def_->type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
-    return *this;
-  }
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType supported_type);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type);
 
   /**
      Inplace mapping from inputs to outputs allowed.
      It means that uplayer runtime could do memory in-place optimization
      as it will not impact the correctness of this kernel.
   */
-  KernelDefBuilder& MayInplace(const std::vector<std::pair<int, int>>& inplaces) {
-    kernel_def_->inplace_map_ = inplaces;
-    return *this;
-  }
-
-  /**
-     allowing output[output_index] to reuse memory of input[input_index]
-  */
-  KernelDefBuilder& MayInplace(int input_index, int output_index) {
-    // TODO: validate inputs.
-    kernel_def_->inplace_map_.emplace_back(input_index, output_index);
-    return *this;
-  }
+  KernelDefBuilder& MayInplace(const std::vector<std::pair<int, int>>& inplaces);
+  KernelDefBuilder& MayInplace(int input_index, int output_index);
 
   /**
      Alias mapping from inputs to outputs. Different from Inplace that the
      content of the tensor is not changed. This is to take care of operators
      such as Identity and Reshape.
   */
-  KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases) {
-    kernel_def_->alias_map_ = aliases;
-    return *this;
-  }
-
-  KernelDefBuilder& Alias(int input_index, int output_index) {
-    kernel_def_->alias_map_.emplace_back(input_index, output_index);
-    return *this;
-  }
+  KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
+  KernelDefBuilder& Alias(int input_index, int output_index);
 
   /**
      Specify that this kernel requires an input arg
@@ -228,13 +200,6 @@ class KernelDefBuilder {
   */
   template <ONNXRuntimeMemType T>
   KernelDefBuilder& OutputMemoryType(int output_index) {
-    kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
-    return *this;
-  }
-
-  // legacy interface for winml, should not be used in onnxruntime
-  template <ONNXRuntimeMemType T>
-  KernelDefBuilder& MemoryType(int output_index) {
     kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
     return *this;
   }

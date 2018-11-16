@@ -62,6 +62,11 @@ function(AddTest)
     )
 endfunction(AddTest)
 
+#Check whether C++17 header file <filesystem> is present
+include(CheckIncludeFiles)
+check_include_files("filesystem" HAS_FILESYSTEM_H LANGUAGE CXX)
+check_include_files("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANGUAGE CXX)
+
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
 #can propagate correctly.
@@ -158,7 +163,7 @@ endif()
 
 if(WIN32)
     list(APPEND onnxruntime_test_framework_libs Advapi32)
-else()
+elseif(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
     list(APPEND onnxruntime_test_framework_libs stdc++fs)
 endif()
 
@@ -176,8 +181,8 @@ if(onnxruntime_USE_MKLDNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_mkldnn)
 endif()
 
-if( NOT WIN32)
-    list(APPEND onnxruntime_test_providers_libs stdc++fs)
+if( NOT WIN32 AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
+  list(APPEND onnxruntime_test_providers_libs stdc++fs)
 endif()
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src
@@ -316,7 +321,7 @@ add_custom_command(
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 if(HAS_NULL_DEREFERENCE)
-    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-null-dereference")    
+    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-null-dereference")
   endif()
 if(WIN32)
     target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456")
@@ -362,7 +367,9 @@ if(WIN32)
   set(GETOPT_LIB win_getopt_mb)
 else()
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h ${onnx_test_runner_src_dir}/sync_api_linux.cc)
-  set(FS_STDLIB stdc++fs)
+  if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
+    set(FS_STDLIB stdc++fs)
+  endif()
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
@@ -436,7 +443,7 @@ install(TARGETS onnx_test_runner
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if(onnxruntime_BUILD_BENCHMARKS)
+if(onnxruntime_BUILD_BENCHMARKS AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
   add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
   target_compile_options(onnxruntime_benchmark PRIVATE "/wd4141")
@@ -449,7 +456,6 @@ if(WIN32)
   set(DISABLED_WARNINGS_FOR_PROTOBUF "/wd4125" "/wd4456" "/wd4505")
   target_compile_options(onnx_test_runner_common PRIVATE ${DISABLED_WARNINGS_FOR_PROTOBUF} -D_CRT_SECURE_NO_WARNINGS)
   target_compile_options(onnx_test_runner PRIVATE ${DISABLED_WARNINGS_FOR_PROTOBUF})
-  #Maybe "CMAKE_SYSTEM_PROCESSOR" is better
 endif()
 
 set(onnxruntime_exec_src_dir ${TEST_SRC_DIR}/onnxruntime_exec)
@@ -471,31 +477,33 @@ add_test(NAME onnx_test_pytorch_converted
 add_test(NAME onnx_test_pytorch_operator
   COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
 
-set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
-set(onnxruntime_perf_test_src_patterns
-  "${onnxruntime_perf_test_src_dir}/*.cc"
-  "${onnxruntime_perf_test_src_dir}/*.h")
+if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
+  set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
+  set(onnxruntime_perf_test_src_patterns
+    "${onnxruntime_perf_test_src_dir}/*.cc"
+    "${onnxruntime_perf_test_src_dir}/*.h")
 
-if(WIN32)
-  list(APPEND onnxruntime_perf_test_src_patterns
-    "${onnxruntime_perf_test_src_dir}/windows/*.cc"
-    "${onnxruntime_perf_test_src_dir}/windows/*.h" )
-else ()
-  list(APPEND onnxruntime_perf_test_src_patterns
-    "${onnxruntime_perf_test_src_dir}/posix/*.cc"
-    "${onnxruntime_perf_test_src_dir}/posix/*.h" )
+  if(WIN32)
+    list(APPEND onnxruntime_perf_test_src_patterns
+      "${onnxruntime_perf_test_src_dir}/windows/*.cc"
+      "${onnxruntime_perf_test_src_dir}/windows/*.h" )
+  else ()
+    list(APPEND onnxruntime_perf_test_src_patterns
+      "${onnxruntime_perf_test_src_dir}/posix/*.cc"
+      "${onnxruntime_perf_test_src_dir}/posix/*.h" )
+  endif()
+
+  file(GLOB onnxruntime_perf_test_src ${onnxruntime_perf_test_src_patterns})
+  add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
+
+  target_include_directories(onnxruntime_perf_test PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+  if (WIN32)
+    target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
+  endif()
+
+  target_link_libraries(onnxruntime_perf_test PRIVATE ${onnx_test_libs} ${GETOPT_LIB})
+  set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 endif()
-
-file(GLOB onnxruntime_perf_test_src ${onnxruntime_perf_test_src_patterns})
-add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
-
-target_include_directories(onnxruntime_perf_test PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
-if (WIN32)
-  target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
-endif()
-
-target_link_libraries(onnxruntime_perf_test PRIVATE ${onnx_test_libs} ${GETOPT_LIB})
-set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -549,3 +557,7 @@ add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
 target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas)
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  include(onnxruntime_standalone_tests_internal.cmake)
+endif()

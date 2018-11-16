@@ -74,9 +74,10 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   out << "\nExecution Plan:\n";
   for (size_t i = 0; i < plan.execution_plan.size(); ++i) {
     auto& step = plan.execution_plan[i];
-    auto& node = *graph.GetNode(step.node_index);
+    auto node = graph.GetNode(step.node_index);
+    ONNXRUNTIME_ENFORCE(nullptr != node);
     out << "[" << i << "] ";
-    out << node.OpType() << " (" << node.Name() << ")" << std::endl;
+    out << node->OpType() << " (" << node->Name() << ")" << std::endl;
     if (step.free_from_index <= step.free_to_index) {
       out << "Free ml-values: ";
       std::string sep;
@@ -96,7 +97,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
 
 class PlannerImpl {
  public:
-  PlannerImpl(const onnxruntime::Graph& graph,
+  PlannerImpl(const onnxruntime::GraphViewer& graph_viewer,
               const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry,
               const MLValueNameIdxMap& mlvalue_name_idx_map,
@@ -104,7 +105,7 @@ class PlannerImpl {
               SequentialExecutionPlan& plan)
       : context_{context},
         plan_{plan},
-        graph_(graph),
+        graph_viewer_(graph_viewer),
         execution_providers_{providers},
         kernel_registry_{kernel_registry},
         mlvalue_name_idx_map_{mlvalue_name_idx_map} {
@@ -116,7 +117,7 @@ class PlannerImpl {
   const ISequentialPlannerContext& context_;
   SequentialExecutionPlan& plan_;
 
-  const onnxruntime::Graph& graph_;
+  const onnxruntime::GraphViewer& graph_viewer_;
   const ExecutionProviders& execution_providers_;
 
   const KernelRegistryManager& kernel_registry_;
@@ -328,22 +329,22 @@ class PlannerImpl {
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
 
-    for (auto graph_input : graph_.GetInputs()) {
+    for (auto graph_input : graph_viewer_.GetInputs()) {
       MLValueIndex index = Index(graph_input->Name());
       ProcessDef(index, graph_input);
       UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
     }
 
     // All initializers should be treated as input
-    for (const auto& pair : graph_.GetAllInitializedTensors()) {
+    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
       const auto& initializer_name = pair.first;
       MLValueIndex index = Index(initializer_name);
-      ProcessDef(index, graph_.GetNodeArg(pair.first));
+      ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
       UseCount(initializer_name)++;
     }
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
-      auto pnode = graph_.GetNode(step.node_index);
+      auto pnode = graph_viewer_.GetNode(step.node_index);
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists())
           UseCount(node_input->Name())++;
@@ -356,7 +357,9 @@ class PlannerImpl {
 
       // Identify where each output of this node should be allocated.
       // This is determined by the opkernel bound to the node.
-      auto p_kernelDef = utils::GetKernelDef(graph_, kernel_registry_, step.node_index);
+      auto node = graph_viewer_.GetNode(step.node_index);
+      ONNXRUNTIME_ENFORCE(nullptr != node);
+      auto p_kernelDef = utils::GetKernelDef(kernel_registry_, *node);
       if (nullptr == p_kernelDef) {
         std::ostringstream errormsg;
         errormsg << "No suitable kernel definition found for op " << pnode->OpType() << "(" << pnode->Op()->since_version() << ")";
@@ -364,7 +367,7 @@ class PlannerImpl {
         return Status(ONNXRUNTIME, FAIL, errormsg.str());
       }
 
-      auto exec_provider = execution_providers_.Get(graph_, step.node_index);
+      auto exec_provider = execution_providers_.Get(*node);
       ONNXRUNTIME_ENFORCE(exec_provider);
 
       auto& default_allocator_info = exec_provider->GetAllocator(0, ONNXRuntimeMemTypeDefault)->Info();
@@ -400,7 +403,7 @@ class PlannerImpl {
       }
     }
 
-    for (auto graph_output : graph_.GetOutputs()) {
+    for (auto graph_output : graph_viewer_.GetOutputs()) {
       UseCount(graph_output->Name())++;  // Models caller's usage post-inference; ensures it will not be reused.
     }
 
@@ -408,9 +411,9 @@ class PlannerImpl {
   }
 
   void GeneratePlanForWeights() {
-    auto& weights = graph_.GetAllInitializedTensors();
+    auto& weights = graph_viewer_.GetAllInitializedTensors();
 
-    for (auto& node : graph_.Nodes()) {
+    for (auto& node : graph_viewer_.Nodes()) {
       onnxruntime::Node::ForEachWithIndex(
           node.InputDefs(),
           [this, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
@@ -444,7 +447,7 @@ class PlannerImpl {
     // inputs of the graph:
     // An input ml-value's data is owned by the caller (of InferenceSession::Run())
     // It must be allocated by the caller, and will not be reused during inference.
-    for (auto graph_input : graph_.GetInputs()) {
+    for (auto graph_input : graph_viewer_.GetInputs()) {
       auto input_index = Index(graph_input->Name());
       SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(input_index);
       thisplan.alloc_kind = AllocKind::kPreExisting;
@@ -455,9 +458,9 @@ class PlannerImpl {
 
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
-      auto pnode = graph_.GetNode(step.node_index);
+      auto pnode = graph_viewer_.GetNode(step.node_index);
       // graph outputs
-      auto& graph_outputs = graph_.GetOutputs();
+      auto& graph_outputs = graph_viewer_.GetOutputs();
       // determine allocation for outputs of pnode
       int output_arg_num = 0;
       for (auto node_output : pnode->OutputDefs()) {
@@ -553,16 +556,15 @@ class PlannerImpl {
 };  // namespace onnxruntime
 
 Status PlannerImpl::CreatePlan() {
-  const std::vector<onnxruntime::NodeIndex>* p_graph_nodes;
-  ONNXRUNTIME_RETURN_IF_ERROR(graph_.GetNodesInTopologicalOrder(p_graph_nodes));
+  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
   auto num_ml_values = mlvalue_name_idx_map_.MaxIdx() + 1;
 
-  Initialize(p_graph_nodes->size(), num_ml_values);
+  Initialize(p_graph_nodes.size(), num_ml_values);
 
   // Determine execution order: we use the default topological sort order for now. We can later
   // explore more efficient orderings (from a memory usage perspective).
-  for (auto n : *p_graph_nodes) {
+  for (auto n : p_graph_nodes) {
       plan_.execution_plan.emplace_back(n);
   }
 
@@ -578,7 +580,7 @@ Status PlannerImpl::CreatePlan() {
   return Status::OK();
 }
 
-Status SequentialPlanner::CreatePlan(const onnxruntime::Graph& graph,
+Status SequentialPlanner::CreatePlan(const onnxruntime::GraphViewer& graph_viewer,
                                      const ExecutionProviders& providers,
                                      const KernelRegistryManager& kernel_registry,
                                      const MLValueNameIdxMap& mlvalue_name_idx_map,
@@ -587,7 +589,7 @@ Status SequentialPlanner::CreatePlan(const onnxruntime::Graph& graph,
   // allocate/reset here so we know it's clean
   plan = std::make_unique<SequentialExecutionPlan>();
 
-  PlannerImpl planner(graph, providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
+  PlannerImpl planner(graph_viewer, providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
 }

@@ -16,7 +16,7 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor() = default;
+  SequentialExecutor(const bool& terminate_flag = false) : terminate_flag_{terminate_flag} {}
 
   common::Status Execute(const SessionState& session_state,
                          const NameMLValMap& feeds,
@@ -26,5 +26,6 @@ class SequentialExecutor : public IExecutor {
 
  private:
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
+  const bool& terminate_flag_;
 };
 }  // namespace onnxruntime

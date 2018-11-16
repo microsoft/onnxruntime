@@ -103,11 +103,9 @@ class PoolPrimitive : public PrimitiveBase {
   mkldnn::memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
   mkldnn::memory::format GetDstMemoryFormat() const { return context_.dst_fmt; }
 
-  std::shared_ptr<mkldnn::memory::desc> GetDstMemoryDesc() const { return context_.dst_md; }
-  std::shared_ptr<mkldnn::pooling_forward::primitive_desc>
-
-  GetPrimitiveDesc() const {
-    return context_.fwd_primitive_desc;
+  // std::unique_ptr<mkldnn::memory::desc> GetDstMemoryDesc() const { return context_.dst_md; }
+  mkldnn::pooling_forward::primitive_desc* GetPrimitiveDesc() const {
+    return context_.fwd_primitive_desc.get();
   }
 
  private:
@@ -115,19 +113,19 @@ class PoolPrimitive : public PrimitiveBase {
     mkldnn::memory::format src_fmt;
     mkldnn::memory::format dst_fmt;
 
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::unique_ptr<mkldnn::memory> src_mem;
+    std::unique_ptr<mkldnn::memory> dst_mem;
 
-    std::shared_ptr<mkldnn::pooling_forward::desc> fwd_desc;
+    std::unique_ptr<mkldnn::pooling_forward::desc> fwd_desc;
 
-    std::shared_ptr<mkldnn::memory::desc> src_md;
-    std::shared_ptr<mkldnn::memory::desc> dst_md;
+    std::unique_ptr<mkldnn::memory::desc> src_md;
+    std::unique_ptr<mkldnn::memory::desc> dst_md;
 
-    std::shared_ptr<mkldnn::pooling_forward::primitive_desc> fwd_primitive_desc;
+    std::unique_ptr<mkldnn::pooling_forward::primitive_desc> fwd_primitive_desc;
 
-    std::shared_ptr<mkldnn::primitive> pool_fwd;
+    std::unique_ptr<mkldnn::primitive> pool_fwd;
 
-    std::shared_ptr<mkldnn::stream> stream;
+    std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
 
     PoolContext()
@@ -278,7 +276,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
                            padding_left_mkl, padding_right_mkl,
                            this->count_include_pad_);
     PoolPrimitive<T, PoolType>* pool_primitive = PoolPrimitivePool<T, PoolType>::Get(pool_params);
-    std::shared_ptr<mkldnn::pooling_forward::primitive_desc> fwd_primitive_desc = pool_primitive->GetPrimitiveDesc();
+    auto fwd_primitive_desc = pool_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
     mkldnn::memory::format mem_format = src_dims_mkl.size() == 5 ? mkldnn::memory::format::ncdhw : mkldnn::memory::format::nchw;

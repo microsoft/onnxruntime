@@ -17,9 +17,11 @@ class OpKernelContextInternal : public OpKernelContext {
   explicit OpKernelContextInternal(ExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const std::vector<const NodeArg*>& implicit_inputs)
+                                   const std::vector<const NodeArg*>& implicit_inputs,
+                                   const bool& terminate_flag)
       : OpKernelContext(&frame, &kernel, logger),
-        implicit_inputs_{implicit_inputs} {
+        implicit_inputs_{implicit_inputs},
+        terminate_flag_{terminate_flag} {
   }
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
@@ -46,8 +48,11 @@ class OpKernelContextInternal : public OpKernelContext {
     return implicit_inputs_map;
   }
 
+  const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
+
  private:
   const std::vector<const NodeArg*>& implicit_inputs_;
+  const bool& terminate_flag_;
 };
 
 }  // namespace onnxruntime

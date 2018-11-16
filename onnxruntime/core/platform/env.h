@@ -122,14 +122,13 @@ class Env {
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the
   // function.
-  // TODO(): rename LoadLibrary to something else. LoadLibrary is already defined in Windows.h
-  virtual common::Status LoadLibrary(const std::string& library_filename, void** handle) const = 0;
+  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const = 0;
 
-  virtual common::Status UnloadLibrary(void* handle) const = 0;
+  virtual common::Status UnloadDynamicLibrary(void* handle) const = 0;
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //
-  // "handle" should be a pointer returned from a previous call to LoadLibrary.
+  // "handle" should be a pointer returned from a previous call to LoadDynamicLibrary.
   // On success, store a pointer to the located symbol in "*symbol" and return
   // OK from the function. Otherwise, returns nullptr in "*symbol" and an error
   // status from the function.
@@ -139,7 +138,7 @@ class Env {
   //
   // "name" should be name of the library.
   // "version" should be the version of the library or NULL
-  // returns the name that LoadLibrary() can use
+  // returns the name that LoadDynamicLibrary() can use
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const = 0;
 
  protected:

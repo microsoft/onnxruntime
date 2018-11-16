@@ -19,6 +19,24 @@ TEST(TensorOpTest, Reshape) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});  // Nuphar only supports reshape shape from initializer
+}
+
+TEST(TensorOpTest, ReshapeWithEmptyDim) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
+  test.AddInput<int64_t>("shape", {0}, {}, true);
+  test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, ReshapeWithInitializer) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
+  test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
   test.Run();
 }
 
@@ -431,79 +449,79 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
 }
 
 void MeanVarianceNormalizationFunctionDefaultPerChannel() {
-	const int64_t N = 2, C = 2, H = 2, W = 3;
+  const int64_t N = 2, C = 2, H = 2, W = 3;
 
-	std::vector<float> N1C1 = { 3.0f, -3.0f, -1.0f,
-		1.0f, 2.0f, -1.0f };
-	std::vector<float> N1C2 = { -2.0f, -2.0f, -2.0f,
-		4.0f, 1.0f, 4.0f };
-	std::vector<float> N2C1 = {
-		0.0f,
-		-2.0f,
-		-2.0f,
-		-4.0f,
-		5.0f,
-		7.0f,
-	};
-	std::vector<float> N2C2 = {
-		5.0f,
-		-5.0f,
-		-5.0f,
-		3.0f,
-		4.0f,
-		4.0f,
-	};
+  std::vector<float> N1C1 = {3.0f, -3.0f, -1.0f,
+                             1.0f, 2.0f, -1.0f};
+  std::vector<float> N1C2 = {-2.0f, -2.0f, -2.0f,
+                             4.0f, 1.0f, 4.0f};
+  std::vector<float> N2C1 = {
+      0.0f,
+      -2.0f,
+      -2.0f,
+      -4.0f,
+      5.0f,
+      7.0f,
+  };
+  std::vector<float> N2C2 = {
+      5.0f,
+      -5.0f,
+      -5.0f,
+      3.0f,
+      4.0f,
+      4.0f,
+  };
 
-	std::vector<float> X;
-	X.reserve(N * C * H * W);
-	X.insert(X.end(), N1C1.begin(), N1C1.end());
-	X.insert(X.end(), N1C2.begin(), N1C2.end());
-	X.insert(X.end(), N2C1.begin(), N2C1.end());
-	X.insert(X.end(), N2C2.begin(), N2C2.end());
+  std::vector<float> X;
+  X.reserve(N * C * H * W);
+  X.insert(X.end(), N1C1.begin(), N1C1.end());
+  X.insert(X.end(), N1C2.begin(), N1C2.end());
+  X.insert(X.end(), N2C1.begin(), N2C1.end());
+  X.insert(X.end(), N2C2.begin(), N2C2.end());
 
-	std::vector<float> C1;
-	C1.reserve(N * H * W);
-	C1.insert(C1.end(), N1C1.begin(), N1C1.end());
-	C1.insert(C1.end(), N2C1.begin(), N2C1.end());
-	auto C1_meam_stdev = MeanStdev(C1);
+  std::vector<float> C1;
+  C1.reserve(N * H * W);
+  C1.insert(C1.end(), N1C1.begin(), N1C1.end());
+  C1.insert(C1.end(), N2C1.begin(), N2C1.end());
+  auto C1_meam_stdev = MeanStdev(C1);
 
-	std::vector<float> C2;
-	C2.reserve(N * H * W);
-	C2.insert(C2.end(), N1C2.begin(), N1C2.end());
-	C2.insert(C2.end(), N2C2.begin(), N2C2.end());
-	auto C2_meam_stdev = MeanStdev(C2);
+  std::vector<float> C2;
+  C2.reserve(N * H * W);
+  C2.insert(C2.end(), N1C2.begin(), N1C2.end());
+  C2.insert(C2.end(), N2C2.begin(), N2C2.end());
+  auto C2_meam_stdev = MeanStdev(C2);
 
-	std::vector<float> N1C1_result(N1C1), N1C2_result(N1C2),
-		N2C1_result(N2C1), N2C2_result(N2C2);
-	Normalize(N1C1_result, C1_meam_stdev, 1);
-	Normalize(N2C1_result, C1_meam_stdev, 1);
-	Normalize(N1C2_result, C2_meam_stdev, 1);
-	Normalize(N2C2_result, C2_meam_stdev, 1);
+  std::vector<float> N1C1_result(N1C1), N1C2_result(N1C2),
+      N2C1_result(N2C1), N2C2_result(N2C2);
+  Normalize(N1C1_result, C1_meam_stdev, 1);
+  Normalize(N2C1_result, C1_meam_stdev, 1);
+  Normalize(N1C2_result, C2_meam_stdev, 1);
+  Normalize(N2C2_result, C2_meam_stdev, 1);
 
-	std::vector<float> result;
-	result.reserve(N * C * H * W);
-	result.insert(result.end(), N1C1_result.begin(), N1C1_result.end());
-	result.insert(result.end(), N1C2_result.begin(), N1C2_result.end());
-	result.insert(result.end(), N2C1_result.begin(), N2C1_result.end());
-	result.insert(result.end(), N2C2_result.begin(), N2C2_result.end());
+  std::vector<float> result;
+  result.reserve(N * C * H * W);
+  result.insert(result.end(), N1C1_result.begin(), N1C1_result.end());
+  result.insert(result.end(), N1C2_result.begin(), N1C2_result.end());
+  result.insert(result.end(), N2C1_result.begin(), N2C1_result.end());
+  result.insert(result.end(), N2C2_result.begin(), N2C2_result.end());
 
-	OpTester test("MeanVarianceNormalization", 9);
-	test.AddInput<float>("input", { N, C, H, W }, X);
-	test.AddOutput<float>("output", { N, C, H, W }, result);
-	test.Run();
+  OpTester test("MeanVarianceNormalization", 9);
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, result);
+  test.Run();
 }
 
 void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
   const int64_t N = 2, C = 2, H = 2, W = 3;
 
-  std::vector<float> X = { 3.0f, -3.0f, -1.0f,
-    1.0f, 2.0f, -1.0f,
-    -2.0f, -2.0f, -2.0f,
-    4.0f, 1.0f, 4.0f,
-    0.0f, -2.0f, -2.0f,
-    -4.0f, 5.0f, 7.0f,
-    5.0f, -5.0f, -5.0f,
-    3.0f, 4.0f, 4.0f };
+  std::vector<float> X = {3.0f, -3.0f, -1.0f,
+                          1.0f, 2.0f, -1.0f,
+                          -2.0f, -2.0f, -2.0f,
+                          4.0f, 1.0f, 4.0f,
+                          0.0f, -2.0f, -2.0f,
+                          -4.0f, 5.0f, 7.0f,
+                          5.0f, -5.0f, -5.0f,
+                          3.0f, 4.0f, 4.0f};
   auto mean_stdev = MeanStdev(X);
 
   std::vector<float> result(X);
@@ -511,8 +529,8 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
 
   OpTester test("MeanVarianceNormalization", 9);
   test.AddAttribute("axes", axes);
-  test.AddInput<float>("input", { N, C, H, W }, X);
-  test.AddOutput<float>("output", { N, C, H, W }, result);
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, result);
   test.Run();
 }
 
@@ -530,7 +548,7 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
   MeanVarianceNormalizationPerChannel(false, true);
 
   // axes: {0, 1, 2, 3} for across_channels
-  MeanVarianceNormalizationFunctionAcrossChannels({ 0, 1, 2, 3 });
+  MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
 
   // Default (axes: {0, 2, 3}) for non across_channels
   MeanVarianceNormalizationFunctionDefaultPerChannel();

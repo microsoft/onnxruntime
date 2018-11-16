@@ -305,7 +305,10 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue('Model requires 2 inputs' in str(context.exception))
 
     def testModelMeta(self):
-        sess = onnxrt.InferenceSession(self.get_name('squeezenet/model.onnx'))
+        model_path = "../models/opset8/test_squeezenet/model.onnx"
+        if not os.path.exists(model_path):
+            return
+        sess = onnxrt.InferenceSession(model_path)
         modelmeta = sess.get_modelmeta()
         self.assertEqual('onnx-caffe2', modelmeta.producer_name)
         self.assertEqual('squeezenet_old', modelmeta.graph_name)

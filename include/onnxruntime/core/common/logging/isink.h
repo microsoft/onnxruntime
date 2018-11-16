@@ -23,6 +23,12 @@ class ISink {
     SendImpl(timestamp, logger_id, message);
   }
 
+  /**
+    Sends a Profiling Event Record to the sink.
+    @param Profiling Event Record
+  */
+  virtual void SendProfileEvent(profiling::EventRecord&) const {};
+
   virtual ~ISink() = default;
 
  private:

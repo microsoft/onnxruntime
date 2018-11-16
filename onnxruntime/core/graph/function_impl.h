@@ -3,12 +3,11 @@
 
 #pragma once
 #include "core/graph/function.h"
-#include "core/graph/graph_base.h"
-#include "core/graph/model.h"
 
 namespace onnxruntime {
 class Graph;
 class Node;
+class Model;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -17,12 +16,14 @@ namespace onnxruntime {
 class FunctionImpl final : public Function {
  public:
   FunctionImpl(const onnxruntime::Graph& graph,
-    std::unique_ptr<IndexedSubGraph> customized_func);
+               std::unique_ptr<IndexedSubGraph> customized_func);
 
   FunctionImpl(const onnxruntime::Graph& graph,
-    const onnxruntime::NodeIndex& node_index,
-    const ONNX_NAMESPACE::FunctionProto* onnx_func);
-
+               const onnxruntime::NodeIndex& node_index,
+               const ONNX_NAMESPACE::FunctionProto* onnx_func);
+  
+  ~FunctionImpl();
+  
   const ONNX_NAMESPACE::OpSchema& OpSchema() const override;
 
   const onnxruntime::Graph& Body() const override;

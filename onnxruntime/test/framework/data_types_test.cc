@@ -112,21 +112,71 @@ void RegisterTestTypes() {
   REGISTER_ONNX_PROTO(TestOpaqueNoNames);
 }
 
-// Use of Opaque types in recursive definitions. I.e. we would like to use
-// it within Maps(values) and Sequences(Values) and it should work properly
-// Use the example.
-
 namespace test {
 using namespace ONNX_NAMESPACE;
 
+template <int... dims>
+struct DimSetter;
+
+template <>
+struct DimSetter<> {
+  static void set(TensorShapeProto&) {}
+};
+
+inline void AddDim(TensorShapeProto& proto, int d) {
+  proto.add_dim()->set_dim_value(d);
+}
+
+template <int d>
+struct DimSetter<d> {
+  static void set(TensorShapeProto& proto) {
+    AddDim(proto, d);
+  }
+};
+
+template <int d, int... dims>
+struct DimSetter<d, dims...> {
+  static void set(TensorShapeProto& proto) {
+    AddDim(proto, d);
+    DimSetter<dims...>::set(proto);
+  }
+};
+
+template <int... dims>
+struct TensorShapeTypeProto : public TensorShapeProto {
+  TensorShapeTypeProto() {
+    DimSetter<dims...>::set(*this);
+  }
+};
+
+template <>
+struct TensorShapeTypeProto<> : public TensorShapeProto {};
+
 template <TensorProto_DataType T>
-struct TensorTypeProto : TypeProto {
+struct TensorTypeProto : public TypeProto {
   TensorTypeProto() {
     mutable_tensor_type()->set_elem_type(T);
   }
 };
+
+template <TensorProto_DataType T>
+struct SparseTensorTypeProto : public TypeProto {
+  SparseTensorTypeProto() {
+    mutable_sparse_tensor_type()->set_elem_type(T);
+  }
+  void SetShape(const TensorShapeProto& shape) {
+    mutable_sparse_tensor_type()->mutable_shape()->CopyFrom(shape);
+  }
+  void SetShape(TensorShapeProto&& shape) {
+    *mutable_sparse_tensor_type()->mutable_shape() = std::move(shape);
+  }
+  void ClearShape() {
+    mutable_sparse_tensor_type()->clear_shape();
+  }
+};
+
 template <TensorProto_DataType key, TensorProto_DataType value>
-struct MapTypeProto : TypeProto {
+struct MapTypeProto : public TypeProto {
   MapTypeProto() {
     mutable_map_type()->set_key_type(key);
     mutable_map_type()->mutable_value_type()->mutable_tensor_type()->set_elem_type(value);
@@ -316,6 +366,41 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     EXPECT_EQ(ten_dt, ten_from_str);
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
     EXPECT_TRUE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(from_dt_proto));
+  }
+  // SparseTensor
+  // Currently test only with proto, no MLDataType yet.
+  {
+    const std::string tensor_uint64("sparse_tensor(uint64)");
+    // We expect that the above string will be matched in both cases
+    // where we have shape and where we don't
+    SparseTensorTypeProto<TensorProto_DataType_UINT64> sparse_proto;
+    DataType ten_dt = DataTypeUtils::ToType(sparse_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
+
+    // Now add empty shape, we expect the same string
+    TensorShapeTypeProto<> shape_no_dims;
+    sparse_proto.SetShape(shape_no_dims);
+    ten_dt = DataTypeUtils::ToType(sparse_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
+
+    // Now add shape with dimensions, we expect no difference
+    sparse_proto.ClearShape();
+    TensorShapeTypeProto<10, 12> shape_with_dim;
+    sparse_proto.SetShape(shape_with_dim);
+    ten_dt = DataTypeUtils::ToType(sparse_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
   }
   // Test Simple map
   {

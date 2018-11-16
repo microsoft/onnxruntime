@@ -41,7 +41,7 @@ class Gemm final : public OpKernel {
     int64_t M = helper.M();
     int64_t N = helper.N();
     int64_t K = helper.K();
-    auto Y = context->Output(0, TensorShape(std::vector<int64_t>{M, N}));
+    auto Y = context->Output(0, TensorShape({M, N}));
 
     //bias
     // Todo: we might should move this part into math::gemm to let eigen

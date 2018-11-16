@@ -16,3 +16,19 @@ TEST_F(CApiTest, allocation_info) {
   ReleaseONNXRuntimeAllocatorInfo(info1);
   ReleaseONNXRuntimeAllocatorInfo(info2);
 }
+
+TEST_F(CApiTest, DefaultAllocator) {
+  std::unique_ptr<ONNXRuntimeAllocator> default_allocator;
+  {
+    ONNXRuntimeAllocator* ptr;
+    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateDefaultAllocator(&ptr));
+    default_allocator.reset(ptr);
+  }
+  char* p = (char*)ONNXRuntimeAllocatorAlloc(default_allocator.get(), 100);
+  ASSERT_NE(p, nullptr);
+  memset(p, 0, 100);
+  ONNXRuntimeAllocatorFree(default_allocator.get(), p);
+  const ONNXRuntimeAllocatorInfo* info1 = ONNXRuntimeAllocatorGetInfo(default_allocator.get());
+  const ONNXRuntimeAllocatorInfo* info2 = (*default_allocator)->Info(default_allocator.get());
+  ASSERT_EQ(0, ONNXRuntimeCompareAllocatorInfo(info1, info2));
+}

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
 #include <tvm/tvm.h>
 #include <tvm/build_module.h>
 #include "core/codegen/tvm/tvm_compiler.h"

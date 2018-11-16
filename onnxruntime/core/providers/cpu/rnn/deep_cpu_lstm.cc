@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// copied from gsl_algorithm, gsl disable 4996 for gsl::copy()
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
 #ifdef _MSC_VER
+#pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
 
@@ -12,6 +15,10 @@
 #include "core/common/logging/logging.h"
 #include "core/common/task_thread_pool.h"
 #include "core/framework/allocator.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 /*
 ONNX_OPERATOR_SCHEMA(LSTM)
@@ -346,13 +353,13 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   ONNXRUNTIME_RETURN_IF_ERROR(status);
 
   // LSTM outputs are optional but must be in the same order
-  std::vector<int64_t> Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
+  TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
   Tensor* Y = context.Output(/*index*/ 0, Y_dims);
 
-  std::vector<int64_t> Y_h_dims{num_directions_, batch_size, hidden_size_};
+  TensorShape Y_h_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_h = context.Output(/*index*/ 1, Y_h_dims);
 
-  std::vector<int64_t> Y_c_dims{num_directions_, batch_size, hidden_size_};
+  TensorShape Y_c_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_c = context.Output(/*index*/ 2, Y_c_dims);
 
   AllocatorPtr alloc;
@@ -816,7 +823,9 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       // run through steps sequentially
       for (int step = 0; step < max_sequence_length; step++) {
+#if defined(DUMP_MATRIXES)
         const std::string row_str = " [row=" + std::to_string(row) + ",seqno=" + std::to_string(step) + "]";
+#endif
 
         span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_ + row) * hidden_size_x4;
 
@@ -886,7 +895,9 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     //run through steps sequentially
     for (int step = 0; step < max_sequence_length; step++) {
+#if defined(DUMP_MATRIXES)
       const std::string seqno_str = " [seqno=" + std::to_string(step) + "]";
+#endif
 
       DumpMatrix("previous_state" + seqno_str, &*previous_state, batch_size_, hidden_size_);
 
@@ -982,7 +993,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
       continue;
     }
 
-    std::string row_str = " row[" + std::to_string(row + b) + "]";
+    // std::string row_str = " row[" + std::to_string(row + b) + "]";
 
     // check that we have hidden_size_x4 left starting at cur_out + b * hidden_size_x4, and get a raw pointer to that
     float* pi = SafeRawPointer<T>(out + b * hidden_size_x4, out_end, hidden_size_x4);

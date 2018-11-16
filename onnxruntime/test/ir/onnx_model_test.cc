@@ -13,13 +13,13 @@ using namespace onnxruntime;
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
+#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
 // Tests that Resolve() properly clears the state of topological sorted nodes,
 // inputs, outputs and valueInfo.
 // Assumes the graph passed in has been previously resolved.
 static void TestResolve(onnxruntime::Graph& graph) {
-  const std::vector<onnxruntime::NodeIndex>* nodes;
-  EXPECT_TRUE(graph.GetNodesInTopologicalOrder(nodes).IsOK());
-  auto nodes_before = *nodes;
+  GraphViewer graph_viewer(graph);
+  auto& nodes_before = graph_viewer.GetNodesInTopologicalOrder();
   auto& inputs_before = graph.GetInputs();
   auto& outputs_before = graph.GetOutputs();
   auto& value_info_before = graph.GetValueInfo();
@@ -29,8 +29,8 @@ static void TestResolve(onnxruntime::Graph& graph) {
   graph.SetGraphProtoSyncNeeded();
   EXPECT_TRUE(graph.Resolve().IsOK());
 
-  const std::vector<onnxruntime::NodeIndex>* nodes_after;
-  EXPECT_TRUE(graph.GetNodesInTopologicalOrder(nodes_after).IsOK());
+  GraphViewer graph_viewer_2(graph);
+  auto& nodes_after = graph_viewer_2.GetNodesInTopologicalOrder();
   auto& inputs_after = graph.GetInputs();
   auto& outputs_after = graph.GetOutputs();
   auto& value_info_after = graph.GetValueInfo();
@@ -38,7 +38,7 @@ static void TestResolve(onnxruntime::Graph& graph) {
   // Multiple calls to Resolve() should not alter the sorted nodes,
   // inputs, outputs and valueInfo. The internal state should be
   // cleared.
-  EXPECT_EQ(nodes_before, *nodes_after);
+  EXPECT_EQ(nodes_before, nodes_after);
   EXPECT_EQ(inputs_before, inputs_after);
   EXPECT_EQ(outputs_before, outputs_after);
   EXPECT_EQ(value_info_before, value_info_after);
@@ -47,15 +47,16 @@ static void TestResolve(onnxruntime::Graph& graph) {
 TEST(ONNXModelsTest, squeeze_net) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load("./testdata/squeezenet/model.onnx", model).IsOK());
+  ASSERT_TRUE(Model::Load("../models/opset8/test_squeezenet/model.onnx", model).IsOK());
   TestResolve(model->MainGraph());
 #ifdef _WIN32
   // wstring version
   std::shared_ptr<Model> model2;
-  ASSERT_TRUE(Model::Load(L"./testdata/squeezenet/model.onnx", model2).IsOK());
+  ASSERT_TRUE(Model::Load(L"../models/opset8/test_squeezenet/model.onnx", model2).IsOK());
   TestResolve(model2->MainGraph());
 #endif
 }
+#endif
 
 TEST(ONNXModelsTest, non_existing_model) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located

@@ -71,10 +71,10 @@ class IfImpl {
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
-  const GraphViewer& graph_viewer_;
+  const GraphViewer& subgraph_;
 
   int num_outputs_;
-  std::vector<std::string> output_names_;
+  std::vector<std::string> subgraph_output_names_;
   std::unordered_map<std::string, const MLValue*> implicit_inputs_;
 
   enum class AllocationType {
@@ -109,13 +109,13 @@ IfImpl::IfImpl(OpKernelContextInternal& context,
                const SessionState& session_state)
     : context_{context},
       session_state_{session_state},
-      graph_viewer_{*session_state.GetGraphViewer()},
+      subgraph_{*session_state.GetGraphViewer()},
       implicit_inputs_{context_.GetImplicitInputs()} {
   num_outputs_ = context_.OutputCount();
 }
 
 Status IfImpl::Initialize() {
-  auto& graph_outputs = graph_viewer_.GetOutputs();
+  auto& graph_outputs = subgraph_.GetOutputs();
   auto num_subgraph_outputs = graph_outputs.size();
 
   if (num_subgraph_outputs != num_outputs_) {
@@ -123,12 +123,12 @@ Status IfImpl::Initialize() {
                                    " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }
 
-  output_names_.reserve(num_subgraph_outputs);
+  subgraph_output_names_.reserve(num_subgraph_outputs);
 
   // save list of subgraph output names in their provided order to use when fetching the results
   // from each subgraph execution. the If outputs will match this order.
   for (auto& output : graph_outputs) {
-    output_names_.push_back(output->Name());
+    subgraph_output_names_.push_back(output->Name());
   }
 
   auto status = AllocateOutputTensors();
@@ -141,7 +141,7 @@ Status IfImpl::AllocateOutputTensors() {
   Status status = Status::OK();
   int index = 0;
 
-  for (auto& graph_output : graph_viewer_.GetOutputs()) {
+  for (auto& graph_output : subgraph_.GetOutputs()) {
     auto* graph_output_shape = graph_output->Shape();
     if (!graph_output_shape) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
@@ -200,8 +200,8 @@ Status IfImpl::Execute() {
     fetches.push_back(outputs_[i].second);
   }
 
-  SequentialExecutor executor;
-  status = executor.Execute(session_state_, feeds, output_names_, fetches, context_.Logger());
+  SequentialExecutor executor{context_.GetTerminateFlag()};
+  status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
   ONNXRUNTIME_RETURN_IF_ERROR(status);
 
   for (int i = 0; i < num_outputs_; ++i) {

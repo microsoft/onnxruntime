@@ -11,7 +11,6 @@ struct IndexedSubGraph;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
-struct FunctionContainer;
 // A graph viewer representation class.
 class GraphViewer {
  public:
@@ -48,6 +47,10 @@ class GraphViewer {
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
 
   const std::vector<NodeIndex>& GetRootNodes() const;
+
+  const InitializedTensorSet& GetAllInitializedTensors() const noexcept;
+
+  const NodeArg* GetNodeArg(const std::string& name) const;
 
  private:
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
