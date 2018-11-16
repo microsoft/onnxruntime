@@ -92,6 +92,37 @@ Sample echo operator.)DOC");
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetDoc(R"DOC(Returns which elements of the input are NaN.)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "Strings to tokenize", "T")
+      .Output(0, "Y", "Tokenized strings", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)"},
+          "Input/Output is a string tensor")
+      .Attr(
+          "mark",
+          "Boolean whether to mark the beginning/end character with start of text character (0x02)/end of text character (0x03).",
+          AttributeProto::INT)
+      .Attr(
+          "padvalue",
+          "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found.",
+          AttributeProto::STRING)
+      .Attr(
+          "separators",
+          "The list of separators, two consecutive segments in X connected by a separator would be divided into two tokens.",
+          AttributeProto::STRINGS)
+      .Attr(
+          "mincharnum",
+          "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as �A� and �B� would be ignored",
+          AttributeProto::INT)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
+      })
+      .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis.)DOC");
+
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
       .SetDomain(kMSDomain)
@@ -491,6 +522,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear);
@@ -505,6 +537,7 @@ void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims)>());
   fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN)>());
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear)>());
