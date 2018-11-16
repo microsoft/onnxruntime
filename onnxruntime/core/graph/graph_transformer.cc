@@ -18,13 +18,11 @@ Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::uniq
 
 Status TopDownRuleBasedTransformer::Apply(Graph& graph, bool& modified) const {
   ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
-  const std::vector<NodeIndex>* order;
-  ONNXRUNTIME_RETURN_IF_ERROR(graph.GetNodesInTopologicalOrder(order));
-  assert(order);
-
+  GraphViewer graph_viewer(graph);
+  auto& order = graph_viewer.GetNodesInTopologicalOrder();
   GraphEditor graph_editor(graph);
 
-  for (NodeIndex i : *order) {
+  for (NodeIndex i : order) {
     auto node = graph.GetNode(i);
     if (!node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);

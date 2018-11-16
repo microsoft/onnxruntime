@@ -3,10 +3,15 @@
 
 // copied from gsl_algorithm, gsl disable 4996 for gsl::copy()
 #ifdef _MSC_VER
+#pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
 
 #include "uni_dir_attn_lstm.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 using namespace onnxruntime::rnn::detail;
 

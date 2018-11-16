@@ -49,5 +49,11 @@ def check_distro_info():
 
         if __my_distro__ != 'ubuntu' and __my_distro_ver__ != '16.04':
             warnings.warn('Unsupported Linux distribution (%s-%s). ONNX Runtime supports Ubuntu 16.04 only.' % (__my_distro__, __my_distro_ver__))
+    elif __my_system__ == 'darwin':
+        __my_distro__ = __my_system__
+        __my_distro_ver__ = platform.release().lower()
+
+        if int(__my_distro_ver__.split('.')[0]) < 11:
+            warnings.warn('Unsupported macOS version (%s). ONNX Runtime supports macOS 11.0 or later.' % (__my_distro_ver__))
     else:
-        warnings.warn('Unsupported platform (%s). ONNX Runtime supports Linux and Windows platforms, only.' % __my_system__)
+        warnings.warn('Unsupported platform (%s). ONNX Runtime supports Linux, macOS and Windows platforms, only.' % __my_system__)

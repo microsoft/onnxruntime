@@ -131,6 +131,30 @@ MlasConv(
     );
 
 //
+// Pooling routines.
+//
+
+enum MLAS_POOLING_KIND {
+    MlasMaximumPooling,
+    MlasAveragePoolingExcludePad,
+    MlasAveragePoolingIncludePad,
+};
+
+void
+MLASCALL
+MlasPool(
+    MLAS_POOLING_KIND PoolingKind,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const float* Input,
+    float* Output
+    );
+
+//
 // Bias addition routine.
 //
 

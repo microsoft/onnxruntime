@@ -119,7 +119,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual common::Status LoadLibrary(const std::string& library_filename, void** handle) const override {
+  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     char* error_str = dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_LOCAL);
     error_str = dlerror();
@@ -130,7 +130,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  virtual common::Status UnloadLibrary(void* handle) const override {
+  virtual common::Status UnloadDynamicLibrary(void* handle) const override {
     if (!handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
     }

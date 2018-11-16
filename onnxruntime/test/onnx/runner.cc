@@ -494,6 +494,9 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     std::unique_ptr<ONNXSession, decltype(&ReleaseONNXSession)> session_object(
         sf2.ONNXRuntimeCreateInferenceSession(info->GetModelUrl()), ReleaseONNXSession);
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
+    //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
+    if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")
+      concurrent_runs = 1;
     if (concurrent_runs > 1 && data_count > 1) {
       r = new PTestRunner(session_object.get(), info, tpool, on_finished);
     } else {

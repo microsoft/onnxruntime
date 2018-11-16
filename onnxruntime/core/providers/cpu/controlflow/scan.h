@@ -9,8 +9,6 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-class SessionState;
-
 class Scan final : public OpKernel {
  public:
   Scan(const OpKernelInfo& info) : OpKernel(info) {

@@ -149,6 +149,10 @@ void LoggingManager::Log(const std::string& logger_id, const Capture& message) c
   sink_->Send(GetTimestamp(), logger_id, message);
 }
 
+void LoggingManager::SendProfileEvent(profiling::EventRecord& eventRecord) const {
+  sink_->SendProfileEvent(eventRecord);
+}
+
 static minutes InitLocaltimeOffset(const time_point<system_clock>& epoch) noexcept {
   // convert the system_clock time_point (UTC) to localtime and gmtime to calculate the difference.
   // we do this once, and apply that difference in GetTimestamp().

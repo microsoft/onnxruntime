@@ -21,6 +21,10 @@ ONNXRUNTIME_API_STATUS(ONNXRuntimeRunOptionsSetRunTag, _In_ ONNXRuntimeRunOption
 ONNXRUNTIME_API(unsigned int, ONNXRuntimeRunOptionsGetRunLogVerbosityLevel, _In_ ONNXRuntimeRunOptions*);
 ONNXRUNTIME_API(const char*, ONNXRuntimeRunOptionsGetRunTag, _In_ ONNXRuntimeRunOptions*);
 
+// set a flag so that any running ONNXRuntimeRunInference* calls that are using this instance of ONNXRuntimeRunOptions
+// will exit as soon as possible if the flag is true.
+ONNXRUNTIME_API(void, ONNXRuntimeRunOptionsSetTerminate, _In_ ONNXRuntimeRunOptions*, _In_ bool value);
+
 #ifdef __cplusplus
 }
 #endif

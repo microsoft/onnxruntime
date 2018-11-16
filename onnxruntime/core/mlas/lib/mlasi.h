@@ -20,6 +20,8 @@ Abstract:
 
 #include <mlas.h>
 #include <memory.h>
+#include <algorithm>
+#include <limits>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -36,6 +38,10 @@ Abstract:
 #include "x86_64/xgetbv.h"
 #endif
 #endif
+
+//
+// Macro to place variables at a specified alignment.
+//
 
 #ifdef _WIN32
 #define MLAS_DECLSPEC_ALIGN(variable, alignment) DECLSPEC_ALIGN(alignment) variable
@@ -261,8 +267,12 @@ extern MLAS_PLATFORM MlasPlatform;
 // Cross-platform wrappers for vector intrinsics.
 //
 
-#if defined(MLAS_TARGET_ARM) || defined(MLAS_TARGET_ARM64) || defined(_M_HYBRID_X86_ARM64)
+#if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
+#define MLAS_NEON32_INTRINSICS
+#elif defined(MLAS_TARGET_ARM64) || defined(_M_HYBRID_X86_ARM64)
+#define MLAS_NEON_INTRINSICS
+#define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)
 #define MLAS_SSE2_INTRINSICS
 #else
@@ -321,14 +331,40 @@ MlasStoreAlignedFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 
 inline
 void
-MlasStoreFloat32(float* Buffer, MLAS_FLOAT32X4 Vector)
+MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
 #if defined(MLAS_NEON_INTRINSICS)
-    vst1q_lane_f32(Buffer, Vector, 0);
+    vst1_f32(Buffer, vget_low_f32(Vector));
 #elif defined(MLAS_SSE2_INTRINSICS)
-    _mm_store_ss(Buffer, Vector);
+    _mm_storel_pi((__m64*)Buffer, Vector);
 #endif
 }
+
+template<unsigned Lane>
+inline
+void
+MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    vst1q_lane_f32(Buffer, Vector, Lane);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    // N.B. When building with AVX instructions, compilers optimize the following
+    // to a single vextractps instruction.
+    _mm_store_ss(Buffer, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Lane, Lane, Lane, Lane)));
+#endif
+}
+
+#if defined(MLAS_SSE2_INTRINSICS)
+
+template<>
+inline
+void
+MlasStoreLaneFloat32x4<0>(float* Buffer, MLAS_FLOAT32X4 Vector)
+{
+    _mm_store_ss(Buffer, Vector);
+}
+
+#endif
 
 inline
 MLAS_FLOAT32X4
@@ -354,12 +390,62 @@ MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 
 inline
 MLAS_FLOAT32X4
+MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vsubq_f32(Vector1, Vector2);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_sub_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
 MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vmulq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_mul_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON64_INTRINSICS)
+    return vdivq_f32(Vector1, Vector2);
+#elif defined(MLAS_NEON32_INTRINSICS)
+    Vector1 = vsetq_lane_f32(vgetq_lane_f32(Vector1, 0) / vgetq_lane_f32(Vector2, 0), Vector1, 0);
+    Vector1 = vsetq_lane_f32(vgetq_lane_f32(Vector1, 1) / vgetq_lane_f32(Vector2, 1), Vector1, 1);
+    Vector1 = vsetq_lane_f32(vgetq_lane_f32(Vector1, 2) / vgetq_lane_f32(Vector2, 2), Vector1, 2);
+    Vector1 = vsetq_lane_f32(vgetq_lane_f32(Vector1, 3) / vgetq_lane_f32(Vector2, 3), Vector1, 3);
+    return Vector1;
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_div_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vmaxq_f32(Vector1, Vector2);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_max_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vminq_f32(Vector1, Vector2);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_min_ps(Vector1, Vector2);
 #endif
 }
 

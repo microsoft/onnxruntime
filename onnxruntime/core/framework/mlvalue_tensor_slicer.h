@@ -70,6 +70,11 @@ class MLValueTensorSlicer {
       return tmp;
     }
 
+    Iterator& operator+=(difference_type n) {
+      position_ += increment_by_ * n;
+      return *this;
+    }
+
     // const accessor is always enabled
     const_reference operator*() const {
       ONNXRUNTIME_ENFORCE(position_ >= 0 && position_ < sequence_length_);

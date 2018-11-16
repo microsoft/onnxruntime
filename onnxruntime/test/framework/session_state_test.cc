@@ -10,7 +10,6 @@
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/graph/function_container.h"
 #include "gtest/gtest.h"
 
 using namespace ONNX_NAMESPACE;

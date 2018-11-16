@@ -22,7 +22,6 @@
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"
-#include "core/graph/function_container.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -138,7 +137,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
   inputs.push_back(&input_arg);
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
   outputs.push_back(&output_arg);
-  graph.AddNode("node_1", "Variable_DFS", "node 1", inputs, outputs);
+  auto node_1 = graph.AddNode("node_1", "Variable_DFS", "node 1", inputs, outputs);
 
   auto& input_arg2 = graph.GetOrCreateNodeArg("node_2_in_1", &tensor_int32);
   inputs.clear();
@@ -154,7 +153,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
   auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out_1", &tensor_int32);
   outputs.clear();
   outputs.push_back(&output_arg3);
-  graph.AddNode("node_3", "Add_DFS", "node 3", inputs, outputs);
+  auto node_3 = graph.AddNode("node_3", "Add_DFS", "node 3", inputs, outputs);
 
   inputs.clear();
   inputs.push_back(&output_arg3);
@@ -164,6 +163,10 @@ TEST(GraphTraversalTest, ReverseDFS) {
   graph.AddNode("node_4", "NoOp_DFS", "node 4", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Remove/Add edge should not ask for resolving again.
+  graph.RemoveEdge(node_1->Index(), node_3->Index(), *graph.GetNodeArg("node_1_out_1"));
+  graph.AddEdge(node_1->Index(), node_3->Index(), *graph.GetNodeArg("node_1_out_1"));
 
   std::vector<const Node*> from;
   for (auto& node : graph.Nodes()) {
@@ -181,18 +184,19 @@ TEST(GraphTraversalTest, ReverseDFS) {
     }
   };
 
-  graph.ReverseDFSFrom(from,
-                       [&enter_leave_sequence](const Node* n) {
-                         std::string s("enter:");
-                         s += n->Name();
-                         enter_leave_sequence.push_back(s);
-                       },
-                       [&enter_leave_sequence](const Node* n) {
-                         std::string s("leave:");
-                         s += n->Name();
-                         enter_leave_sequence.push_back(s);
-                       },
-                       NodeCompareName());
+  graph.ReverseDFSFrom(
+      from,
+      [&enter_leave_sequence](const Node* n) {
+        std::string s("enter:");
+        s += n->Name();
+        enter_leave_sequence.push_back(s);
+      },
+      [&enter_leave_sequence](const Node* n) {
+        std::string s("leave:");
+        s += n->Name();
+        enter_leave_sequence.push_back(s);
+      },
+      NodeCompareName());
 
   EXPECT_EQ(enter_leave_sequence.size(), 8);
   EXPECT_EQ("enter:node_4", enter_leave_sequence.at(0));
@@ -421,14 +425,12 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  const std::vector<NodeIndex>* topological_order;
-  status = graph.GetNodesInTopologicalOrder(topological_order);
-  EXPECT_TRUE(status.IsOK());
-
+  GraphViewer graph_viewer(graph);
+  auto& topological_order = graph_viewer.GetNodesInTopologicalOrder();
   bool seen1 = false;
   bool seen2 = false;
 
-  for (auto i : *topological_order) {
+  for (auto i : topological_order) {
     auto node = graph.GetNode(i);
 
     if (node->Name() == "node_1") {
@@ -659,6 +661,10 @@ TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto& iii = graph.GetInputsIncludingInitializers();
+  EXPECT_TRUE(iii.size() == 1);
+  EXPECT_TRUE(iii.front()->Name() == "node_1_in_2");
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
@@ -829,67 +835,6 @@ TEST(TypeInferenceTest, VariadicOutput) {
   CheckTensorEltType(Z.TypeAsProto(), TensorProto_DataType_FLOAT);
 }
 
-// Test that Graph::Resolve checks initializer value matches the type specified in graph:
-TEST(TypeInferenceTest, InitializerType) {
-  Model model("graph_1");
-  auto& graph = model.MainGraph();
-
-  ONNX_NAMESPACE::TensorProto weight;
-  weight.set_data_type(TensorProto_DataType_INT32);
-  weight.add_dims(1);
-  weight.add_int32_data(1);
-  weight.set_name("W");
-  graph.AddInitializedTensor(weight);
-
-  std::vector<NodeArg*> inputs;
-  std::vector<NodeArg*> outputs;
-  TypeProto tensor_type;
-  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  auto& X = graph.GetOrCreateNodeArg("W", &tensor_type);
-  inputs.push_back(&X);
-  auto& Y = graph.GetOrCreateNodeArg("Y", nullptr);
-  outputs.push_back(&Y);
-  auto& Z = graph.GetOrCreateNodeArg("Z", nullptr);
-  outputs.push_back(&Z);
-  graph.AddNode("node_1", "Split", "node 1.", inputs, outputs);
-
-  auto status = graph.Resolve();
-  EXPECT_FALSE(status.IsOK());
-  bool type_error_found = status.ErrorMessage().find("Type Error") != std::string::npos;
-  EXPECT_TRUE(type_error_found);
-}
-
-// Test that Graph::Resolve checks initializer value matches the shape specified in graph:
-TEST(TypeInferenceTest, InitializerShape) {
-  Model model("graph_1");
-  auto& graph = model.MainGraph();
-
-  ONNX_NAMESPACE::TensorProto weight;
-  weight.set_data_type(TensorProto_DataType_FLOAT);
-  weight.add_dims(1);
-  weight.add_float_data(1.0f);
-  weight.set_name("W");
-  graph.AddInitializedTensor(weight);
-
-  std::vector<NodeArg*> inputs;
-  std::vector<NodeArg*> outputs;
-  TypeProto tensor_type;
-  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
-  auto& X = graph.GetOrCreateNodeArg("W", &tensor_type);
-  inputs.push_back(&X);
-  auto& Y = graph.GetOrCreateNodeArg("Y", nullptr);
-  outputs.push_back(&Y);
-  auto& Z = graph.GetOrCreateNodeArg("Z", nullptr);
-  outputs.push_back(&Z);
-  graph.AddNode("node_1", "Split", "node 1.", inputs, outputs);
-
-  auto status = graph.Resolve();
-  EXPECT_FALSE(status.IsOK());
-  bool type_error_found = status.ErrorMessage().find("Type Error") != std::string::npos;
-  EXPECT_TRUE(type_error_found);
-}
-
 // Test that Graph::Resolve identifies name-duplication across initializer and node-output-arg
 TEST(NameResolutionTest, DuplicateName) {
   Model model("graph_1");
@@ -920,6 +865,5 @@ TEST(NameResolutionTest, DuplicateName) {
   bool duplicate_error_found = status.ErrorMessage().find("Duplicate") != std::string::npos;
   EXPECT_TRUE(duplicate_error_found);
 }
-
 }  // namespace test
 }  // namespace onnxruntime

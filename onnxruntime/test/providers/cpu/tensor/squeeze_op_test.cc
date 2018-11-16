@@ -43,6 +43,7 @@ TEST(SqueezeOpTest, Squeeze_2) {
 
 TEST(SqueezeOpTest, UnsortedAxes) {
   OpTester test("Squeeze");
+  test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test after ONNX fix
   test.AddAttribute("axes", std::vector<int64_t>{3, 0, 2});
   test.AddInput<float>("data", {1, 4, 1, 1, 2},
                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
@@ -53,6 +54,7 @@ TEST(SqueezeOpTest, UnsortedAxes) {
 
 TEST(SqueezeOpTest, DuplicateAxes) {
   OpTester test("Squeeze");
+  test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test after ONNX fix
   test.AddAttribute("axes", std::vector<int64_t>{3, 0, 2, 0, 2, 3});
   test.AddInput<float>("data", {1, 4, 1, 1, 2},
                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
@@ -63,6 +65,7 @@ TEST(SqueezeOpTest, DuplicateAxes) {
 
 TEST(SqueezeOpTest, BadAxes) {
   OpTester test("Squeeze");
+  test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test after ONNX fix
   // Bad axes - should be 1 instead of 0.
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddInput<float>("data", {3, 1, 4, 5}, std::vector<float>(60, 1.0f));

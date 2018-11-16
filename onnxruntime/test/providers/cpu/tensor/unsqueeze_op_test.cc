@@ -58,7 +58,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   test.AddAttribute("axes", std::vector<int64_t>{4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectFailure, "'axes' has an out of range axis");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
 }
 
 }  // namespace test

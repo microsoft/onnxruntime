@@ -13,7 +13,7 @@ The version number of the current stable release can be found
 [here](../VERSION_NUMBER)
 
 ## Release cadence
-See [docs/ReleaseManagement.md](docs/ReleaseManagement.md)
+See [docs/ReleaseManagement.md](ReleaseManagement.md)
 
 ## Compatibility with ONNX opsets
 ONNX Runtime supports both backwards and forward compatibility.

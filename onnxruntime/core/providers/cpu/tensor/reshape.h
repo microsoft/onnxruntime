@@ -23,9 +23,7 @@ class Reshape final : public OpKernel {
                 "A shape tensor must be a vector tensor.");
     size_t nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
     const int64_t* data = shapeTensor->template Data<int64_t>();
-    std::vector<int64_t> shape;
-    for (size_t i = 0; i < nDims; ++i)
-      shape.push_back(data[i]);
+    std::vector<int64_t> shape(data, data + nDims);
 
     const Tensor* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();

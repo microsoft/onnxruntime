@@ -102,6 +102,30 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
     ONNXRUNTIME_ENFORCE(graph.Resolve().IsOK());
   }
 
+  // To see if the node with no provider can be inlined. If one such nodes can be
+  // successfully inlined, we re-run the partitioner on the modified graph.
+  bool inline_flag = false;
+  for (auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType().empty()) {
+      auto node_func = node.GetFunctionBody();
+      if (nullptr == node_func) {
+        continue;
+      }
+      Status inliner_status = graph.InlineFunction(node);
+      // If the node has a functionbody with no kernel and cannot be inlined
+      // it is a invalid function
+      if(!inliner_status.IsOK()) return inliner_status;
+      // Set the flag for re-run graph partition after successful inlining
+      inline_flag = true;
+      break;
+    }
+  }
+  // Resolve and rerun graph partition
+  if (inline_flag) {
+    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    this->Partition(graph);
+  }
+
   //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
   //But we will insert cast op to run the model, so skip the error checking here.
   //If after graph transform phase, the node still not assigned, we will report error

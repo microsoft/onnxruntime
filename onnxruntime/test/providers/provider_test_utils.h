@@ -8,6 +8,7 @@
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/run_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
 #include "core/graph/graph.h"
@@ -154,13 +155,13 @@ class OpTester {
   // We have an initializer_list and vector version of the Add functions because std::vector is specialized for
   // bool and we can't get the raw data out. So those cases must use an initializer_list
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values) {
-    AddData(input_data_, name, dims, values.begin(), values.size());
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values, bool is_initializer = false) {
+    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer);
   }
 
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values) {
-    AddData(input_data_, name, dims, values.data(), values.size());
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values, bool is_initializer = false) {
+    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
   }
 
   template <typename TKey, typename TVal>
@@ -228,7 +229,8 @@ class OpTester {
   };
 
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
-           const std::unordered_set<std::string>& excluded_provider_types = {});
+           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const RunOptions* run_options = nullptr);
 
   struct Data {
     onnxruntime::NodeArg def_;
@@ -243,16 +245,24 @@ class OpTester {
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                         std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs);
 
- private:
-  void FillFeedsAndOutputNames(const std::vector<onnxruntime::NodeArg*>& input_defs,
-                               const std::vector<onnxruntime::NodeArg*>& output_defs,
-                               std::unordered_map<std::string, MLValue>& feeds,
+  void AddInitializers(onnxruntime::Graph& graph);
+
+  void FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
                                std::vector<std::string>& output_names);
 
+  std::unique_ptr<onnxruntime::Model> BuildGraph();
+
+  const char* op_;
+
+#ifndef NDEBUG
+  bool run_called_{};
+#endif
+
+ private:
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name,
                const std::vector<int64_t>& dims, const T* values,
-               int64_t values_count) {
+               int64_t values_count, bool is_initializer = false) {
     try {
       TensorShape shape{dims};
       ONNXRUNTIME_ENFORCE(shape.Size() == values_count, values_count,
@@ -281,26 +291,25 @@ class OpTester {
       MLValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>()});
+      if (is_initializer)
+        initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {
       std::cerr << "AddData for '" << name << "' threw: " << ex.what();
       throw;
     }
   }
 
-  const char* op_;
   const char* domain_;
   int opset_version_;
-  bool add_shape_to_tensor_data_ = false;
+  bool add_shape_to_tensor_data_ = true;
   bool add_symbolic_dim_to_tensor_data_ = false;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
+  std::vector<size_t> initializer_index_;
   std::vector<std::function<void(onnxruntime::Node& node)>> add_attribute_funcs_;
 
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_;
   std::vector<std::shared_ptr<CustomRegistry>> custom_session_registries_;
-#ifndef NDEBUG
-  bool run_called_{};
-#endif
 };
 
 template <typename TException>
@@ -315,6 +324,8 @@ void ExpectThrow(OpTester& test, const std::string& error_msg) {
 }
 
 void DebugTrap();
+
+void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type);
 
 }  // namespace test
 }  // namespace onnxruntime

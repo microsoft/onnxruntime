@@ -93,15 +93,15 @@ Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) c
   ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
   if (force_cpu_fp32_)
     ONNXRUNTIME_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
-  const std::vector<onnxruntime::NodeIndex>* order;
-  ONNXRUNTIME_RETURN_IF_ERROR(graph.GetNodesInTopologicalOrder(order));
-  assert(order);
+
+  GraphViewer graph_viewer(graph);
+  auto& order = graph_viewer.GetNodesInTopologicalOrder();
   TypeProto float_16_tensor_proto, float_tensor_proto;
   float_16_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
   float_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   IdGenerator id_generator;
   std::map<onnxruntime::NodeArg*, onnxruntime::NodeArg*> input_def_updates;
-  for (onnxruntime::NodeIndex i : *order) {
+  for (onnxruntime::NodeIndex i : order) {
     auto node = graph.GetNode(i);
     if (!node)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);

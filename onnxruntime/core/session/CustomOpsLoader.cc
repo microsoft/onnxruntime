@@ -57,7 +57,7 @@ CustomOpsLoader::~CustomOpsLoader() {
       }
 
       // unload the DSO
-      if (!Env::Default().UnloadLibrary(lib_handle).IsOK()) {
+      if (!Env::Default().UnloadDynamicLibrary(lib_handle).IsOK()) {
         LOGS_DEFAULT(WARNING) << "Failed to unload DSO: " << elem.first;
       }
     }
@@ -76,7 +76,7 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
     using GetAllKernelsFn = KernelsContainer* (*)();
     using GetAllSchemasFn = SchemasContainer* (*)();
     void* lib_handle = nullptr;
-    ONNXRUNTIME_RETURN_IF_ERROR(Env::Default().LoadLibrary(dso_file_path, &lib_handle));
+    ONNXRUNTIME_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(dso_file_path, &lib_handle));
     dso_name_data_map_[dso_file_path].lib_handle = lib_handle;
 
     // get symbol for GetAllKernels

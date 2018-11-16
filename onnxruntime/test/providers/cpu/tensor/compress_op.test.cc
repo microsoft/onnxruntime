@@ -58,6 +58,21 @@ TEST(CompressTest, Compress_3dims) {
   test.Run();
 }
 
+TEST(CompressTest, Compress_condition_all_false) {
+  OpTester test("Compress", 9);
+
+  test.AddAttribute("axis", int64_t(1));
+
+  test.AddInput<float>("input", {2, 2, 3}, {1.0f, 2.0f, 3.0f,
+                                            4.0f, 5.0f, 6.0f,
+
+                                            7.0f, 8.0f, 9.0f,
+                                            10.0f, 11.0f, 12.0f});
+  test.AddInput<bool>("condition", {2}, {0, 0});
+  test.AddOutput<float>("output", {2, 0, 3}, {});
+  test.Run();
+}
+
 TEST(CompressTest, Compress_3dims_has_extra_condition) {
   OpTester test("Compress", 9);
 

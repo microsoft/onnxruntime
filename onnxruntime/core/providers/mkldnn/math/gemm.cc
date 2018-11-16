@@ -31,7 +31,7 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   int M = gsl::narrow_cast<int>(helper.M());
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
-  auto Y = ctx->Output(0, TensorShape(std::vector<int64_t>{M, N}));
+  auto Y = ctx->Output(0, TensorShape({M, N}));
 
   if (beta_ != 0) {
     auto output_mat = EigenMatrixMapRowMajor<float>(

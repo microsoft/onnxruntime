@@ -1,24 +1,19 @@
 # ONNX Runtime
 
+[![Build
+Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Microsoft.onnxruntime)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=1)
+
 ONNX Runtime is the runtime for [ONNX](https://github.com/onnx/onnx).
 
 # Engineering Design
 [Engineering Design](docs/HighLevelDesign.md)
 
-# Install
-## Python
-   * https://pypi.org/project/onnxruntime/
-   * https://pypi.org/project/onnxruntime-gpu/
-
-## Windows
-TODO
-
-## Linux
-TODO
-
-# Sample API usage
-   * [Sample Usage](onnxruntime/test/shared_lib/fns_candy_style_transfer.c)
-   * [API Documentation](docs/C_API.md)
+# API
+| API | CPU package | GPU package |
+|-----|-------------|-------------|
+| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](TODO)| [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime/) |
+| [C#](docs/CSharp_API.md) | [Windows](TODO)| [Windows](TODO) |
+| [C](docs/C_API.md) | [Windows](TODO)<br>[Linux](TODO) | |
 
 # Build
 [Build](BUILD.md)

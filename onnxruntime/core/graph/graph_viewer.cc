@@ -9,15 +9,28 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
+
+struct NodeCompare {
+  bool operator()(const Node* n1, const Node* n2) const {
+    return n1->Index() < n2->Index();
+  }
+};
+
 GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;
-  // TODO: this will be refactored.
-  // The topological order will be done in <*this> graph viewer.
-  const std::vector<NodeIndex>* nodes;
-  ONNXRUNTIME_ENFORCE(graph_->GetNodesInTopologicalOrder(nodes).IsOK());
-  for (auto index : *nodes) {
-    nodes_in_topological_order_.push_back(index);
+  std::vector<const Node*> leaf_nodes;
+  for (auto& node : graph_->Nodes()) {
+    if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
+      // This is a leaf node (without any output node).
+      leaf_nodes.push_back(&node);
+    }
   }
+  graph.ReverseDFSFrom(leaf_nodes,
+                       nullptr,
+                       [this](const Node* n) {
+                         nodes_in_topological_order_.push_back(n->Index());
+                       },
+                       NodeCompare());
 
   for (auto& node : graph_->Nodes()) {
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
@@ -82,5 +95,13 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder() const {
 
 const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {
   return root_nodes_;
+}
+
+const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexcept {
+  return graph_->GetAllInitializedTensors();
+}
+
+const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {
+  return graph_->GetNodeArg(name);
 }
 }  // namespace onnxruntime

@@ -144,6 +144,9 @@ void AssignOpaqueDomainName(const char* domain, const char* name,
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto,
                   const ONNX_NAMESPACE::TypeProto_Tensor& type_proto);
 
+bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
+                  const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto);
+
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
                   const ONNX_NAMESPACE::TypeProto_Map& type_proto);
 
@@ -187,6 +190,9 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
       case TypeProto::ValueCase::kOpaqueType:
         result = IsCompatible(lhs.value_type().opaque_type(), rhs.value_type().opaque_type());
         break;
+      case TypeProto::ValueCase::kSparseTensorType:
+        result = IsCompatible(lhs.value_type().sparse_tensor_type(), rhs.value_type().sparse_tensor_type());
+        break;
       default:
         ONNXRUNTIME_ENFORCE(false);
         break;
@@ -217,6 +223,9 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
       case TypeProto::ValueCase::kOpaqueType:
         result = IsCompatible(lhs.elem_type().opaque_type(), rhs.elem_type().opaque_type());
         break;
+      case TypeProto::ValueCase::kSparseTensorType:
+        result = IsCompatible(lhs.elem_type().sparse_tensor_type(), rhs.elem_type().sparse_tensor_type());
+        break;
       default:
         ONNXRUNTIME_ENFORCE(false);
         break;
@@ -242,6 +251,13 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto, const ON
 
   return !((lhs_name != rhs_name) ||
            (lhs_name && rhs_name && lhs.name() != rhs.name()));
+}
+
+bool IsCompatible(const ONNX_NAMESPACE::TypeProto_SparseTensor& tensor_proto,
+                  const ONNX_NAMESPACE::TypeProto_SparseTensor& type_proto) {
+  return type_proto.has_elem_type() &&
+         type_proto.elem_type() == tensor_proto.elem_type();
+  // XXX: Ignoring shape for now
 }
 
 void RegisterAllProtos(const std::function<void(MLDataType)>& /*reg_fn*/);
@@ -584,12 +600,12 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
         ONNXRUNTIME_ENFORCE(type != nullptr, "Map with key type: ", keytype, " value type: ", value_elem_type, " is not registered");
         return type;
       }  // not if(scalar tensor) pre-reg types
-        MLDataType type = registry.GetMLDataType(proto);
-        if (type == nullptr) {
-          DataType str_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(proto);
-          ONNXRUNTIME_NOT_IMPLEMENTED("type: ", *str_type, " is not registered");
-        }
-        return type;
+      MLDataType type = registry.GetMLDataType(proto);
+      if (type == nullptr) {
+        DataType str_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(proto);
+        ONNXRUNTIME_NOT_IMPLEMENTED("type: ", *str_type, " is not registered");
+      }
+      return type;
 
     } break;  // kMapType
     case TypeProto::ValueCase::kSequenceType: {

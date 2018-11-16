@@ -18,12 +18,11 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/function.h"
 #include "gsl/gsl_util"
 #include "gsl/pointers"
 
 namespace onnxruntime {
-class Function;
-struct FunctionContainer;
 class Graph;
 struct IndexedSubGraph;
 class Node;
@@ -123,13 +122,20 @@ class Node {
     return MutableDefinitions().input_defs;
   }
 
-  struct IndexCompare {
-    bool operator()(const EdgeEnd* lhs, const EdgeEnd* rhs) const {
-      return lhs->GetNode().Index() < rhs->GetNode().Index();
+  struct EdgeEndCompare {
+    bool operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const {
+      if (lhs.GetNode().Index() == rhs.GetNode().Index()) {
+        auto lhs_arg = lhs.GetNodeArg();
+        auto rhs_arg = rhs.GetNodeArg();
+        std::string lhs_arg_name = lhs_arg == nullptr ? "" : lhs_arg->Name();
+        std::string rhs_arg_name = rhs_arg == nullptr ? "" : rhs_arg->Name();
+        return lhs_arg_name.compare(rhs_arg_name) < 0;
+      }
+      return lhs.GetNode().Index() < rhs.GetNode().Index();
     }
   };
 
-  using EdgeSet = std::set<EdgeEnd*, IndexCompare>;
+  using EdgeSet = std::set<EdgeEnd, EdgeEndCompare>;
   using EdgeConstIterator = EdgeSet::const_iterator;
   class NodeConstIterator {
    public:
@@ -364,14 +370,14 @@ class Graph {
   // 2. Check & Setup inner nodes' dependency.
   // 3. Cleanup function definition lists.
   // Returns resolving status.
-  virtual common::Status Resolve();
+  common::Status Resolve();
 
   // Getter and Setter for graph name.
-  virtual const std::string& Name() const noexcept;
-  virtual void SetName(const std::string& name);
+  const std::string& Name() const noexcept;
+  void SetName(const std::string& name);
 
-  virtual const std::string& Description() const noexcept;
-  virtual void SetDescription(const std::string& description);
+  const std::string& Description() const noexcept;
+  void SetDescription(const std::string& description);
 
   // Add/Remove/Get initial tensors for some graph inputs.
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -471,15 +477,14 @@ class Graph {
   // Remove node and free it.
   bool RemoveNode(NodeIndex node_index);
 
-  // Add an edge.
-  void AddEdge(Node& src, Node& dst, const NodeArg& node_arg);
+  // Add|Remove an edge.
+  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
 
   // Add control edge into <*this> graph.
   // The <dst_node_index> node does not consume any data output by
   // <src_node_index>, but it's designed to be executed behind.
   bool AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
-
-  common::Status GetNodesInTopologicalOrder(/*out*/ const std::vector<NodeIndex>*& pp_nodes) const;
 
   // Mark Graph as needing Resolve() to be called
   Graph& SetGraphResolveNeeded() noexcept {
@@ -526,6 +531,8 @@ class Graph {
 
   Node* FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph, const std::string& fused_node_name);
 
+  Status InlineFunction(Node& node);
+
   // Get the Graph instance for a node that contains a GraphProto attribute in attribute_name.
   // Non-const as the Graph instance returned for the subgraph is mutable and owned by this Graph instance.
   Graph* GetMutableSubgraph(const NodeIndex index, const std::string& attribute_name);
@@ -537,6 +544,18 @@ class Graph {
   // This prevents it from being added to the graph inputs.
   void AddOuterScopeNodeArg(const std::string& name) {
     ONNXRUNTIME_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
+  }
+
+  // when constructing a Graph, explicitly set the input order to be used.
+  // If the Graph is loaded from a GraphProto this has no effect.
+  void SetInputOrder(const std::vector<const NodeArg*> inputs) {
+    graph_input_order_ = inputs;
+  }
+
+  // when constructing a Graph, explicitly set the input order to be used.
+  // If the Graph is loaded from a GraphProto this has no effect.
+  void SetOutputOrder(const std::vector<const NodeArg*> outputs) {
+    graph_output_order_ = outputs;
   }
 
   virtual ~Graph();
@@ -555,7 +574,8 @@ class Graph {
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        IOnnxRuntimeOpSchemaCollectionPtr schema_registry);
+        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Construct a Graph instance for a subgraph. Inherits some properties from the parent graph.
   Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto);
@@ -565,35 +585,12 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        Graph* parent_graph);
+        Graph* parent_graph,
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Add node with specified <node_proto>.
   Node* AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
-
-  // The topological order of node index as last set by Resolve()
-  const std::vector<NodeIndex>& NodesInTopologicalOrder() const noexcept {
-    return nodes_in_topological_order_;
-  }
-
-  std::vector<NodeIndex>& MutableNodesInTopologicalOrder() noexcept {
-    return nodes_in_topological_order_;
-  }
-
-  // Mutable list of all graph inputs. Matches number and order of inputs in the GraphProto.
-  std::vector<const NodeArg*>& MutableInputsIncludingInitializers() noexcept {
-    return graph_inputs_including_initializers_;
-  }
-
-  // Mutable graph inputs excluding initializers.
-  std::vector<const NodeArg*>& MutableInputs() noexcept {
-    return graph_inputs_excluding_initializers_;
-  }
-
-  // Mutable graph outputs.
-  std::vector<const NodeArg*>& MutableOutputs() noexcept {
-    return graph_outputs_;
-  }
 
   Version IrVersion() const noexcept {
     return ir_version_;
@@ -718,6 +715,8 @@ class Graph {
 
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
 
+  void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and
   // functions in <Graph> will also be fed into <graph_proto_> so that
@@ -732,7 +731,7 @@ class Graph {
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
-  std::unique_ptr<FunctionContainer> function_container_;
+  std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.
@@ -752,7 +751,7 @@ class Graph {
 
   bool graph_proto_sync_needed_ = false;
 
-  // The topological order of node index.
+  // The topological order of node index used to do node and op match verification temporarily.
   std::vector<NodeIndex> nodes_in_topological_order_;
 
   // Full list of graph inputs. Matches number and order of inputs in the GraphProto.
@@ -770,10 +769,9 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
-  // Node::EdgeEnd instances that we own
-  std::vector<std::unique_ptr<Node::EdgeEnd>> owned_edges_;
-
   const std::unordered_map<std::string, int> domain_to_version_;
+
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
 
   // Model IR version.
   Version ir_version_{};
@@ -796,6 +794,12 @@ class Graph {
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
+
+  // Explicit graph input order to be used when constructing a Graph manually.
+  std::vector<const NodeArg*> graph_input_order_;
+
+  // Explicit graph output order to be used when constructing a Graph manually.
+  std::vector<const NodeArg*> graph_output_order_;
 };
 
 }  // namespace onnxruntime

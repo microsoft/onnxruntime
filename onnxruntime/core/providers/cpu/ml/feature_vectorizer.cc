@@ -41,16 +41,14 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   // assumes all inputs have the same batch size
   int64_t N = X.Shape().NumDimensions() == 1 ? 1 : x_dims[0];
 
-  std::vector<int64_t> dims{N, total_dimensions_};
-
   // initialize all the output to 0.f
-  Tensor* Y = context->Output(0, TensorShape(dims));
+  Tensor* Y = context->Output(0, TensorShape({N, total_dimensions_}));
   auto Y_data = Y->template MutableData<float>();
 
   auto out = gsl::make_span(Y_data, Y->Shape().Size());
 
   // init all to 0.f so we don't need to do that each loop if we have to add padding
-  std::fill(out.begin(), out.end(), 0.f);
+  std::fill_n(out.data(), out.size(), 0.f);
 
   int64_t feature_offset = 0;
 

@@ -6,7 +6,6 @@
 #include "core/graph/op.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
-#include "core/graph/function_container.h"
 
 using namespace ONNX_NAMESPACE;
 

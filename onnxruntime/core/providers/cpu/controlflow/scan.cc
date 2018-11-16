@@ -152,7 +152,7 @@ class ScanImpl {
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
-  const GraphViewer& graph_viewer_;
+  const GraphViewer& subgraph_;
 
   int num_loop_state_variables_;
   int num_variadic_inputs_;
@@ -165,7 +165,7 @@ class ScanImpl {
   const Tensor* sequence_lens_tensor_;
   std::vector<int64_t> sequence_lens_;
 
-  std::vector<std::string> output_names_;
+  std::vector<std::string> subgraph_output_names_;
 
   std::unordered_map<std::string, const MLValue*> implicit_inputs_;
 };
@@ -255,7 +255,7 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const std::vector<int64_t>& directions)
     : context_{context},
       session_state_{session_state},
-      graph_viewer_{*session_state.GetGraphViewer()},
+      subgraph_{*session_state.GetGraphViewer()},
       directions_{directions},
       implicit_inputs_{context_.GetImplicitInputs()} {
   //optional first input so may be nullptr
@@ -271,13 +271,13 @@ Status ScanImpl::Initialize() {
   auto status = ValidateInput();
   ONNXRUNTIME_RETURN_IF_ERROR(status);
 
-  auto& graph_outputs = graph_viewer_.GetOutputs();
-  output_names_.reserve(graph_outputs.size());
+  auto& graph_outputs = subgraph_.GetOutputs();
+  subgraph_output_names_.reserve(graph_outputs.size());
 
   // save list of subgraph output names in their provided order to use when fetching the results
   // from each subgraph execution. the Scan outputs will match this order.
   for (auto& output : graph_outputs) {
-    output_names_.push_back(output->Name());
+    subgraph_output_names_.push_back(output->Name());
   }
 
   status = AllocateOutputTensors();
@@ -346,7 +346,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool has_
 }
 
 Status ScanImpl::ValidateInput() {
-  auto& graph_inputs = graph_viewer_.GetInputs();
+  auto& graph_inputs = subgraph_.GetInputs();
   auto num_graph_inputs = graph_inputs.size();
 
   if (num_graph_inputs != num_variadic_inputs_) {
@@ -388,7 +388,7 @@ Status ScanImpl::ValidateInput() {
 
 Status ScanImpl::AllocateOutput(int index, bool has_sequence_len_dimension) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.
-  auto& graph_outputs = graph_viewer_.GetOutputs();
+  auto& graph_outputs = subgraph_.GetOutputs();
   auto* graph_output = graph_outputs.at(index);
   auto* graph_output_shape = graph_output->Shape();
   if (!graph_output_shape) {
@@ -428,7 +428,7 @@ Status ScanImpl::AllocateOutput(int index, bool has_sequence_len_dimension) {
 
 Status ScanImpl::AllocateOutputTensors() {
   Status status = Status::OK();
-  auto& graph_outputs = graph_viewer_.GetOutputs();
+  auto& graph_outputs = subgraph_.GetOutputs();
 
   if (graph_outputs.size() != num_variadic_outputs_) {
     return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
@@ -524,6 +524,12 @@ Status ScanImpl::Execute() {
         scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue, 1, b).begin());
       } else {  // reverse
         scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue, 1, b).rbegin());
+        // need to skip past the empty entries at the end of the input if sequence length is short
+        auto offset = max_sequence_len_ - sequence_lens_[b];
+        if (offset > 0) {
+          // reverse iterator so += moves backwards through the input
+          scan_input_stream_iterators.back() += offset;
+        }
       }
     }
 
@@ -555,7 +561,7 @@ Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_vari
                                  MutableTensorSlicerIterators& scan_output_stream_iterators,
                                  int64_t seq_length) {
   Status status = Status::OK();
-  auto& graph_inputs = graph_viewer_.GetInputs();
+  auto& graph_inputs = subgraph_.GetInputs();
   NameMLValMap feeds;
   std::vector<MLValue> fetches;
 
@@ -608,8 +614,8 @@ Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_vari
     // Many of the other pieces are constant across usages.
     // Not sure how best to handle the memory pattern side of things though.
     // For now just making it work. Optimization and refinement will follow.
-    SequentialExecutor executor;
-    status = executor.Execute(session_state_, feeds, output_names_, fetches, context_.Logger());
+    SequentialExecutor executor{context_.GetTerminateFlag()};
+    status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
     ONNXRUNTIME_RETURN_IF_ERROR(status);
 
     // cycle the LoopStateVariable input/output in preparation for the next iteration

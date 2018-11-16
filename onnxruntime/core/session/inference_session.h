@@ -10,6 +10,7 @@
 #include "core/common/status.h"
 #include "core/framework/framework_common.h"
 #include "core/graph/basic_types.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -237,6 +238,13 @@ class InferenceSession {
     *@param file_prefix is the prefix of the profile file. It can include a directory path. 
     */
   void StartProfiling(const std::string& file_prefix);
+
+  /**
+    * Start profiling on this inference session. This simply turns on profiling events to be
+    * recorded. A corresponding EndProfiling has to follow to send profiling events through the logger's ISink.
+    *@param logger_ptr is pointer to the logger where profiling events will be sent to.
+    */
+  void StartProfiling(const logging::Logger* logger_ptr);
 
   /**
     * Write captured profile events in chromium format.

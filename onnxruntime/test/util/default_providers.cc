@@ -58,5 +58,18 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
+#ifdef USE_BRAINSLICE
+  ONNXRuntimeProviderFactoryPtr* f;
+  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", & f));
+  FACTORY_PTR_HOLDER;
+  ONNXRuntimeProviderPtr out;
+  ONNXRUNTIME_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
+#else
+  return nullptr;
+#endif
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -56,7 +56,7 @@ ONNXRUNTIME_API(ONNXRuntimeAllocatorType, ONNXRuntimeAllocatorInfoGetType, _In_ 
   return ptr->type;
 }
 
-ONNXRUNTIME_API(int, ONNXRuntimeCompareAllocatorInfo, _In_ ONNXRuntimeAllocatorInfo* info1, _In_ ONNXRuntimeAllocatorInfo* info2) {
+ONNXRUNTIME_API(int, ONNXRuntimeCompareAllocatorInfo, _In_ const ONNXRuntimeAllocatorInfo* info1, _In_ const ONNXRuntimeAllocatorInfo* info2) {
   if (*info1 == *info2) {
     return 0;
   }

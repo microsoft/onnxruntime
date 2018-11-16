@@ -12,9 +12,11 @@ namespace onnxruntime {
 template <typename T>
 class MeanVarianceNormalization_0 : public OpKernel {
  public:
-  MeanVarianceNormalization_0(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("across_channels", &across_channels_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("normalize_variance", &normalize_variance_).IsOK());
+  MeanVarianceNormalization_0(const OpKernelInfo& info, bool old_attr = true) : OpKernel(info) {
+    if (old_attr) {
+      ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("across_channels", &across_channels_).IsOK());
+      ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("normalize_variance", &normalize_variance_).IsOK());
+    }
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -98,7 +100,7 @@ class MeanVarianceNormalization_0 : public OpKernel {
 template <typename T>
 class MeanVarianceNormalization_1 final : public MeanVarianceNormalization_0<T> {
  public:
-  MeanVarianceNormalization_1(const OpKernelInfo& info) : MeanVarianceNormalization_0<T>(info) {
+  MeanVarianceNormalization_1(const OpKernelInfo& info) : MeanVarianceNormalization_0<T>(info, false) {
     std::vector<int64_t> axes;
     if (!info.GetAttrs("axes", axes).IsOK()) {
       axes = {0, 2, 3};
@@ -108,7 +110,7 @@ class MeanVarianceNormalization_1 final : public MeanVarianceNormalization_0<T> 
     } else {
       this->across_channels_ = false;
     }
-	this->normalize_variance_ = 1;
+    this->normalize_variance_ = 1;
   }
 };
 
