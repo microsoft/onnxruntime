@@ -167,7 +167,8 @@ $(function() {
 <li>operator()()
 : <a class="el" href="structonnxruntime_1_1BFCArena_1_1Bin_1_1ChunkComparator.html#a7200d54983c024e6b14811807e8e259b">onnxruntime::BFCArena::Bin::ChunkComparator</a>
 , <a class="el" href="classonnxruntime_1_1BufferDeleter.html#acadc194811841e20569ad25b55f2ee86">onnxruntime::BufferDeleter</a>
-, <a class="el" href="structonnxruntime_1_1Node_1_1IndexCompare.html#a0ae571adbf92b47431b39838fd4b976a">onnxruntime::Node::IndexCompare</a>
+, <a class="el" href="structonnxruntime_1_1Node_1_1EdgeEndCompare.html#ad27103285d46f2b558d08d0391d8e8e0">onnxruntime::Node::EdgeEndCompare</a>
+, <a class="el" href="structonnxruntime_1_1NodeCompare.html#aed54305eff830fe5357e49ec1d6a7700">onnxruntime::NodeCompare</a>
 , <a class="el" href="structonnxruntime_1_1ValueCmp.html#a89b8a8e28774b21b13c606cb2978f20e">onnxruntime::ValueCmp&lt; T &gt;</a>
 </li>
 <li>operator*()
@@ -179,9 +180,12 @@ $(function() {
 <li>operator++()
 : <a class="el" href="classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator.html#abc80097bc9eb5285206a5820d833b259">onnxruntime::ConstPointerContainer&lt; Container &gt;::ConstIterator</a>
 , <a class="el" href="classonnxruntime_1_1GraphNodes_1_1NodeIterator.html#ac8f1faed80f39d6f8ce45d4797957cde">onnxruntime::GraphNodes::NodeIterator&lt; TIterator &gt;</a>
-, <a class="el" href="classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator.html#a172403b59d8c520d0d9f5515e4188ba0">onnxruntime::MLValueTensorSlicer&lt; T &gt;::Iterator</a>
+, <a class="el" href="classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator.html#ac751c6e41f9d708d7e5d73223c53ee99">onnxruntime::MLValueTensorSlicer&lt; T &gt;::Iterator</a>
 , <a class="el" href="classonnxruntime_1_1Node_1_1NodeConstIterator.html#a3e6ecd9a6a369559ba1fbd0e03ff2cea">onnxruntime::Node::NodeConstIterator</a>
 , <a class="el" href="structonnxruntime_1_1SliceIterator.html#af66a075050c630b9cc9d3da9ba7987d2">onnxruntime::SliceIterator&lt; T &gt;</a>
+</li>
+<li>operator+=()
+: <a class="el" href="classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator.html#a31b88ce78e2603bb70fd20b87b80fe45">onnxruntime::MLValueTensorSlicer&lt; T &gt;::Iterator</a>
 </li>
 <li>operator--()
 : <a class="el" href="classonnxruntime_1_1Node_1_1NodeConstIterator.html#acf1a51fc3b79959c861c9fae8f10e62b">onnxruntime::Node::NodeConstIterator</a>
@@ -199,7 +203,7 @@ $(function() {
 , <a class="el" href="classonnxruntime_1_1NonTensorTypeBase.html#ada34723664c7b478752b1a562eaa86d2">onnxruntime::NonTensorTypeBase</a>
 , <a class="el" href="classonnxruntime_1_1Tensor.html#a2492423abd572294c6b1df2faaa2fd7b">onnxruntime::Tensor</a>
 , <a class="el" href="classonnxruntime_1_1TensorTypeBase.html#a7e92e65796abb3a8cb4722b2abac475a">onnxruntime::TensorTypeBase</a>
-, <a class="el" href="structONNXRuntimeRunOptions.html#a83ca2c989a39fd1d1a36c10690edd900">ONNXRuntimeRunOptions</a>
+, <a class="el" href="structONNXRuntimeRunOptions.html#a7c5f97969bb3520cb08762246293e3d2">ONNXRuntimeRunOptions</a>
 , <a class="el" href="structONNXRuntimeSessionOptions.html#a7f3993692b42a9bd63044a42d1749a2a">ONNXRuntimeSessionOptions</a>
 </li>
 <li>operator==()
@@ -222,7 +226,7 @@ $(function() {
 : <a class="el" href="classonnxruntime_1_1OpKernelContext.html#a833fe4cfdf449be56ef3bab665774bff">onnxruntime::OpKernelContext</a>
 </li>
 <li>OpKernelContextInternal()
-: <a class="el" href="classonnxruntime_1_1OpKernelContextInternal.html#a60c587c4074ee1bf53178358ce085533">onnxruntime::OpKernelContextInternal</a>
+: <a class="el" href="classonnxruntime_1_1OpKernelContextInternal.html#a12d48f3bc46ae4ec1bc6c0825da2a21f">onnxruntime::OpKernelContextInternal</a>
 </li>
 <li>OpKernelInfo()
 : <a class="el" href="classonnxruntime_1_1OpKernelInfo.html#a6f4103663e7050bfe536c53526e42438">onnxruntime::OpKernelInfo</a>
@@ -254,9 +258,8 @@ $(function() {
 <li>out
 : <a class="el" href="structONNXRuntimeProviderFactoryInterface.html#a09496ffe23137d4dc2a2b017282b91c9">ONNXRuntimeProviderFactoryInterface</a>
 </li>
-<li>Output
-: <a class="el" href="structMLAS__POOL__WORK__BLOCK.html#a5c1e7c71c631b2947b51f153183adaeb">MLAS_POOL_WORK_BLOCK</a>
-, <a class="el" href="classonnxruntime_1_1LoopStateVariable.html#a1d2635e8030adfcb688a39d8996584b2">onnxruntime::LoopStateVariable</a>
+<li>Output()
+: <a class="el" href="classonnxruntime_1_1LoopStateVariable.html#a1d2635e8030adfcb688a39d8996584b2">onnxruntime::LoopStateVariable</a>
 , <a class="el" href="classonnxruntime_1_1OpKernelContext.html#a00b2277826ce34e6adc2b1efd028a6cc">onnxruntime::OpKernelContext</a>
 </li>
 <li>output_axis_pitch
@@ -308,7 +311,7 @@ $(function() {
 , <a class="el" href="classonnxruntime_1_1KernelDefBuilder.html#a07b8f5af0f2e23ea09c3f9c0b52dc227">onnxruntime::KernelDefBuilder</a>
 </li>
 <li>OutputMetadata
-: <a class="el" href="classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession.html#a6ec51749bbb6f364bb9af050c956066f">Microsoft.ML.OnnxRuntime.InferenceSession</a>
+: <a class="el" href="classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession.html#aaff8c90121e88c8003c5056c418717ae">Microsoft.ML.OnnxRuntime.InferenceSession</a>
 </li>
 <li>OutputNodesBegin()
 : <a class="el" href="classonnxruntime_1_1Node.html#aac357428a320fca4f9d52e05e2dd44fe">onnxruntime::Node</a>
@@ -327,6 +330,7 @@ $(function() {
 </li>
 <li>OutputShape
 : <a class="el" href="structMLAS__CONV__PARAMETERS.html#ab6cd3ee6987c32507bc39fd6e8c25770">MLAS_CONV_PARAMETERS</a>
+, <a class="el" href="structMLAS__WORK__BLOCK.html#a4442760ec2c6cd113a5e69e98063b868">MLAS_WORK_BLOCK</a>
 , <a class="el" href="classonnxruntime_1_1MatMulComputeHelper.html#a6cb53d90e64d3f2eb89e652c4fb80e68">onnxruntime::MatMulComputeHelper</a>
 </li>
 <li>OutputSize

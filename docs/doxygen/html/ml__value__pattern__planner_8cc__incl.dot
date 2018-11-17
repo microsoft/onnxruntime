@@ -111,7 +111,7 @@ digraph "onnxruntime/onnxruntime/core/framework/ml_value_pattern_planner.cc"
   Node24 -> Node40 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node40 [label="core/graph/graph.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph_8h.html"];
   Node40 -> Node41 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node41 [label="core/graph/graph_base.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph__base_8h.html"];
+  Node41 [label="core/graph/graph_base.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$graph__base_8h.html"];
   Node41 -> Node42 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node42 [label="limits",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node41 -> Node6 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
@@ -143,16 +143,16 @@ digraph "onnxruntime/onnxruntime/core/framework/ml_value_pattern_planner.cc"
   Node48 [label="core/graph/onnx_protobuf.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$onnx__protobuf_8h.html"];
   Node41 -> Node48 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node41 -> Node51 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node51 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node51 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node41 -> Node52 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node52 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node52 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node22 -> Node24 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node22 -> Node53 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node53 [label="list",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node22 -> Node54 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node54 [label="list",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node2 -> Node24 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node2 -> Node12 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node2 -> Node6 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node2 -> Node54 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node54 [label="mutex",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node2 -> Node55 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node55 [label="mutex",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node0 -> Node38 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

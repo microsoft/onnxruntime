@@ -21,4 +21,18 @@ digraph "onnxruntime/onnxruntime/core/mlas/inc/mlas.h"
   Node11 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/conv_impl.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$conv__impl_8h.html"];
   Node11 -> Node12 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node12 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/conv.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2conv_8cc.html"];
+  Node3 -> Node13 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node13 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/pool_base.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$pool__base_8h.html"];
+  Node13 -> Node14 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node14 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/pool.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2pool_8h.html"];
+  Node14 -> Node15 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node15 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/pool.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2pool_8cc.html"];
+  Node14 -> Node16 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node16 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/pool.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2pool_8h.html"];
+  Node16 -> Node17 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node17 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/pool.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2pool_8cc.html"];
+  Node13 -> Node18 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node18 [label="onnxruntime/onnxruntime\l/core/providers/cuda/nn\l/pool.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cuda_2nn_2pool_8h.html"];
+  Node18 -> Node19 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node19 [label="onnxruntime/onnxruntime\l/core/providers/cuda/nn\l/pool.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cuda_2nn_2pool_8cc.html"];
 }

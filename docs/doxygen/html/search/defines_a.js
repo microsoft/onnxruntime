@@ -8,6 +8,8 @@ var searchData=
   ['mlas_5fconv_5fworking_5fbuffer_5fsize_5fper_5fthread',['MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD',['../convolve_8cpp.html#a7ea99c6ca5a5a4bcce6a0092af2aefd4',1,'convolve.cpp']]],
   ['mlas_5fdeclspec_5falign',['MLAS_DECLSPEC_ALIGN',['../mlasi_8h.html#a4b422064ddb3aa5bedac739e45547674',1,'mlasi.h']]],
   ['mlas_5fmaximum_5fthread_5fcount',['MLAS_MAXIMUM_THREAD_COUNT',['../mlasi_8h.html#a86466d6811df85b69801ae746e3ad493',1,'mlasi.h']]],
+  ['mlas_5fpool_5freduction_5fbuffer_5fpadding',['MLAS_POOL_REDUCTION_BUFFER_PADDING',['../pooling_8cpp.html#a0dabfb35bbb884a37976483cf7dfbd85',1,'pooling.cpp']]],
+  ['mlas_5fpool_5freduction_5fbuffer_5fstack',['MLAS_POOL_REDUCTION_BUFFER_STACK',['../pooling_8cpp.html#ae2e86b8d5dafb44be2e7129d59cf351c',1,'pooling.cpp']]],
   ['mlas_5fsgemm_5fstridek',['MLAS_SGEMM_STRIDEK',['../mlasi_8h.html#ab53b4ce1656fff1cd0b0be02bdfedf5b',1,'mlasi.h']]],
   ['mlas_5fsgemm_5fstriden',['MLAS_SGEMM_STRIDEN',['../mlasi_8h.html#aa28ee8dc9022be9a210bbf95f3351833',1,'mlasi.h']]],
   ['mlas_5fsgemm_5fstriden_5fthread_5falign',['MLAS_SGEMM_STRIDEN_THREAD_ALIGN',['../mlasi_8h.html#aa9d9b3262d81d2335b76f93edaad391b',1,'mlasi.h']]],

@@ -1,0 +1,107 @@
+\hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext}{}\section{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+NG\+:\+:Divider\+Vector\+Context Struct Reference}
+\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext}\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a73f240bb4b605de259fb38130f40e0f6}{Prepare\+Exclude\+Pad}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Padding\+Left\+Width, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Input\+Width, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Kernel\+Width)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_ad717c3e102ff0a0ac054d2d8e2935185}{Prepare\+Include\+Pad}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Kernel\+Size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_adac379ef6ecf2a0b3b7f5e9e093de639}{Start\+Next\+Output\+Row}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Input\+Rows\+Count)
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_af84617d659675316dd60a216b7cd1225}{Divide\+Exclude\+Pad}} (M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 Reduction)
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a873a56aeba812c540815cc3c220b726f}{Divide\+Include\+Pad}} (M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 Reduction)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a1ad2dbb551925e83854445d1c4eb8b70}{Kernel\+Size\+Broadcast}}
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_abd7a8d2db904cadf2c559e45b9908f88}{Kernel\+Width\+Broadcast}}
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a4d567668e709312e2d5daf90396fd16c}{Padding\+Lower\+Bound}}
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_aab756d55cf696abdcc7a73ba52f52090}{Padding\+Upper\+Bound}}
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a46745314ba7c7c6c86561518e482c226}{Reduction\+Input\+Index}}
+\item 
+M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_aec528e5cbdcfd22b54a9348767f565cf}{Input\+Rows\+Broadcast}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_af84617d659675316dd60a216b7cd1225}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_af84617d659675316dd60a216b7cd1225}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Divide\+Exclude\+Pad@{Divide\+Exclude\+Pad}}
+\index{Divide\+Exclude\+Pad@{Divide\+Exclude\+Pad}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Divide\+Exclude\+Pad()}{DivideExcludePad()}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Divide\+Exclude\+Pad (\begin{DoxyParamCaption}\item[{M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4}]{Reduction }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a873a56aeba812c540815cc3c220b726f}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a873a56aeba812c540815cc3c220b726f}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Divide\+Include\+Pad@{Divide\+Include\+Pad}}
+\index{Divide\+Include\+Pad@{Divide\+Include\+Pad}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Divide\+Include\+Pad()}{DivideIncludePad()}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Divide\+Include\+Pad (\begin{DoxyParamCaption}\item[{M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4}]{Reduction }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a73f240bb4b605de259fb38130f40e0f6}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a73f240bb4b605de259fb38130f40e0f6}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Prepare\+Exclude\+Pad@{Prepare\+Exclude\+Pad}}
+\index{Prepare\+Exclude\+Pad@{Prepare\+Exclude\+Pad}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Prepare\+Exclude\+Pad()}{PrepareExcludePad()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Prepare\+Exclude\+Pad (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Padding\+Left\+Width,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Input\+Width,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Kernel\+Width }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_ad717c3e102ff0a0ac054d2d8e2935185}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_ad717c3e102ff0a0ac054d2d8e2935185}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Prepare\+Include\+Pad@{Prepare\+Include\+Pad}}
+\index{Prepare\+Include\+Pad@{Prepare\+Include\+Pad}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Prepare\+Include\+Pad()}{PrepareIncludePad()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Prepare\+Include\+Pad (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Kernel\+Size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_adac379ef6ecf2a0b3b7f5e9e093de639}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_adac379ef6ecf2a0b3b7f5e9e093de639}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Start\+Next\+Output\+Row@{Start\+Next\+Output\+Row}}
+\index{Start\+Next\+Output\+Row@{Start\+Next\+Output\+Row}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Start\+Next\+Output\+Row()}{StartNextOutputRow()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Start\+Next\+Output\+Row (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Input\+Rows\+Count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_aec528e5cbdcfd22b54a9348767f565cf}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_aec528e5cbdcfd22b54a9348767f565cf}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Input\+Rows\+Broadcast@{Input\+Rows\+Broadcast}}
+\index{Input\+Rows\+Broadcast@{Input\+Rows\+Broadcast}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Input\+Rows\+Broadcast}{InputRowsBroadcast}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Input\+Rows\+Broadcast}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a1ad2dbb551925e83854445d1c4eb8b70}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a1ad2dbb551925e83854445d1c4eb8b70}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Kernel\+Size\+Broadcast@{Kernel\+Size\+Broadcast}}
+\index{Kernel\+Size\+Broadcast@{Kernel\+Size\+Broadcast}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Kernel\+Size\+Broadcast}{KernelSizeBroadcast}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Kernel\+Size\+Broadcast}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_abd7a8d2db904cadf2c559e45b9908f88}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_abd7a8d2db904cadf2c559e45b9908f88}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Kernel\+Width\+Broadcast@{Kernel\+Width\+Broadcast}}
+\index{Kernel\+Width\+Broadcast@{Kernel\+Width\+Broadcast}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Kernel\+Width\+Broadcast}{KernelWidthBroadcast}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Kernel\+Width\+Broadcast}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a4d567668e709312e2d5daf90396fd16c}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a4d567668e709312e2d5daf90396fd16c}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Padding\+Lower\+Bound@{Padding\+Lower\+Bound}}
+\index{Padding\+Lower\+Bound@{Padding\+Lower\+Bound}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Padding\+Lower\+Bound}{PaddingLowerBound}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Padding\+Lower\+Bound}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_aab756d55cf696abdcc7a73ba52f52090}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_aab756d55cf696abdcc7a73ba52f52090}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Padding\+Upper\+Bound@{Padding\+Upper\+Bound}}
+\index{Padding\+Upper\+Bound@{Padding\+Upper\+Bound}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Padding\+Upper\+Bound}{PaddingUpperBound}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Padding\+Upper\+Bound}
+
+\mbox{\Hypertarget{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a46745314ba7c7c6c86561518e482c226}\label{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext_a46745314ba7c7c6c86561518e482c226}} 
+\index{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}!Reduction\+Input\+Index@{Reduction\+Input\+Index}}
+\index{Reduction\+Input\+Index@{Reduction\+Input\+Index}!M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context@{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\subsubsection{\texorpdfstring{Reduction\+Input\+Index}{ReductionInputIndex}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4 M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context\+::\+Reduction\+Input\+Index}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/mlas/lib/\mbox{\hyperlink{pooling_8cpp}{pooling.\+cpp}}\end{DoxyCompactItemize}

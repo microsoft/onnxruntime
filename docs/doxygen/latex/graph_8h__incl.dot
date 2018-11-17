@@ -95,7 +95,9 @@ digraph "onnxruntime/include/onnxruntime/core/graph/graph.h"
   Node31 [label="onnx/onnx_pb.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node1 -> Node29 [color="midnightblue",fontsize="10",style="solid"];
   Node1 -> Node32 [color="midnightblue",fontsize="10",style="solid"];
-  Node32 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node32 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node1 -> Node33 [color="midnightblue",fontsize="10",style="solid"];
-  Node33 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node33 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node1 -> Node34 [color="midnightblue",fontsize="10",style="solid"];
+  Node34 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
 }

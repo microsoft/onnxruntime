@@ -89,10 +89,10 @@ Collaboration diagram for onnxruntime::ParallelExecutor:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a77317228301717613ec5e8ae8ad2b2e9"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ParallelExecutor.html#a77317228301717613ec5e8ae8ad2b2e9">ParallelExecutor</a> ()=default</td></tr>
-<tr class="separator:a77317228301717613ec5e8ae8ad2b2e9"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2f6a73c8852a30badec14742d6092d0d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ParallelExecutor.html#a2f6a73c8852a30badec14742d6092d0d">ParallelExecutor</a> (const <a class="el" href="classonnxruntime_1_1SessionState.html">SessionState</a> &amp;session_state)</td></tr>
-<tr class="separator:a2f6a73c8852a30badec14742d6092d0d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:addd550d090c10a1cbfb08955889cd288"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ParallelExecutor.html#addd550d090c10a1cbfb08955889cd288">ParallelExecutor</a> (const bool &amp;terminate_flag=false)</td></tr>
+<tr class="separator:addd550d090c10a1cbfb08955889cd288"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9416690511d391118f9de19d336e93ed"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ParallelExecutor.html#a9416690511d391118f9de19d336e93ed">ParallelExecutor</a> (const <a class="el" href="classonnxruntime_1_1SessionState.html">SessionState</a> &amp;session_state, const bool &amp;terminate_flag=false)</td></tr>
+<tr class="separator:a9416690511d391118f9de19d336e93ed"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acdbf9253a5e240edb49737571d321c63"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ParallelExecutor.html#acdbf9253a5e240edb49737571d321c63">Execute</a> (const <a class="el" href="classonnxruntime_1_1SessionState.html">SessionState</a> &amp;session_state, const <a class="el" href="namespaceonnxruntime.html#a48b01f0410ec8d693dbd40d1132bd66c">NameMLValMap</a> &amp;feeds, const std::vector&lt; std::string &gt; &amp;output_names, std::vector&lt; <a class="el" href="classonnxruntime_1_1MLValue.html">MLValue</a> &gt; &amp;fetches, const <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">logging::Logger</a> &amp;logger) override</td></tr>
 <tr class="separator:acdbf9253a5e240edb49737571d321c63"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pub_methods_classonnxruntime_1_1IExecutor"><td colspan="2" onclick="javascript:toggleInherit('pub_methods_classonnxruntime_1_1IExecutor')"><img src="closed.png" alt="-"/>&#160;Public Member Functions inherited from <a class="el" href="classonnxruntime_1_1IExecutor.html">onnxruntime::IExecutor</a></td></tr>
@@ -100,8 +100,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ad20a9131a88e8deb7b3658c3be36c74d inherit pub_methods_classonnxruntime_1_1IExecutor"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a77317228301717613ec5e8ae8ad2b2e9"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a77317228301717613ec5e8ae8ad2b2e9">&#9670;&nbsp;</a></span>ParallelExecutor() <span class="overload">[1/2]</span></h2>
+<a id="addd550d090c10a1cbfb08955889cd288"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#addd550d090c10a1cbfb08955889cd288">&#9670;&nbsp;</a></span>ParallelExecutor() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -112,21 +112,22 @@ Public Member Functions</h2></td></tr>
         <tr>
           <td class="memname">onnxruntime::ParallelExecutor::ParallelExecutor </td>
           <td>(</td>
-          <td class="paramname"></td><td>)</td>
+          <td class="paramtype">const bool &amp;&#160;</td>
+          <td class="paramname"><em>terminate_flag</em> = <code>false</code></td><td>)</td>
           <td></td>
         </tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">default</span></span>  </td>
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
 
 </div>
 </div>
-<a id="a2f6a73c8852a30badec14742d6092d0d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2f6a73c8852a30badec14742d6092d0d">&#9670;&nbsp;</a></span>ParallelExecutor() <span class="overload">[2/2]</span></h2>
+<a id="a9416690511d391118f9de19d336e93ed"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9416690511d391118f9de19d336e93ed">&#9670;&nbsp;</a></span>ParallelExecutor() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -135,8 +136,18 @@ Public Member Functions</h2></td></tr>
           <td class="memname">onnxruntime::ParallelExecutor::ParallelExecutor </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="classonnxruntime_1_1SessionState.html">SessionState</a> &amp;&#160;</td>
-          <td class="paramname"><em>session_state</em></td><td>)</td>
+          <td class="paramname"><em>session_state</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">const bool &amp;&#160;</td>
+          <td class="paramname"><em>terminate_flag</em> = <code>false</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
 </div><div class="memdoc">

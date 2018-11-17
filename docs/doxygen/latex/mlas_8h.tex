@@ -54,6 +54,11 @@ enum \mbox{\hyperlink{mlas_8h_ac248f7f0805a559ed62acf815486bec0}{M\+L\+A\+S\+\_\
 \mbox{\hyperlink{mlas_8h_ac248f7f0805a559ed62acf815486bec0a23b83e8de854f7b00391fec7d708e473}{Mlas\+Conv\+Algorithm\+Expand\+Then\+Gemm}}, 
 \mbox{\hyperlink{mlas_8h_ac248f7f0805a559ed62acf815486bec0a35cf9d33095b457d7b3d29196af8e37a}{Mlas\+Conv\+Algorithm\+Expand\+Then\+Gemm\+Segmented}}
  \}
+\item 
+enum \mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}} \{ \mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222a0b7bda099a63732d1a6745c0eaf1ebef}{Mlas\+Maximum\+Pooling}}, 
+\mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222a3a0eaeab7a08670d785b5def0cb350af}{Mlas\+Average\+Pooling\+Exclude\+Pad}}, 
+\mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222ac9736e560d5f6b240a145cbc3b9132bd}{Mlas\+Average\+Pooling\+Include\+Pad}}
+ \}
 \end{DoxyCompactItemize}
 \subsection*{Functions}
 \begin{DoxyCompactItemize}
@@ -63,6 +68,8 @@ enum \mbox{\hyperlink{mlas_8h_ac248f7f0805a559ed62acf815486bec0}{M\+L\+A\+S\+\_\
 bool \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{mlas_8h_a88ec0520d5c67b6534f4545d7fb6f201}{Mlas\+Conv\+Prepare}} (\mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Dimensions, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Batch\+Count, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Group\+Count, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Input\+Channels, const int64\+\_\+t $\ast$Input\+Shape, const int64\+\_\+t $\ast$Kernel\+Shape, const int64\+\_\+t $\ast$Dilation\+Shape, const int64\+\_\+t $\ast$Padding, const int64\+\_\+t $\ast$Stride\+Shape, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Filter\+Count, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$Working\+Buffer\+Size)
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{mlas_8h_a2bff495651f683ee28eca46a18d78126}{Mlas\+Conv}} (const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, const float $\ast$Input, const float $\ast$Filter, const float $\ast$Bias, float $\ast$Working\+Buffer, float $\ast$Output)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{mlas_8h_aea2c098f8f1f7ca24f7dafcee4f31332}{Mlas\+Pool}} (\mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}} Pooling\+Kind, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Dimensions, const int64\+\_\+t $\ast$Input\+Shape, const int64\+\_\+t $\ast$Kernel\+Shape, const int64\+\_\+t $\ast$Padding, const int64\+\_\+t $\ast$Stride\+Shape, const int64\+\_\+t $\ast$Output\+Shape, const float $\ast$Input, float $\ast$Output)
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{mlas_8h_aa74856b53dde7745893ed4bdda3d726b}{Mlas\+Bias\+Add}} (const float $\ast$Bias, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} M, float $\ast$Output, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} N, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
 \item 
@@ -214,6 +221,26 @@ Mlas\+Conv\+Algorithm\+Expand\+Then\+Gemm\+Segmented&\\
 \hline
 
 \end{DoxyEnumFields}
+\mbox{\Hypertarget{mlas_8h_a308be0f1e44b0324610000287f348222}\label{mlas_8h_a308be0f1e44b0324610000287f348222}} 
+\index{mlas.\+h@{mlas.\+h}!M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}}
+\index{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}!mlas.\+h@{mlas.\+h}}
+\subsubsection{\texorpdfstring{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}{MLAS\_POOLING\_KIND}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Mlas\+Maximum\+Pooling@{Mlas\+Maximum\+Pooling}!mlas.\+h@{mlas.\+h}}\index{mlas.\+h@{mlas.\+h}!Mlas\+Maximum\+Pooling@{Mlas\+Maximum\+Pooling}}}\mbox{\Hypertarget{mlas_8h_a308be0f1e44b0324610000287f348222a0b7bda099a63732d1a6745c0eaf1ebef}\label{mlas_8h_a308be0f1e44b0324610000287f348222a0b7bda099a63732d1a6745c0eaf1ebef}} 
+Mlas\+Maximum\+Pooling&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Mlas\+Average\+Pooling\+Exclude\+Pad@{Mlas\+Average\+Pooling\+Exclude\+Pad}!mlas.\+h@{mlas.\+h}}\index{mlas.\+h@{mlas.\+h}!Mlas\+Average\+Pooling\+Exclude\+Pad@{Mlas\+Average\+Pooling\+Exclude\+Pad}}}\mbox{\Hypertarget{mlas_8h_a308be0f1e44b0324610000287f348222a3a0eaeab7a08670d785b5def0cb350af}\label{mlas_8h_a308be0f1e44b0324610000287f348222a3a0eaeab7a08670d785b5def0cb350af}} 
+Mlas\+Average\+Pooling\+Exclude\+Pad&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Mlas\+Average\+Pooling\+Include\+Pad@{Mlas\+Average\+Pooling\+Include\+Pad}!mlas.\+h@{mlas.\+h}}\index{mlas.\+h@{mlas.\+h}!Mlas\+Average\+Pooling\+Include\+Pad@{Mlas\+Average\+Pooling\+Include\+Pad}}}\mbox{\Hypertarget{mlas_8h_a308be0f1e44b0324610000287f348222ac9736e560d5f6b240a145cbc3b9132bd}\label{mlas_8h_a308be0f1e44b0324610000287f348222ac9736e560d5f6b240a145cbc3b9132bd}} 
+Mlas\+Average\+Pooling\+Include\+Pad&\\
+\hline
+
+\end{DoxyEnumFields}
 
 
 \subsection{Function Documentation}
@@ -240,6 +267,12 @@ Mlas\+Conv\+Algorithm\+Expand\+Then\+Gemm\+Segmented&\\
 \index{Mlas\+Conv\+Prepare@{Mlas\+Conv\+Prepare}!mlas.\+h@{mlas.\+h}}
 \subsubsection{\texorpdfstring{Mlas\+Conv\+Prepare()}{MlasConvPrepare()}}
 {\footnotesize\ttfamily bool \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Conv\+Prepare (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Dimensions,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Batch\+Count,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Group\+Count,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Input\+Channels,  }\item[{const int64\+\_\+t $\ast$}]{Input\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Kernel\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Dilation\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Padding,  }\item[{const int64\+\_\+t $\ast$}]{Stride\+Shape,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Filter\+Count,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$}]{Working\+Buffer\+Size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{mlas_8h_aea2c098f8f1f7ca24f7dafcee4f31332}\label{mlas_8h_aea2c098f8f1f7ca24f7dafcee4f31332}} 
+\index{mlas.\+h@{mlas.\+h}!Mlas\+Pool@{Mlas\+Pool}}
+\index{Mlas\+Pool@{Mlas\+Pool}!mlas.\+h@{mlas.\+h}}
+\subsubsection{\texorpdfstring{Mlas\+Pool()}{MlasPool()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Pool (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}}}]{Pooling\+Kind,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Dimensions,  }\item[{const int64\+\_\+t $\ast$}]{Input\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Kernel\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Padding,  }\item[{const int64\+\_\+t $\ast$}]{Stride\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Output\+Shape,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
 
 \mbox{\Hypertarget{mlas_8h_a8274c386ab66c3f9a750ca4183da7c1b}\label{mlas_8h_a8274c386ab66c3f9a750ca4183da7c1b}} 
 \index{mlas.\+h@{mlas.\+h}!Mlas\+Sgemm@{Mlas\+Sgemm}}

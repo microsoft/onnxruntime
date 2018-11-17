@@ -105,6 +105,10 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:aca9d5071746718e647bb49d7852e89c0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9167351a5042b3e2583be502eb2b9f95"><td class="memItemLeft" align="right" valign="top">const std::vector&lt; <a class="el" href="namespaceonnxruntime.html#af8773b5c12b5d8fd9292eb2e268df760">NodeIndex</a> &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1GraphViewer.html#a9167351a5042b3e2583be502eb2b9f95">GetRootNodes</a> () const</td></tr>
 <tr class="separator:a9167351a5042b3e2583be502eb2b9f95"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a59a4a35d0f17ba72ac2ce572b44ece72"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="namespaceonnxruntime.html#a80c06ce917adca79f4a9c0f9ad3147f8">InitializedTensorSet</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1GraphViewer.html#a59a4a35d0f17ba72ac2ce572b44ece72">GetAllInitializedTensors</a> () const noexcept</td></tr>
+<tr class="separator:a59a4a35d0f17ba72ac2ce572b44ece72"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aec62375d2610b79f37bf00cd8895ec1c"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="classonnxruntime_1_1NodeArg.html">NodeArg</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1GraphViewer.html#aec62375d2610b79f37bf00cd8895ec1c">GetNodeArg</a> (const std::string &amp;name) const</td></tr>
+<tr class="separator:aec62375d2610b79f37bf00cd8895ec1c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a1e00fee3a376800a386a9ff632785e60"></a>
@@ -137,6 +141,31 @@ Public Member Functions</h2></td></tr>
       <table class="memname">
         <tr>
           <td class="memname">const std::string &amp; onnxruntime::GraphViewer::Description </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">noexcept</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a59a4a35d0f17ba72ac2ce572b44ece72"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a59a4a35d0f17ba72ac2ce572b44ece72">&#9670;&nbsp;</a></span>GetAllInitializedTensors()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">const <a class="el" href="namespaceonnxruntime.html#a80c06ce917adca79f4a9c0f9ad3147f8">InitializedTensorSet</a> &amp; onnxruntime::GraphViewer::GetAllInitializedTensors </td>
           <td>(</td>
           <td class="paramname"></td><td>)</td>
           <td> const</td>
@@ -240,6 +269,24 @@ Public Member Functions</h2></td></tr>
           <td>(</td>
           <td class="paramtype"><a class="el" href="namespaceonnxruntime.html#af8773b5c12b5d8fd9292eb2e268df760">NodeIndex</a>&#160;</td>
           <td class="paramname"><em>node_index</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="aec62375d2610b79f37bf00cd8895ec1c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aec62375d2610b79f37bf00cd8895ec1c">&#9670;&nbsp;</a></span>GetNodeArg()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">const <a class="el" href="classonnxruntime_1_1NodeArg.html">NodeArg</a> * onnxruntime::GraphViewer::GetNodeArg </td>
+          <td>(</td>
+          <td class="paramtype">const std::string &amp;&#160;</td>
+          <td class="paramname"><em>name</em></td><td>)</td>
           <td> const</td>
         </tr>
       </table>

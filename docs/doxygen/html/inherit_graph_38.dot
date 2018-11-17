@@ -3,5 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::contrib\l::detail::ActivationInfo\l\< TFunc \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1contrib_1_1detail_1_1ActivationInfo.html"];
+  Node0 [label="onnxruntime::ConstPointer\lContainer\< Container \>\l::ConstIterator",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator.html"];
 }

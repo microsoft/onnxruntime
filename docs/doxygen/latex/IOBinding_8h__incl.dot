@@ -144,7 +144,7 @@ digraph "onnxruntime/onnxruntime/core/session/IOBinding.h"
   Node45 [label="core/framework/onnx\l_object.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$onnx__object_8h.html"];
   Node45 -> Node31 [color="midnightblue",fontsize="10",style="solid"];
   Node41 -> Node29 [color="midnightblue",fontsize="10",style="solid"];
-  Node0 -> Node46 [color="midnightblue",fontsize="10",style="solid"];
+  Node41 -> Node46 [color="midnightblue",fontsize="10",style="solid"];
   Node46 [label="core/common/logging\l/logging.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$logging_8h.html"];
   Node46 -> Node44 [color="midnightblue",fontsize="10",style="solid"];
   Node46 -> Node22 [color="midnightblue",fontsize="10",style="solid"];
@@ -167,4 +167,5 @@ digraph "onnxruntime/onnxruntime/core/session/IOBinding.h"
   Node46 -> Node51 [color="midnightblue",fontsize="10",style="solid"];
   Node46 -> Node52 [color="midnightblue",fontsize="10",style="solid"];
   Node52 [label="core/common/logging\l/macros.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$macros_8h.html"];
+  Node0 -> Node46 [color="midnightblue",fontsize="10",style="solid"];
 }

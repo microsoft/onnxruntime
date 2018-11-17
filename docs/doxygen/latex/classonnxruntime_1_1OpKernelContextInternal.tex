@@ -15,7 +15,7 @@ Collaboration diagram for onnxruntime\+:\+:Op\+Kernel\+Context\+Internal\+:
 \subsection*{Public Member Functions}
 \begin{DoxyCompactItemize}
 \item 
-\mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a60c587c4074ee1bf53178358ce085533}{Op\+Kernel\+Context\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} \&frame, const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}{kernel}}, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger, const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&implicit\+\_\+inputs)
+\mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a12d48f3bc46ae4ec1bc6c0825da2a21f}{Op\+Kernel\+Context\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} \&frame, const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}{kernel}}, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger, const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&implicit\+\_\+inputs, const bool \&terminate\+\_\+flag)
 \item 
 const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_ae6c150d6d6d27669b65f556b45be25ce}{Subgraph\+Session\+State}} (const std\+::string \&attribute\+\_\+name)
 \item 
@@ -24,16 +24,18 @@ const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\
 \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a30c4d27e0424e71e71ca65d111ed413d}{Get\+Output\+M\+L\+Value}} (int index)
 \item 
 std\+::unordered\+\_\+map$<$ std\+::string, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ $>$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a6b9ba81c79b1899a7aee0154691e0761}{Get\+Implicit\+Inputs}} () const
+\item 
+const bool \& \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_af38fb99b3a485d343ecbad2926c0c921}{Get\+Terminate\+Flag}} () const noexcept
 \end{DoxyCompactItemize}
 \subsection*{Additional Inherited Members}
 
 
 \subsection{Constructor \& Destructor Documentation}
-\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_a60c587c4074ee1bf53178358ce085533}\label{classonnxruntime_1_1OpKernelContextInternal_a60c587c4074ee1bf53178358ce085533}} 
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_a12d48f3bc46ae4ec1bc6c0825da2a21f}\label{classonnxruntime_1_1OpKernelContextInternal_a12d48f3bc46ae4ec1bc6c0825da2a21f}} 
 \index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Op\+Kernel\+Context\+Internal@{Op\+Kernel\+Context\+Internal}}
 \index{Op\+Kernel\+Context\+Internal@{Op\+Kernel\+Context\+Internal}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
 \subsubsection{\texorpdfstring{Op\+Kernel\+Context\+Internal()}{OpKernelContextInternal()}}
-{\footnotesize\ttfamily onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Op\+Kernel\+Context\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} \&}]{frame,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} \&}]{kernel,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger,  }\item[{const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{implicit\+\_\+inputs }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Op\+Kernel\+Context\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} \&}]{frame,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} \&}]{kernel,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger,  }\item[{const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{implicit\+\_\+inputs,  }\item[{const bool \&}]{terminate\+\_\+flag }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
 
 
 
@@ -55,6 +57,12 @@ std\+::unordered\+\_\+map$<$ std\+::string, const \mbox{\hyperlink{classonnxrunt
 \index{Get\+Output\+M\+L\+Value@{Get\+Output\+M\+L\+Value}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
 \subsubsection{\texorpdfstring{Get\+Output\+M\+L\+Value()}{GetOutputMLValue()}}
 {\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Get\+Output\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_af38fb99b3a485d343ecbad2926c0c921}\label{classonnxruntime_1_1OpKernelContextInternal_af38fb99b3a485d343ecbad2926c0c921}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Get\+Terminate\+Flag@{Get\+Terminate\+Flag}}
+\index{Get\+Terminate\+Flag@{Get\+Terminate\+Flag}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+\subsubsection{\texorpdfstring{Get\+Terminate\+Flag()}{GetTerminateFlag()}}
+{\footnotesize\ttfamily const bool\& onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Get\+Terminate\+Flag (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
 
 \mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_ae6c150d6d6d27669b65f556b45be25ce}\label{classonnxruntime_1_1OpKernelContextInternal_ae6c150d6d6d27669b65f556b45be25ce}} 
 \index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Subgraph\+Session\+State@{Subgraph\+Session\+State}}

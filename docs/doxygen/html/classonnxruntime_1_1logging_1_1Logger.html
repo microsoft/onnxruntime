@@ -85,6 +85,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:af2e3439096494a094a9780eb2e238c95"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a72e6467ee8cede10dbc9d2aea649f8fe"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1logging_1_1Logger.html#a72e6467ee8cede10dbc9d2aea649f8fe">Log</a> (const <a class="el" href="classonnxruntime_1_1logging_1_1Capture.html">Capture</a> &amp;message) const</td></tr>
 <tr class="separator:a72e6467ee8cede10dbc9d2aea649f8fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7057a0099074535ab5da7ca57b061a28"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1logging_1_1Logger.html#a7057a0099074535ab5da7ca57b061a28">SendProfileEvent</a> (<a class="el" href="structonnxruntime_1_1profiling_1_1EventRecord.html">profiling::EventRecord</a> &amp;eventRecord) const</td></tr>
+<tr class="separator:a7057a0099074535ab5da7ca57b061a28"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p><a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">Logger</a> provides a per-instance log id. Everything else is passed back up to the <a class="el" href="classonnxruntime_1_1logging_1_1LoggingManager.html" title="The logging manager. Owns the log sink and potentially provides a default Logger instance. Provides filtering based on a minimum LogSeverity level, and of messages with DataType::User if enabled. ">LoggingManager</a> </p>
@@ -227,6 +229,38 @@ Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>True if a message with these values will be logged. </dd></dl>
+
+</div>
+</div>
+<a id="a7057a0099074535ab5da7ca57b061a28"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7057a0099074535ab5da7ca57b061a28">&#9670;&nbsp;</a></span>SendProfileEvent()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> onnxruntime::logging::Logger::SendProfileEvent </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structonnxruntime_1_1profiling_1_1EventRecord.html">profiling::EventRecord</a> &amp;&#160;</td>
+          <td class="paramname"><em>eventRecord</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<p>Sends a Profiling Event Record to the sink. </p><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">Profiling</td><td>Event Record </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>

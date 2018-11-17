@@ -5,6 +5,7 @@ var searchData=
   ['neg',['Neg',['../classonnxruntime_1_1Neg.html',1,'onnxruntime::Neg&lt; T &gt;'],['../classonnxruntime_1_1cuda_1_1Neg.html',1,'onnxruntime::cuda::Neg&lt; T &gt;']]],
   ['node',['Node',['../classonnxruntime_1_1Node.html',1,'onnxruntime']]],
   ['nodearg',['NodeArg',['../classonnxruntime_1_1NodeArg.html',1,'onnxruntime']]],
+  ['nodecompare',['NodeCompare',['../structonnxruntime_1_1NodeCompare.html',1,'onnxruntime']]],
   ['nodeconstiterator',['NodeConstIterator',['../classonnxruntime_1_1Node_1_1NodeConstIterator.html',1,'onnxruntime::Node']]],
   ['nodeexecutionplan',['NodeExecutionPlan',['../structonnxruntime_1_1SequentialExecutionPlan_1_1NodeExecutionPlan.html',1,'onnxruntime::SequentialExecutionPlan']]],
   ['nodeinfo',['NodeInfo',['../structonnxruntime_1_1SessionState_1_1NodeInfo.html',1,'onnxruntime::SessionState']]],

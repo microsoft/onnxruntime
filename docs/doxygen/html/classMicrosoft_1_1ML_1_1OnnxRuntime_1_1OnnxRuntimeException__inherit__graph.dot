@@ -5,6 +5,8 @@ digraph "Microsoft.ML.OnnxRuntime.OnnxRuntimeException"
   Node0 [label="Microsoft.ML.OnnxRuntime.\lOnnxRuntimeException",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
   Node1 -> Node0 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node1 [label="Exception",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node1 -> Node0 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node0 -> Node2 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node2 [label="Microsoft.ML.OnnxRuntime.\lCoreRuntimeException",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classMicrosoft_1_1ML_1_1OnnxRuntime_1_1CoreRuntimeException.html"];
+  Node0 -> Node2 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

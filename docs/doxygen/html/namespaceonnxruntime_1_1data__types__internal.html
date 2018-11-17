@@ -155,6 +155,8 @@ Functions</h2></td></tr>
 <tr class="separator:aadf5ee07a814f7fdb0db09472dbf9006"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9099f278b70ba024c5728c05e11897ee"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceonnxruntime_1_1data__types__internal.html#a9099f278b70ba024c5728c05e11897ee">IsCompatible</a> (const ONNX_NAMESPACE::TypeProto_Tensor &amp;tensor_proto, const ONNX_NAMESPACE::TypeProto_Tensor &amp;type_proto)</td></tr>
 <tr class="separator:a9099f278b70ba024c5728c05e11897ee"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab1bc69f6e946f482e57c5837d3f06f4a"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceonnxruntime_1_1data__types__internal.html#ab1bc69f6e946f482e57c5837d3f06f4a">IsCompatible</a> (const ONNX_NAMESPACE::TypeProto_SparseTensor &amp;tensor_proto, const ONNX_NAMESPACE::TypeProto_SparseTensor &amp;type_proto)</td></tr>
+<tr class="separator:ab1bc69f6e946f482e57c5837d3f06f4a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aece255300cd5b81ed09517ea20130c58"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceonnxruntime_1_1data__types__internal.html#aece255300cd5b81ed09517ea20130c58">IsCompatible</a> (const ONNX_NAMESPACE::TypeProto_Map &amp;map_proto, const ONNX_NAMESPACE::TypeProto_Map &amp;type_proto)</td></tr>
 <tr class="separator:aece255300cd5b81ed09517ea20130c58"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a44bb8561823e33ae70b877bcd51251c8"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceonnxruntime_1_1data__types__internal.html#a44bb8561823e33ae70b877bcd51251c8">IsCompatible</a> (const ONNX_NAMESPACE::TypeProto_Sequence &amp;sequence_proto, const ONNX_NAMESPACE::TypeProto_Sequence &amp;type_proto)</td></tr>
@@ -259,7 +261,7 @@ Functions</h2></td></tr>
 </div>
 </div>
 <a id="a9099f278b70ba024c5728c05e11897ee"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a9099f278b70ba024c5728c05e11897ee">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[1/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a9099f278b70ba024c5728c05e11897ee">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[1/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -286,8 +288,36 @@ Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="ab1bc69f6e946f482e57c5837d3f06f4a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab1bc69f6e946f482e57c5837d3f06f4a">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[2/5]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool onnxruntime::data_types_internal::IsCompatible </td>
+          <td>(</td>
+          <td class="paramtype">const ONNX_NAMESPACE::TypeProto_SparseTensor &amp;&#160;</td>
+          <td class="paramname"><em>tensor_proto</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const ONNX_NAMESPACE::TypeProto_SparseTensor &amp;&#160;</td>
+          <td class="paramname"><em>type_proto</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="aece255300cd5b81ed09517ea20130c58"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aece255300cd5b81ed09517ea20130c58">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[2/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#aece255300cd5b81ed09517ea20130c58">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[3/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -315,7 +345,7 @@ Functions</h2></td></tr>
 </div>
 </div>
 <a id="a44bb8561823e33ae70b877bcd51251c8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a44bb8561823e33ae70b877bcd51251c8">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[3/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a44bb8561823e33ae70b877bcd51251c8">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[4/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -343,7 +373,7 @@ Functions</h2></td></tr>
 </div>
 </div>
 <a id="a41fe7f3e42912d2e8db13d576b646120"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a41fe7f3e42912d2e8db13d576b646120">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[4/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a41fe7f3e42912d2e8db13d576b646120">&#9670;&nbsp;</a></span>IsCompatible() <span class="overload">[5/5]</span></h2>
 
 <div class="memitem">
 <div class="memproto">

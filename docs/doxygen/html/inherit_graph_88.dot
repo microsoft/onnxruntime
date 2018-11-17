@@ -3,23 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::DataTypeImpl",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1DataTypeImpl.html",tooltip="Base class for MLDataType. "];
-  Node0 -> Node1 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node1 [label="onnxruntime::NonOnnxType\< T \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1NonOnnxType.html"];
-  Node0 -> Node2 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node2 [label="onnxruntime::NonTensorTypeBase",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1NonTensorTypeBase.html",tooltip="Base type for all non-tensors, maps, sequences and opaques. "];
-  Node2 -> Node3 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node3 [label="onnxruntime::NonTensorType\l\< CPPType \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1NonTensorType.html"];
-  Node3 -> Node4 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node4 [label="onnxruntime::MapType\l\< CPPType \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1MapType.html",tooltip="MapType. Use this type to register mapping types. "];
-  Node3 -> Node5 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node5 [label="onnxruntime::SequenceType\l\< CPPType \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1SequenceType.html",tooltip="SequenceType. Use to register sequences. "];
-  Node2 -> Node6 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node6 [label="onnxruntime::NonTensorType\< T \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1NonTensorType.html"];
-  Node6 -> Node7 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node7 [label="onnxruntime::OpaqueType\l\< T, D, N \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1OpaqueType.html",tooltip="OpaqueType. "];
-  Node0 -> Node8 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node8 [label="onnxruntime::TensorTypeBase",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1TensorTypeBase.html",tooltip="All tensors base. "];
-  Node8 -> Node9 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node9 [label="onnxruntime::TensorType\l\< elemT \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1TensorType.html",tooltip="Tensor type. This type does not have a C++ type associated with it at registration time except the el..."];
+  Node0 [label="onnxruntime::data_types\l_internal::TensorContainedType\lSetter\< T \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1data__types__internal_1_1TensorContainedTypeSetter_3_01T_01_4.html"];
 }

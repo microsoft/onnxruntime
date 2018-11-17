@@ -87,8 +87,8 @@ Collaboration diagram for onnxruntime::InferenceContextImpl:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:ac39d7cacfaebe411651b9cef1d3b16a2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#ac39d7cacfaebe411651b9cef1d3b16a2">InferenceContextImpl</a> (<a class="el" href="classonnxruntime_1_1Node.html">Node</a> &amp;node, const AttributeGraphMap *subgraphs=nullptr, <a class="el" href="namespaceonnxruntime.html#ae184f68a858158d9595f3fe260b05dfb">SubgraphInferencingFunc</a> *subgraph_inferencing_func=nullptr) noexcept</td></tr>
-<tr class="separator:ac39d7cacfaebe411651b9cef1d3b16a2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a20ba0c93f6fcb52e31f4dfbbb4f3da28"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#a20ba0c93f6fcb52e31f4dfbbb4f3da28">InferenceContextImpl</a> (<a class="el" href="classonnxruntime_1_1Node.html">Node</a> &amp;node, const AttributeGraphMap *subgraphs=nullptr, <a class="el" href="namespaceonnxruntime.html#ae184f68a858158d9595f3fe260b05dfb">SubgraphInferencingFunc</a> *subgraph_inferencing_func=nullptr, const <a class="el" href="namespaceonnxruntime.html#a80c06ce917adca79f4a9c0f9ad3147f8">InitializedTensorSet</a> &amp;initialized_tensor_set={}) noexcept</td></tr>
+<tr class="separator:a20ba0c93f6fcb52e31f4dfbbb4f3da28"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a03867e44217366769507abf47d0a237d"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#a03867e44217366769507abf47d0a237d">RunInferencing</a> ()</td></tr>
 <tr class="separator:a03867e44217366769507abf47d0a237d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a676796a4ac3f6c6fb523d39b4945c4a1"><td class="memItemLeft" align="right" valign="top">const std::vector&lt; TypeProto &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#a676796a4ac3f6c6fb523d39b4945c4a1">InferredOutputTypes</a> () const</td></tr>
@@ -103,14 +103,14 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ab596294613aa17dac5621de5662dccb3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aed6ee0c15da7b2a1ceac5e6ee2186905"><td class="memItemLeft" align="right" valign="top">TypeProto *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#aed6ee0c15da7b2a1ceac5e6ee2186905">getOutputType</a> (<a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> index) override</td></tr>
 <tr class="separator:aed6ee0c15da7b2a1ceac5e6ee2186905"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aea78080572e98d85f312099836f15c02"><td class="memItemLeft" align="right" valign="top">const TensorProto *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#aea78080572e98d85f312099836f15c02">getInputData</a> (<a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>) const override</td></tr>
-<tr class="separator:aea78080572e98d85f312099836f15c02"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a47871d7eadd0e3d5bf9b347c933e9ea6"><td class="memItemLeft" align="right" valign="top">const TensorProto *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#a47871d7eadd0e3d5bf9b347c933e9ea6">getInputData</a> (<a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> index) const override</td></tr>
+<tr class="separator:a47871d7eadd0e3d5bf9b347c933e9ea6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad3a8cd7b05d6d7ea7ccf957aafcebb50"><td class="memItemLeft" align="right" valign="top">GraphInferencer *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceContextImpl.html#ad3a8cd7b05d6d7ea7ccf957aafcebb50">getGraphAttributeInferencer</a> (const std::string &amp;attribute_name) override</td></tr>
 <tr class="separator:ad3a8cd7b05d6d7ea7ccf957aafcebb50"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="ac39d7cacfaebe411651b9cef1d3b16a2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac39d7cacfaebe411651b9cef1d3b16a2">&#9670;&nbsp;</a></span>InferenceContextImpl()</h2>
+<a id="a20ba0c93f6fcb52e31f4dfbbb4f3da28"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a20ba0c93f6fcb52e31f4dfbbb4f3da28">&#9670;&nbsp;</a></span>InferenceContextImpl()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -134,7 +134,13 @@ Public Member Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype"><a class="el" href="namespaceonnxruntime.html#ae184f68a858158d9595f3fe260b05dfb">SubgraphInferencingFunc</a> *&#160;</td>
-          <td class="paramname"><em>subgraph_inferencing_func</em> = <code>nullptr</code>&#160;</td>
+          <td class="paramname"><em>subgraph_inferencing_func</em> = <code>nullptr</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="namespaceonnxruntime.html#a80c06ce917adca79f4a9c0f9ad3147f8">InitializedTensorSet</a> &amp;&#160;</td>
+          <td class="paramname"><em>initialized_tensor_set</em> = <code>{}</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -204,8 +210,8 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="aea78080572e98d85f312099836f15c02"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aea78080572e98d85f312099836f15c02">&#9670;&nbsp;</a></span>getInputData()</h2>
+<a id="a47871d7eadd0e3d5bf9b347c933e9ea6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a47871d7eadd0e3d5bf9b347c933e9ea6">&#9670;&nbsp;</a></span>getInputData()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -217,7 +223,7 @@ Public Member Functions</h2></td></tr>
           <td class="memname">const TensorProto* onnxruntime::InferenceContextImpl::getInputData </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
-          <td class="paramname"></td><td>)</td>
+          <td class="paramname"><em>index</em></td><td>)</td>
           <td> const</td>
         </tr>
       </table>

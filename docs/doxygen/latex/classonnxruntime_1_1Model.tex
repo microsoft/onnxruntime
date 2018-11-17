@@ -7,7 +7,7 @@
 \subsection*{Public Member Functions}
 \begin{DoxyCompactItemize}
 \item 
-\mbox{\hyperlink{classonnxruntime_1_1Model_a26f33ca41f59c3865ec5961142b79b1b}{Model}} (const std\+::string \&graph\+\_\+name, bool is\+\_\+onnx\+\_\+domain\+\_\+only=false, const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \&model\+\_\+metadata=\mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}}(), const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} local\+\_\+registries=\{\}, const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \&domain\+\_\+to\+\_\+version=\{\})
+\mbox{\hyperlink{classonnxruntime_1_1Model_ae48985db0bd8ad5e58cc5a6693596a7e}{Model}} (const std\+::string \&graph\+\_\+name, bool is\+\_\+onnx\+\_\+domain\+\_\+only=false, const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \&model\+\_\+metadata=\mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}}(), const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} local\+\_\+registries=\{\}, const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \&domain\+\_\+to\+\_\+version=\{\}, const std\+::vector$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Function\+Proto $>$ \&model\+\_\+specific\+\_\+functions=\{\})
 \item 
 \mbox{\hyperlink{classonnxruntime_1_1Model_a9c173259b1fbf481bd9dfdecbd34f7f0}{Model}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&model\+\_\+proto, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
 \item 
@@ -41,6 +41,8 @@ const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{M
 \item 
 const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& \mbox{\hyperlink{classonnxruntime_1_1Model_a2a97e4baaf0238d56a4c1f583c3430ab}{Main\+Graph}} () const noexcept
 \item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Model_a602e428a4b098e7ec95f5a05144b06f5}{Add\+Function}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Function\+Proto \&func\+\_\+proto)
+\item 
 O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \mbox{\hyperlink{classonnxruntime_1_1Model_a6548029afd30cb62977066de5f70cb90}{To\+Proto}} ()
 \end{DoxyCompactItemize}
 \subsection*{Static Public Member Functions}
@@ -70,11 +72,11 @@ static constexpr \mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb
 
 
 \subsection{Constructor \& Destructor Documentation}
-\mbox{\Hypertarget{classonnxruntime_1_1Model_a26f33ca41f59c3865ec5961142b79b1b}\label{classonnxruntime_1_1Model_a26f33ca41f59c3865ec5961142b79b1b}} 
+\mbox{\Hypertarget{classonnxruntime_1_1Model_ae48985db0bd8ad5e58cc5a6693596a7e}\label{classonnxruntime_1_1Model_ae48985db0bd8ad5e58cc5a6693596a7e}} 
 \index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Model@{Model}}
 \index{Model@{Model}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
 \subsubsection{\texorpdfstring{Model()}{Model()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
-{\footnotesize\ttfamily onnxruntime\+::\+Model\+::\+Model (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{graph\+\_\+name,  }\item[{bool}]{is\+\_\+onnx\+\_\+domain\+\_\+only = {\ttfamily false},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \&}]{model\+\_\+metadata = {\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}}()},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}}}]{local\+\_\+registries = {\ttfamily \{\}},  }\item[{const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \&}]{domain\+\_\+to\+\_\+version = {\ttfamily \{\}} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Model\+::\+Model (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{graph\+\_\+name,  }\item[{bool}]{is\+\_\+onnx\+\_\+domain\+\_\+only = {\ttfamily false},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \&}]{model\+\_\+metadata = {\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}}()},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}}}]{local\+\_\+registries = {\ttfamily \{\}},  }\item[{const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \&}]{domain\+\_\+to\+\_\+version = {\ttfamily \{\}},  }\item[{const std\+::vector$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Function\+Proto $>$ \&}]{model\+\_\+specific\+\_\+functions = {\ttfamily \{\}} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
 
 \mbox{\Hypertarget{classonnxruntime_1_1Model_a9c173259b1fbf481bd9dfdecbd34f7f0}\label{classonnxruntime_1_1Model_a9c173259b1fbf481bd9dfdecbd34f7f0}} 
 \index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Model@{Model}}
@@ -91,6 +93,12 @@ static constexpr \mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb
 
 
 \subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a602e428a4b098e7ec95f5a05144b06f5}\label{classonnxruntime_1_1Model_a602e428a4b098e7ec95f5a05144b06f5}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Add\+Function@{Add\+Function}}
+\index{Add\+Function@{Add\+Function}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Add\+Function()}{AddFunction()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Model\+::\+Add\+Function (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Function\+Proto \&}]{func\+\_\+proto }\end{DoxyParamCaption})}
+
 \mbox{\Hypertarget{classonnxruntime_1_1Model_a3255fd55fde8752cc61e1d7da47b3ee2}\label{classonnxruntime_1_1Model_a3255fd55fde8752cc61e1d7da47b3ee2}} 
 \index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Doc\+String@{Doc\+String}}
 \index{Doc\+String@{Doc\+String}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}

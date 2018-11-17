@@ -8,7 +8,7 @@ var searchData=
   ['validateinputtypes',['ValidateInputTypes',['../classonnxruntime_1_1InferenceSession_1_1Impl.html#a10de0bc3bca4ef1e0698c44719358441',1,'onnxruntime::InferenceSession::Impl']]],
   ['validateoutputs',['ValidateOutputs',['../classonnxruntime_1_1InferenceSession_1_1Impl.html#a9974f44fa1a3bb57053edb9d6c89def5',1,'onnxruntime::InferenceSession::Impl']]],
   ['values',['Values',['../classonnxruntime_1_1contrib_1_1IAttentionMechanism.html#a74f8db1c6302b52dfea595c230ce6a69',1,'onnxruntime::contrib::IAttentionMechanism::Values()'],['../classonnxruntime_1_1contrib_1_1BahdanauAttention.html#af6a80756c3478056a61d6513e586ea8b',1,'onnxruntime::contrib::BahdanauAttention::Values()']]],
-  ['verifysuccess',['VerifySuccess',['../classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NativeApiStatus.html#a1580510459f2d13ca056631528e28159',1,'Microsoft::ML::OnnxRuntime::NativeApiStatus']]],
+  ['verifysuccess',['VerifySuccess',['../classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NativeApiStatus.html#a1580510459f2d13ca056631528e28159',1,'Microsoft.ML.OnnxRuntime.NativeApiStatus.VerifySuccess(IntPtr nativeStatus)'],['../classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NativeApiStatus.html#a1580510459f2d13ca056631528e28159',1,'Microsoft.ML.OnnxRuntime.NativeApiStatus.VerifySuccess(IntPtr nativeStatus)']]],
   ['vlogmaxlevel',['VLOGMaxLevel',['../classonnxruntime_1_1logging_1_1Logger.html#af2e3439096494a094a9780eb2e238c95',1,'onnxruntime::logging::Logger']]],
   ['void',['void',['../structONNXRuntimeAllocatorInteface.html#a54eabf966f0201ca7ad1be93fcf5f133',1,'ONNXRuntimeAllocatorInteface::void()'],['../mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6',1,'void():&#160;mlasi.h']]]
 ];

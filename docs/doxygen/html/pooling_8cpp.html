@@ -67,6 +67,8 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#define-members">Macros</a> &#124;
+<a href="#typedef-members">Typedefs</a> &#124;
 <a href="#func-members">Functions</a>  </div>
   <div class="headertitle">
 <div class="title">pooling.cpp File Reference</div>  </div>
@@ -82,46 +84,129 @@ Include dependency graph for pooling.cpp:</div>
 </div><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
 Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__POOL__WORK__BLOCK.html">MLAS_POOL_WORK_BLOCK</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__POOL__WORK__BLOCK_1_1SEGMENT.html">MLAS_POOL_WORK_BLOCK::SEGMENT</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__MAXIMUM__POOLING.html">MLAS_MAXIMUM_POOLING</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__MAXIMUM__POOLING_1_1DividerVectorContext.html">MLAS_MAXIMUM_POOLING::DividerVectorContext</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__AVERAGE__POOLING.html">MLAS_AVERAGE_POOLING</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structMLAS__AVERAGE__POOLING_1_1DividerVectorContext.html">MLAS_AVERAGE_POOLING::DividerVectorContext</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="define-members"></a>
+Macros</h2></td></tr>
+<tr class="memitem:ae2e86b8d5dafb44be2e7129d59cf351c"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#ae2e86b8d5dafb44be2e7129d59cf351c">MLAS_POOL_REDUCTION_BUFFER_STACK</a>&#160;&#160;&#160;2048</td></tr>
+<tr class="separator:ae2e86b8d5dafb44be2e7129d59cf351c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0dabfb35bbb884a37976483cf7dfbd85"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a0dabfb35bbb884a37976483cf7dfbd85">MLAS_POOL_REDUCTION_BUFFER_PADDING</a>&#160;&#160;&#160;((sizeof(MLAS_FLOAT32X4) / sizeof(float)) - 1)</td></tr>
+<tr class="separator:a0dabfb35bbb884a37976483cf7dfbd85"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="typedef-members"></a>
+Typedefs</h2></td></tr>
+<tr class="memitem:a99cc78d2d9d3e3a4abb3c7d85b406b92"><td class="memItemLeft" align="right" valign="top">typedef <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>()&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a99cc78d2d9d3e3a4abb3c7d85b406b92">MLAS_POOL_KERNEL_ROUTINE</a>(const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td></tr>
+<tr class="separator:a99cc78d2d9d3e3a4abb3c7d85b406b92"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:adf63c9676aebddbc54000112bb7e5535"><td class="memItemLeft" align="right" valign="top">typedef <a class="el" href="pooling_8cpp.html#a99cc78d2d9d3e3a4abb3c7d85b406b92">MLAS_POOL_KERNEL_ROUTINE</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#adf63c9676aebddbc54000112bb7e5535">PMLAS_POOL_KERNEL_ROUTINE</a></td></tr>
+<tr class="separator:adf63c9676aebddbc54000112bb7e5535"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a94ed0c6f7719fdd25ed044130031aacd"><td class="memItemLeft" align="right" valign="top">VOID&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a94ed0c6f7719fdd25ed044130031aacd">MlasPoolOperation</a> (const MLAS_POOL_PARAMETERS *Parameters, const float *Input, float *Output, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> SegmentStartC, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> SegmentCountC)</td></tr>
-<tr class="separator:a94ed0c6f7719fdd25ed044130031aacd"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3edec4257ab7c606da50cc6fdf2543a1"><td class="memItemLeft" align="right" valign="top">VOID CALLBACK&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a3edec4257ab7c606da50cc6fdf2543a1">MlasPoolWorkCallback</a> (PTP_CALLBACK_INSTANCE Instance, PVOID Context, PTP_WORK WorkObject)</td></tr>
-<tr class="separator:a3edec4257ab7c606da50cc6fdf2543a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa21f8d03cbd742381655387756f48014"><td class="memItemLeft" align="right" valign="top">VOID <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#aa21f8d03cbd742381655387756f48014">MlasPool</a> (const MLAS_POOL_PARAMETERS *Parameters, const float *Input, float *Output)</td></tr>
-<tr class="separator:aa21f8d03cbd742381655387756f48014"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a179caab0213169a26968bc413f6a7c98"><td class="memItemLeft" align="right" valign="top">bool <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a179caab0213169a26968bc413f6a7c98">MlasPoolPrepare</a> (MLAS_POOL_PARAMETERS *Parameters, int64_t Dimensions, const int64_t *InputShape, const int64_t *KernelShape, const int64_t *Padding, const int64_t *StrideShape)</td></tr>
-<tr class="separator:a179caab0213169a26968bc413f6a7c98"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac0df2d1634a495c54f29bddf621dac47"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#ac0df2d1634a495c54f29bddf621dac47">MLAS_DECLSPEC_ALIGN</a> (static const float MlasInitialReductionInputIndex[], sizeof(MLAS_FLOAT32X4))</td></tr>
+<tr class="separator:ac0df2d1634a495c54f29bddf621dac47"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2ced997ae6be6fd1a0e1a39305c4558c"><td class="memTemplParams" colspan="2">template&lt;typename PoolingType &gt; </td></tr>
+<tr class="memitem:a2ced997ae6be6fd1a0e1a39305c4558c"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a2ced997ae6be6fd1a0e1a39305c4558c">MlasPool1DKernel</a> (const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td></tr>
+<tr class="separator:a2ced997ae6be6fd1a0e1a39305c4558c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1a9b0d34bf0126a76025e61666805a9e"><td class="memTemplParams" colspan="2">template&lt;typename PoolingType &gt; </td></tr>
+<tr class="memitem:a1a9b0d34bf0126a76025e61666805a9e"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a1a9b0d34bf0126a76025e61666805a9e">MlasPool2DKernel</a> (const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td></tr>
+<tr class="separator:a1a9b0d34bf0126a76025e61666805a9e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a643f4d355079231beff99a1bfa6e853e"><td class="memTemplParams" colspan="2">template&lt;typename PoolingType &gt; </td></tr>
+<tr class="memitem:a643f4d355079231beff99a1bfa6e853e"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a643f4d355079231beff99a1bfa6e853e">MlasPool2DVectorKernel</a> (const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td></tr>
+<tr class="separator:a643f4d355079231beff99a1bfa6e853e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab5a3c79312ad71443c47cd708f4a393e"><td class="memTemplParams" colspan="2">template&lt;typename PoolingType &gt; </td></tr>
+<tr class="memitem:ab5a3c79312ad71443c47cd708f4a393e"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#ab5a3c79312ad71443c47cd708f4a393e">MlasPool3DKernel</a> (const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td></tr>
+<tr class="separator:ab5a3c79312ad71443c47cd708f4a393e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3f61cf2a642b499de01040b70aae59b4"><td class="memTemplParams" colspan="2">template&lt;typename PoolingType &gt; </td></tr>
+<tr class="memitem:a3f61cf2a642b499de01040b70aae59b4"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#a3f61cf2a642b499de01040b70aae59b4">MlasPool3DVectorKernel</a> (const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td></tr>
+<tr class="separator:a3f61cf2a642b499de01040b70aae59b4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aea2c098f8f1f7ca24f7dafcee4f31332"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="pooling_8cpp.html#aea2c098f8f1f7ca24f7dafcee4f31332">MlasPool</a> (<a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a> PoolingKind, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> Dimensions, const int64_t *InputShape, const int64_t *KernelShape, const int64_t *Padding, const int64_t *StrideShape, const int64_t *OutputShape, const float *Input, float *Output)</td></tr>
+<tr class="separator:aea2c098f8f1f7ca24f7dafcee4f31332"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
+<h2 class="groupheader">Macro Definition Documentation</h2>
+<a id="a0dabfb35bbb884a37976483cf7dfbd85"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0dabfb35bbb884a37976483cf7dfbd85">&#9670;&nbsp;</a></span>MLAS_POOL_REDUCTION_BUFFER_PADDING</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define MLAS_POOL_REDUCTION_BUFFER_PADDING&#160;&#160;&#160;((sizeof(MLAS_FLOAT32X4) / sizeof(float)) - 1)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ae2e86b8d5dafb44be2e7129d59cf351c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae2e86b8d5dafb44be2e7129d59cf351c">&#9670;&nbsp;</a></span>MLAS_POOL_REDUCTION_BUFFER_STACK</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define MLAS_POOL_REDUCTION_BUFFER_STACK&#160;&#160;&#160;2048</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<h2 class="groupheader">Typedef Documentation</h2>
+<a id="a99cc78d2d9d3e3a4abb3c7d85b406b92"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a99cc78d2d9d3e3a4abb3c7d85b406b92">&#9670;&nbsp;</a></span>MLAS_POOL_KERNEL_ROUTINE</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">typedef <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>() MLAS_POOL_KERNEL_ROUTINE(const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *WorkBlock, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> ChannelCount, const float *Input, float *Output)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="adf63c9676aebddbc54000112bb7e5535"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#adf63c9676aebddbc54000112bb7e5535">&#9670;&nbsp;</a></span>PMLAS_POOL_KERNEL_ROUTINE</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">typedef <a class="el" href="pooling_8cpp.html#a99cc78d2d9d3e3a4abb3c7d85b406b92">MLAS_POOL_KERNEL_ROUTINE</a>* <a class="el" href="pooling_8cpp.html#adf63c9676aebddbc54000112bb7e5535">PMLAS_POOL_KERNEL_ROUTINE</a></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="aa21f8d03cbd742381655387756f48014"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa21f8d03cbd742381655387756f48014">&#9670;&nbsp;</a></span>MlasPool()</h2>
+<a id="ac0df2d1634a495c54f29bddf621dac47"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac0df2d1634a495c54f29bddf621dac47">&#9670;&nbsp;</a></span>MLAS_DECLSPEC_ALIGN()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">VOID <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a> MlasPool </td>
+          <td class="memname">MLAS_DECLSPEC_ALIGN </td>
           <td>(</td>
-          <td class="paramtype">const MLAS_POOL_PARAMETERS *&#160;</td>
-          <td class="paramname"><em>Parameters</em>, </td>
+          <td class="paramtype">static const float&#160;</td>
+          <td class="paramname"><em>MlasInitialReductionInputIndex</em>[], </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const float *&#160;</td>
-          <td class="paramname"><em>Input</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">float *&#160;</td>
-          <td class="paramname"><em>Output</em>&#160;</td>
+          <td class="paramtype">sizeof(MLAS_FLOAT32X4)&#160;</td>
+          <td class="paramname">&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -133,68 +218,22 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="a94ed0c6f7719fdd25ed044130031aacd"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a94ed0c6f7719fdd25ed044130031aacd">&#9670;&nbsp;</a></span>MlasPoolOperation()</h2>
+<a id="aea2c098f8f1f7ca24f7dafcee4f31332"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aea2c098f8f1f7ca24f7dafcee4f31332">&#9670;&nbsp;</a></span>MlasPool()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">VOID MlasPoolOperation </td>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a> MlasPool </td>
           <td>(</td>
-          <td class="paramtype">const MLAS_POOL_PARAMETERS *&#160;</td>
-          <td class="paramname"><em>Parameters</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const float *&#160;</td>
-          <td class="paramname"><em>Input</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">float *&#160;</td>
-          <td class="paramname"><em>Output</em>, </td>
+          <td class="paramtype"><a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a>&#160;</td>
+          <td class="paramname"><em>PoolingKind</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
-          <td class="paramname"><em>SegmentStartC</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
-          <td class="paramname"><em>SegmentCountC</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a179caab0213169a26968bc413f6a7c98"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a179caab0213169a26968bc413f6a7c98">&#9670;&nbsp;</a></span>MlasPoolPrepare()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">bool <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a> MlasPoolPrepare </td>
-          <td>(</td>
-          <td class="paramtype">MLAS_POOL_PARAMETERS *&#160;</td>
-          <td class="paramname"><em>Parameters</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">int64_t&#160;</td>
           <td class="paramname"><em>Dimensions</em>, </td>
         </tr>
         <tr>
@@ -219,7 +258,25 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const int64_t *&#160;</td>
-          <td class="paramname"><em>StrideShape</em>&#160;</td>
+          <td class="paramname"><em>StrideShape</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const int64_t *&#160;</td>
+          <td class="paramname"><em>OutputShape</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -231,29 +288,205 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="a3edec4257ab7c606da50cc6fdf2543a1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3edec4257ab7c606da50cc6fdf2543a1">&#9670;&nbsp;</a></span>MlasPoolWorkCallback()</h2>
+<a id="a2ced997ae6be6fd1a0e1a39305c4558c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2ced997ae6be6fd1a0e1a39305c4558c">&#9670;&nbsp;</a></span>MlasPool1DKernel()</h2>
 
 <div class="memitem">
 <div class="memproto">
+<div class="memtemplate">
+template&lt;typename PoolingType &gt; </div>
       <table class="memname">
         <tr>
-          <td class="memname">VOID CALLBACK MlasPoolWorkCallback </td>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasPool1DKernel </td>
           <td>(</td>
-          <td class="paramtype">PTP_CALLBACK_INSTANCE&#160;</td>
-          <td class="paramname"><em>Instance</em>, </td>
+          <td class="paramtype">const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *&#160;</td>
+          <td class="paramname"><em>WorkBlock</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">PVOID&#160;</td>
-          <td class="paramname"><em>Context</em>, </td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>ChannelCount</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">PTP_WORK&#160;</td>
-          <td class="paramname"><em>WorkObject</em>&#160;</td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a1a9b0d34bf0126a76025e61666805a9e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1a9b0d34bf0126a76025e61666805a9e">&#9670;&nbsp;</a></span>MlasPool2DKernel()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename PoolingType &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasPool2DKernel </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *&#160;</td>
+          <td class="paramname"><em>WorkBlock</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>ChannelCount</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a643f4d355079231beff99a1bfa6e853e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a643f4d355079231beff99a1bfa6e853e">&#9670;&nbsp;</a></span>MlasPool2DVectorKernel()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename PoolingType &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasPool2DVectorKernel </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *&#160;</td>
+          <td class="paramname"><em>WorkBlock</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>ChannelCount</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ab5a3c79312ad71443c47cd708f4a393e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab5a3c79312ad71443c47cd708f4a393e">&#9670;&nbsp;</a></span>MlasPool3DKernel()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename PoolingType &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasPool3DKernel </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *&#160;</td>
+          <td class="paramname"><em>WorkBlock</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>ChannelCount</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a3f61cf2a642b499de01040b70aae59b4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3f61cf2a642b499de01040b70aae59b4">&#9670;&nbsp;</a></span>MlasPool3DVectorKernel()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename PoolingType &gt; </div>
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasPool3DVectorKernel </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="structMLAS__WORK__BLOCK.html">MLAS_WORK_BLOCK</a> *&#160;</td>
+          <td class="paramname"><em>WorkBlock</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>ChannelCount</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
         </tr>
         <tr>
           <td></td>

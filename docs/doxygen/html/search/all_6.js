@@ -25,12 +25,12 @@ var searchData=
   ['filter_5fdesc',['filter_desc',['../structonnxruntime_1_1cuda_1_1CudnnConvState.html#abaef91b21d1779d5fdc67e81f49d43d4',1,'onnxruntime::cuda::CudnnConvState']]],
   ['filter_5fdims',['filter_dims',['../mkldnn_2nn_2conv_8cc.html#ab74a7c8696a235ba976220745e5c6110',1,'conv.cc']]],
   ['filter_5ffmt',['filter_fmt',['../mkldnn_2nn_2conv_8cc.html#a000c94d471293ffe7de6cea3a27f53ea',1,'conv.cc']]],
-  ['filter_5fmd',['filter_md',['../mkldnn_2nn_2conv_8cc.html#a6fb667db4cfba0b87a3bf2124d67911f',1,'conv.cc']]],
-  ['filter_5fmem',['filter_mem',['../mkldnn_2nn_2conv_8cc.html#a9693278c5a02199730d5e7d2073a34ea',1,'conv.cc']]],
+  ['filter_5fmd',['filter_md',['../mkldnn_2nn_2conv_8cc.html#a0db463596a6f724b7ca76cb427a9cbea',1,'conv.cc']]],
+  ['filter_5fmem',['filter_mem',['../mkldnn_2nn_2conv_8cc.html#a4648ef8be9d1258c0bc8170a9a6d952f',1,'conv.cc']]],
   ['filtercount',['FilterCount',['../structMLAS__CONV__PARAMETERS.html#a649412aee7578ff77884dd6d3daf5ca6',1,'MLAS_CONV_PARAMETERS']]],
   ['finalize',['Finalize',['../classonnxruntime_1_1AveragePool.html#ae89947ca117914131283a851f025b932',1,'onnxruntime::AveragePool::Finalize()'],['../classonnxruntime_1_1MaxPool_3_011_01_4.html#ac23fd7b4bd131e2aa202b89b5d9565b2',1,'onnxruntime::MaxPool&lt; 1 &gt;::Finalize()'],['../classonnxruntime_1_1LpPool.html#a7e139347e30f90d425a66ad3694e330e',1,'onnxruntime::LpPool::Finalize()']]],
   ['findtypebinding',['FindTypeBinding',['../namespaceonnxruntime.html#aa5c39b54b5f2f0b4c9340b8a1899c7ff',1,'onnxruntime']]],
-  ['flatten',['Flatten',['../classonnxruntime_1_1Flatten.html',1,'onnxruntime::Flatten'],['../classonnxruntime_1_1cuda_1_1Flatten.html',1,'onnxruntime::cuda::Flatten'],['../classonnxruntime_1_1Flatten.html#a58b05a42f2a0b134f0d9925a3ee9a65c',1,'onnxruntime::Flatten::Flatten()'],['../classonnxruntime_1_1cuda_1_1Flatten.html#afb6b415fa7261e8002a6c2301abe898e',1,'onnxruntime::cuda::Flatten::Flatten()']]],
+  ['flatten',['Flatten',['../classonnxruntime_1_1cuda_1_1Flatten.html',1,'onnxruntime::cuda::Flatten'],['../classonnxruntime_1_1Flatten.html',1,'onnxruntime::Flatten'],['../classonnxruntime_1_1Flatten.html#a58b05a42f2a0b134f0d9925a3ee9a65c',1,'onnxruntime::Flatten::Flatten()'],['../classonnxruntime_1_1cuda_1_1Flatten.html#afb6b415fa7261e8002a6c2301abe898e',1,'onnxruntime::cuda::Flatten::Flatten()']]],
   ['flatten_2ecc',['flatten.cc',['../cpu_2nn_2flatten_8cc.html',1,'(Global Namespace)'],['../cuda_2tensor_2flatten_8cc.html',1,'(Global Namespace)']]],
   ['flatten_2eh',['flatten.h',['../cpu_2nn_2flatten_8h.html',1,'(Global Namespace)'],['../cuda_2tensor_2flatten_8h.html',1,'(Global Namespace)']]],
   ['float_5ftype',['FLOAT_TYPE',['../math_8h.html#a41cf4177f569cb6b87ec5c90c0165769',1,'math.h']]],
@@ -55,7 +55,7 @@ var searchData=
   ['func',['func',['../structonnxruntime_1_1contrib_1_1detail_1_1ActivationInfo.html#aba5100763dcc95a3bfb9708fb169de40',1,'onnxruntime::contrib::detail::ActivationInfo::func()'],['../structonnxruntime_1_1detail_1_1ActivationInfo.html#aca31c46eedd34ac66255b1c90736f60f',1,'onnxruntime::detail::ActivationInfo::func()']]],
   ['function',['Function',['../classonnxruntime_1_1Function.html',1,'onnxruntime::Function'],['../structonnxruntime_1_1CodeLocation.html#a1df4eb946576e7098bab28cbe8ab5af4',1,'onnxruntime::CodeLocation::function()']]],
   ['function_2ecc',['function.cc',['../function_8cc.html',1,'']]],
-  ['function_2eh',['function.h',['../function_8h.html',1,'']]],
+  ['function_2eh',['function.h',['../include_2onnxruntime_2core_2graph_2function_8h.html',1,'(Global Namespace)'],['../onnxruntime_2core_2graph_2function_8h.html',1,'(Global Namespace)']]],
   ['function_5fcontainer_2eh',['function_container.h',['../function__container_8h.html',1,'']]],
   ['function_5fimpl_2eh',['function_impl.h',['../function__impl_8h.html',1,'']]],
   ['function_5finliner_2eh',['function_inliner.h',['../function__inliner_8h.html',1,'']]],
@@ -68,6 +68,6 @@ var searchData=
   ['fused',['Fused',['../classonnxruntime_1_1Node.html#a2d9625711aecc66f9b9373d61f794f6aaf617f46b788e11a564cb16c9f5d59fea',1,'onnxruntime::Node']]],
   ['fuserulefn',['FuseRuleFn',['../namespaceonnxruntime.html#a916d9c71f5b38a56c21340f816954b88',1,'onnxruntime']]],
   ['fusesubgraph',['FuseSubGraph',['../classonnxruntime_1_1Graph.html#a4d09a87a881969281aaca973ec5bebd4',1,'onnxruntime::Graph']]],
-  ['fwd_5fdesc',['fwd_desc',['../mkldnn_2nn_2conv_8cc.html#af44fe724fb70a52cfdc27e6413fc8de2',1,'fwd_desc():&#160;conv.cc'],['../mkldnn_2nn_2lrn_8cc.html#acb90c3a44dea71ba3bda86d3a71d7e4b',1,'fwd_desc():&#160;lrn.cc'],['../mkldnn_2nn_2pool_8cc.html#a65cb3ea7550aec536d1552f3711470ce',1,'fwd_desc():&#160;pool.cc']]],
-  ['fwd_5fprimitive_5fdesc',['fwd_primitive_desc',['../mkldnn_2nn_2lrn_8cc.html#a576e64ff770b3367f7edb43c63964535',1,'fwd_primitive_desc():&#160;lrn.cc'],['../mkldnn_2nn_2pool_8cc.html#a59c09cb64644524223e27e254711d156',1,'fwd_primitive_desc():&#160;pool.cc']]]
+  ['fwd_5fdesc',['fwd_desc',['../mkldnn_2nn_2conv_8cc.html#afd830382a15fcd1ef36921733c5659e5',1,'fwd_desc():&#160;conv.cc'],['../mkldnn_2nn_2lrn_8cc.html#a337117737bf2d9ffc3ea3b0e85d2d75b',1,'fwd_desc():&#160;lrn.cc'],['../mkldnn_2nn_2pool_8cc.html#a5d93b88d784c3dee81eb0f9e5b0dc53f',1,'fwd_desc():&#160;pool.cc']]],
+  ['fwd_5fprimitive_5fdesc',['fwd_primitive_desc',['../mkldnn_2nn_2lrn_8cc.html#a5ca63c9cd310d223af22c51036a4529b',1,'fwd_primitive_desc():&#160;lrn.cc'],['../mkldnn_2nn_2pool_8cc.html#a8d0226a066c5c528d8ee9c0e48b37cb2',1,'fwd_primitive_desc():&#160;pool.cc']]]
 ];

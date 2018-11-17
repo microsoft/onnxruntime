@@ -16,6 +16,8 @@ digraph "onnxruntime/onnxruntime/core/framework/iexecutor.h"
   Node48 -> Node50 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node50 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow/if.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$if_8cc.html"];
   Node48 -> Node51 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node51 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/scan.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$scan_8cc.html"];
+  Node51 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/loop.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$loop_8cc.html"];
+  Node48 -> Node52 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node52 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/scan.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$scan_8cc.html"];
   Node48 -> Node47 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

@@ -3,5 +3,7 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::GraphPartitioner",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1GraphPartitioner.html"];
+  Node453 [label="GraphInferencer",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node453 -> Node0 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 [label="onnxruntime::GraphInferencerImpl",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1GraphInferencerImpl.html"];
 }

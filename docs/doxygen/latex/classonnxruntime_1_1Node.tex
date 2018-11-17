@@ -11,7 +11,7 @@ class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1Definitions}{Definitions}}
 \item 
 class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}}
 \item 
-struct \mbox{\hyperlink{structonnxruntime_1_1Node_1_1IndexCompare}{Index\+Compare}}
+struct \mbox{\hyperlink{structonnxruntime_1_1Node_1_1EdgeEndCompare}{Edge\+End\+Compare}}
 \item 
 class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}}
 \item 
@@ -24,7 +24,7 @@ enum \mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a
 \mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aaf617f46b788e11a564cb16c9f5d59fea}{Type\+::\+Fused}} = 1
  \}
 \item 
-using \mbox{\hyperlink{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}{Edge\+Set}} = std\+::set$<$ \mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}} $\ast$, \mbox{\hyperlink{structonnxruntime_1_1Node_1_1IndexCompare}{Index\+Compare}} $>$
+using \mbox{\hyperlink{classonnxruntime_1_1Node_a96c203b69f604fcbe80532f9d939dcc6}{Edge\+Set}} = std\+::set$<$ \mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}}, \mbox{\hyperlink{structonnxruntime_1_1Node_1_1EdgeEndCompare}{Edge\+End\+Compare}} $>$
 \item 
 using \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} = Edge\+Set\+::const\+\_\+iterator
 \end{DoxyCompactItemize}
@@ -118,11 +118,11 @@ class \mbox{\hyperlink{classonnxruntime_1_1Node_afab89afd724f1b07b1aaad6bdc61c47
 \subsubsection{\texorpdfstring{Edge\+Const\+Iterator}{EdgeConstIterator}}
 {\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{onnxruntime\+::\+Node\+::\+Edge\+Const\+Iterator}} =  Edge\+Set\+::const\+\_\+iterator}
 
-\mbox{\Hypertarget{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}\label{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}} 
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a96c203b69f604fcbe80532f9d939dcc6}\label{classonnxruntime_1_1Node_a96c203b69f604fcbe80532f9d939dcc6}} 
 \index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Edge\+Set@{Edge\+Set}}
 \index{Edge\+Set@{Edge\+Set}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
 \subsubsection{\texorpdfstring{Edge\+Set}{EdgeSet}}
-{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}{onnxruntime\+::\+Node\+::\+Edge\+Set}} =  std\+::set$<$\mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}}$\ast$, \mbox{\hyperlink{structonnxruntime_1_1Node_1_1IndexCompare}{Index\+Compare}}$>$}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1Node_a96c203b69f604fcbe80532f9d939dcc6}{onnxruntime\+::\+Node\+::\+Edge\+Set}} =  std\+::set$<$\mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}}, \mbox{\hyperlink{structonnxruntime_1_1Node_1_1EdgeEndCompare}{Edge\+End\+Compare}}$>$}
 
 
 

@@ -5,7 +5,7 @@ var searchData=
   ['onnx_5fobject_2ecc',['onnx_object.cc',['../onnx__object_8cc.html',1,'']]],
   ['onnx_5fobject_2eh',['onnx_object.h',['../onnx__object_8h.html',1,'']]],
   ['onnx_5fprotobuf_2eh',['onnx_protobuf.h',['../onnx__protobuf_8h.html',1,'']]],
-  ['onnxruntime_2ecs',['OnnxRuntime.cs',['../OnnxRuntime_8cs.html',1,'']]],
+  ['onnxruntime_2ecs',['OnnxRuntime.cs',['../OnnxRuntime_2OnnxRuntime_8cs.html',1,'(Global Namespace)'],['../src_2Microsoft_8ML_8OnnxRuntime_2OnnxRuntime_8cs.html',1,'(Global Namespace)']]],
   ['onnxruntime_5fc_5fapi_2ecc',['onnxruntime_c_api.cc',['../onnxruntime__c__api_8cc.html',1,'']]],
   ['onnxruntime_5fc_5fapi_2eh',['onnxruntime_c_api.h',['../onnxruntime__c__api_8h.html',1,'']]],
   ['onnxruntime_5fcxx_5fapi_2eh',['onnxruntime_cxx_api.h',['../onnxruntime__cxx__api_8h.html',1,'']]],

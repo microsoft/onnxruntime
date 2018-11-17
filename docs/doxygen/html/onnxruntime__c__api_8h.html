@@ -69,13 +69,13 @@ $(function() {
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#typedef-members">Typedefs</a> &#124;
 <a href="#enum-members">Enumerations</a> &#124;
-<a href="#func-members">Functions</a> &#124;
-<a href="#var-members">Variables</a>  </div>
+<a href="#func-members">Functions</a>  </div>
   <div class="headertitle">
 <div class="title">onnxruntime_c_api.h File Reference</div>  </div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><code>#include &lt;stdlib.h&gt;</code><br />
+<div class="textblock"><code>#include &lt;stdbool.h&gt;</code><br />
+<code>#include &lt;stdlib.h&gt;</code><br />
 <code>#include &lt;stdint.h&gt;</code><br />
 <code>#include &lt;string.h&gt;</code><br />
 <code>#include &quot;<a class="el" href="visibility__macros_8h_source.html">core/common/visibility_macros.h</a>&quot;</code><br />
@@ -143,6 +143,8 @@ Enumerations</h2></td></tr>
 Functions</h2></td></tr>
 <tr class="memitem:a587fc5f2e6a5455092c04787f4d1463e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a587fc5f2e6a5455092c04787f4d1463e">DEFINE_RUNTIME_CLASS</a> (<a class="el" href="structONNXEnv.html">ONNXEnv</a>)</td></tr>
 <tr class="separator:a587fc5f2e6a5455092c04787f4d1463e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0d29973428649ec0142f1c7f290ab5f3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a0d29973428649ec0142f1c7f290ab5f3">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeInitialize, <a class="el" href="onnxruntime__c__api_8h.html#a8f1b224e52ff7a87facd42aef2936887">ONNXRuntimeLoggingLevel</a> default_warning_level, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *logid, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="structONNXEnv.html">ONNXEnv</a> **out) <a class="el" href="cpu__provider__factory_8h.html#aa13edcc70b50f99fabbc19d043d668fe">ONNXRUNTIME_ALL_ARGS_NONNULL</a></td></tr>
+<tr class="separator:a0d29973428649ec0142f1c7f290ab5f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa443e3d4a59a6996fa5e13e265440e71"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#aa443e3d4a59a6996fa5e13e265440e71">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeInitializeWithCustomLogger, <a class="el" href="onnxruntime__c__api_8h.html#a34bca4a0e659ffc0e729444e5a5ed677">ONNXRuntimeLoggingFunction</a> logging_function, <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> *logger_param, <a class="el" href="onnxruntime__c__api_8h.html#a8f1b224e52ff7a87facd42aef2936887">ONNXRuntimeLoggingLevel</a> default_warning_level, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *logid, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="structONNXEnv.html">ONNXEnv</a> **out)</td></tr>
 <tr class="separator:aa443e3d4a59a6996fa5e13e265440e71"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a10ac50cd70ab1719e2b9e98cd1a8649c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a10ac50cd70ab1719e2b9e98cd1a8649c">DEFINE_RUNTIME_CLASS</a> (ONNXSession)</td></tr>
@@ -152,6 +154,7 @@ Functions</h2></td></tr>
 <tr class="memitem:a4e9125589465ef7d5913a96db98bdd76"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a4e9125589465ef7d5913a96db98bdd76">DEFINE_RUNTIME_CLASS</a> (ONNXValue)</td></tr>
 <tr class="separator:a4e9125589465ef7d5913a96db98bdd76"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2017c0143b3c5dcfeefc63aada236d22"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a2017c0143b3c5dcfeefc63aada236d22">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeCreateDefaultAllocator, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="session_2allocator_8h.html#a9eb4a70849a17d41aca1955b07cdfaca">ONNXRuntimeAllocator</a> **out)</td></tr>
+<tr class="memdesc:a2017c0143b3c5dcfeefc63aada236d22"><td class="mdescLeft">&#160;</td><td class="mdescRight">Call ONNXRuntimeReleaseObject to release the returned value.  <a href="#a2017c0143b3c5dcfeefc63aada236d22">More...</a><br /></td></tr>
 <tr class="separator:a2017c0143b3c5dcfeefc63aada236d22"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:addb495d8b91ac3b08c4ad3e6644dfb93"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#addb495d8b91ac3b08c4ad3e6644dfb93">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeCreateTensorAsONNXValue, <a class="el" href="visibility__macros_8h.html#a198d136b8176ee5824b09c7bd8b7beb0">_Inout_</a> <a class="el" href="session_2allocator_8h.html#a9eb4a70849a17d41aca1955b07cdfaca">ONNXRuntimeAllocator</a> *allocator, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *shape, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> shape_len, <a class="el" href="tensor__type__and__shape__c__api_8h.html#acc48f6a9c9e4d7071352e45ce13324b3">OnnxRuntimeTensorElementDataType</a> type, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValuePtr *out)</td></tr>
 <tr class="separator:addb495d8b91ac3b08c4ad3e6644dfb93"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -173,8 +176,12 @@ Functions</h2></td></tr>
 <tr class="separator:a635b818da9c6f32d81dbb20acfe42816"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae4dab39c91c442638b014b135b641cc1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#ae4dab39c91c442638b014b135b641cc1">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeRunInferenceAndFetchAll, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr sess, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *input_names[], <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXValuePtr *input, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> input_len, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValueListPtr *output, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *output_len)</td></tr>
 <tr class="separator:ae4dab39c91c442638b014b135b641cc1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a163672d51721699f930abcca8664a60e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a163672d51721699f930abcca8664a60e">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeRunInferenceAndFetchAllWithRunOptions, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr sess, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> <a class="el" href="run__options__c__api_8h.html#a618e4a636ff10f92b96a54e3d7e70c09">ONNXRuntimeRunOptionsPtr</a> run_options, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *input_names[], <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXValuePtr *input, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> input_len, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValueListPtr *output, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *output_len)</td></tr>
+<tr class="separator:a163672d51721699f930abcca8664a60e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af4268f6800927a686ea8889b53265d76"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#af4268f6800927a686ea8889b53265d76">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeRunInference, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr sess, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *input_names[], <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXValuePtr *input, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> input_len, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *output_names[], <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> output_names_len, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValuePtr *output)</td></tr>
 <tr class="separator:af4268f6800927a686ea8889b53265d76"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a626275a0c860a6a838ab6607828427a1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#a626275a0c860a6a838ab6607828427a1">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeRunInferenceWithRunOptions, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr sess, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> <a class="el" href="run__options__c__api_8h.html#a618e4a636ff10f92b96a54e3d7e70c09">ONNXRuntimeRunOptionsPtr</a> run_options, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *input_names[], <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXValuePtr *input, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> input_len, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *output_names[], <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> output_names_len, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValuePtr *output)</td></tr>
+<tr class="separator:a626275a0c860a6a838ab6607828427a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af55fcf2a9cd3463c5bd3c68a69ae8548"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#af55fcf2a9cd3463c5bd3c68a69ae8548">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeInferenceSessionGetInputCount, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr sess, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *out)</td></tr>
 <tr class="separator:af55fcf2a9cd3463c5bd3c68a69ae8548"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af80018b2f8e5c66d5ba91aa2b448bf16"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#af80018b2f8e5c66d5ba91aa2b448bf16">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeInferenceSessionGetOutputCount, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr sess, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *out)</td></tr>
@@ -187,11 +194,6 @@ Functions</h2></td></tr>
 <tr class="separator:a4846c7ff727c5db280b4ce6d91d7f91f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abd0213b7e629f2e514480c117e4ffcd8"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#abd0213b7e629f2e514480c117e4ffcd8">ONNXRUNTIME_API_STATUS</a> (ONNXRuntimeTensorProtoToONNXValue, <a class="el" href="visibility__macros_8h.html#a198d136b8176ee5824b09c7bd8b7beb0">_Inout_</a> <a class="el" href="session_2allocator_8h.html#a9eb4a70849a17d41aca1955b07cdfaca">ONNXRuntimeAllocator</a> *allocator, <a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> *input, int input_len, <a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValuePtr *out)</td></tr>
 <tr class="separator:abd0213b7e629f2e514480c117e4ffcd8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="var-members"></a>
-Variables</h2></td></tr>
-<tr class="memitem:aa13edcc70b50f99fabbc19d043d668fe"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="onnxruntime__c__api_8h.html#aa13edcc70b50f99fabbc19d043d668fe">ONNXRUNTIME_ALL_ARGS_NONNULL</a></td></tr>
-<tr class="separator:aa13edcc70b50f99fabbc19d043d668fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Typedef Documentation</h2>
 <a id="ac28dd1840fd5b4ce57fbe44dc8e5d7e4"></a>
@@ -448,8 +450,49 @@ Variables</h2></td></tr>
 
 </div>
 </div>
+<a id="a0d29973428649ec0142f1c7f290ab5f3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0d29973428649ec0142f1c7f290ab5f3">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[1/20]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">ONNXRUNTIME_API_STATUS </td>
+          <td>(</td>
+          <td class="paramtype">ONNXRuntimeInitialize&#160;</td>
+          <td class="paramname">, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="onnxruntime__c__api_8h.html#a8f1b224e52ff7a87facd42aef2936887">ONNXRuntimeLoggingLevel</a>&#160;</td>
+          <td class="paramname"><em>default_warning_level</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *&#160;</td>
+          <td class="paramname"><em>logid</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="structONNXEnv.html">ONNXEnv</a> **&#160;</td>
+          <td class="paramname"><em>out</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<p><a class="el" href="structONNXEnv.html">ONNXEnv</a> is process-wise. For each process, only one <a class="el" href="structONNXEnv.html">ONNXEnv</a> can be created. Don't do it multiple times </p>
+
+</div>
+</div>
 <a id="aa443e3d4a59a6996fa5e13e265440e71"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa443e3d4a59a6996fa5e13e265440e71">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[1/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#aa443e3d4a59a6996fa5e13e265440e71">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[2/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -502,7 +545,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="ae4814abbcdeabc69e3d1b9463fb97d01"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae4814abbcdeabc69e3d1b9463fb97d01">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[2/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#ae4814abbcdeabc69e3d1b9463fb97d01">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[3/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -548,7 +591,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a2017c0143b3c5dcfeefc63aada236d22"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2017c0143b3c5dcfeefc63aada236d22">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[3/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a2017c0143b3c5dcfeefc63aada236d22">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[4/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -573,10 +616,12 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
+<p>Call ONNXRuntimeReleaseObject to release the returned value. </p>
+
 </div>
 </div>
 <a id="addb495d8b91ac3b08c4ad3e6644dfb93"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#addb495d8b91ac3b08c4ad3e6644dfb93">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[4/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#addb495d8b91ac3b08c4ad3e6644dfb93">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[5/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -634,7 +679,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a5b70b66cc5e4f26caf77db8faf34e917"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5b70b66cc5e4f26caf77db8faf34e917">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[5/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a5b70b66cc5e4f26caf77db8faf34e917">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[6/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -699,7 +744,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a575093dadfd9685ebc84ccb61d68690e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a575093dadfd9685ebc84ccb61d68690e">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[6/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a575093dadfd9685ebc84ccb61d68690e">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[7/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -734,7 +779,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="ae6b0c4542d7afaac5f1daf1b0bcb1e65"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae6b0c4542d7afaac5f1daf1b0bcb1e65">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[7/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#ae6b0c4542d7afaac5f1daf1b0bcb1e65">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[8/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -782,7 +827,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a7d0a7523063b35a3c1a14df0b8b8a245"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7d0a7523063b35a3c1a14df0b8b8a245">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[8/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a7d0a7523063b35a3c1a14df0b8b8a245">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[9/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -823,7 +868,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a73bbf0c8e90138eb67af9de45ee58422"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a73bbf0c8e90138eb67af9de45ee58422">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[9/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a73bbf0c8e90138eb67af9de45ee58422">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[10/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -883,7 +928,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a7903b0f431e161c5e867b769482db2d0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7903b0f431e161c5e867b769482db2d0">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[10/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a7903b0f431e161c5e867b769482db2d0">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[11/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -923,7 +968,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="ae4dab39c91c442638b014b135b641cc1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae4dab39c91c442638b014b135b641cc1">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[11/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#ae4dab39c91c442638b014b135b641cc1">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[12/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -987,8 +1032,72 @@ Variables</h2></td></tr>
 
 </div>
 </div>
+<a id="a163672d51721699f930abcca8664a60e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a163672d51721699f930abcca8664a60e">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[13/20]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">ONNXRUNTIME_API_STATUS </td>
+          <td>(</td>
+          <td class="paramtype">ONNXRuntimeRunInferenceAndFetchAllWithRunOptions&#160;</td>
+          <td class="paramname">, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr&#160;</td>
+          <td class="paramname"><em>sess</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> <a class="el" href="run__options__c__api_8h.html#a618e4a636ff10f92b96a54e3d7e70c09">ONNXRuntimeRunOptionsPtr</a>&#160;</td>
+          <td class="paramname"><em>run_options</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *&#160;</td>
+          <td class="paramname"><em>input_names</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXValuePtr *&#160;</td>
+          <td class="paramname"><em>input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>input_len</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValueListPtr *&#160;</td>
+          <td class="paramname"><em>output</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *&#160;</td>
+          <td class="paramname"><em>output_len</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="af4268f6800927a686ea8889b53265d76"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af4268f6800927a686ea8889b53265d76">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[12/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#af4268f6800927a686ea8889b53265d76">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[14/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1051,8 +1160,78 @@ Variables</h2></td></tr>
 
 </div>
 </div>
+<a id="a626275a0c860a6a838ab6607828427a1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a626275a0c860a6a838ab6607828427a1">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[15/20]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">ONNXRUNTIME_API_STATUS </td>
+          <td>(</td>
+          <td class="paramtype">ONNXRuntimeRunInferenceWithRunOptions&#160;</td>
+          <td class="paramname">, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXSessionPtr&#160;</td>
+          <td class="paramname"><em>sess</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> <a class="el" href="run__options__c__api_8h.html#a618e4a636ff10f92b96a54e3d7e70c09">ONNXRuntimeRunOptionsPtr</a>&#160;</td>
+          <td class="paramname"><em>run_options</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *&#160;</td>
+          <td class="paramname"><em>input_names</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> ONNXValuePtr *&#160;</td>
+          <td class="paramname"><em>input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>input_len</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#aa74f89aa7d942f4a79ea12d7c9b763ef">_In_</a> const char *&#160;</td>
+          <td class="paramname"><em>output_names</em>[], </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>output_names_len</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="visibility__macros_8h.html#a9c50bd6a6ca6e0be76a0f3a79379b90e">_Out_</a> ONNXValuePtr *&#160;</td>
+          <td class="paramname"><em>output</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="af55fcf2a9cd3463c5bd3c68a69ae8548"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af55fcf2a9cd3463c5bd3c68a69ae8548">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[13/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#af55fcf2a9cd3463c5bd3c68a69ae8548">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[16/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1086,7 +1265,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="af80018b2f8e5c66d5ba91aa2b448bf16"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af80018b2f8e5c66d5ba91aa2b448bf16">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[14/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#af80018b2f8e5c66d5ba91aa2b448bf16">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[17/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1120,7 +1299,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a69438bc37e55f9b1e0614a4092843634"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a69438bc37e55f9b1e0614a4092843634">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[15/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a69438bc37e55f9b1e0614a4092843634">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[18/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1166,7 +1345,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="aea4bda024cb4b9c77680952528b0c3cb"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aea4bda024cb4b9c77680952528b0c3cb">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[16/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#aea4bda024cb4b9c77680952528b0c3cb">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[19/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1212,7 +1391,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="abd0213b7e629f2e514480c117e4ffcd8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#abd0213b7e629f2e514480c117e4ffcd8">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[17/17]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#abd0213b7e629f2e514480c117e4ffcd8">&#9670;&nbsp;</a></span>ONNXRUNTIME_API_STATUS() <span class="overload">[20/20]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1254,22 +1433,6 @@ Variables</h2></td></tr>
         </tr>
       </table>
 </div><div class="memdoc">
-
-</div>
-</div>
-<h2 class="groupheader">Variable Documentation</h2>
-<a id="aa13edcc70b50f99fabbc19d043d668fe"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa13edcc70b50f99fabbc19d043d668fe">&#9670;&nbsp;</a></span>ONNXRUNTIME_ALL_ARGS_NONNULL</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">ONNXRUNTIME_ALL_ARGS_NONNULL</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-<p><a class="el" href="structONNXEnv.html">ONNXEnv</a> is process-wise. For each process, only one <a class="el" href="structONNXEnv.html">ONNXEnv</a> can be created. Don't do it multiple times </p>
 
 </div>
 </div>

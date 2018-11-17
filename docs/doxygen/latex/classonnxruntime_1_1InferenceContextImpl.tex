@@ -11,7 +11,7 @@ Collaboration diagram for onnxruntime\+:\+:Inference\+Context\+Impl\+:
 \subsection*{Public Member Functions}
 \begin{DoxyCompactItemize}
 \item 
-\mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_ac39d7cacfaebe411651b9cef1d3b16a2}{Inference\+Context\+Impl}} (\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&node, const Attribute\+Graph\+Map $\ast$subgraphs=nullptr, \mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{Subgraph\+Inferencing\+Func}} $\ast$subgraph\+\_\+inferencing\+\_\+func=nullptr) noexcept
+\mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_a20ba0c93f6fcb52e31f4dfbbb4f3da28}{Inference\+Context\+Impl}} (\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&node, const Attribute\+Graph\+Map $\ast$subgraphs=nullptr, \mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{Subgraph\+Inferencing\+Func}} $\ast$subgraph\+\_\+inferencing\+\_\+func=nullptr, const \mbox{\hyperlink{namespaceonnxruntime_a80c06ce917adca79f4a9c0f9ad3147f8}{Initialized\+Tensor\+Set}} \&initialized\+\_\+tensor\+\_\+set=\{\}) noexcept
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_a03867e44217366769507abf47d0a237d}{Run\+Inferencing}} ()
 \item 
@@ -27,18 +27,18 @@ const Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextIm
 \item 
 Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_aed6ee0c15da7b2a1ceac5e6ee2186905}{get\+Output\+Type}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) override
 \item 
-const Tensor\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_aea78080572e98d85f312099836f15c02}{get\+Input\+Data}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}) const override
+const Tensor\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_a47871d7eadd0e3d5bf9b347c933e9ea6}{get\+Input\+Data}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) const override
 \item 
 Graph\+Inferencer $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_ad3a8cd7b05d6d7ea7ccf957aafcebb50}{get\+Graph\+Attribute\+Inferencer}} (const std\+::string \&attribute\+\_\+name) override
 \end{DoxyCompactItemize}
 
 
 \subsection{Constructor \& Destructor Documentation}
-\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_ac39d7cacfaebe411651b9cef1d3b16a2}\label{classonnxruntime_1_1InferenceContextImpl_ac39d7cacfaebe411651b9cef1d3b16a2}} 
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_a20ba0c93f6fcb52e31f4dfbbb4f3da28}\label{classonnxruntime_1_1InferenceContextImpl_a20ba0c93f6fcb52e31f4dfbbb4f3da28}} 
 \index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!Inference\+Context\+Impl@{Inference\+Context\+Impl}}
 \index{Inference\+Context\+Impl@{Inference\+Context\+Impl}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
 \subsubsection{\texorpdfstring{Inference\+Context\+Impl()}{InferenceContextImpl()}}
-{\footnotesize\ttfamily onnxruntime\+::\+Inference\+Context\+Impl\+::\+Inference\+Context\+Impl (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{node,  }\item[{const Attribute\+Graph\+Map $\ast$}]{subgraphs = {\ttfamily nullptr},  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{Subgraph\+Inferencing\+Func}} $\ast$}]{subgraph\+\_\+inferencing\+\_\+func = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Inference\+Context\+Impl\+::\+Inference\+Context\+Impl (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{node,  }\item[{const Attribute\+Graph\+Map $\ast$}]{subgraphs = {\ttfamily nullptr},  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{Subgraph\+Inferencing\+Func}} $\ast$}]{subgraph\+\_\+inferencing\+\_\+func = {\ttfamily nullptr},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a80c06ce917adca79f4a9c0f9ad3147f8}{Initialized\+Tensor\+Set}} \&}]{initialized\+\_\+tensor\+\_\+set = {\ttfamily \{\}} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
 
 
 
@@ -55,11 +55,11 @@ Graph\+Inferencer $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextIm
 \subsubsection{\texorpdfstring{get\+Graph\+Attribute\+Inferencer()}{getGraphAttributeInferencer()}}
 {\footnotesize\ttfamily Graph\+Inferencer$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Graph\+Attribute\+Inferencer (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{attribute\+\_\+name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
 
-\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_aea78080572e98d85f312099836f15c02}\label{classonnxruntime_1_1InferenceContextImpl_aea78080572e98d85f312099836f15c02}} 
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_a47871d7eadd0e3d5bf9b347c933e9ea6}\label{classonnxruntime_1_1InferenceContextImpl_a47871d7eadd0e3d5bf9b347c933e9ea6}} 
 \index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Input\+Data@{get\+Input\+Data}}
 \index{get\+Input\+Data@{get\+Input\+Data}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
 \subsubsection{\texorpdfstring{get\+Input\+Data()}{getInputData()}}
-{\footnotesize\ttfamily const Tensor\+Proto$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Input\+Data (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+{\footnotesize\ttfamily const Tensor\+Proto$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Input\+Data (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
 
 \mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_af2af6aa91a8dbdb477866da91856cbca}\label{classonnxruntime_1_1InferenceContextImpl_af2af6aa91a8dbdb477866da91856cbca}} 
 \index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Input\+Type@{get\+Input\+Type}}

@@ -142,7 +142,9 @@ digraph "onnxruntime/onnxruntime/core/framework/allocation_planner.h"
   Node46 [label="onnx/onnx_pb.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node37 -> Node44 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node37 -> Node47 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node47 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node47 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node37 -> Node48 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node48 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node48 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node37 -> Node49 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node49 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
 }

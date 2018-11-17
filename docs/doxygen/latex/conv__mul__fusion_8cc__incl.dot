@@ -110,11 +110,13 @@ digraph "onnxruntime/onnxruntime/core/graph/conv_mul_fusion.cc"
   Node36 -> Node23 [color="midnightblue",fontsize="10",style="solid"];
   Node29 -> Node23 [color="midnightblue",fontsize="10",style="solid"];
   Node29 -> Node37 [color="midnightblue",fontsize="10",style="solid"];
-  Node37 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node37 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node29 -> Node38 [color="midnightblue",fontsize="10",style="solid"];
-  Node38 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node27 -> Node39 [color="midnightblue",fontsize="10",style="solid"];
-  Node39 [label="core/graph/rewrite\l_rule.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$rewrite__rule_8h.html"];
-  Node39 -> Node5 [color="midnightblue",fontsize="10",style="solid"];
-  Node39 -> Node28 [color="midnightblue",fontsize="10",style="solid"];
+  Node38 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node29 -> Node39 [color="midnightblue",fontsize="10",style="solid"];
+  Node39 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node27 -> Node40 [color="midnightblue",fontsize="10",style="solid"];
+  Node40 [label="core/graph/rewrite\l_rule.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$rewrite__rule_8h.html"];
+  Node40 -> Node5 [color="midnightblue",fontsize="10",style="solid"];
+  Node40 -> Node28 [color="midnightblue",fontsize="10",style="solid"];
 }

@@ -1,0 +1,23 @@
+\hypertarget{compress__impl_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/tensor/compress\+\_\+impl.h File Reference}
+\label{compress__impl_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/tensor/compress\+\_\+impl.\+h@{onnxruntime/onnxruntime/core/providers/cuda/tensor/compress\+\_\+impl.\+h}}
+{\ttfamily \#include $<$stdint.\+h$>$}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+Include dependency graph for compress\+\_\+impl.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a6b52519ba407035907bc4ee158ab8aaf}{onnxruntime\+::cuda\+::\+Prefix\+Sum\+Impl}} (const int8\+\_\+t $\ast$condition\+\_\+data, int32\+\_\+t $\ast$condition\+\_\+cumulative\+\_\+sum, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} length)
+\item 
+Status \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_ade6fe15dd248c66b252a7cf9c2b0744d}{onnxruntime\+::cuda\+::\+Compress\+Impl}} (const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} element\+\_\+bytes, const int32\+\_\+t valid\+\_\+condition\+\_\+length, const int32\+\_\+t axis\+\_\+right\+\_\+stride, const int32\+\_\+t input\+\_\+axis\+\_\+dim\+\_\+length, const int32\+\_\+t output\+\_\+axis\+\_\+dim\+\_\+length, const int32\+\_\+t $\ast$condition\+\_\+cumulative\+\_\+sum, const bool $\ast$condition\+\_\+data, const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$input\+\_\+data, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$output\+\_\+data, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} N)
+\end{DoxyCompactItemize}

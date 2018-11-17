@@ -5,4 +5,5 @@ digraph "Microsoft.ML.OnnxRuntime.InferenceSession"
   Node2 [label="Microsoft.ML.OnnxRuntime.\lInferenceSession",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
   Node3 -> Node2 [dir="back",color="midnightblue",fontsize="10",style="solid"];
   Node3 [label="IDisposable",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node3 -> Node2 [dir="back",color="midnightblue",fontsize="10",style="solid"];
 }

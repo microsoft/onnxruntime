@@ -3,7 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::data_types\l_internal::IsAnyOf\< T,\l float, uint8_t, int8_t,\l uint16_t, int16_t, int32\l_t, int64_t, std::string,\l bool, MLFloat16, double, uint32\l_t, uint64_t \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1data__types__internal_1_1IsAnyOf.html"];
-  Node0 -> Node1 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node1 [label="onnxruntime::data_types\l_internal::IsTensorContained\lType\< T \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1data__types__internal_1_1IsTensorContainedType.html"];
+  Node0 [label="onnxruntime::data_types\l_internal::GetMLDataType\l\< T, false \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1data__types__internal_1_1GetMLDataType_3_01T_00_01false_01_4.html"];
 }

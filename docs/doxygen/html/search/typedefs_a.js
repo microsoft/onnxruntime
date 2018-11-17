@@ -11,6 +11,7 @@ var searchData=
   ['mapstringtostring',['MapStringToString',['../namespaceonnxruntime.html#ad08e9cd3839f6134e87cee3370f5d7b3',1,'onnxruntime']]],
   ['matrix',['Matrix',['../namespaceonnxruntime.html#a5cf6121dfe1df46b79ad87327786bb2c',1,'onnxruntime']]],
   ['memtypemap',['MemTypeMap',['../namespaceonnxruntime.html#ad53d5ace215052258a4346ee68c2624e',1,'onnxruntime']]],
+  ['mlas_5fpool_5fkernel_5froutine',['MLAS_POOL_KERNEL_ROUTINE',['../pooling_8cpp.html#a99cc78d2d9d3e3a4abb3c7d85b406b92',1,'pooling.cpp']]],
   ['mldatatype',['MLDataType',['../namespaceonnxruntime.html#ad77d0a6e838ec7da5dc35fed5ee66b49',1,'onnxruntime']]],
   ['mlvalueindex',['MLValueIndex',['../namespaceonnxruntime.html#ab37a9454e2bb44bd7f75a95158097c8a',1,'onnxruntime']]],
   ['mlvaluename',['MLValueName',['../namespaceonnxruntime.html#a27bd8348d5fcc1966f784f29ff7a5581',1,'onnxruntime']]],

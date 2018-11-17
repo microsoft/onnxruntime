@@ -177,10 +177,10 @@ digraph "onnxruntime/onnxruntime/core/session/CustomOpsLoader.h"
   Node36 -> Node40 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node36 -> Node34 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node21 -> Node55 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node21 -> Node70 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node70 [label="core/framework/kernel\l_registry.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry_8h.html"];
-  Node70 -> Node36 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node0 -> Node71 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node71 [label="core/framework/custom\l_ops_author.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$custom__ops__author_8h.html"];
+  Node21 -> Node71 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 [label="core/framework/kernel\l_registry.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry_8h.html"];
   Node71 -> Node36 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 -> Node72 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node72 [label="core/framework/custom\l_ops_author.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$custom__ops__author_8h.html"];
+  Node72 -> Node36 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

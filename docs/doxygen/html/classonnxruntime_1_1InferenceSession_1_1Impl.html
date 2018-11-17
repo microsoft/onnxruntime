@@ -125,8 +125,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ac9f294a90e67e3838589669752a772dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a186dd29be61d0703146263d87f1271f1"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#a186dd29be61d0703146263d87f1271f1">CopyOutputsAcrossDevices</a> (std::vector&lt; <a class="el" href="classonnxruntime_1_1MLValue.html">MLValue</a> &gt; &amp;fetches, std::vector&lt; <a class="el" href="classonnxruntime_1_1MLValue.html">MLValue</a> &gt; &amp;user_fetches)</td></tr>
 <tr class="separator:a186dd29be61d0703146263d87f1271f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa904ca4de813164cfb8bc0608498d9ae"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#aa904ca4de813164cfb8bc0608498d9ae">Run</a> (const <a class="el" href="namespaceonnxruntime.html#a28ccb3d97f6827bf04d2ce259ff968f1">RunOptions</a> &amp;run_options0, const <a class="el" href="namespaceonnxruntime.html#a48b01f0410ec8d693dbd40d1132bd66c">NameMLValMap</a> &amp;feeds, const std::vector&lt; std::string &gt; &amp;output_names, std::vector&lt; <a class="el" href="classonnxruntime_1_1MLValue.html">MLValue</a> &gt; *p_fetches)</td></tr>
-<tr class="separator:aa904ca4de813164cfb8bc0608498d9ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aec73d9664448eece9c2627d4d378a302"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#aec73d9664448eece9c2627d4d378a302">Run</a> (const <a class="el" href="namespaceonnxruntime.html#a28ccb3d97f6827bf04d2ce259ff968f1">RunOptions</a> &amp;run_options, const <a class="el" href="namespaceonnxruntime.html#a48b01f0410ec8d693dbd40d1132bd66c">NameMLValMap</a> &amp;feeds, const std::vector&lt; std::string &gt; &amp;output_names, std::vector&lt; <a class="el" href="classonnxruntime_1_1MLValue.html">MLValue</a> &gt; *p_fetches)</td></tr>
+<tr class="separator:aec73d9664448eece9c2627d4d378a302"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a34dba97aea4524d5d7e10aed1c645c77"><td class="memItemLeft" align="right" valign="top">std::pair&lt; <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>, const <a class="el" href="structonnxruntime_1_1ModelMetadata.html">ModelMetadata</a> * &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#a34dba97aea4524d5d7e10aed1c645c77">GetModelMetadata</a> () const</td></tr>
 <tr class="separator:a34dba97aea4524d5d7e10aed1c645c77"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4c410afb78ad0c06fc3e52145e83f7f8"><td class="memItemLeft" align="right" valign="top">std::pair&lt; <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>, const <a class="el" href="namespaceonnxruntime.html#ab363b0109a9af018fb3e355aac00a360">InputDefList</a> * &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#a4c410afb78ad0c06fc3e52145e83f7f8">GetModelInputs</a> () const</td></tr>
@@ -141,6 +141,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ac4b6faace4cc4ef595e2eba3486903f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa6eca602c08e2c3c76aa6fadd05b9e22"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#aa6eca602c08e2c3c76aa6fadd05b9e22">StartProfiling</a> (const std::string &amp;file_prefix)</td></tr>
 <tr class="separator:aa6eca602c08e2c3c76aa6fadd05b9e22"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a68f97798c8a5403de9648c8e08c4de88"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#a68f97798c8a5403de9648c8e08c4de88">StartProfiling</a> (const <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">logging::Logger</a> *logger_ptr)</td></tr>
+<tr class="separator:a68f97798c8a5403de9648c8e08c4de88"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af4994d40aa3ac98a6d7542a4c18d336b"><td class="memItemLeft" align="right" valign="top">std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#af4994d40aa3ac98a6d7542a4c18d336b">EndProfiling</a> ()</td></tr>
 <tr class="separator:af4994d40aa3ac98a6d7542a4c18d336b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -863,8 +865,8 @@ template&lt;typename T &gt; </div>
 
 </div>
 </div>
-<a id="aa904ca4de813164cfb8bc0608498d9ae"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa904ca4de813164cfb8bc0608498d9ae">&#9670;&nbsp;</a></span>Run() <span class="overload">[2/4]</span></h2>
+<a id="aec73d9664448eece9c2627d4d378a302"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aec73d9664448eece9c2627d4d378a302">&#9670;&nbsp;</a></span>Run() <span class="overload">[2/4]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -876,7 +878,7 @@ template&lt;typename T &gt; </div>
           <td class="memname"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">Status</a> onnxruntime::InferenceSession::Impl::Run </td>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="namespaceonnxruntime.html#a28ccb3d97f6827bf04d2ce259ff968f1">RunOptions</a> &amp;&#160;</td>
-          <td class="paramname"><em>run_options0</em>, </td>
+          <td class="paramname"><em>run_options</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -974,7 +976,7 @@ template&lt;typename T &gt; </div>
 </div>
 </div>
 <a id="aa6eca602c08e2c3c76aa6fadd05b9e22"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa6eca602c08e2c3c76aa6fadd05b9e22">&#9670;&nbsp;</a></span>StartProfiling()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#aa6eca602c08e2c3c76aa6fadd05b9e22">&#9670;&nbsp;</a></span>StartProfiling() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -987,6 +989,32 @@ template&lt;typename T &gt; </div>
           <td>(</td>
           <td class="paramtype">const std::string &amp;&#160;</td>
           <td class="paramname"><em>file_prefix</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a68f97798c8a5403de9648c8e08c4de88"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a68f97798c8a5403de9648c8e08c4de88">&#9670;&nbsp;</a></span>StartProfiling() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> onnxruntime::InferenceSession::Impl::StartProfiling </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">logging::Logger</a> *&#160;</td>
+          <td class="paramname"><em>logger_ptr</em></td><td>)</td>
           <td></td>
         </tr>
       </table>

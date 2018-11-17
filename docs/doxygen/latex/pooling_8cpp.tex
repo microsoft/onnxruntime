@@ -6,45 +6,124 @@ Include dependency graph for pooling.\+cpp\+:
 \subsection*{Classes}
 \begin{DoxyCompactItemize}
 \item 
-struct \mbox{\hyperlink{structMLAS__POOL__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}}
+struct \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}}
 \item 
-struct \mbox{\hyperlink{structMLAS__POOL__WORK__BLOCK_1_1SEGMENT}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+C\+K\+::\+S\+E\+G\+M\+E\+NT}}
+struct \mbox{\hyperlink{structMLAS__MAXIMUM__POOLING}{M\+L\+A\+S\+\_\+\+M\+A\+X\+I\+M\+U\+M\+\_\+\+P\+O\+O\+L\+I\+NG}}
+\item 
+struct \mbox{\hyperlink{structMLAS__MAXIMUM__POOLING_1_1DividerVectorContext}{M\+L\+A\+S\+\_\+\+M\+A\+X\+I\+M\+U\+M\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\item 
+struct \mbox{\hyperlink{structMLAS__AVERAGE__POOLING}{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+NG}}
+\item 
+struct \mbox{\hyperlink{structMLAS__AVERAGE__POOLING_1_1DividerVectorContext}{M\+L\+A\+S\+\_\+\+A\+V\+E\+R\+A\+G\+E\+\_\+\+P\+O\+O\+L\+I\+N\+G\+::\+Divider\+Vector\+Context}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{pooling_8cpp_ae2e86b8d5dafb44be2e7129d59cf351c}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK}}~2048
+\item 
+\#define \mbox{\hyperlink{pooling_8cpp_a0dabfb35bbb884a37976483cf7dfbd85}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG}}~((sizeof(M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4) / sizeof(float)) -\/ 1)
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}() \mbox{\hyperlink{pooling_8cpp_a99cc78d2d9d3e3a4abb3c7d85b406b92}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}}(const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)
+\item 
+typedef \mbox{\hyperlink{pooling_8cpp_a99cc78d2d9d3e3a4abb3c7d85b406b92}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}} $\ast$ \mbox{\hyperlink{pooling_8cpp_adf63c9676aebddbc54000112bb7e5535}{P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}}
 \end{DoxyCompactItemize}
 \subsection*{Functions}
 \begin{DoxyCompactItemize}
 \item 
-V\+O\+ID \mbox{\hyperlink{pooling_8cpp_a94ed0c6f7719fdd25ed044130031aacd}{Mlas\+Pool\+Operation}} (const M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS $\ast$Parameters, const float $\ast$Input, float $\ast$Output, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Segment\+StartC, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Segment\+CountC)
+\mbox{\hyperlink{pooling_8cpp_ac0df2d1634a495c54f29bddf621dac47}{M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+GN}} (static const float Mlas\+Initial\+Reduction\+Input\+Index\mbox{[}$\,$\mbox{]}, sizeof(M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4))
 \item 
-V\+O\+ID C\+A\+L\+L\+B\+A\+CK \mbox{\hyperlink{pooling_8cpp_a3edec4257ab7c606da50cc6fdf2543a1}{Mlas\+Pool\+Work\+Callback}} (P\+T\+P\+\_\+\+C\+A\+L\+L\+B\+A\+C\+K\+\_\+\+I\+N\+S\+T\+A\+N\+CE Instance, P\+V\+O\+ID Context, P\+T\+P\+\_\+\+W\+O\+RK Work\+Object)
+{\footnotesize template$<$typename Pooling\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{pooling_8cpp_a2ced997ae6be6fd1a0e1a39305c4558c}{Mlas\+Pool1\+D\+Kernel}} (const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)
 \item 
-V\+O\+ID \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{pooling_8cpp_aa21f8d03cbd742381655387756f48014}{Mlas\+Pool}} (const M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS $\ast$Parameters, const float $\ast$Input, float $\ast$Output)
+{\footnotesize template$<$typename Pooling\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{pooling_8cpp_a1a9b0d34bf0126a76025e61666805a9e}{Mlas\+Pool2\+D\+Kernel}} (const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)
 \item 
-bool \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{pooling_8cpp_a179caab0213169a26968bc413f6a7c98}{Mlas\+Pool\+Prepare}} (M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS $\ast$Parameters, int64\+\_\+t Dimensions, const int64\+\_\+t $\ast$Input\+Shape, const int64\+\_\+t $\ast$Kernel\+Shape, const int64\+\_\+t $\ast$Padding, const int64\+\_\+t $\ast$Stride\+Shape)
+{\footnotesize template$<$typename Pooling\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{pooling_8cpp_a643f4d355079231beff99a1bfa6e853e}{Mlas\+Pool2\+D\+Vector\+Kernel}} (const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)
+\item 
+{\footnotesize template$<$typename Pooling\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{pooling_8cpp_ab5a3c79312ad71443c47cd708f4a393e}{Mlas\+Pool3\+D\+Kernel}} (const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)
+\item 
+{\footnotesize template$<$typename Pooling\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{pooling_8cpp_a3f61cf2a642b499de01040b70aae59b4}{Mlas\+Pool3\+D\+Vector\+Kernel}} (const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{pooling_8cpp_aea2c098f8f1f7ca24f7dafcee4f31332}{Mlas\+Pool}} (\mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}} Pooling\+Kind, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Dimensions, const int64\+\_\+t $\ast$Input\+Shape, const int64\+\_\+t $\ast$Kernel\+Shape, const int64\+\_\+t $\ast$Padding, const int64\+\_\+t $\ast$Stride\+Shape, const int64\+\_\+t $\ast$Output\+Shape, const float $\ast$Input, float $\ast$Output)
 \end{DoxyCompactItemize}
 
 
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{pooling_8cpp_a0dabfb35bbb884a37976483cf7dfbd85}\label{pooling_8cpp_a0dabfb35bbb884a37976483cf7dfbd85}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG}}
+\index{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG}{MLAS\_POOL\_REDUCTION\_BUFFER\_PADDING}}
+{\footnotesize\ttfamily \#define M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+P\+A\+D\+D\+I\+NG~((sizeof(M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4) / sizeof(float)) -\/ 1)}
+
+\mbox{\Hypertarget{pooling_8cpp_ae2e86b8d5dafb44be2e7129d59cf351c}\label{pooling_8cpp_ae2e86b8d5dafb44be2e7129d59cf351c}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK}}
+\index{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK}{MLAS\_POOL\_REDUCTION\_BUFFER\_STACK}}
+{\footnotesize\ttfamily \#define M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+R\+E\+D\+U\+C\+T\+I\+O\+N\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+T\+A\+CK~2048}
+
+
+
+\subsection{Typedef Documentation}
+\mbox{\Hypertarget{pooling_8cpp_a99cc78d2d9d3e3a4abb3c7d85b406b92}\label{pooling_8cpp_a99cc78d2d9d3e3a4abb3c7d85b406b92}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}}
+\index{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE@{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}{MLAS\_POOL\_KERNEL\_ROUTINE}}
+{\footnotesize\ttfamily typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}() M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE(const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$Work\+Block, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Channel\+Count, const float $\ast$Input, float $\ast$Output)}
+
+\mbox{\Hypertarget{pooling_8cpp_adf63c9676aebddbc54000112bb7e5535}\label{pooling_8cpp_adf63c9676aebddbc54000112bb7e5535}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE@{P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}}
+\index{P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE@{P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}{PMLAS\_POOL\_KERNEL\_ROUTINE}}
+{\footnotesize\ttfamily typedef \mbox{\hyperlink{pooling_8cpp_a99cc78d2d9d3e3a4abb3c7d85b406b92}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}}$\ast$ \mbox{\hyperlink{pooling_8cpp_adf63c9676aebddbc54000112bb7e5535}{P\+M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+R\+O\+U\+T\+I\+NE}}}
+
+
+
 \subsection{Function Documentation}
-\mbox{\Hypertarget{pooling_8cpp_aa21f8d03cbd742381655387756f48014}\label{pooling_8cpp_aa21f8d03cbd742381655387756f48014}} 
+\mbox{\Hypertarget{pooling_8cpp_ac0df2d1634a495c54f29bddf621dac47}\label{pooling_8cpp_ac0df2d1634a495c54f29bddf621dac47}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+GN@{M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+GN}}
+\index{M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+GN@{M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+GN}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+G\+N()}{MLAS\_DECLSPEC\_ALIGN()}}
+{\footnotesize\ttfamily M\+L\+A\+S\+\_\+\+D\+E\+C\+L\+S\+P\+E\+C\+\_\+\+A\+L\+I\+GN (\begin{DoxyParamCaption}\item[{static const float}]{Mlas\+Initial\+Reduction\+Input\+Index\mbox{[}$\,$\mbox{]},  }\item[{sizeof(M\+L\+A\+S\+\_\+\+F\+L\+O\+A\+T32\+X4)}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{pooling_8cpp_aea2c098f8f1f7ca24f7dafcee4f31332}\label{pooling_8cpp_aea2c098f8f1f7ca24f7dafcee4f31332}} 
 \index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool@{Mlas\+Pool}}
 \index{Mlas\+Pool@{Mlas\+Pool}!pooling.\+cpp@{pooling.\+cpp}}
 \subsubsection{\texorpdfstring{Mlas\+Pool()}{MlasPool()}}
-{\footnotesize\ttfamily V\+O\+ID \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Pool (\begin{DoxyParamCaption}\item[{const M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Pool (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlas_8h_a308be0f1e44b0324610000287f348222}{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+I\+ND}}}]{Pooling\+Kind,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Dimensions,  }\item[{const int64\+\_\+t $\ast$}]{Input\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Kernel\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Padding,  }\item[{const int64\+\_\+t $\ast$}]{Stride\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Output\+Shape,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
 
-\mbox{\Hypertarget{pooling_8cpp_a94ed0c6f7719fdd25ed044130031aacd}\label{pooling_8cpp_a94ed0c6f7719fdd25ed044130031aacd}} 
-\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool\+Operation@{Mlas\+Pool\+Operation}}
-\index{Mlas\+Pool\+Operation@{Mlas\+Pool\+Operation}!pooling.\+cpp@{pooling.\+cpp}}
-\subsubsection{\texorpdfstring{Mlas\+Pool\+Operation()}{MlasPoolOperation()}}
-{\footnotesize\ttfamily V\+O\+ID Mlas\+Pool\+Operation (\begin{DoxyParamCaption}\item[{const M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Segment\+StartC,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Segment\+CountC }\end{DoxyParamCaption})}
+\mbox{\Hypertarget{pooling_8cpp_a2ced997ae6be6fd1a0e1a39305c4558c}\label{pooling_8cpp_a2ced997ae6be6fd1a0e1a39305c4558c}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool1\+D\+Kernel@{Mlas\+Pool1\+D\+Kernel}}
+\index{Mlas\+Pool1\+D\+Kernel@{Mlas\+Pool1\+D\+Kernel}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Pool1\+D\+Kernel()}{MlasPool1DKernel()}}
+{\footnotesize\ttfamily template$<$typename Pooling\+Type $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Pool1\+D\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$}]{Work\+Block,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Channel\+Count,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
 
-\mbox{\Hypertarget{pooling_8cpp_a179caab0213169a26968bc413f6a7c98}\label{pooling_8cpp_a179caab0213169a26968bc413f6a7c98}} 
-\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool\+Prepare@{Mlas\+Pool\+Prepare}}
-\index{Mlas\+Pool\+Prepare@{Mlas\+Pool\+Prepare}!pooling.\+cpp@{pooling.\+cpp}}
-\subsubsection{\texorpdfstring{Mlas\+Pool\+Prepare()}{MlasPoolPrepare()}}
-{\footnotesize\ttfamily bool \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Pool\+Prepare (\begin{DoxyParamCaption}\item[{M\+L\+A\+S\+\_\+\+P\+O\+O\+L\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS $\ast$}]{Parameters,  }\item[{int64\+\_\+t}]{Dimensions,  }\item[{const int64\+\_\+t $\ast$}]{Input\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Kernel\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Padding,  }\item[{const int64\+\_\+t $\ast$}]{Stride\+Shape }\end{DoxyParamCaption})}
+\mbox{\Hypertarget{pooling_8cpp_a1a9b0d34bf0126a76025e61666805a9e}\label{pooling_8cpp_a1a9b0d34bf0126a76025e61666805a9e}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool2\+D\+Kernel@{Mlas\+Pool2\+D\+Kernel}}
+\index{Mlas\+Pool2\+D\+Kernel@{Mlas\+Pool2\+D\+Kernel}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Pool2\+D\+Kernel()}{MlasPool2DKernel()}}
+{\footnotesize\ttfamily template$<$typename Pooling\+Type $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Pool2\+D\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$}]{Work\+Block,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Channel\+Count,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
 
-\mbox{\Hypertarget{pooling_8cpp_a3edec4257ab7c606da50cc6fdf2543a1}\label{pooling_8cpp_a3edec4257ab7c606da50cc6fdf2543a1}} 
-\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool\+Work\+Callback@{Mlas\+Pool\+Work\+Callback}}
-\index{Mlas\+Pool\+Work\+Callback@{Mlas\+Pool\+Work\+Callback}!pooling.\+cpp@{pooling.\+cpp}}
-\subsubsection{\texorpdfstring{Mlas\+Pool\+Work\+Callback()}{MlasPoolWorkCallback()}}
-{\footnotesize\ttfamily V\+O\+ID C\+A\+L\+L\+B\+A\+CK Mlas\+Pool\+Work\+Callback (\begin{DoxyParamCaption}\item[{P\+T\+P\+\_\+\+C\+A\+L\+L\+B\+A\+C\+K\+\_\+\+I\+N\+S\+T\+A\+N\+CE}]{Instance,  }\item[{P\+V\+O\+ID}]{Context,  }\item[{P\+T\+P\+\_\+\+W\+O\+RK}]{Work\+Object }\end{DoxyParamCaption})}
+\mbox{\Hypertarget{pooling_8cpp_a643f4d355079231beff99a1bfa6e853e}\label{pooling_8cpp_a643f4d355079231beff99a1bfa6e853e}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool2\+D\+Vector\+Kernel@{Mlas\+Pool2\+D\+Vector\+Kernel}}
+\index{Mlas\+Pool2\+D\+Vector\+Kernel@{Mlas\+Pool2\+D\+Vector\+Kernel}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Pool2\+D\+Vector\+Kernel()}{MlasPool2DVectorKernel()}}
+{\footnotesize\ttfamily template$<$typename Pooling\+Type $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Pool2\+D\+Vector\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$}]{Work\+Block,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Channel\+Count,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{pooling_8cpp_ab5a3c79312ad71443c47cd708f4a393e}\label{pooling_8cpp_ab5a3c79312ad71443c47cd708f4a393e}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool3\+D\+Kernel@{Mlas\+Pool3\+D\+Kernel}}
+\index{Mlas\+Pool3\+D\+Kernel@{Mlas\+Pool3\+D\+Kernel}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Pool3\+D\+Kernel()}{MlasPool3DKernel()}}
+{\footnotesize\ttfamily template$<$typename Pooling\+Type $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Pool3\+D\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$}]{Work\+Block,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Channel\+Count,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{pooling_8cpp_a3f61cf2a642b499de01040b70aae59b4}\label{pooling_8cpp_a3f61cf2a642b499de01040b70aae59b4}} 
+\index{pooling.\+cpp@{pooling.\+cpp}!Mlas\+Pool3\+D\+Vector\+Kernel@{Mlas\+Pool3\+D\+Vector\+Kernel}}
+\index{Mlas\+Pool3\+D\+Vector\+Kernel@{Mlas\+Pool3\+D\+Vector\+Kernel}!pooling.\+cpp@{pooling.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Pool3\+D\+Vector\+Kernel()}{MlasPool3DVectorKernel()}}
+{\footnotesize\ttfamily template$<$typename Pooling\+Type $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Pool3\+D\+Vector\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}} $\ast$}]{Work\+Block,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Channel\+Count,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
 

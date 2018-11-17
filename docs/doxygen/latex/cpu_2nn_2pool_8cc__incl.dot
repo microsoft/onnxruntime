@@ -91,8 +91,6 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/nn/pool.cc"
   Node34 -> Node21 [color="midnightblue",fontsize="10",style="solid"];
   Node34 -> Node35 [color="midnightblue",fontsize="10",style="solid"];
   Node35 [label="core/framework/tensor.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$tensor_8h.html"];
-  Node35 -> Node36 [color="midnightblue",fontsize="10",style="solid"];
-  Node36 [label="iostream",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node35 -> Node11 [color="midnightblue",fontsize="10",style="solid"];
   Node35 -> Node14 [color="midnightblue",fontsize="10",style="solid"];
   Node35 -> Node37 [color="midnightblue",fontsize="10",style="solid"];
@@ -107,17 +105,14 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/nn/pool.cc"
   Node38 -> Node17 [color="midnightblue",fontsize="10",style="solid"];
   Node38 -> Node21 [color="midnightblue",fontsize="10",style="solid"];
   Node35 -> Node48 [color="midnightblue",fontsize="10",style="solid"];
-  Node48 [label="core/framework/data\l_types.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$data__types_8h.html"];
+  Node48 [label="core/framework/data\l_types.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$data__types_8h.html"];
   Node48 -> Node11 [color="midnightblue",fontsize="10",style="solid"];
+  Node48 -> Node45 [color="midnightblue",fontsize="10",style="solid"];
+  Node45 [label="stdint.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node48 -> Node13 [color="midnightblue",fontsize="10",style="solid"];
   Node48 -> Node28 [color="midnightblue",fontsize="10",style="solid"];
   Node48 -> Node4 [color="midnightblue",fontsize="10",style="solid"];
   Node48 -> Node17 [color="midnightblue",fontsize="10",style="solid"];
-  Node35 -> Node49 [color="midnightblue",fontsize="10",style="solid"];
-  Node49 [label="core/framework/tensor\l_shape.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$tensor__shape_8h.html"];
-  Node49 -> Node14 [color="midnightblue",fontsize="10",style="solid"];
-  Node49 -> Node5 [color="midnightblue",fontsize="10",style="solid"];
-  Node49 -> Node11 [color="midnightblue",fontsize="10",style="solid"];
   Node24 -> Node52 [color="midnightblue",fontsize="10",style="solid"];
   Node52 [label="core/framework/kernel\l_def_builder.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__def__builder_8h.html"];
   Node52 -> Node7 [color="midnightblue",fontsize="10",style="solid"];
@@ -144,7 +139,7 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/nn/pool.cc"
   Node54 -> Node48 [color="midnightblue",fontsize="10",style="solid"];
   Node54 -> Node35 [color="midnightblue",fontsize="10",style="solid"];
   Node24 -> Node55 [color="midnightblue",fontsize="10",style="solid"];
-  Node55 [label="core/framework/op_kernel\l_info.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$op__kernel__info_8h.html"];
+  Node55 [label="core/framework/op_kernel\l_info.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$op__kernel__info_8h.html"];
   Node55 -> Node34 [color="midnightblue",fontsize="10",style="solid"];
   Node55 -> Node52 [color="midnightblue",fontsize="10",style="solid"];
   Node55 -> Node54 [color="midnightblue",fontsize="10",style="solid"];
@@ -156,8 +151,6 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/nn/pool.cc"
   Node56 -> Node37 [color="midnightblue",fontsize="10",style="solid"];
   Node55 -> Node57 [color="midnightblue",fontsize="10",style="solid"];
   Node55 -> Node37 [color="midnightblue",fontsize="10",style="solid"];
-  Node55 -> Node68 [color="midnightblue",fontsize="10",style="solid"];
-  Node68 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node24 -> Node56 [color="midnightblue",fontsize="10",style="solid"];
   Node24 -> Node35 [color="midnightblue",fontsize="10",style="solid"];
   Node24 -> Node62 [color="midnightblue",fontsize="10",style="solid"];
@@ -169,9 +162,14 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/nn/pool.cc"
   Node24 -> Node37 [color="midnightblue",fontsize="10",style="solid"];
   Node24 -> Node66 [color="midnightblue",fontsize="10",style="solid"];
   Node66 [label="onnx/defs/schema.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node2 -> Node70 [color="midnightblue",fontsize="10",style="solid"];
-  Node70 [label="core/providers/cpu\l/nn/autopad_type.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$autopad__type_8h.html"];
-  Node70 -> Node4 [color="midnightblue",fontsize="10",style="solid"];
-  Node70 -> Node17 [color="midnightblue",fontsize="10",style="solid"];
+  Node2 -> Node71 [color="midnightblue",fontsize="10",style="solid"];
+  Node71 [label="core/providers/cpu\l/nn/autopad_type.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$autopad__type_8h.html"];
+  Node71 -> Node4 [color="midnightblue",fontsize="10",style="solid"];
+  Node71 -> Node17 [color="midnightblue",fontsize="10",style="solid"];
+  Node2 -> Node72 [color="midnightblue",fontsize="10",style="solid"];
+  Node72 [label="core/mlas/inc/mlas.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mlas_8h.html"];
+  Node72 -> Node44 [color="midnightblue",fontsize="10",style="solid"];
+  Node44 [label="stdlib.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node72 -> Node45 [color="midnightblue",fontsize="10",style="solid"];
   Node0 -> Node3 [color="midnightblue",fontsize="10",style="solid"];
 }

@@ -107,7 +107,6 @@ $(function() {
 </li>
 <li>Segments
 : <a class="el" href="structMLAS__CONV__WORK__BLOCK.html#aa9128bb85eb4d3e54bea431ee67fb705">MLAS_CONV_WORK_BLOCK</a>
-, <a class="el" href="structMLAS__POOL__WORK__BLOCK.html#aca08f4df1e834264494cef662495ad51">MLAS_POOL_WORK_BLOCK</a>
 , <a class="el" href="structMLAS__SGEMM__WORK__BLOCK.html#a1fe99553413b4318ea08f8c73e437ae3">MLAS_SGEMM_WORK_BLOCK</a>
 </li>
 <li>Selu()
@@ -121,8 +120,13 @@ $(function() {
 : <a class="el" href="classLoggingWrapper.html#a3b2d19d153cf366c7db19986e81c7f60">LoggingWrapper</a>
 , <a class="el" href="classonnxruntime_1_1logging_1_1OStreamSink.html#a456a79a87ca486aa94bc50421a3da1af">onnxruntime::logging::OStreamSink</a>
 </li>
+<li>SendProfileEvent()
+: <a class="el" href="classonnxruntime_1_1logging_1_1ISink.html#ad46a3448fabc1672e5cb8427f16f1910">onnxruntime::logging::ISink</a>
+, <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html#a7057a0099074535ab5da7ca57b061a28">onnxruntime::logging::Logger</a>
+, <a class="el" href="classonnxruntime_1_1logging_1_1LoggingManager.html#ab2338a7f41955d374a1b969ac314f395">onnxruntime::logging::LoggingManager</a>
+</li>
 <li>SequentialExecutor()
-: <a class="el" href="classonnxruntime_1_1SequentialExecutor.html#ad78638739bd7ca7c8fedc469ef7529ce">onnxruntime::SequentialExecutor</a>
+: <a class="el" href="classonnxruntime_1_1SequentialExecutor.html#a6ecacd4234f20b3bf409a7d2a6129c8f">onnxruntime::SequentialExecutor</a>
 </li>
 <li>SequentialPlannerContext()
 : <a class="el" href="classonnxruntime_1_1SequentialPlannerContext.html#a280c67eac3da5eb6ef201103b11cc4db">onnxruntime::SequentialPlannerContext</a>
@@ -180,7 +184,7 @@ $(function() {
 : <a class="el" href="classonnxruntime_1_1Model.html#a5a2597f28c82e677099831245dfac50b">onnxruntime::Model</a>
 </li>
 <li>SetDomain()
-: <a class="el" href="classonnxruntime_1_1KernelDefBuilder.html#af21211cd18ea345bd116de8b22347676">onnxruntime::KernelDefBuilder</a>
+: <a class="el" href="classonnxruntime_1_1KernelDefBuilder.html#a57b4aa4ad328bbeb1b3a8d2e3a000c6d">onnxruntime::KernelDefBuilder</a>
 , <a class="el" href="classonnxruntime_1_1Model.html#a95c8874dfc54e6c808c2be66e19cefd2">onnxruntime::Model</a>
 </li>
 <li>SetEnableMemoryPattern()
@@ -204,6 +208,9 @@ $(function() {
 <li>SetGraphViewer()
 : <a class="el" href="classonnxruntime_1_1SessionState.html#a82b05bf5a5bfff13a32242a3f70eed67">onnxruntime::SessionState</a>
 </li>
+<li>SetInputOrder()
+: <a class="el" href="classonnxruntime_1_1Graph.html#a9a56cb55cbbe5f19276cbc1ca26ec81d">onnxruntime::Graph</a>
+</li>
 <li>SetLogger()
 : <a class="el" href="classonnxruntime_1_1SessionState.html#ac285bca58766bb80fa922aaeba828621">onnxruntime::SessionState</a>
 </li>
@@ -222,7 +229,10 @@ $(function() {
 </li>
 <li>SetName()
 : <a class="el" href="classonnxruntime_1_1Graph.html#aefeff3396d82aee4254a1ed21dc6469a">onnxruntime::Graph</a>
-, <a class="el" href="classonnxruntime_1_1KernelDefBuilder.html#a48ebec00826acee0353169ba1a31be91">onnxruntime::KernelDefBuilder</a>
+, <a class="el" href="classonnxruntime_1_1KernelDefBuilder.html#ac4a02dfb347cfbb63a8e38f3f89d87ec">onnxruntime::KernelDefBuilder</a>
+</li>
+<li>SetOutputOrder()
+: <a class="el" href="classonnxruntime_1_1Graph.html#a43c500bf62610e0ac533f86410e0f7d2">onnxruntime::Graph</a>
 </li>
 <li>SetOutputSize()
 : <a class="el" href="classonnxruntime_1_1PoolBase.html#aa29f1684c5e53beece327006e1e8f9e7">onnxruntime::PoolBase</a>
@@ -400,16 +410,17 @@ $(function() {
 <li>StartBroadcasting()
 : <a class="el" href="structonnxruntime_1_1BroadcastIterator.html#a8b43e1eab529f0133283c97a12ba8d5e">onnxruntime::BroadcastIterator</a>
 </li>
-<li>StartC
-: <a class="el" href="structMLAS__POOL__WORK__BLOCK_1_1SEGMENT.html#ab71d5a617f526468815b94fcbdb95877">MLAS_POOL_WORK_BLOCK::SEGMENT</a>
-</li>
 <li>StartN
 : <a class="el" href="structMLAS__CONV__WORK__BLOCK_1_1SEGMENT.html#a5352ff6569e8ee130214a700900ebc8d">MLAS_CONV_WORK_BLOCK::SEGMENT</a>
 </li>
+<li>StartNextOutputRow()
+: <a class="el" href="structMLAS__AVERAGE__POOLING_1_1DividerVectorContext.html#adac379ef6ecf2a0b3b7f5e9e093de639">MLAS_AVERAGE_POOLING::DividerVectorContext</a>
+, <a class="el" href="structMLAS__MAXIMUM__POOLING_1_1DividerVectorContext.html#ac9816bc12207611e2558121602027305">MLAS_MAXIMUM_POOLING::DividerVectorContext</a>
+</li>
 <li>StartProfiling()
 : <a class="el" href="classonnxruntime_1_1InferenceSession_1_1Impl.html#aa6eca602c08e2c3c76aa6fadd05b9e22">onnxruntime::InferenceSession::Impl</a>
-, <a class="el" href="classonnxruntime_1_1InferenceSession.html#ab29bd2f63b9f4d5840e846f8bf705e8a">onnxruntime::InferenceSession</a>
-, <a class="el" href="classonnxruntime_1_1profiling_1_1Profiler.html#a3629a36c6c2d6ae848f7683999f64f35">onnxruntime::profiling::Profiler</a>
+, <a class="el" href="classonnxruntime_1_1InferenceSession.html#a7d688c79939567a953aa7f1b3559c7b7">onnxruntime::InferenceSession</a>
+, <a class="el" href="classonnxruntime_1_1profiling_1_1Profiler.html#ad4289ee2fe6bc266a8ce5322f03ec2e2">onnxruntime::profiling::Profiler</a>
 </li>
 <li>starts_
 : <a class="el" href="classonnxruntime_1_1SliceBase.html#a7ee90fe3930425804793ea0f8298ee9c">onnxruntime::SliceBase</a>
@@ -424,7 +435,7 @@ $(function() {
 : <a class="el" href="classonnxruntime_1_1GemmHelper.html#a08b89ea29f2cc3e3e1eea15c5f14df1c">onnxruntime::GemmHelper</a>
 </li>
 <li>Status()
-: <a class="el" href="classonnxruntime_1_1common_1_1Status.html#a148a8ac761ac3c6c928043369f3296a7">onnxruntime::common::Status</a>
+: <a class="el" href="classonnxruntime_1_1common_1_1Status.html#aecf53098eda21808805fadf3b799aeac">onnxruntime::common::Status</a>
 </li>
 <li>status
 : <a class="el" href="structonnxruntime_1_1IndexedSubGraph_1_1MetaDef.html#a026af043d1fa30e73e200a9823418633">onnxruntime::IndexedSubGraph::MetaDef</a>
@@ -457,6 +468,7 @@ $(function() {
 </li>
 <li>StrideShape
 : <a class="el" href="structMLAS__CONV__PARAMETERS.html#a6b1d10719df51ec69f313a8505e8f861">MLAS_CONV_PARAMETERS</a>
+, <a class="el" href="structMLAS__WORK__BLOCK.html#adc2851f7310ef1b5c1c387cd9604405e">MLAS_WORK_BLOCK</a>
 </li>
 <li>StringToUpsampleMode()
 : <a class="el" href="classonnxruntime_1_1UpsampleBase.html#a75a5c95280ba6b81fbde77febba4f526">onnxruntime::UpsampleBase</a>

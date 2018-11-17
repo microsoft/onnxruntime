@@ -98,6 +98,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a9029481638625330691349c45085bf2b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3aa5d44bfb4df7f535a4cf4478a00248"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1logging_1_1LoggingManager.html#a3aa5d44bfb4df7f535a4cf4478a00248">Log</a> (const std::string &amp;logger_id, const <a class="el" href="classonnxruntime_1_1logging_1_1Capture.html">Capture</a> &amp;message) const</td></tr>
 <tr class="separator:a3aa5d44bfb4df7f535a4cf4478a00248"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab2338a7f41955d374a1b969ac314f395"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1logging_1_1LoggingManager.html#ab2338a7f41955d374a1b969ac314f395">SendProfileEvent</a> (<a class="el" href="structonnxruntime_1_1profiling_1_1EventRecord.html">profiling::EventRecord</a> &amp;eventRecord) const</td></tr>
+<tr class="separator:ab2338a7f41955d374a1b969ac314f395"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af991a7ada953f9be436bc2089503e90a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1logging_1_1LoggingManager.html#af991a7ada953f9be436bc2089503e90a">~LoggingManager</a> ()</td></tr>
 <tr class="separator:af991a7ada953f9be436bc2089503e90a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -405,6 +407,30 @@ Static Public Member Functions</h2></td></tr>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>A new <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">Logger</a> instance that the caller owns. </dd></dl>
+
+</div>
+</div>
+<a id="ab2338a7f41955d374a1b969ac314f395"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab2338a7f41955d374a1b969ac314f395">&#9670;&nbsp;</a></span>SendProfileEvent()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> onnxruntime::logging::LoggingManager::SendProfileEvent </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structonnxruntime_1_1profiling_1_1EventRecord.html">profiling::EventRecord</a> &amp;&#160;</td>
+          <td class="paramname"><em>eventRecord</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<p>Sends a Profiling Event Record to the sink. </p><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">Profiling</td><td>Event Record </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>

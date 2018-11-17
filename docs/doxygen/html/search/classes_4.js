@@ -1,6 +1,7 @@
 var searchData=
 [
   ['edgeend',['EdgeEnd',['../classonnxruntime_1_1Node_1_1EdgeEnd.html',1,'onnxruntime::Node']]],
+  ['edgeendcompare',['EdgeEndCompare',['../structonnxruntime_1_1Node_1_1EdgeEndCompare.html',1,'onnxruntime::Node']]],
   ['eliminateidentity',['EliminateIdentity',['../classonnxruntime_1_1EliminateIdentity.html',1,'onnxruntime']]],
   ['elu',['Elu',['../classonnxruntime_1_1cuda_1_1Elu.html',1,'onnxruntime::cuda::Elu&lt; T &gt;'],['../classonnxruntime_1_1Elu.html',1,'onnxruntime::Elu&lt; T &gt;']]],
   ['entry',['Entry',['../structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry.html',1,'onnxruntime::rnn::detail::ActivationFuncs']]],

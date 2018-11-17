@@ -85,7 +85,7 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Node_1_1EdgeEnd.html">EdgeEnd</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structonnxruntime_1_1Node_1_1IndexCompare.html">IndexCompare</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structonnxruntime_1_1Node_1_1EdgeEndCompare.html">EdgeEndCompare</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Node_1_1NodeConstIterator.html">NodeConstIterator</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -98,8 +98,8 @@ Public Types</h2></td></tr>
 <a class="el" href="classonnxruntime_1_1Node.html#a2d9625711aecc66f9b9373d61f794f6aaf617f46b788e11a564cb16c9f5d59fea">Type::Fused</a> = 1
  }</td></tr>
 <tr class="separator:a2d9625711aecc66f9b9373d61f794f6a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a21f67a4ba50eb4c6dea0c37982b48da8"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Node.html#a21f67a4ba50eb4c6dea0c37982b48da8">EdgeSet</a> = std::set&lt; <a class="el" href="classonnxruntime_1_1Node_1_1EdgeEnd.html">EdgeEnd</a> *, <a class="el" href="structonnxruntime_1_1Node_1_1IndexCompare.html">IndexCompare</a> &gt;</td></tr>
-<tr class="separator:a21f67a4ba50eb4c6dea0c37982b48da8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a96c203b69f604fcbe80532f9d939dcc6"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Node.html#a96c203b69f604fcbe80532f9d939dcc6">EdgeSet</a> = std::set&lt; <a class="el" href="classonnxruntime_1_1Node_1_1EdgeEnd.html">EdgeEnd</a>, <a class="el" href="structonnxruntime_1_1Node_1_1EdgeEndCompare.html">EdgeEndCompare</a> &gt;</td></tr>
+<tr class="separator:a96c203b69f604fcbe80532f9d939dcc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae0df52e26b0237505b6a0cbc25106d9d"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Node.html#ae0df52e26b0237505b6a0cbc25106d9d">EdgeConstIterator</a> = EdgeSet::const_iterator</td></tr>
 <tr class="separator:ae0df52e26b0237505b6a0cbc25106d9d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -199,14 +199,14 @@ Friends</h2></td></tr>
 
 </div>
 </div>
-<a id="a21f67a4ba50eb4c6dea0c37982b48da8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a21f67a4ba50eb4c6dea0c37982b48da8">&#9670;&nbsp;</a></span>EdgeSet</h2>
+<a id="a96c203b69f604fcbe80532f9d939dcc6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a96c203b69f604fcbe80532f9d939dcc6">&#9670;&nbsp;</a></span>EdgeSet</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">using <a class="el" href="classonnxruntime_1_1Node.html#a21f67a4ba50eb4c6dea0c37982b48da8">onnxruntime::Node::EdgeSet</a> =  std::set&lt;<a class="el" href="classonnxruntime_1_1Node_1_1EdgeEnd.html">EdgeEnd</a>*, <a class="el" href="structonnxruntime_1_1Node_1_1IndexCompare.html">IndexCompare</a>&gt;</td>
+          <td class="memname">using <a class="el" href="classonnxruntime_1_1Node.html#a96c203b69f604fcbe80532f9d939dcc6">onnxruntime::Node::EdgeSet</a> =  std::set&lt;<a class="el" href="classonnxruntime_1_1Node_1_1EdgeEnd.html">EdgeEnd</a>, <a class="el" href="structonnxruntime_1_1Node_1_1EdgeEndCompare.html">EdgeEndCompare</a>&gt;</td>
         </tr>
       </table>
 </div><div class="memdoc">

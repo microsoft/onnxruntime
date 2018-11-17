@@ -13,5 +13,5 @@ digraph "onnxruntime/onnxruntime/core/mlas/lib" {
   }
   }
   dir_bed18798a5b0341d926decf41624b10f [shape=box label="inc" URL="dir_bed18798a5b0341d926decf41624b10f.html"];
-  dir_484f0a02b39637dc17590a50246ccad2->dir_bed18798a5b0341d926decf41624b10f [headlabel="1", labeldistance=1.5 headhref="dir_000033_000032.html"];
+  dir_484f0a02b39637dc17590a50246ccad2->dir_bed18798a5b0341d926decf41624b10f [headlabel="1", labeldistance=1.5 headhref="dir_000037_000036.html"];
 }

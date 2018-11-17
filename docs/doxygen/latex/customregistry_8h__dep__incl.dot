@@ -2,16 +2,16 @@ digraph "onnxruntime/include/onnxruntime/core/framework/customregistry.h"
 {
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
-  Node70 [label="onnxruntime/include\l/onnxruntime/core/framework\l/customregistry.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
-  Node70 -> Node71 [dir="back",color="midnightblue",fontsize="10",style="solid"];
-  Node71 [label="onnxruntime/onnxruntime\l/core/framework/customregistry.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$customregistry_8cc.html"];
-  Node70 -> Node72 [dir="back",color="midnightblue",fontsize="10",style="solid"];
-  Node72 [label="onnxruntime/onnxruntime\l/core/framework/kernel\l_registry_manager.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry__manager_8cc.html"];
-  Node70 -> Node73 [dir="back",color="midnightblue",fontsize="10",style="solid"];
-  Node73 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8h.html"];
-  Node73 -> Node74 [dir="back",color="midnightblue",fontsize="10",style="solid"];
-  Node74 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8cc.html"];
-  Node73 -> Node75 [dir="back",color="midnightblue",fontsize="10",style="solid"];
-  Node75 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
-  Node70 -> Node75 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node71 [label="onnxruntime/include\l/onnxruntime/core/framework\l/customregistry.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node71 -> Node72 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node72 [label="onnxruntime/onnxruntime\l/core/framework/customregistry.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$customregistry_8cc.html"];
+  Node71 -> Node73 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node73 [label="onnxruntime/onnxruntime\l/core/framework/kernel\l_registry_manager.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry__manager_8cc.html"];
+  Node71 -> Node74 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node74 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8h.html"];
+  Node74 -> Node75 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node75 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8cc.html"];
+  Node74 -> Node76 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node76 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+  Node71 -> Node76 [dir="back",color="midnightblue",fontsize="10",style="solid"];
 }

@@ -27,6 +27,8 @@ std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a3aa5d44bfb4df7f535a4cf4478a00248}{Log}} (const std\+::string \&logger\+\_\+id, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message) const
 \item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_ab2338a7f41955d374a1b969ac314f395}{Send\+Profile\+Event}} (\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord}{profiling\+::\+Event\+Record}} \&event\+Record) const
+\item 
 \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af991a7ada953f9be436bc2089503e90a}{$\sim$\+Logging\+Manager}} ()
 \end{DoxyCompactItemize}
 \subsection*{Static Public Member Functions}
@@ -172,6 +174,17 @@ Logs a F\+A\+T\+AL level message and creates an exception that can be thrown wit
 \begin{DoxyReturn}{Returns}
 A new \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance that the caller owns. 
 \end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_ab2338a7f41955d374a1b969ac314f395}\label{classonnxruntime_1_1logging_1_1LoggingManager_ab2338a7f41955d374a1b969ac314f395}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Send\+Profile\+Event@{Send\+Profile\+Event}}
+\index{Send\+Profile\+Event@{Send\+Profile\+Event}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Send\+Profile\+Event()}{SendProfileEvent()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Send\+Profile\+Event (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord}{profiling\+::\+Event\+Record}} \&}]{event\+Record }\end{DoxyParamCaption}) const}
+
+Sends a Profiling Event Record to the sink. 
+\begin{DoxyParams}{Parameters}
+{\em Profiling} & Event Record \\
+\hline
+\end{DoxyParams}
 
 
 The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}

@@ -100,11 +100,13 @@ digraph "onnxruntime/onnxruntime/core/graph/conv_bn_fusion.h"
   Node33 [label="onnx/onnx_pb.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node23 -> Node31 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node23 -> Node34 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node34 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node34 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node23 -> Node35 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node35 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node1 -> Node36 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node36 [label="core/graph/rewrite\l_rule.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$rewrite__rule_8h.html"];
-  Node36 -> Node2 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node36 -> Node22 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node35 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node23 -> Node36 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node36 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node1 -> Node37 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node37 [label="core/graph/rewrite\l_rule.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$rewrite__rule_8h.html"];
+  Node37 -> Node2 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node37 -> Node22 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

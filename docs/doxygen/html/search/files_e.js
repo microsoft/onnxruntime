@@ -12,5 +12,5 @@ var searchData=
   ['pooling_2ecpp',['pooling.cpp',['../pooling_8cpp.html',1,'']]],
   ['profiler_2ecc',['profiler.cc',['../profiler_8cc.html',1,'']]],
   ['profiler_2eh',['profiler.h',['../profiler_8h.html',1,'']]],
-  ['program_2ecs',['Program.cs',['../Program_8cs.html',1,'']]]
+  ['program_2ecs',['Program.cs',['../CSharpUsage_2Program_8cs.html',1,'(Global Namespace)'],['../sample_2Microsoft_8ML_8OnnxRuntime_8InferenceSample_2Program_8cs.html',1,'(Global Namespace)']]]
 ];

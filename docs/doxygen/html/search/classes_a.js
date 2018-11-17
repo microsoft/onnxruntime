@@ -11,6 +11,8 @@ var searchData=
   ['loggingmanager',['LoggingManager',['../classonnxruntime_1_1logging_1_1LoggingManager.html',1,'onnxruntime::logging']]],
   ['loggingwrapper',['LoggingWrapper',['../classLoggingWrapper.html',1,'']]],
   ['logsoftmax',['LogSoftmax',['../classonnxruntime_1_1LogSoftmax.html',1,'onnxruntime']]],
+  ['loop',['Loop',['../classonnxruntime_1_1Loop.html',1,'onnxruntime']]],
+  ['loopimpl',['LoopImpl',['../classonnxruntime_1_1LoopImpl.html',1,'onnxruntime']]],
   ['loopstatevariable',['LoopStateVariable',['../classonnxruntime_1_1LoopStateVariable.html',1,'onnxruntime']]],
   ['lpnorm',['LpNorm',['../classonnxruntime_1_1LpNorm.html',1,'onnxruntime']]],
   ['lppool',['LpPool',['../classonnxruntime_1_1LpPool.html',1,'onnxruntime']]],

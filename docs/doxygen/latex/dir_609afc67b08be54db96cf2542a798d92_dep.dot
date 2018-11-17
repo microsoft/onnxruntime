@@ -8,6 +8,6 @@ digraph "onnxruntime/onnxruntime/core/providers/cuda/math" {
   }
   dir_85057dc90962d9550271a840d611b40a [shape=box label="shared_inc" URL="dir_85057dc90962d9550271a840d611b40a.html"];
   dir_3683cb2698e6daed4ebbd4c1d451f237 [shape=box label="cpu" fillcolor="white" style="filled" color="red" URL="dir_3683cb2698e6daed4ebbd4c1d451f237.html"];
-  dir_609afc67b08be54db96cf2542a798d92->dir_85057dc90962d9550271a840d611b40a [headlabel="4", labeldistance=1.5 headhref="dir_000047_000059.html"];
-  dir_609afc67b08be54db96cf2542a798d92->dir_3683cb2698e6daed4ebbd4c1d451f237 [headlabel="3", labeldistance=1.5 headhref="dir_000047_000028.html"];
+  dir_609afc67b08be54db96cf2542a798d92->dir_85057dc90962d9550271a840d611b40a [headlabel="4", labeldistance=1.5 headhref="dir_000051_000063.html"];
+  dir_609afc67b08be54db96cf2542a798d92->dir_3683cb2698e6daed4ebbd4c1d451f237 [headlabel="3", labeldistance=1.5 headhref="dir_000051_000033.html"];
 }

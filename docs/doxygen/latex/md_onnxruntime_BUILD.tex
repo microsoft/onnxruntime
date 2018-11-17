@@ -70,7 +70,6 @@ To run onnx model tests on Linux,
 
 \begin{DoxyEnumerate}
 \item Install docker
-\item (optional) Run \char`\"{}export A\+Z\+U\+R\+E\textbackslash{}\+\_\+\+B\+L\+O\+B\textbackslash{}\+\_\+\+K\+E\+Y=$<$secret\+\_\+value$>$\char`\"{}. You can get the key by executing \char`\"{}az storage keys list -\/-\/account-\/name lotus\char`\"{} if you have Azure C\+LI 2.\+0 installed or just ask for that.
 \item Run tools/ci\+\_\+build/github/linux/run\+\_\+build.\+sh.
 \end{DoxyEnumerate}
 
@@ -196,12 +195,6 @@ docker build -t cuda\_dev -f Dockerfile.ubuntu\_gpu .
 
 Then run it 
 \begin{DoxyCode}
-cd ~/src
-git clone https://github.com/Microsoft/onnxruntime
-docker run --runtime=nvidia -v ~/src/ONNX Runtime:/data/lotus --rm -it cuda\_dev /bin/bash
-mkdir build
-cmake -G Ninja -DCMAKE\_BUILD\_TYPE=Debug /data/lotus/cmake -Donnxruntime\_ENABLE\_PYTHON=ON
-       -DPYTHON\_EXECUTABLE=/usr/bin/python3 -Donnxruntime\_USE\_CUDA=ON -Donnxruntime\_CUDNN\_HOME=/usr/local/cudnn-7.0/cuda
-ninja
+./tools/ci\_build/github/linux/run\_build.sh
 \end{DoxyCode}
  

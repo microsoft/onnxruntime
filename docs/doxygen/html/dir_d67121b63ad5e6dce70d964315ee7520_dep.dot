@@ -7,5 +7,5 @@ digraph "onnxruntime/onnxruntime/core/providers/cuda/activation" {
   dir_d67121b63ad5e6dce70d964315ee7520 [shape=box, label="activation", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_d67121b63ad5e6dce70d964315ee7520.html"];
   }
   dir_609afc67b08be54db96cf2542a798d92 [shape=box label="math" URL="dir_609afc67b08be54db96cf2542a798d92.html"];
-  dir_d67121b63ad5e6dce70d964315ee7520->dir_609afc67b08be54db96cf2542a798d92 [headlabel="2", labeldistance=1.5 headhref="dir_000043_000047.html"];
+  dir_d67121b63ad5e6dce70d964315ee7520->dir_609afc67b08be54db96cf2542a798d92 [headlabel="2", labeldistance=1.5 headhref="dir_000047_000051.html"];
 }

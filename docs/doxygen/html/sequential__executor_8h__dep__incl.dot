@@ -2,13 +2,15 @@ digraph "onnxruntime/onnxruntime/core/framework/sequential_executor.h"
 {
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
-  Node77 [label="onnxruntime/onnxruntime\l/core/framework/sequential\l_executor.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
-  Node77 -> Node78 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node78 [label="onnxruntime/onnxruntime\l/core/framework/sequential\l_executor.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$sequential__executor_8cc.html"];
-  Node77 -> Node79 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node79 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow/if.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$if_8cc.html"];
-  Node77 -> Node80 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node80 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/scan.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$scan_8cc.html"];
-  Node77 -> Node81 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node81 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+  Node78 [label="onnxruntime/onnxruntime\l/core/framework/sequential\l_executor.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node78 -> Node79 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node79 [label="onnxruntime/onnxruntime\l/core/framework/sequential\l_executor.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$sequential__executor_8cc.html"];
+  Node78 -> Node80 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node80 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow/if.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$if_8cc.html"];
+  Node78 -> Node81 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node81 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/loop.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$loop_8cc.html"];
+  Node78 -> Node82 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node82 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/scan.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$scan_8cc.html"];
+  Node78 -> Node83 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node83 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
 }

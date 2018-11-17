@@ -11,4 +11,8 @@ digraph "onnxruntime/onnxruntime/core/mlas/lib/mlasi.h"
   Node3 [label="stdint.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node0 -> Node4 [color="midnightblue",fontsize="10",style="solid"];
   Node4 [label="memory.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node0 -> Node5 [color="midnightblue",fontsize="10",style="solid"];
+  Node5 [label="algorithm",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node0 -> Node6 [color="midnightblue",fontsize="10",style="solid"];
+  Node6 [label="limits",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
 }

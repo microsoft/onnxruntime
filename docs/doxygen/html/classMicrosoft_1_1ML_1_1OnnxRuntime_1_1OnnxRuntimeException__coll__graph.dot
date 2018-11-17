@@ -5,4 +5,5 @@ digraph "Microsoft.ML.OnnxRuntime.OnnxRuntimeException"
   Node3 [label="Microsoft.ML.OnnxRuntime.\lOnnxRuntimeException",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
   Node4 -> Node3 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node4 [label="Exception",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node4 -> Node3 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

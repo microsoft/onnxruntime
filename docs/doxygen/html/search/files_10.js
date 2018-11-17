@@ -16,7 +16,7 @@ var searchData=
   ['session_5fstate_2eh',['session_state.h',['../session__state_8h.html',1,'']]],
   ['session_5fstate_5finitializer_2ecc',['session_state_initializer.cc',['../session__state__initializer_8cc.html',1,'']]],
   ['session_5fstate_5finitializer_2eh',['session_state_initializer.h',['../session__state__initializer_8h.html',1,'']]],
-  ['sessionoptions_2ecs',['SessionOptions.cs',['../SessionOptions_8cs.html',1,'']]],
+  ['sessionoptions_2ecs',['SessionOptions.cs',['../OnnxRuntime_2SessionOptions_8cs.html',1,'(Global Namespace)'],['../src_2Microsoft_8ML_8OnnxRuntime_2SessionOptions_8cs.html',1,'(Global Namespace)']]],
   ['severity_2eh',['severity.h',['../severity_8h.html',1,'']]],
   ['sgemm_2ecpp',['sgemm.cpp',['../sgemm_8cpp.html',1,'']]],
   ['sgemmc_2ecpp',['sgemmc.cpp',['../sgemmc_8cpp.html',1,'']]],

@@ -11,5 +11,6 @@ var searchData=
   ['deviceallocatorregistry',['DeviceAllocatorRegistry',['../classonnxruntime_1_1DeviceAllocatorRegistry.html',1,'onnxruntime']]],
   ['dictvectorizerop',['DictVectorizerOp',['../classonnxruntime_1_1ml_1_1DictVectorizerOp.html',1,'onnxruntime::ml']]],
   ['div',['Div',['../classonnxruntime_1_1Div.html',1,'onnxruntime::Div&lt; T &gt;'],['../classonnxruntime_1_1cuda_1_1Div.html',1,'onnxruntime::cuda::Div&lt; T &gt;']]],
+  ['dividervectorcontext',['DividerVectorContext',['../structMLAS__AVERAGE__POOLING_1_1DividerVectorContext.html',1,'MLAS_AVERAGE_POOLING::DividerVectorContext'],['../structMLAS__MAXIMUM__POOLING_1_1DividerVectorContext.html',1,'MLAS_MAXIMUM_POOLING::DividerVectorContext']]],
   ['dummyarena',['DummyArena',['../classonnxruntime_1_1DummyArena.html',1,'onnxruntime']]]
 ];

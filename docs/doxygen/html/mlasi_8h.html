@@ -77,6 +77,8 @@ $(function() {
 <div class="contents">
 <div class="textblock"><code>#include &lt;<a class="el" href="mlas_8h_source.html">mlas.h</a>&gt;</code><br />
 <code>#include &lt;memory.h&gt;</code><br />
+<code>#include &lt;algorithm&gt;</code><br />
+<code>#include &lt;limits&gt;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for mlasi.h:</div>
 <div class="dyncontent">
@@ -159,14 +161,25 @@ Functions</h2></td></tr>
 <tr class="separator:a0be42565df3ca21b4abbeaa82b240ae1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acb5add742d1de98162d391a59a564bc6"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#acb5add742d1de98162d391a59a564bc6">MlasStoreAlignedFloat32x4</a> (float *Buffer, MLAS_FLOAT32X4 Vector)</td></tr>
 <tr class="separator:acb5add742d1de98162d391a59a564bc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5b39795daf29fb1ac8f707cd5f3ea3dc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#a5b39795daf29fb1ac8f707cd5f3ea3dc">MlasStoreFloat32</a> (float *Buffer, MLAS_FLOAT32X4 Vector)</td></tr>
-<tr class="separator:a5b39795daf29fb1ac8f707cd5f3ea3dc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5cb2ab6c77ce8bb4e7028df8d5ac9ff5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#a5cb2ab6c77ce8bb4e7028df8d5ac9ff5">MlasStoreLowHalfFloat32x4</a> (float *Buffer, MLAS_FLOAT32X4 Vector)</td></tr>
+<tr class="separator:a5cb2ab6c77ce8bb4e7028df8d5ac9ff5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1d2c1cdb02a40be7f87fc6211e1bdb78"><td class="memTemplParams" colspan="2">template&lt;unsigned Lane&gt; </td></tr>
+<tr class="memitem:a1d2c1cdb02a40be7f87fc6211e1bdb78"><td class="memTemplItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#a1d2c1cdb02a40be7f87fc6211e1bdb78">MlasStoreLaneFloat32x4</a> (float *Buffer, MLAS_FLOAT32X4 Vector)</td></tr>
+<tr class="separator:a1d2c1cdb02a40be7f87fc6211e1bdb78"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6b150f8eb27a909c35fc2f9fd0b4227c"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#a6b150f8eb27a909c35fc2f9fd0b4227c">MlasBroadcastFloat32x4</a> (float Value)</td></tr>
 <tr class="separator:a6b150f8eb27a909c35fc2f9fd0b4227c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af86ac192fd0ed4bc707840fedd1afdc8"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#af86ac192fd0ed4bc707840fedd1afdc8">MlasAddFloat32x4</a> (MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)</td></tr>
 <tr class="separator:af86ac192fd0ed4bc707840fedd1afdc8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9405e6155ce07f8c76910dfdf305f2df"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#a9405e6155ce07f8c76910dfdf305f2df">MlasSubtractFloat32x4</a> (MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)</td></tr>
+<tr class="separator:a9405e6155ce07f8c76910dfdf305f2df"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ade24efb509bdd96d158b8b81472d5cab"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#ade24efb509bdd96d158b8b81472d5cab">MlasMultiplyFloat32x4</a> (MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)</td></tr>
 <tr class="separator:ade24efb509bdd96d158b8b81472d5cab"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae410645d72d6734573a2792d2339c536"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#ae410645d72d6734573a2792d2339c536">MlasDivideFloat32x4</a> (MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)</td></tr>
+<tr class="separator:ae410645d72d6734573a2792d2339c536"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab818372f43bc888418dca3815f7d77de"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#ab818372f43bc888418dca3815f7d77de">MlasMaximumFloat32x4</a> (MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)</td></tr>
+<tr class="separator:ab818372f43bc888418dca3815f7d77de"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ace8e5c15326d49825a0d4c701f6e060d"><td class="memItemLeft" align="right" valign="top">MLAS_FLOAT32X4&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#ace8e5c15326d49825a0d4c701f6e060d">MlasMinimumFloat32x4</a> (MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)</td></tr>
+<tr class="separator:ace8e5c15326d49825a0d4c701f6e060d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a17f19b7d1992542006c36838cbdde797"><td class="memItemLeft" align="right" valign="top">uint64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlasi_8h.html#a17f19b7d1992542006c36838cbdde797">MlasReadTimeStampCounter</a> (<a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>)</td></tr>
 <tr class="separator:a17f19b7d1992542006c36838cbdde797"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -542,6 +555,42 @@ Variables</h2></td></tr>
 
 </div>
 </div>
+<a id="ae410645d72d6734573a2792d2339c536"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae410645d72d6734573a2792d2339c536">&#9670;&nbsp;</a></span>MlasDivideFloat32x4()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">MLAS_FLOAT32X4 MlasDivideFloat32x4 </td>
+          <td>(</td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector2</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a4d54425857dc1310d550c17a70a9c677"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a4d54425857dc1310d550c17a70a9c677">&#9670;&nbsp;</a></span>MlasLoadFloat32x4()</h2>
 
@@ -557,6 +606,78 @@ Variables</h2></td></tr>
           <td class="paramtype">const float *&#160;</td>
           <td class="paramname"><em>Buffer</em></td><td>)</td>
           <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ab818372f43bc888418dca3815f7d77de"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab818372f43bc888418dca3815f7d77de">&#9670;&nbsp;</a></span>MlasMaximumFloat32x4()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">MLAS_FLOAT32X4 MlasMaximumFloat32x4 </td>
+          <td>(</td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector2</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ace8e5c15326d49825a0d4c701f6e060d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ace8e5c15326d49825a0d4c701f6e060d">&#9670;&nbsp;</a></span>MlasMinimumFloat32x4()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">MLAS_FLOAT32X4 MlasMinimumFloat32x4 </td>
+          <td>(</td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector2</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
   </td>
@@ -760,8 +881,8 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="a5b39795daf29fb1ac8f707cd5f3ea3dc"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5b39795daf29fb1ac8f707cd5f3ea3dc">&#9670;&nbsp;</a></span>MlasStoreFloat32()</h2>
+<a id="a0be42565df3ca21b4abbeaa82b240ae1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0be42565df3ca21b4abbeaa82b240ae1">&#9670;&nbsp;</a></span>MlasStoreFloat32x4()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -770,7 +891,7 @@ Variables</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasStoreFloat32 </td>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasStoreFloat32x4 </td>
           <td>(</td>
           <td class="paramtype">float *&#160;</td>
           <td class="paramname"><em>Buffer</em>, </td>
@@ -796,17 +917,19 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="a0be42565df3ca21b4abbeaa82b240ae1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0be42565df3ca21b4abbeaa82b240ae1">&#9670;&nbsp;</a></span>MlasStoreFloat32x4()</h2>
+<a id="a1d2c1cdb02a40be7f87fc6211e1bdb78"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1d2c1cdb02a40be7f87fc6211e1bdb78">&#9670;&nbsp;</a></span>MlasStoreLaneFloat32x4()</h2>
 
 <div class="memitem">
 <div class="memproto">
+<div class="memtemplate">
+template&lt;unsigned Lane&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasStoreFloat32x4 </td>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasStoreLaneFloat32x4 </td>
           <td>(</td>
           <td class="paramtype">float *&#160;</td>
           <td class="paramname"><em>Buffer</em>, </td>
@@ -816,6 +939,78 @@ Variables</h2></td></tr>
           <td></td>
           <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
           <td class="paramname"><em>Vector</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a5cb2ab6c77ce8bb4e7028df8d5ac9ff5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5cb2ab6c77ce8bb4e7028df8d5ac9ff5">&#9670;&nbsp;</a></span>MlasStoreLowHalfFloat32x4()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> MlasStoreLowHalfFloat32x4 </td>
+          <td>(</td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Buffer</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a9405e6155ce07f8c76910dfdf305f2df"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9405e6155ce07f8c76910dfdf305f2df">&#9670;&nbsp;</a></span>MlasSubtractFloat32x4()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">MLAS_FLOAT32X4 MlasSubtractFloat32x4 </td>
+          <td>(</td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector1</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">MLAS_FLOAT32X4&#160;</td>
+          <td class="paramname"><em>Vector2</em>&#160;</td>
         </tr>
         <tr>
           <td></td>

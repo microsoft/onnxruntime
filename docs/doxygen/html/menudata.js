@@ -264,6 +264,7 @@ var menudata={children:[
 {text:"b",url:"globals_type.html#index_b"},
 {text:"c",url:"globals_type.html#index_c"},
 {text:"l",url:"globals_type.html#index_l"},
+{text:"m",url:"globals_type.html#index_m"},
 {text:"o",url:"globals_type.html#index_o"},
 {text:"p",url:"globals_type.html#index_p"}]},
 {text:"Enumerations",url:"globals_enum.html"},

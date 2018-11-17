@@ -68,6 +68,8 @@ struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1TypeProtoI
 \item 
 bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a9099f278b70ba024c5728c05e11897ee}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Tensor \&tensor\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Tensor \&type\+\_\+proto)
 \item 
+bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ab1bc69f6e946f482e57c5837d3f06f4a}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sparse\+Tensor \&tensor\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sparse\+Tensor \&type\+\_\+proto)
+\item 
 bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_aece255300cd5b81ed09517ea20130c58}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Map \&map\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Map \&type\+\_\+proto)
 \item 
 bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a44bb8561823e33ae70b877bcd51251c8}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sequence \&sequence\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sequence \&type\+\_\+proto)
@@ -100,25 +102,31 @@ Map\+Types helper A\+PI K should always be one of the primitive data types V can
 Sequence helpers \mbox{\Hypertarget{namespaceonnxruntime_1_1data__types__internal_a9099f278b70ba024c5728c05e11897ee}\label{namespaceonnxruntime_1_1data__types__internal_a9099f278b70ba024c5728c05e11897ee}} 
 \index{onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}!Is\+Compatible@{Is\+Compatible}}
 \index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}}
-\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
 {\footnotesize\ttfamily bool onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Tensor \&}]{tensor\+\_\+proto,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Tensor \&}]{type\+\_\+proto }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1data__types__internal_ab1bc69f6e946f482e57c5837d3f06f4a}\label{namespaceonnxruntime_1_1data__types__internal_ab1bc69f6e946f482e57c5837d3f06f4a}} 
+\index{onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}!Is\+Compatible@{Is\+Compatible}}
+\index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily bool onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sparse\+Tensor \&}]{tensor\+\_\+proto,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sparse\+Tensor \&}]{type\+\_\+proto }\end{DoxyParamCaption})}
 
 \mbox{\Hypertarget{namespaceonnxruntime_1_1data__types__internal_aece255300cd5b81ed09517ea20130c58}\label{namespaceonnxruntime_1_1data__types__internal_aece255300cd5b81ed09517ea20130c58}} 
 \index{onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}!Is\+Compatible@{Is\+Compatible}}
 \index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}}
-\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
 {\footnotesize\ttfamily bool onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Map \&}]{map\+\_\+proto,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Map \&}]{type\+\_\+proto }\end{DoxyParamCaption})}
 
 \mbox{\Hypertarget{namespaceonnxruntime_1_1data__types__internal_a44bb8561823e33ae70b877bcd51251c8}\label{namespaceonnxruntime_1_1data__types__internal_a44bb8561823e33ae70b877bcd51251c8}} 
 \index{onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}!Is\+Compatible@{Is\+Compatible}}
 \index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}}
-\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
 {\footnotesize\ttfamily bool onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sequence \&}]{sequence\+\_\+proto,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sequence \&}]{type\+\_\+proto }\end{DoxyParamCaption})}
 
 \mbox{\Hypertarget{namespaceonnxruntime_1_1data__types__internal_a41fe7f3e42912d2e8db13d576b646120}\label{namespaceonnxruntime_1_1data__types__internal_a41fe7f3e42912d2e8db13d576b646120}} 
 \index{onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}!Is\+Compatible@{Is\+Compatible}}
 \index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::data\+\_\+types\+\_\+internal@{onnxruntime\+::data\+\_\+types\+\_\+internal}}
-\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
 {\footnotesize\ttfamily bool onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Opaque \&}]{opaque\+\_\+proto,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Opaque \&}]{type\+\_\+proto }\end{DoxyParamCaption})}
 
 \mbox{\Hypertarget{namespaceonnxruntime_1_1data__types__internal_ada1f3666a57810888a98209550c1cc4b}\label{namespaceonnxruntime_1_1data__types__internal_ada1f3666a57810888a98209550c1cc4b}} 

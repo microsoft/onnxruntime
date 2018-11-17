@@ -2,11 +2,11 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/nn/lrn.h"
 {
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
-  Node67 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn/lrn.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
-  Node67 -> Node68 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node68 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/lrn.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2lrn_8cc.html"];
-  Node67 -> Node69 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node69 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/lrn.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2lrn_8h.html"];
-  Node69 -> Node70 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node70 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/lrn.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2lrn_8cc.html"];
+  Node68 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn/lrn.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node68 -> Node69 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node69 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/lrn.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2lrn_8cc.html"];
+  Node68 -> Node70 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node70 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/lrn.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2lrn_8h.html"];
+  Node70 -> Node71 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/lrn.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2lrn_8cc.html"];
 }

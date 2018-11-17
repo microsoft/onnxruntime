@@ -8,6 +8,5 @@ var searchData=
   ['weights_5fbuffers',['weights_buffers',['../structonnxruntime_1_1InferenceSession_1_1Impl_1_1SubgraphMemory.html#a96a959ef483da22b2ad74c5805f69f1d',1,'onnxruntime::InferenceSession::Impl::SubgraphMemory']]],
   ['what',['what',['../classonnxruntime_1_1OnnxRuntimeException.html#af476a02759e2cf658cb7af3824f45bcc',1,'onnxruntime::OnnxRuntimeException']]],
   ['withcontext',['WithContext',['../classonnxruntime_1_1WithContext.html',1,'onnxruntime::WithContext'],['../classonnxruntime_1_1WithContext.html#a6a526e69516aa1384807a5c27f239198',1,'onnxruntime::WithContext::WithContext()']]],
-  ['workspace_5fbytes',['workspace_bytes',['../structonnxruntime_1_1cuda_1_1CudnnConvState.html#a9ee27988a233e86333602f53c0604d13',1,'onnxruntime::cuda::CudnnConvState']]],
-  ['writeprofiledata',['WriteProfileData',['../classonnxruntime_1_1profiling_1_1Profiler.html#a90a8c013fd44413ddb1898087f22ae14',1,'onnxruntime::profiling::Profiler']]]
+  ['workspace_5fbytes',['workspace_bytes',['../structonnxruntime_1_1cuda_1_1CudnnConvState.html#a9ee27988a233e86333602f53c0604d13',1,'onnxruntime::cuda::CudnnConvState']]]
 ];

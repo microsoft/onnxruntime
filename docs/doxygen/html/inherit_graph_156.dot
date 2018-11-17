@@ -3,5 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::mkl_dnn\l::MemoryReorderParams",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1mkl__dnn_1_1MemoryReorderParams.html"];
+  Node0 [label="onnxruntime::MemoryPattern",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1MemoryPattern.html"];
 }

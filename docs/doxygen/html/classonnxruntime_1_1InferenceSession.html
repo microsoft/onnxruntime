@@ -125,6 +125,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a9dbfd5df60f36c82833248db96dbe8fc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab29bd2f63b9f4d5840e846f8bf705e8a"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession.html#ab29bd2f63b9f4d5840e846f8bf705e8a">StartProfiling</a> (const std::string &amp;file_prefix)</td></tr>
 <tr class="separator:ab29bd2f63b9f4d5840e846f8bf705e8a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7d688c79939567a953aa7f1b3559c7b7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession.html#a7d688c79939567a953aa7f1b3559c7b7">StartProfiling</a> (const <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">logging::Logger</a> *logger_ptr)</td></tr>
+<tr class="separator:a7d688c79939567a953aa7f1b3559c7b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac9e69b0d77c3afb6c0fcad0969cfca17"><td class="memItemLeft" align="right" valign="top">std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1InferenceSession.html#ac9e69b0d77c3afb6c0fcad0969cfca17">EndProfiling</a> ()</td></tr>
 <tr class="separator:ac9e69b0d77c3afb6c0fcad0969cfca17"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -677,7 +679,7 @@ Protected Member Functions</h2></td></tr>
 </div>
 </div>
 <a id="ab29bd2f63b9f4d5840e846f8bf705e8a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab29bd2f63b9f4d5840e846f8bf705e8a">&#9670;&nbsp;</a></span>StartProfiling()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#ab29bd2f63b9f4d5840e846f8bf705e8a">&#9670;&nbsp;</a></span>StartProfiling() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -694,6 +696,30 @@ Protected Member Functions</h2></td></tr>
 <p>Start profiling on this inference session. This simply turns on profiling events to be recorded. A corresponding EndProfiling has to follow to write profiling data to a file. </p><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">file_prefix</td><td>is the prefix of the profile file. It can include a directory path. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a7d688c79939567a953aa7f1b3559c7b7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7d688c79939567a953aa7f1b3559c7b7">&#9670;&nbsp;</a></span>StartProfiling() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> onnxruntime::InferenceSession::StartProfiling </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="classonnxruntime_1_1logging_1_1Logger.html">logging::Logger</a> *&#160;</td>
+          <td class="paramname"><em>logger_ptr</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<p>Start profiling on this inference session. This simply turns on profiling events to be recorded. A corresponding EndProfiling has to follow to send profiling events through the logger's ISink. </p><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">logger_ptr</td><td>is pointer to the logger where profiling events will be sent to. </td></tr>
   </table>
   </dd>
 </dl>

@@ -15,6 +15,8 @@ Inheritance diagram for onnxruntime\+:\+:logging\+:\+:I\+Sink\+:
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink_a9460947ff02092785dbb4ee7ddddcb4a}{Send}} (const \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{Timestamp}} \&timestamp, const std\+::string \&logger\+\_\+id, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message)
 \item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink_ad46a3448fabc1672e5cb8427f16f1910}{Send\+Profile\+Event}} (\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord}{profiling\+::\+Event\+Record}} \&) const
+\item 
 virtual \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink_a30082194671f1a1a612ff29d10e00d42}{$\sim$\+I\+Sink}} ()=default
 \end{DoxyCompactItemize}
 
@@ -48,6 +50,17 @@ Sends the message to the sink.
 {\em logger\+\_\+id} & The logger identifier. \\
 \hline
 {\em message} & The captured message. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1ISink_ad46a3448fabc1672e5cb8427f16f1910}\label{classonnxruntime_1_1logging_1_1ISink_ad46a3448fabc1672e5cb8427f16f1910}} 
+\index{onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}!Send\+Profile\+Event@{Send\+Profile\+Event}}
+\index{Send\+Profile\+Event@{Send\+Profile\+Event}!onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}}
+\subsubsection{\texorpdfstring{Send\+Profile\+Event()}{SendProfileEvent()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+I\+Sink\+::\+Send\+Profile\+Event (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord}{profiling\+::\+Event\+Record}} \&}]{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [virtual]}}
+
+Sends a Profiling Event Record to the sink. 
+\begin{DoxyParams}{Parameters}
+{\em Profiling} & Event Record \\
 \hline
 \end{DoxyParams}
 

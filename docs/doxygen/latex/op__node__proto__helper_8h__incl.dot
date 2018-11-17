@@ -98,9 +98,11 @@ digraph "onnxruntime/include/onnxruntime/core/framework/op_node_proto_helper.h"
   Node32 [label="onnx/onnx_pb.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node7 -> Node30 [color="midnightblue",fontsize="10",style="solid"];
   Node7 -> Node33 [color="midnightblue",fontsize="10",style="solid"];
-  Node33 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node33 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node7 -> Node34 [color="midnightblue",fontsize="10",style="solid"];
-  Node34 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node0 -> Node35 [color="midnightblue",fontsize="10",style="solid"];
-  Node35 [label="gsl/span",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node34 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node7 -> Node35 [color="midnightblue",fontsize="10",style="solid"];
+  Node35 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node0 -> Node36 [color="midnightblue",fontsize="10",style="solid"];
+  Node36 [label="gsl/span",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
 }

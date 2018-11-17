@@ -14,6 +14,8 @@ bool \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_ac42898a3e3c2623280b
 int \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_af2e3439096494a094a9780eb2e238c95}{V\+L\+O\+G\+Max\+Level}} () const noexcept
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_a72e6467ee8cede10dbc9d2aea649f8fe}{Log}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_a7057a0099074535ab5da7ca57b061a28}{Send\+Profile\+Event}} (\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord}{profiling\+::\+Event\+Record}} \&event\+Record) const
 \end{DoxyCompactItemize}
 
 
@@ -70,6 +72,17 @@ Check if output is enabled for the provided Log\+Severity and Data\+Type values.
 \begin{DoxyReturn}{Returns}
 True if a message with these values will be logged. 
 \end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Logger_a7057a0099074535ab5da7ca57b061a28}\label{classonnxruntime_1_1logging_1_1Logger_a7057a0099074535ab5da7ca57b061a28}} 
+\index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}!Send\+Profile\+Event@{Send\+Profile\+Event}}
+\index{Send\+Profile\+Event@{Send\+Profile\+Event}!onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}
+\subsubsection{\texorpdfstring{Send\+Profile\+Event()}{SendProfileEvent()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+Logger\+::\+Send\+Profile\+Event (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord}{profiling\+::\+Event\+Record}} \&}]{event\+Record }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Sends a Profiling Event Record to the sink. 
+\begin{DoxyParams}{Parameters}
+{\em Profiling} & Event Record \\
+\hline
+\end{DoxyParams}
 \mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Logger_af2e3439096494a094a9780eb2e238c95}\label{classonnxruntime_1_1logging_1_1Logger_af2e3439096494a094a9780eb2e238c95}} 
 \index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}!V\+L\+O\+G\+Max\+Level@{V\+L\+O\+G\+Max\+Level}}
 \index{V\+L\+O\+G\+Max\+Level@{V\+L\+O\+G\+Max\+Level}!onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}

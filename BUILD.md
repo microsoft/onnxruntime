@@ -44,8 +44,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 To run onnx model tests on Linux,
 
 1. Install docker
-2. (optional) Run "export AZURE\_BLOB\_KEY=<secret_value>". You can get the key by executing "az storage keys list --account-name lotus" if you have Azure CLI 2.0 installed or just ask for that.
-3.  Run tools/ci\_build/github/linux/run\_build.sh.
+2.  Run tools/ci\_build/github/linux/run\_build.sh.
 
 For Windows, please follow the README file at onnxruntime/test/onnx/README.txt
 
@@ -141,11 +140,6 @@ docker build -t cuda_dev -f Dockerfile.ubuntu_gpu .
 
 Then run it
 ```
-cd ~/src
-git clone https://github.com/Microsoft/onnxruntime
-docker run --runtime=nvidia -v ~/src/ONNX Runtime:/data/lotus --rm -it cuda_dev /bin/bash
-mkdir build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug /data/lotus/cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=ON -Donnxruntime_CUDNN_HOME=/usr/local/cudnn-7.0/cuda
-ninja
+./tools/ci_build/github/linux/run_build.sh
 ```
 

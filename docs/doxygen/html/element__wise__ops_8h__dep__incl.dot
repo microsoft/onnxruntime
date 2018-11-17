@@ -2,7 +2,7 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/math/element_wise_ops.h"
 {
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
-  Node70 [label="onnxruntime/onnxruntime\l/core/providers/cpu/math\l/element_wise_ops.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
-  Node70 -> Node71 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node71 [label="onnxruntime/onnxruntime\l/core/providers/cpu/math\l/element_wise_ops.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$element__wise__ops_8cc.html"];
+  Node71 [label="onnxruntime/onnxruntime\l/core/providers/cpu/math\l/element_wise_ops.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node71 -> Node72 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node72 [label="onnxruntime/onnxruntime\l/core/providers/cpu/math\l/element_wise_ops.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$element__wise__ops_8cc.html"];
 }

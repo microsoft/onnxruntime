@@ -13,4 +13,8 @@ digraph "onnxruntime/onnxruntime/core/mlas/lib/bias.cpp"
   Node4 [label="stdint.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node1 -> Node5 [color="midnightblue",fontsize="10",style="solid"];
   Node5 [label="memory.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node1 -> Node6 [color="midnightblue",fontsize="10",style="solid"];
+  Node6 [label="algorithm",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node1 -> Node7 [color="midnightblue",fontsize="10",style="solid"];
+  Node7 [label="limits",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
 }

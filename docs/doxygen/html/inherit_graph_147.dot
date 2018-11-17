@@ -3,5 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::MatMulCompute\lHelper",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1MatMulComputeHelper.html"];
+  Node0 [label="onnxruntime::logging\l::LoggingManager",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1logging_1_1LoggingManager.html",tooltip="The logging manager. Owns the log sink and potentially provides a default Logger instance. Provides filtering based on a minimum LogSeverity level, and of messages with DataType::User if enabled. "];
 }

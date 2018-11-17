@@ -15,7 +15,7 @@ var searchData=
   ['indexed_5fsub_5fgraph_2eh',['indexed_sub_graph.h',['../indexed__sub__graph_8h.html',1,'']]],
   ['inference_5fsession_2ecc',['inference_session.cc',['../inference__session_8cc.html',1,'']]],
   ['inference_5fsession_2eh',['inference_session.h',['../inference__session_8h.html',1,'']]],
-  ['inferencesession_2ecs',['InferenceSession.cs',['../InferenceSession_8cs.html',1,'']]],
+  ['inferencesession_2ecs',['InferenceSession.cs',['../OnnxRuntime_2InferenceSession_8cs.html',1,'(Global Namespace)'],['../src_2Microsoft_8ML_8OnnxRuntime_2InferenceSession_8cs.html',1,'(Global Namespace)']]],
   ['initializer_2eh',['initializer.h',['../initializer_8h.html',1,'']]],
   ['insert_5fcast_5ftransformer_2ecc',['insert_cast_transformer.cc',['../insert__cast__transformer_8cc.html',1,'']]],
   ['insert_5fcast_5ftransformer_2eh',['insert_cast_transformer.h',['../insert__cast__transformer_8h.html',1,'']]],

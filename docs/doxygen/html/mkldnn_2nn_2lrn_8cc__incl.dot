@@ -152,8 +152,8 @@ digraph "onnxruntime/onnxruntime/core/providers/mkldnn/nn/lrn.cc"
   Node56 -> Node37 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node55 -> Node57 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node55 -> Node37 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node55 -> Node68 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node68 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node55 -> Node69 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node69 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node24 -> Node56 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node24 -> Node35 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node24 -> Node62 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
@@ -165,12 +165,12 @@ digraph "onnxruntime/onnxruntime/core/providers/mkldnn/nn/lrn.cc"
   Node24 -> Node37 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node24 -> Node66 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node66 [label="onnx/defs/schema.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node23 -> Node70 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node70 [label="core/providers/cpu\l/nn/lrn.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2lrn_8h.html"];
-  Node70 -> Node68 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node70 -> Node2 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node70 -> Node15 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node70 -> Node24 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node0 -> Node71 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node71 [label="core/providers/mkldnn\l/mkldnn_fwd.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn__fwd_8h.html"];
+  Node23 -> Node71 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 [label="core/providers/cpu\l/nn/lrn.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2lrn_8h.html"];
+  Node71 -> Node69 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 -> Node2 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 -> Node15 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 -> Node24 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 -> Node72 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node72 [label="core/providers/mkldnn\l/mkldnn_fwd.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn__fwd_8h.html"];
 }

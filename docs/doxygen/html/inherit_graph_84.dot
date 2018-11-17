@@ -3,5 +3,7 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::data_types\l_internal::SetSequenceType\< T \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1data__types__internal_1_1SetSequenceType.html"];
+  Node398 [label="is_same",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node398 -> Node0 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 [label="onnxruntime::data_types\l_internal::IsAnyOf\< T,\l Tail \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1data__types__internal_1_1IsAnyOf_3_01T_00_01Tail_01_4.html",tooltip="Two types remaining, end of the list. "];
 }

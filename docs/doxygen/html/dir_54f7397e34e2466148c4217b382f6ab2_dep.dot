@@ -7,5 +7,5 @@ digraph "onnxruntime/include/onnxruntime/core/providers/cpu" {
   dir_54f7397e34e2466148c4217b382f6ab2 [shape=box, label="cpu", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_54f7397e34e2466148c4217b382f6ab2.html"];
   }
   dir_260d19548b962cb3f7f53e55140fd4e8 [shape=box label="session" URL="dir_260d19548b962cb3f7f53e55140fd4e8.html"];
-  dir_54f7397e34e2466148c4217b382f6ab2->dir_260d19548b962cb3f7f53e55140fd4e8 [headlabel="1", labeldistance=1.5 headhref="dir_000016_000013.html"];
+  dir_54f7397e34e2466148c4217b382f6ab2->dir_260d19548b962cb3f7f53e55140fd4e8 [headlabel="1", labeldistance=1.5 headhref="dir_000021_000017.html"];
 }

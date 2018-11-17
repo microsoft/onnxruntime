@@ -2,15 +2,11 @@ digraph "onnxruntime/onnxruntime/core/graph/model.h"
 {
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
-  Node37 [label="onnxruntime/onnxruntime\l/core/graph/model.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
-  Node37 -> Node38 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node38 [label="onnxruntime/onnxruntime\l/core/graph/function_impl.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$function__impl_8h.html"];
+  Node38 [label="onnxruntime/onnxruntime\l/core/graph/model.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
   Node38 -> Node39 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node39 [label="onnxruntime/onnxruntime\l/core/graph/function.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$function_8cc.html"];
   Node38 -> Node40 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node40 [label="onnxruntime/onnxruntime\l/core/graph/graph.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph_8cc.html"];
-  Node37 -> Node41 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node41 [label="onnxruntime/onnxruntime\l/core/graph/model.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$model_8cc.html"];
-  Node37 -> Node42 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node42 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+  Node40 [label="onnxruntime/onnxruntime\l/core/graph/model.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$model_8cc.html"];
+  Node38 -> Node41 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node41 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
 }

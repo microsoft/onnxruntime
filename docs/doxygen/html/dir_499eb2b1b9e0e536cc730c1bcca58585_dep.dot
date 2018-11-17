@@ -7,5 +7,5 @@ digraph "onnxruntime/onnxruntime/core/common/logging/sinks" {
   dir_499eb2b1b9e0e536cc730c1bcca58585 [shape=box, label="sinks", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_499eb2b1b9e0e536cc730c1bcca58585.html"];
   }
   dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
-  dir_499eb2b1b9e0e536cc730c1bcca58585->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="4", labeldistance=1.5 headhref="dir_000026_000004.html"];
+  dir_499eb2b1b9e0e536cc730c1bcca58585->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="4", labeldistance=1.5 headhref="dir_000031_000008.html"];
 }

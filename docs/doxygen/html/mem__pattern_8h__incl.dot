@@ -138,14 +138,14 @@ digraph "onnxruntime/onnxruntime/core/framework/mem_pattern.h"
   Node38 -> Node44 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node44 [label="core/graph/node_arg.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$node__arg_8h.html"];
   Node44 -> Node45 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node45 [label="core/graph/onnx_protobuf.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$onnx__protobuf_8h.html"];
+  Node45 [label="core/graph/onnx_protobuf.h",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$onnx__protobuf_8h.html"];
   Node45 -> Node46 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node46 [label="onnx/defs/schema.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node45 -> Node47 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node47 [label="onnx/onnx_pb.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node38 -> Node45 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node38 -> Node48 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node48 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node48 [label="core/graph/function.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
   Node38 -> Node49 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node49 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node49 [label="gsl/gsl_util",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node38 -> Node50 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node50 [label="gsl/pointers",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
 }

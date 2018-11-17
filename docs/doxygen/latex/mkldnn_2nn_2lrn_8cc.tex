@@ -44,29 +44,29 @@ Include dependency graph for lrn.\+cc\+:
 \subsubsection{\texorpdfstring{dims\+\_\+}{dims\_}}
 {\footnotesize\ttfamily mkldnn\+::memory\+::dims\& dims\+\_\+}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_ae463fb99d336659d042cff1652317662}\label{mkldnn_2nn_2lrn_8cc_ae463fb99d336659d042cff1652317662}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a735e1b9e78c5ccfb68962f05f177e129}\label{mkldnn_2nn_2lrn_8cc_a735e1b9e78c5ccfb68962f05f177e129}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!dst\+\_\+mem@{dst\+\_\+mem}}
 \index{dst\+\_\+mem@{dst\+\_\+mem}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{dst\+\_\+mem}{dst\_mem}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory$>$ dst\+\_\+mem}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::memory$>$ dst\+\_\+mem}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_acb90c3a44dea71ba3bda86d3a71d7e4b}\label{mkldnn_2nn_2lrn_8cc_acb90c3a44dea71ba3bda86d3a71d7e4b}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a337117737bf2d9ffc3ea3b0e85d2d75b}\label{mkldnn_2nn_2lrn_8cc_a337117737bf2d9ffc3ea3b0e85d2d75b}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!fwd\+\_\+desc@{fwd\+\_\+desc}}
 \index{fwd\+\_\+desc@{fwd\+\_\+desc}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{fwd\+\_\+desc}{fwd\_desc}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::lrn\+\_\+forward\+::desc$>$ fwd\+\_\+desc}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::lrn\+\_\+forward\+::desc$>$ fwd\+\_\+desc}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a576e64ff770b3367f7edb43c63964535}\label{mkldnn_2nn_2lrn_8cc_a576e64ff770b3367f7edb43c63964535}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a5ca63c9cd310d223af22c51036a4529b}\label{mkldnn_2nn_2lrn_8cc_a5ca63c9cd310d223af22c51036a4529b}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!fwd\+\_\+primitive\+\_\+desc@{fwd\+\_\+primitive\+\_\+desc}}
 \index{fwd\+\_\+primitive\+\_\+desc@{fwd\+\_\+primitive\+\_\+desc}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{fwd\+\_\+primitive\+\_\+desc}{fwd\_primitive\_desc}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::lrn\+\_\+forward\+::primitive\+\_\+desc$>$ fwd\+\_\+primitive\+\_\+desc}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::lrn\+\_\+forward\+::primitive\+\_\+desc$>$ fwd\+\_\+primitive\+\_\+desc}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a3b831cad3ff3f905235a733824b55cff}\label{mkldnn_2nn_2lrn_8cc_a3b831cad3ff3f905235a733824b55cff}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a8ab15d0dd65209d905aa5ab63fbe7e51}\label{mkldnn_2nn_2lrn_8cc_a8ab15d0dd65209d905aa5ab63fbe7e51}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!lrn\+\_\+fwd@{lrn\+\_\+fwd}}
 \index{lrn\+\_\+fwd@{lrn\+\_\+fwd}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{lrn\+\_\+fwd}{lrn\_fwd}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::primitive$>$ lrn\+\_\+fwd}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::primitive$>$ lrn\+\_\+fwd}
 
 \mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a3a43d84cf8a2dbe5389e08fe73ee8c67}\label{mkldnn_2nn_2lrn_8cc_a3a43d84cf8a2dbe5389e08fe73ee8c67}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!net@{net}}
@@ -86,21 +86,21 @@ Include dependency graph for lrn.\+cc\+:
 \subsubsection{\texorpdfstring{src\+\_\+fmt}{src\_fmt}}
 {\footnotesize\ttfamily mkldnn\+::memory\+::format src\+\_\+fmt}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a6d4a0e5f31dfce120a5d153fb1cc879f}\label{mkldnn_2nn_2lrn_8cc_a6d4a0e5f31dfce120a5d153fb1cc879f}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_aa9aea8a7640b16ac44eba9ab15bc2fab}\label{mkldnn_2nn_2lrn_8cc_aa9aea8a7640b16ac44eba9ab15bc2fab}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!src\+\_\+md@{src\+\_\+md}}
 \index{src\+\_\+md@{src\+\_\+md}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{src\+\_\+md}{src\_md}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory\+::desc$>$ src\+\_\+md}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::memory\+::desc$>$ src\+\_\+md}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a18a015be745b85f05bac7696ea665585}\label{mkldnn_2nn_2lrn_8cc_a18a015be745b85f05bac7696ea665585}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a62d2b32f5c53b003997f7db434316d2d}\label{mkldnn_2nn_2lrn_8cc_a62d2b32f5c53b003997f7db434316d2d}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!src\+\_\+mem@{src\+\_\+mem}}
 \index{src\+\_\+mem@{src\+\_\+mem}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{src\+\_\+mem}{src\_mem}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory$>$ src\+\_\+mem}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::memory$>$ src\+\_\+mem}
 
-\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}\label{mkldnn_2nn_2lrn_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}} 
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_af19a863e7840281d524f99acebb67eda}\label{mkldnn_2nn_2lrn_8cc_af19a863e7840281d524f99acebb67eda}} 
 \index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!stream@{stream}}
 \index{stream@{stream}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
 \subsubsection{\texorpdfstring{stream}{stream}}
-{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::stream$>$ stream}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$mkldnn\+::stream$>$ stream}
 

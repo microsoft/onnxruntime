@@ -91,9 +91,22 @@ $(function() {
 </li>
 <li>MLAS_DECLSPEC_ALIGN
 : <a class="el" href="mlasi_8h.html#a4b422064ddb3aa5bedac739e45547674">mlasi.h</a>
+, <a class="el" href="pooling_8cpp.html#ac0df2d1634a495c54f29bddf621dac47">pooling.cpp</a>
 </li>
 <li>MLAS_MAXIMUM_THREAD_COUNT
 : <a class="el" href="mlasi_8h.html#a86466d6811df85b69801ae746e3ad493">mlasi.h</a>
+</li>
+<li>MLAS_POOL_KERNEL_ROUTINE
+: <a class="el" href="pooling_8cpp.html#a99cc78d2d9d3e3a4abb3c7d85b406b92">pooling.cpp</a>
+</li>
+<li>MLAS_POOL_REDUCTION_BUFFER_PADDING
+: <a class="el" href="pooling_8cpp.html#a0dabfb35bbb884a37976483cf7dfbd85">pooling.cpp</a>
+</li>
+<li>MLAS_POOL_REDUCTION_BUFFER_STACK
+: <a class="el" href="pooling_8cpp.html#ae2e86b8d5dafb44be2e7129d59cf351c">pooling.cpp</a>
+</li>
+<li>MLAS_POOLING_KIND
+: <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">mlas.h</a>
 </li>
 <li>MLAS_SGEMM_STRIDEK
 : <a class="el" href="mlasi_8h.html#ab53b4ce1656fff1cd0b0be02bdfedf5b">mlasi.h</a>
@@ -115,6 +128,12 @@ $(function() {
 </li>
 <li>MlasAddFloat32x4()
 : <a class="el" href="mlasi_8h.html#af86ac192fd0ed4bc707840fedd1afdc8">mlasi.h</a>
+</li>
+<li>MlasAveragePoolingExcludePad
+: <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222a3a0eaeab7a08670d785b5def0cb350af">mlas.h</a>
+</li>
+<li>MlasAveragePoolingIncludePad
+: <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222ac9736e560d5f6b240a145cbc3b9132bd">mlas.h</a>
 </li>
 <li>MlasBiasAdd()
 : <a class="el" href="mlas_8h.html#aa74856b53dde7745893ed4bdda3d726b">mlas.h</a>
@@ -149,8 +168,8 @@ $(function() {
 : <a class="el" href="convolve_8cpp.html#a77a7aaaf6907fcb9cc12cd96028a4350">convolve.cpp</a>
 </li>
 <li>MlasConvPrepare()
-: <a class="el" href="convolve_8cpp.html#a88ec0520d5c67b6534f4545d7fb6f201">convolve.cpp</a>
-, <a class="el" href="mlas_8h.html#a88ec0520d5c67b6534f4545d7fb6f201">mlas.h</a>
+: <a class="el" href="mlas_8h.html#a88ec0520d5c67b6534f4545d7fb6f201">mlas.h</a>
+, <a class="el" href="convolve_8cpp.html#a88ec0520d5c67b6534f4545d7fb6f201">convolve.cpp</a>
 </li>
 <li>MlasConvTryMultithread()
 : <a class="el" href="convolve_8cpp.html#a8de57adb460703f787c2d1ec87363c74">convolve.cpp</a>
@@ -158,8 +177,20 @@ $(function() {
 <li>MlasConvVol2Col()
 : <a class="el" href="convolve_8cpp.html#af81e941af96895b23e8d5cc4b66db40d">convolve.cpp</a>
 </li>
+<li>MlasDivideFloat32x4()
+: <a class="el" href="mlasi_8h.html#ae410645d72d6734573a2792d2339c536">mlasi.h</a>
+</li>
 <li>MlasLoadFloat32x4()
 : <a class="el" href="mlasi_8h.html#a4d54425857dc1310d550c17a70a9c677">mlasi.h</a>
+</li>
+<li>MlasMaximumFloat32x4()
+: <a class="el" href="mlasi_8h.html#ab818372f43bc888418dca3815f7d77de">mlasi.h</a>
+</li>
+<li>MlasMaximumPooling
+: <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222a0b7bda099a63732d1a6745c0eaf1ebef">mlas.h</a>
+</li>
+<li>MlasMinimumFloat32x4()
+: <a class="el" href="mlasi_8h.html#ace8e5c15326d49825a0d4c701f6e060d">mlasi.h</a>
 </li>
 <li>MlasMultiplyFloat32x4()
 : <a class="el" href="mlasi_8h.html#ade24efb509bdd96d158b8b81472d5cab">mlasi.h</a>
@@ -169,16 +200,23 @@ $(function() {
 , <a class="el" href="platform_8cpp.html#a0f98e2a53ea33a85e182b4bc28e575ef">platform.cpp</a>
 </li>
 <li>MlasPool()
-: <a class="el" href="pooling_8cpp.html#aa21f8d03cbd742381655387756f48014">pooling.cpp</a>
+: <a class="el" href="mlas_8h.html#aea2c098f8f1f7ca24f7dafcee4f31332">mlas.h</a>
+, <a class="el" href="pooling_8cpp.html#aea2c098f8f1f7ca24f7dafcee4f31332">pooling.cpp</a>
 </li>
-<li>MlasPoolOperation()
-: <a class="el" href="pooling_8cpp.html#a94ed0c6f7719fdd25ed044130031aacd">pooling.cpp</a>
+<li>MlasPool1DKernel()
+: <a class="el" href="pooling_8cpp.html#a2ced997ae6be6fd1a0e1a39305c4558c">pooling.cpp</a>
 </li>
-<li>MlasPoolPrepare()
-: <a class="el" href="pooling_8cpp.html#a179caab0213169a26968bc413f6a7c98">pooling.cpp</a>
+<li>MlasPool2DKernel()
+: <a class="el" href="pooling_8cpp.html#a1a9b0d34bf0126a76025e61666805a9e">pooling.cpp</a>
 </li>
-<li>MlasPoolWorkCallback()
-: <a class="el" href="pooling_8cpp.html#a3edec4257ab7c606da50cc6fdf2543a1">pooling.cpp</a>
+<li>MlasPool2DVectorKernel()
+: <a class="el" href="pooling_8cpp.html#a643f4d355079231beff99a1bfa6e853e">pooling.cpp</a>
+</li>
+<li>MlasPool3DKernel()
+: <a class="el" href="pooling_8cpp.html#ab5a3c79312ad71443c47cd708f4a393e">pooling.cpp</a>
+</li>
+<li>MlasPool3DVectorKernel()
+: <a class="el" href="pooling_8cpp.html#a3f61cf2a642b499de01040b70aae59b4">pooling.cpp</a>
 </li>
 <li>MlasReadTimeStampCounter()
 : <a class="el" href="mlasi_8h.html#a17f19b7d1992542006c36838cbdde797">mlasi.h</a>
@@ -191,22 +229,22 @@ $(function() {
 : <a class="el" href="sgemm_8cpp.html#a77ee0fa9692d0cc06b3e2f79e495cfe2">sgemm.cpp</a>
 </li>
 <li>MlasSgemmKernel()
-: <a class="el" href="sgemmc_8cpp.html#a59eed95fda0fcbf7f8ffaf5320c9f84b">sgemmc.cpp</a>
+: <a class="el" href="sgemmc_8cpp.html#ae5a19329dad5d07cc57ef7dfe62aa7d5">sgemmc.cpp</a>
 </li>
 <li>MlasSgemmKernelAdd()
 : <a class="el" href="sgemmc_8cpp.html#a32ace84419ca9b9ac09acc706f1993c9">sgemmc.cpp</a>
 , <a class="el" href="mlasi_8h.html#ad17071be5d06df5b914c1415ec343f7a">mlasi.h</a>
 </li>
-<li>MlasSgemmKernelZero()
-: <a class="el" href="sgemmc_8cpp.html#a5b3f51517be8676206d8bab317ae73b6">sgemmc.cpp</a>
-, <a class="el" href="mlasi_8h.html#ad23a38c438c63bc8f7839b38fea9785f">mlasi.h</a>
+<li>MlasSgemmKernelZero
+: <a class="el" href="mlasi_8h.html#ad23a38c438c63bc8f7839b38fea9785f">mlasi.h</a>
+, <a class="el" href="sgemmc_8cpp.html#a5b3f51517be8676206d8bab317ae73b6">sgemmc.cpp</a>
 </li>
 <li>MlasSgemmMultiplyBeta()
 : <a class="el" href="sgemm_8cpp.html#ada8228feb50d69ed7dd7ac08fb8a86c0">sgemm.cpp</a>
 </li>
 <li>MlasSgemmOperation()
-: <a class="el" href="sgemm_8cpp.html#a64f19198c15736c49ad472fe02a5709b">sgemm.cpp</a>
-, <a class="el" href="mlasi_8h.html#a64f19198c15736c49ad472fe02a5709b">mlasi.h</a>
+: <a class="el" href="mlasi_8h.html#a64f19198c15736c49ad472fe02a5709b">mlasi.h</a>
+, <a class="el" href="sgemm_8cpp.html#a64f19198c15736c49ad472fe02a5709b">sgemm.cpp</a>
 </li>
 <li>MlasSgemmTransposeA()
 : <a class="el" href="sgemm_8cpp.html#ae4fcda768649d9b046273ed0c679aef8">sgemm.cpp</a>
@@ -220,11 +258,17 @@ $(function() {
 <li>MlasStoreAlignedFloat32x4()
 : <a class="el" href="mlasi_8h.html#acb5add742d1de98162d391a59a564bc6">mlasi.h</a>
 </li>
-<li>MlasStoreFloat32()
-: <a class="el" href="mlasi_8h.html#a5b39795daf29fb1ac8f707cd5f3ea3dc">mlasi.h</a>
-</li>
 <li>MlasStoreFloat32x4()
 : <a class="el" href="mlasi_8h.html#a0be42565df3ca21b4abbeaa82b240ae1">mlasi.h</a>
+</li>
+<li>MlasStoreLaneFloat32x4()
+: <a class="el" href="mlasi_8h.html#a1d2c1cdb02a40be7f87fc6211e1bdb78">mlasi.h</a>
+</li>
+<li>MlasStoreLowHalfFloat32x4()
+: <a class="el" href="mlasi_8h.html#a5cb2ab6c77ce8bb4e7028df8d5ac9ff5">mlasi.h</a>
+</li>
+<li>MlasSubtractFloat32x4()
+: <a class="el" href="mlasi_8h.html#a9405e6155ce07f8c76910dfdf305f2df">mlasi.h</a>
 </li>
 <li>MlasZeroFloat32x4()
 : <a class="el" href="mlasi_8h.html#ab9b1bdbfa7a32eacbdb37c2b8cf5c64b">mlasi.h</a>

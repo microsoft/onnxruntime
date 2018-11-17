@@ -9,13 +9,17 @@
 \item 
 \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_aaaad4b91eaed51fe42285e4bc7905563}{Profiler}} () noexcept
 \item 
-\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a3629a36c6c2d6ae848f7683999f64f35}{Start\+Profiling}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$session\+\_\+logger, const std\+::string \&file\+\_\+name)
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a7b28c8b018d08e70aac7b5ef322c08cb}{Initialize}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$session\+\_\+logger)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_ad4289ee2fe6bc266a8ce5322f03ec2e2}{Start\+Profiling}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$custom\+\_\+logger)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a9570fec28a8e43eb2937ba6383185661}{Start\+Profiling}} (const std\+::string \&file\+\_\+name)
 \item 
 \mbox{\hyperlink{namespaceonnxruntime_a9b5a17a572f7c3cf77f4892542bd7153}{Time\+Point}} \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a273e1d74c3db999223080120ea89705d}{Start\+Time}} () const
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a4dc59c0289a90e418afdca6aba5e3488}{End\+Time\+And\+Record\+Event}} (\mbox{\hyperlink{namespaceonnxruntime_1_1profiling_acbb1d7474c26b32c5bfef2ce1ab63734}{Event\+Category}} category, const std\+::string \&event\+\_\+name, \mbox{\hyperlink{namespaceonnxruntime_a9b5a17a572f7c3cf77f4892542bd7153}{Time\+Point}} \&start\+\_\+time, std\+::unordered\+\_\+map$<$ std\+::string, std\+::string $>$ \&\&event\+\_\+args=std\+::unordered\+\_\+map$<$ std\+::string, std\+::string $>$(), bool sync\+\_\+gpu=false)
 \item 
-std\+::string \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a90a8c013fd44413ddb1898087f22ae14}{Write\+Profile\+Data}} ()
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a24b5e686899d37eedc159d9af7936458}{End\+Profiling}} ()
 \end{DoxyCompactItemize}
 
 
@@ -29,29 +33,41 @@ std\+::string \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler_a90a8c0
 
 
 \subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a24b5e686899d37eedc159d9af7936458}\label{classonnxruntime_1_1profiling_1_1Profiler_a24b5e686899d37eedc159d9af7936458}} 
+\index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!End\+Profiling@{End\+Profiling}}
+\index{End\+Profiling@{End\+Profiling}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
+\subsubsection{\texorpdfstring{End\+Profiling()}{EndProfiling()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::profiling\+::\+Profiler\+::\+End\+Profiling (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
 \mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a4dc59c0289a90e418afdca6aba5e3488}\label{classonnxruntime_1_1profiling_1_1Profiler_a4dc59c0289a90e418afdca6aba5e3488}} 
 \index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!End\+Time\+And\+Record\+Event@{End\+Time\+And\+Record\+Event}}
 \index{End\+Time\+And\+Record\+Event@{End\+Time\+And\+Record\+Event}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
 \subsubsection{\texorpdfstring{End\+Time\+And\+Record\+Event()}{EndTimeAndRecordEvent()}}
 {\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::profiling\+::\+Profiler\+::\+End\+Time\+And\+Record\+Event (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1profiling_acbb1d7474c26b32c5bfef2ce1ab63734}{Event\+Category}}}]{category,  }\item[{const std\+::string \&}]{event\+\_\+name,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a9b5a17a572f7c3cf77f4892542bd7153}{Time\+Point}} \&}]{start\+\_\+time,  }\item[{std\+::unordered\+\_\+map$<$ std\+::string, std\+::string $>$ \&\&}]{event\+\_\+args = {\ttfamily std\+:\+:unordered\+\_\+map$<$std\+:\+:string,~std\+:\+:string$>$()},  }\item[{bool}]{sync\+\_\+gpu = {\ttfamily false} }\end{DoxyParamCaption})}
 
-\mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a3629a36c6c2d6ae848f7683999f64f35}\label{classonnxruntime_1_1profiling_1_1Profiler_a3629a36c6c2d6ae848f7683999f64f35}} 
+\mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a7b28c8b018d08e70aac7b5ef322c08cb}\label{classonnxruntime_1_1profiling_1_1Profiler_a7b28c8b018d08e70aac7b5ef322c08cb}} 
+\index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!Initialize@{Initialize}}
+\index{Initialize@{Initialize}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
+\subsubsection{\texorpdfstring{Initialize()}{Initialize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::profiling\+::\+Profiler\+::\+Initialize (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$}]{session\+\_\+logger }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_ad4289ee2fe6bc266a8ce5322f03ec2e2}\label{classonnxruntime_1_1profiling_1_1Profiler_ad4289ee2fe6bc266a8ce5322f03ec2e2}} 
 \index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!Start\+Profiling@{Start\+Profiling}}
 \index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
-\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}}
-{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::profiling\+::\+Profiler\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$}]{session\+\_\+logger,  }\item[{const std\+::string \&}]{file\+\_\+name }\end{DoxyParamCaption})}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::profiling\+::\+Profiler\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$}]{custom\+\_\+logger }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a9570fec28a8e43eb2937ba6383185661}\label{classonnxruntime_1_1profiling_1_1Profiler_a9570fec28a8e43eb2937ba6383185661}} 
+\index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!Start\+Profiling@{Start\+Profiling}}
+\index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::profiling\+::\+Profiler\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{file\+\_\+name }\end{DoxyParamCaption})}
 
 \mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a273e1d74c3db999223080120ea89705d}\label{classonnxruntime_1_1profiling_1_1Profiler_a273e1d74c3db999223080120ea89705d}} 
 \index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!Start\+Time@{Start\+Time}}
 \index{Start\+Time@{Start\+Time}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
 \subsubsection{\texorpdfstring{Start\+Time()}{StartTime()}}
 {\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a9b5a17a572f7c3cf77f4892542bd7153}{onnxruntime\+::\+Time\+Point}} onnxruntime\+::profiling\+::\+Profiler\+::\+Start\+Time (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
-
-\mbox{\Hypertarget{classonnxruntime_1_1profiling_1_1Profiler_a90a8c013fd44413ddb1898087f22ae14}\label{classonnxruntime_1_1profiling_1_1Profiler_a90a8c013fd44413ddb1898087f22ae14}} 
-\index{onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}!Write\+Profile\+Data@{Write\+Profile\+Data}}
-\index{Write\+Profile\+Data@{Write\+Profile\+Data}!onnxruntime\+::profiling\+::\+Profiler@{onnxruntime\+::profiling\+::\+Profiler}}
-\subsubsection{\texorpdfstring{Write\+Profile\+Data()}{WriteProfileData()}}
-{\footnotesize\ttfamily std\+::string onnxruntime\+::profiling\+::\+Profiler\+::\+Write\+Profile\+Data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
 
 
 

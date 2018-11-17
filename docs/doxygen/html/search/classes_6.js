@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['gather',['Gather',['../classonnxruntime_1_1Gather.html',1,'onnxruntime::Gather'],['../classonnxruntime_1_1cuda_1_1Gather.html',1,'onnxruntime::cuda::Gather']]],
+  ['gather',['Gather',['../classonnxruntime_1_1cuda_1_1Gather.html',1,'onnxruntime::cuda::Gather'],['../classonnxruntime_1_1Gather.html',1,'onnxruntime::Gather']]],
   ['gatherbase',['GatherBase',['../classonnxruntime_1_1GatherBase.html',1,'onnxruntime']]],
   ['gemm',['Gemm',['../classonnxruntime_1_1mkl__dnn_1_1Gemm.html',1,'onnxruntime::mkl_dnn::Gemm&lt; T &gt;'],['../classonnxruntime_1_1Gemm.html',1,'onnxruntime::Gemm&lt; T_X, T_W, T_B, T_Y &gt;'],['../classonnxruntime_1_1cuda_1_1Gemm.html',1,'onnxruntime::cuda::Gemm&lt; T &gt;']]],
   ['gemmhelper',['GemmHelper',['../classonnxruntime_1_1GemmHelper.html',1,'onnxruntime']]],

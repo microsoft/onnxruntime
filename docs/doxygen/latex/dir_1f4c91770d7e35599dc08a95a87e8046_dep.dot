@@ -11,6 +11,6 @@ digraph "onnxruntime/onnxruntime/core/common/logging" {
   }
   }
   dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
-  dir_499eb2b1b9e0e536cc730c1bcca58585->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="4", labeldistance=1.5 headhref="dir_000026_000004.html"];
-  dir_1f4c91770d7e35599dc08a95a87e8046->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="9", labeldistance=1.5 headhref="dir_000025_000004.html"];
+  dir_499eb2b1b9e0e536cc730c1bcca58585->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="4", labeldistance=1.5 headhref="dir_000031_000008.html"];
+  dir_1f4c91770d7e35599dc08a95a87e8046->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="9", labeldistance=1.5 headhref="dir_000030_000008.html"];
 }

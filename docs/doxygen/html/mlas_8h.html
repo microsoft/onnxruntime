@@ -140,6 +140,11 @@ Enumerations</h2></td></tr>
 <a class="el" href="mlas_8h.html#ac248f7f0805a559ed62acf815486bec0a35cf9d33095b457d7b3d29196af8e37a">MlasConvAlgorithmExpandThenGemmSegmented</a>
  }</td></tr>
 <tr class="separator:ac248f7f0805a559ed62acf815486bec0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a308be0f1e44b0324610000287f348222"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a> { <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222a0b7bda099a63732d1a6745c0eaf1ebef">MlasMaximumPooling</a>, 
+<a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222a3a0eaeab7a08670d785b5def0cb350af">MlasAveragePoolingExcludePad</a>, 
+<a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222ac9736e560d5f6b240a145cbc3b9132bd">MlasAveragePoolingIncludePad</a>
+ }</td></tr>
+<tr class="separator:a308be0f1e44b0324610000287f348222"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
@@ -149,6 +154,8 @@ Functions</h2></td></tr>
 <tr class="separator:a88ec0520d5c67b6534f4545d7fb6f201"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2bff495651f683ee28eca46a18d78126"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlas_8h.html#a2bff495651f683ee28eca46a18d78126">MlasConv</a> (const <a class="el" href="structMLAS__CONV__PARAMETERS.html">MLAS_CONV_PARAMETERS</a> *Parameters, const float *Input, const float *Filter, const float *Bias, float *WorkingBuffer, float *Output)</td></tr>
 <tr class="separator:a2bff495651f683ee28eca46a18d78126"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aea2c098f8f1f7ca24f7dafcee4f31332"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlas_8h.html#aea2c098f8f1f7ca24f7dafcee4f31332">MlasPool</a> (<a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a> PoolingKind, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> Dimensions, const int64_t *InputShape, const int64_t *KernelShape, const int64_t *Padding, const int64_t *StrideShape, const int64_t *OutputShape, const float *Input, float *Output)</td></tr>
+<tr class="separator:aea2c098f8f1f7ca24f7dafcee4f31332"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa74856b53dde7745893ed4bdda3d726b"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlas_8h.html#aa74856b53dde7745893ed4bdda3d726b">MlasBiasAdd</a> (const float *Bias, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> M, float *Output, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> N, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> <a class="el" href="mlasi_8h.html#ab55e28f894e92d01896d7dfc5e3cfa86">ldc</a>)</td></tr>
 <tr class="separator:aa74856b53dde7745893ed4bdda3d726b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa436247d224b2feabef6d2d30aa4d9e7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="mlas_8h.html#aa436247d224b2feabef6d2d30aa4d9e7">MlasConvertHalfToFloatBuffer</a> (const unsigned short *Source, float *Destination, <a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> Count)</td></tr>
@@ -282,6 +289,25 @@ Functions</h2></td></tr>
 <tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="ac248f7f0805a559ed62acf815486bec0aa112fd8a0a0fb299faf0c4b9769c5977"></a>MlasConvAlgorithmGemmDirect&#160;</td><td class="fielddoc"></td></tr>
 <tr><td class="fieldname"><a id="ac248f7f0805a559ed62acf815486bec0a23b83e8de854f7b00391fec7d708e473"></a>MlasConvAlgorithmExpandThenGemm&#160;</td><td class="fielddoc"></td></tr>
 <tr><td class="fieldname"><a id="ac248f7f0805a559ed62acf815486bec0a35cf9d33095b457d7b3d29196af8e37a"></a>MlasConvAlgorithmExpandThenGemmSegmented&#160;</td><td class="fielddoc"></td></tr>
+</table>
+
+</div>
+</div>
+<a id="a308be0f1e44b0324610000287f348222"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a308be0f1e44b0324610000287f348222">&#9670;&nbsp;</a></span>MLAS_POOLING_KIND</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">enum <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="a308be0f1e44b0324610000287f348222a0b7bda099a63732d1a6745c0eaf1ebef"></a>MlasMaximumPooling&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a308be0f1e44b0324610000287f348222a3a0eaeab7a08670d785b5def0cb350af"></a>MlasAveragePoolingExcludePad&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a308be0f1e44b0324610000287f348222ac9736e560d5f6b240a145cbc3b9132bd"></a>MlasAveragePoolingIncludePad&#160;</td><td class="fielddoc"></td></tr>
 </table>
 
 </div>
@@ -496,6 +522,76 @@ Functions</h2></td></tr>
           <td></td>
           <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a> *&#160;</td>
           <td class="paramname"><em>WorkingBufferSize</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="aea2c098f8f1f7ca24f7dafcee4f31332"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aea2c098f8f1f7ca24f7dafcee4f31332">&#9670;&nbsp;</a></span>MlasPool()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> <a class="el" href="mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd">MLASCALL</a> MlasPool </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a>&#160;</td>
+          <td class="paramname"><em>PoolingKind</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlasi_8h.html#a503efbc1c6e50825320ad909366b78ab">size_t</a>&#160;</td>
+          <td class="paramname"><em>Dimensions</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const int64_t *&#160;</td>
+          <td class="paramname"><em>InputShape</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const int64_t *&#160;</td>
+          <td class="paramname"><em>KernelShape</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const int64_t *&#160;</td>
+          <td class="paramname"><em>Padding</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const int64_t *&#160;</td>
+          <td class="paramname"><em>StrideShape</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const int64_t *&#160;</td>
+          <td class="paramname"><em>OutputShape</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const float *&#160;</td>
+          <td class="paramname"><em>Input</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">float *&#160;</td>
+          <td class="paramname"><em>Output</em>&#160;</td>
         </tr>
         <tr>
           <td></td>

@@ -169,7 +169,7 @@ digraph "onnxruntime/onnxruntime/core/framework/environment.cc"
   Node40 -> Node62 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node40 -> Node52 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node40 -> Node38 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node39 -> Node72 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node72 [label="core/framework/kernel\l_registry.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry_8h.html"];
-  Node72 -> Node40 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node39 -> Node73 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node73 [label="core/framework/kernel\l_registry.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry_8h.html"];
+  Node73 -> Node40 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

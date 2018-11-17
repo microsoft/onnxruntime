@@ -50,7 +50,7 @@ int \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_a8d653e7f84e8c
 \item 
 \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_a186dd29be61d0703146263d87f1271f1}{Copy\+Outputs\+Across\+Devices}} (std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&fetches, std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&user\+\_\+fetches)
 \item 
-\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_aa904ca4de813164cfb8bc0608498d9ae}{Run}} (const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&run\+\_\+options0, const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&feeds, const std\+::vector$<$ std\+::string $>$ \&output\+\_\+names, std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$p\+\_\+fetches)
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_aec73d9664448eece9c2627d4d378a302}{Run}} (const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&run\+\_\+options, const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&feeds, const std\+::vector$<$ std\+::string $>$ \&output\+\_\+names, std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$p\+\_\+fetches)
 \item 
 std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{structonnxruntime_1_1ModelMetadata}{Model\+Metadata}} $\ast$ $>$ \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_a34dba97aea4524d5d7e10aed1c645c77}{Get\+Model\+Metadata}} () const
 \item 
@@ -65,6 +65,8 @@ std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::
 \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_ac4b6faace4cc4ef595e2eba3486903f3}{Run}} (\mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} \&io\+\_\+binding)
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_aa6eca602c08e2c3c76aa6fadd05b9e22}{Start\+Profiling}} (const std\+::string \&file\+\_\+prefix)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_a68f97798c8a5403de9648c8e08c4de88}{Start\+Profiling}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$logger\+\_\+ptr)
 \item 
 std\+::string \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl_af4994d40aa3ac98a6d7542a4c18d336b}{End\+Profiling}} ()
 \end{DoxyCompactItemize}
@@ -228,11 +230,11 @@ We pass in graph and session\+\_\+state so we can handled nested subgraphs in th
 \subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
 {\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Impl\+::\+Run (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$}]{p\+\_\+fetches }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
-\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_1_1Impl_aa904ca4de813164cfb8bc0608498d9ae}\label{classonnxruntime_1_1InferenceSession_1_1Impl_aa904ca4de813164cfb8bc0608498d9ae}} 
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_1_1Impl_aec73d9664448eece9c2627d4d378a302}\label{classonnxruntime_1_1InferenceSession_1_1Impl_aec73d9664448eece9c2627d4d378a302}} 
 \index{onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}!Run@{Run}}
 \index{Run@{Run}!onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}}
 \subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
-{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Inference\+Session\+::\+Impl\+::\+Run (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&}]{run\+\_\+options0,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$}]{p\+\_\+fetches }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Inference\+Session\+::\+Impl\+::\+Run (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&}]{run\+\_\+options,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$}]{p\+\_\+fetches }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
 \mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_1_1Impl_a8c0b0a42c5f4ba3a4fa6cffb730bb5f6}\label{classonnxruntime_1_1InferenceSession_1_1Impl_a8c0b0a42c5f4ba3a4fa6cffb730bb5f6}} 
 \index{onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}!Run@{Run}}
@@ -249,8 +251,14 @@ We pass in graph and session\+\_\+state so we can handled nested subgraphs in th
 \mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_1_1Impl_aa6eca602c08e2c3c76aa6fadd05b9e22}\label{classonnxruntime_1_1InferenceSession_1_1Impl_aa6eca602c08e2c3c76aa6fadd05b9e22}} 
 \index{onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}!Start\+Profiling@{Start\+Profiling}}
 \index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}}
-\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
 {\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Inference\+Session\+::\+Impl\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{file\+\_\+prefix }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_1_1Impl_a68f97798c8a5403de9648c8e08c4de88}\label{classonnxruntime_1_1InferenceSession_1_1Impl_a68f97798c8a5403de9648c8e08c4de88}} 
+\index{onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}!Start\+Profiling@{Start\+Profiling}}
+\index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Inference\+Session\+::\+Impl\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$}]{logger\+\_\+ptr }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
 \mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_1_1Impl_ae5d568d42648477ec13680cef613cbb2}\label{classonnxruntime_1_1InferenceSession_1_1Impl_ae5d568d42648477ec13680cef613cbb2}} 
 \index{onnxruntime\+::\+Inference\+Session\+::\+Impl@{onnxruntime\+::\+Inference\+Session\+::\+Impl}!Validate\+Input\+Names@{Validate\+Input\+Names}}

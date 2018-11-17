@@ -3,5 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="MLAS_CONV_PARAMETERS",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structMLAS__CONV__PARAMETERS.html"];
+  Node0 [label="MLAS_AVERAGE_POOLING",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structMLAS__AVERAGE__POOLING.html"];
 }

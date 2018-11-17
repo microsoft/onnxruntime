@@ -15,7 +15,7 @@ var searchData=
   ['error_5fcode_5fhelper_2eh',['error_code_helper.h',['../error__code__helper_8h.html',1,'']]],
   ['etw_5fsink_2ecc',['etw_sink.cc',['../etw__sink_8cc.html',1,'']]],
   ['etw_5fsink_2eh',['etw_sink.h',['../etw__sink_8h.html',1,'']]],
-  ['exceptions_2ecs',['Exceptions.cs',['../Exceptions_8cs.html',1,'']]],
+  ['exceptions_2ecs',['Exceptions.cs',['../OnnxRuntime_2Exceptions_8cs.html',1,'(Global Namespace)'],['../src_2Microsoft_8ML_8OnnxRuntime_2Exceptions_8cs.html',1,'(Global Namespace)']]],
   ['exceptions_2eh',['exceptions.h',['../exceptions_8h.html',1,'']]],
   ['execution_5fframe_2ecc',['execution_frame.cc',['../execution__frame_8cc.html',1,'']]],
   ['execution_5fframe_2eh',['execution_frame.h',['../execution__frame_8h.html',1,'']]],

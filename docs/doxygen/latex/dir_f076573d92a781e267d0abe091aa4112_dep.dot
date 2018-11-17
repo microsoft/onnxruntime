@@ -11,6 +11,6 @@ digraph "onnxruntime/onnxruntime/core/common" {
   }
   }
   dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
-  dir_f076573d92a781e267d0abe091aa4112->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="14", labeldistance=1.5 headhref="dir_000024_000004.html"];
-  dir_1f4c91770d7e35599dc08a95a87e8046->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="9", labeldistance=1.5 headhref="dir_000025_000004.html"];
+  dir_f076573d92a781e267d0abe091aa4112->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="14", labeldistance=1.5 headhref="dir_000029_000008.html"];
+  dir_1f4c91770d7e35599dc08a95a87e8046->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="9", labeldistance=1.5 headhref="dir_000030_000008.html"];
 }

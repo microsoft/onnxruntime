@@ -94,6 +94,8 @@ Protected Member Functions</h2></td></tr>
 <tr class="separator:ab49048558a89a492f93cc36f5e7ab599"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab9c9f378646859e71ecd332088797b6a"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1PoolBase.html#ab9c9f378646859e71ecd332088797b6a">ComputeSizeAndPad</a> (const int64_t in_size, const int64_t stride, const int64_t <a class="el" href="mkldnn_2nn_2pool_8cc.html#a1fd14bdce0b9db48a6bf8c6ce1320490">kernel</a>, int64_t *pad_head, int64_t *pad_tail, int64_t *out_size) const</td></tr>
 <tr class="separator:ab9c9f378646859e71ecd332088797b6a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a231b67fa3cae697f680c87d55deab443"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1PoolBase.html#a231b67fa3cae697f680c87d55deab443">Compute</a> (<a class="el" href="classonnxruntime_1_1OpKernelContext.html">OpKernelContext</a> *context, <a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a> kind) const</td></tr>
+<tr class="separator:a231b67fa3cae697f680c87d55deab443"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a452467aa88e8573f8a4e26818891a200"><td class="memItemLeft" align="right" valign="top">int64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1PoolBase.html#a452467aa88e8573f8a4e26818891a200">stride_h</a> () const</td></tr>
 <tr class="separator:a452467aa88e8573f8a4e26818891a200"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afd7e12a7ee1236f261419666a272c3c7"><td class="memItemLeft" align="right" valign="top">int64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1PoolBase.html#afd7e12a7ee1236f261419666a272c3c7">stride_w</a> () const</td></tr>
@@ -173,6 +175,42 @@ Protected Attributes</h2></td></tr>
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
+<a id="a231b67fa3cae697f680c87d55deab443"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a231b67fa3cae697f680c87d55deab443">&#9670;&nbsp;</a></span>Compute()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">Status</a> onnxruntime::PoolBase::Compute </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="classonnxruntime_1_1OpKernelContext.html">OpKernelContext</a> *&#160;</td>
+          <td class="paramname"><em>context</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="mlas_8h.html#a308be0f1e44b0324610000287f348222">MLAS_POOLING_KIND</a>&#160;</td>
+          <td class="paramname"><em>kind</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="ab9c9f378646859e71ecd332088797b6a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ab9c9f378646859e71ecd332088797b6a">&#9670;&nbsp;</a></span>ComputeSizeAndPad()</h2>
 
@@ -569,8 +607,9 @@ Protected Attributes</h2></td></tr>
 
 </div>
 </div>
-<hr/>The documentation for this class was generated from the following file:<ul>
+<hr/>The documentation for this class was generated from the following files:<ul>
 <li>onnxruntime/onnxruntime/core/providers/cpu/nn/<a class="el" href="pool__base_8h_source.html">pool_base.h</a></li>
+<li>onnxruntime/onnxruntime/core/providers/cpu/nn/<a class="el" href="cpu_2nn_2pool_8cc.html">pool.cc</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->

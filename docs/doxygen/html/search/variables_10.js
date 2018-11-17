@@ -1,6 +1,7 @@
 var searchData=
 [
   ['r_5flin_5flayer_5fid_5f',['R_lin_layer_id_',['../classonnxruntime_1_1cuda_1_1CudnnRnnBase.html#ac8928d0f3f1a61979c26ed046a8521ce',1,'onnxruntime::cuda::CudnnRnnBase']]],
+  ['reductioninputindex',['ReductionInputIndex',['../structMLAS__AVERAGE__POOLING_1_1DividerVectorContext.html#a46745314ba7c7c6c86561518e482c226',1,'MLAS_AVERAGE_POOLING::DividerVectorContext']]],
   ['ref_5fcount',['ref_count',['../structONNXRuntimeRunOptions.html#a762d48d1bb2b7840b836489957d1e823',1,'ONNXRuntimeRunOptions::ref_count()'],['../structONNXRuntimeSessionOptions.html#a7b75fb8af22d1bab4d3b78d560e59a99',1,'ONNXRuntimeSessionOptions::ref_count()'],['../structONNXRuntimeTensorTypeAndShapeInfo.html#a365e7d1b11148a68b6a2f36c27229bcd',1,'ONNXRuntimeTensorTypeAndShapeInfo::ref_count()']]],
   ['reused_5fbuffer',['reused_buffer',['../structonnxruntime_1_1SequentialExecutionPlan_1_1AllocPlanPerValue.html#a5b05461bd040be2df7c6d524aa9c3b76',1,'onnxruntime::SequentialExecutionPlan::AllocPlanPerValue']]],
   ['reverse_5f',['reverse_',['../classonnxruntime_1_1cuda_1_1CudnnRnnBase.html#a9f4414feb5fdb7391741be9f4546293b',1,'onnxruntime::cuda::CudnnRnnBase']]],

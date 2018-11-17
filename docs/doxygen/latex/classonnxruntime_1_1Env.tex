@@ -48,9 +48,9 @@ virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Statu
 \item 
 virtual \mbox{\hyperlink{namespaceonnxruntime_ab899e71c070d3fe82ae09bb53075b258}{P\+I\+D\+Type}} \mbox{\hyperlink{classonnxruntime_1_1Env_a1b78c553e28b5d996655d81bb447c84d}{Get\+Self\+Pid}} () const =0
 \item 
-virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_acb9c20a7aca7ff9f33088d18a95cc81b}{Load\+Library}} (const std\+::string \&library\+\_\+filename, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$handle) const =0
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_abc3cc65bf355845671d84421f0a00765}{Load\+Dynamic\+Library}} (const std\+::string \&library\+\_\+filename, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$handle) const =0
 \item 
-virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_aeabb04baa50100699264a4ecac08abce}{Unload\+Library}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$handle) const =0
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_a462e73bb87bc30a18496bc311b430ede}{Unload\+Dynamic\+Library}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$handle) const =0
 \item 
 virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_a0ac6efcb6758ce44ff78c7eb158615b4}{Get\+Symbol\+From\+Library}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$handle, const std\+::string \&symbol\+\_\+name, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$symbol) const =0
 \item 
@@ -188,11 +188,11 @@ for use with Eigen\+::\+Thread\+Pool
 \subsubsection{\texorpdfstring{Get\+Symbol\+From\+Library()}{GetSymbolFromLibrary()}}
 {\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Get\+Symbol\+From\+Library (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{handle,  }\item[{const std\+::string \&}]{symbol\+\_\+name,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$}]{symbol }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
 
-\mbox{\Hypertarget{classonnxruntime_1_1Env_acb9c20a7aca7ff9f33088d18a95cc81b}\label{classonnxruntime_1_1Env_acb9c20a7aca7ff9f33088d18a95cc81b}} 
-\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Load\+Library@{Load\+Library}}
-\index{Load\+Library@{Load\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
-\subsubsection{\texorpdfstring{Load\+Library()}{LoadLibrary()}}
-{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Load\+Library (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{library\+\_\+filename,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$}]{handle }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+\mbox{\Hypertarget{classonnxruntime_1_1Env_abc3cc65bf355845671d84421f0a00765}\label{classonnxruntime_1_1Env_abc3cc65bf355845671d84421f0a00765}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Load\+Dynamic\+Library@{Load\+Dynamic\+Library}}
+\index{Load\+Dynamic\+Library@{Load\+Dynamic\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Load\+Dynamic\+Library()}{LoadDynamicLibrary()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Load\+Dynamic\+Library (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{library\+\_\+filename,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$}]{handle }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
 
 \mbox{\Hypertarget{classonnxruntime_1_1Env_a001849df94fd8eb65a81a70307197061}\label{classonnxruntime_1_1Env_a001849df94fd8eb65a81a70307197061}} 
 \index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Now\+Micros@{Now\+Micros}}
@@ -230,11 +230,11 @@ Sleeps/delays the thread for the prescribed number of micro-\/seconds. On Window
 
 Returns a new thread that is running fn() and is identified (for debugging/performance-\/analysis) by \char`\"{}name\char`\"{}. 
 
-Caller takes ownership of the result and must delete it eventually (the deletion will block until fn() stops running). \mbox{\Hypertarget{classonnxruntime_1_1Env_aeabb04baa50100699264a4ecac08abce}\label{classonnxruntime_1_1Env_aeabb04baa50100699264a4ecac08abce}} 
-\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Unload\+Library@{Unload\+Library}}
-\index{Unload\+Library@{Unload\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
-\subsubsection{\texorpdfstring{Unload\+Library()}{UnloadLibrary()}}
-{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Unload\+Library (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{handle }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+Caller takes ownership of the result and must delete it eventually (the deletion will block until fn() stops running). \mbox{\Hypertarget{classonnxruntime_1_1Env_a462e73bb87bc30a18496bc311b430ede}\label{classonnxruntime_1_1Env_a462e73bb87bc30a18496bc311b430ede}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Unload\+Dynamic\+Library@{Unload\+Dynamic\+Library}}
+\index{Unload\+Dynamic\+Library@{Unload\+Dynamic\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Unload\+Dynamic\+Library()}{UnloadDynamicLibrary()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Unload\+Dynamic\+Library (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{handle }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
 
 
 

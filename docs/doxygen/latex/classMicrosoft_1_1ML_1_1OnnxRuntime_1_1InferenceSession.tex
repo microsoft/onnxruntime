@@ -25,25 +25,39 @@ I\+Read\+Only\+List$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1N
 I\+Read\+Only\+List$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a056db8b6717c41e7fa63fe1e5823ac96}{Run}} (I\+Read\+Only\+List$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$ inputs, I\+Collection$<$ string $>$ output\+Names, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}} options=new \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}())
 \begin{DoxyCompactList}\small\item\em Runs the loaded model for the given inputs, and fetches the specified outputs in {\itshape output\+Names} . \end{DoxyCompactList}\item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a2eb590b9d54dea1e8976e19bb844a7fe}{Dispose}} ()
+\item 
+\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ad3981d9f3b4323653e5718a26af2a8c8}{Inference\+Session}} (string model\+Path)
+\item 
+\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a83d9c88f3b76f5b5011b830faab20c83}{Inference\+Session}} (string model\+Path, \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1SessionOptions}{Session\+Options}} options)
+\item 
+I\+Read\+Only\+Collection$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a821eafb18fe5c2b806d9a555c84dd0fc}{Run}} (I\+Read\+Only\+Collection$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$ inputs, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}} options=new \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}())
+\item 
+I\+Read\+Only\+Collection$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4dcbba273774414cd195c7f6777f918e}{Run}} (I\+Read\+Only\+Collection$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$ inputs, I\+Read\+Only\+Collection$<$ string $>$ output\+Names, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}} options=new \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}())
+\begin{DoxyCompactList}\small\item\em Runs the loaded model for the given inputs, and fetches the specified outputs in {\itshape output\+Names} . \end{DoxyCompactList}\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a2eb590b9d54dea1e8976e19bb844a7fe}{Dispose}} ()
 \end{DoxyCompactItemize}
 \subsection*{Protected Member Functions}
 \begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4533e6bf48e8f4e3e219521d5bf7ed2f}{Dispose}} (bool disposing)
 \item 
 virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4533e6bf48e8f4e3e219521d5bf7ed2f}{Dispose}} (bool disposing)
 \end{DoxyCompactItemize}
 \subsection*{Protected Attributes}
 \begin{DoxyCompactItemize}
 \item 
-Int\+Ptr \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_af21004085b4d236f7ca28829367b2d86}{\+\_\+native\+Handle}}
+Int\+Ptr \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a1a027b8618f21d53010e5cd068c75b15}{\+\_\+native\+Handle}}
+\item 
+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ae6b54c8f160dcbbe9cee2012cf7bbcd8}{\+\_\+input\+Metadata}}
 \end{DoxyCompactItemize}
 \subsection*{Properties}
 \begin{DoxyCompactItemize}
 \item 
-I\+Read\+Only\+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4dafe4054b706966d971eb953e0624b3}{Input\+Metadata}}\hspace{0.3cm}{\ttfamily  \mbox{[}get\mbox{]}}
+I\+Read\+Only\+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a8715860931b873d2f2d72b0cb650caa6}{Input\+Metadata}}\hspace{0.3cm}{\ttfamily  \mbox{[}get\mbox{]}}
 \item 
-I\+Read\+Only\+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a6ec51749bbb6f364bb9af050c956066f}{Output\+Metadata}}\hspace{0.3cm}{\ttfamily  \mbox{[}get\mbox{]}}
+I\+Read\+Only\+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_aaff8c90121e88c8003c5056c418717ae}{Output\+Metadata}}\hspace{0.3cm}{\ttfamily  \mbox{[}get\mbox{]}}
 \item 
-\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1ModelMetadata}{Model\+Metadata}} \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a55b76db5cd70a96614cc69ed6fa098c3}{Model\+Metadata}}\hspace{0.3cm}{\ttfamily  \mbox{[}get\mbox{]}}
+\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1ModelMetadata}{Model\+Metadata}} \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a91867b5c07d9983372277ac483587e66}{Model\+Metadata}}\hspace{0.3cm}{\ttfamily  \mbox{[}get\mbox{]}}
 \end{DoxyCompactItemize}
 
 
@@ -56,13 +70,25 @@ Represents an Inference Session against an O\+N\+NX Model
 \mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ad3981d9f3b4323653e5718a26af2a8c8}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ad3981d9f3b4323653e5718a26af2a8c8}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Inference\+Session@{Inference\+Session}}
 \index{Inference\+Session@{Inference\+Session}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
 {\footnotesize\ttfamily Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Inference\+Session (\begin{DoxyParamCaption}\item[{string}]{model\+Path }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
 \mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a83d9c88f3b76f5b5011b830faab20c83}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a83d9c88f3b76f5b5011b830faab20c83}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Inference\+Session@{Inference\+Session}}
 \index{Inference\+Session@{Inference\+Session}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Inference\+Session (\begin{DoxyParamCaption}\item[{string}]{model\+Path,  }\item[{\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1SessionOptions}{Session\+Options}}}]{options }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ad3981d9f3b4323653e5718a26af2a8c8}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ad3981d9f3b4323653e5718a26af2a8c8}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Inference\+Session@{Inference\+Session}}
+\index{Inference\+Session@{Inference\+Session}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Inference\+Session (\begin{DoxyParamCaption}\item[{string}]{model\+Path }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a83d9c88f3b76f5b5011b830faab20c83}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a83d9c88f3b76f5b5011b830faab20c83}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Inference\+Session@{Inference\+Session}}
+\index{Inference\+Session@{Inference\+Session}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
 {\footnotesize\ttfamily Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Inference\+Session (\begin{DoxyParamCaption}\item[{string}]{model\+Path,  }\item[{\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1SessionOptions}{Session\+Options}}}]{options }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
 
@@ -71,25 +97,65 @@ Represents an Inference Session against an O\+N\+NX Model
 \mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a2eb590b9d54dea1e8976e19bb844a7fe}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a2eb590b9d54dea1e8976e19bb844a7fe}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Dispose@{Dispose}}
 \index{Dispose@{Dispose}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Dispose()}{Dispose()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+\subsubsection{\texorpdfstring{Dispose()}{Dispose()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
 {\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Dispose (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
 \mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4533e6bf48e8f4e3e219521d5bf7ed2f}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4533e6bf48e8f4e3e219521d5bf7ed2f}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Dispose@{Dispose}}
 \index{Dispose@{Dispose}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Dispose()}{Dispose()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+\subsubsection{\texorpdfstring{Dispose()}{Dispose()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Dispose (\begin{DoxyParamCaption}\item[{bool}]{disposing }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}, {\ttfamily [virtual]}}
+
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a2eb590b9d54dea1e8976e19bb844a7fe}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a2eb590b9d54dea1e8976e19bb844a7fe}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Dispose@{Dispose}}
+\index{Dispose@{Dispose}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Dispose()}{Dispose()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Dispose (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4533e6bf48e8f4e3e219521d5bf7ed2f}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4533e6bf48e8f4e3e219521d5bf7ed2f}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Dispose@{Dispose}}
+\index{Dispose@{Dispose}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Dispose()}{Dispose()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
 {\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Dispose (\begin{DoxyParamCaption}\item[{bool}]{disposing }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}, {\ttfamily [virtual]}}
 
 \mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a29f708b67f43e80b2c3d11976ed91924}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a29f708b67f43e80b2c3d11976ed91924}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Run@{Run}}
 \index{Run@{Run}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
 {\footnotesize\ttfamily I\+Read\+Only\+List$<$\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Run (\begin{DoxyParamCaption}\item[{I\+Read\+Only\+List$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$}]{inputs,  }\item[{\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}}]{options = {\ttfamily new~\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}()} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a821eafb18fe5c2b806d9a555c84dd0fc}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a821eafb18fe5c2b806d9a555c84dd0fc}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Run@{Run}}
+\index{Run@{Run}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily I\+Read\+Only\+Collection$<$\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Run (\begin{DoxyParamCaption}\item[{I\+Read\+Only\+Collection$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$}]{inputs,  }\item[{\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}}]{options = {\ttfamily new~\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}()} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4dcbba273774414cd195c7f6777f918e}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4dcbba273774414cd195c7f6777f918e}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Run@{Run}}
+\index{Run@{Run}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily I\+Read\+Only\+Collection$<$\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Run (\begin{DoxyParamCaption}\item[{I\+Read\+Only\+Collection$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$}]{inputs,  }\item[{I\+Read\+Only\+Collection$<$ string $>$}]{output\+Names,  }\item[{\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}}]{options = {\ttfamily new~\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}()} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Runs the loaded model for the given inputs, and fetches the specified outputs in {\itshape output\+Names} . 
+
+
+\begin{DoxyParams}{Parameters}
+{\em inputs} & \\
+\hline
+{\em output\+Names} & \\
+\hline
+{\em options} & \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Output Tensors in a Dictionary
+\end{DoxyReturn}
 \mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a056db8b6717c41e7fa63fe1e5823ac96}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a056db8b6717c41e7fa63fe1e5823ac96}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Run@{Run}}
 \index{Run@{Run}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
 {\footnotesize\ttfamily I\+Read\+Only\+List$<$\mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Run (\begin{DoxyParamCaption}\item[{I\+Read\+Only\+List$<$ \mbox{\hyperlink{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1NamedOnnxValue}{Named\+Onnx\+Value}} $>$}]{inputs,  }\item[{I\+Collection$<$ string $>$}]{output\+Names,  }\item[{\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}}]{options = {\ttfamily new~\mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1RunOptions}{Run\+Options}}()} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
 
 
@@ -111,7 +177,13 @@ Output Tensors in a Dictionary
 
 
 \subsection{Member Data Documentation}
-\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_af21004085b4d236f7ca28829367b2d86}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_af21004085b4d236f7ca28829367b2d86}} 
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ae6b54c8f160dcbbe9cee2012cf7bbcd8}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_ae6b54c8f160dcbbe9cee2012cf7bbcd8}} 
+\index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!\+\_\+input\+Metadata@{\+\_\+input\+Metadata}}
+\index{\+\_\+input\+Metadata@{\+\_\+input\+Metadata}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{\+\_\+input\+Metadata}{\_inputMetadata}}
+{\footnotesize\ttfamily Dictionary$<$string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+\_\+input\+Metadata\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a1a027b8618f21d53010e5cd068c75b15}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a1a027b8618f21d53010e5cd068c75b15}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!\+\_\+native\+Handle@{\+\_\+native\+Handle}}
 \index{\+\_\+native\+Handle@{\+\_\+native\+Handle}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
 \subsubsection{\texorpdfstring{\+\_\+native\+Handle}{\_nativeHandle}}
@@ -120,26 +192,26 @@ Output Tensors in a Dictionary
 
 
 \subsection{Property Documentation}
-\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4dafe4054b706966d971eb953e0624b3}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a4dafe4054b706966d971eb953e0624b3}} 
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a8715860931b873d2f2d72b0cb650caa6}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a8715860931b873d2f2d72b0cb650caa6}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Input\+Metadata@{Input\+Metadata}}
 \index{Input\+Metadata@{Input\+Metadata}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
 \subsubsection{\texorpdfstring{Input\+Metadata}{InputMetadata}}
-{\footnotesize\ttfamily I\+Read\+Only\+Dictionary$<$string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Input\+Metadata\hspace{0.3cm}{\ttfamily [get]}}
+{\footnotesize\ttfamily I\+Read\+Only\+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Input\+Metadata\hspace{0.3cm}{\ttfamily [get]}}
 
-\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a55b76db5cd70a96614cc69ed6fa098c3}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a55b76db5cd70a96614cc69ed6fa098c3}} 
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a91867b5c07d9983372277ac483587e66}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a91867b5c07d9983372277ac483587e66}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Model\+Metadata@{Model\+Metadata}}
 \index{Model\+Metadata@{Model\+Metadata}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
 \subsubsection{\texorpdfstring{Model\+Metadata}{ModelMetadata}}
 {\footnotesize\ttfamily \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1ModelMetadata}{Model\+Metadata}} Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Model\+Metadata\hspace{0.3cm}{\ttfamily [get]}}
 
-\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a6ec51749bbb6f364bb9af050c956066f}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_a6ec51749bbb6f364bb9af050c956066f}} 
+\mbox{\Hypertarget{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_aaff8c90121e88c8003c5056c418717ae}\label{classMicrosoft_1_1ML_1_1OnnxRuntime_1_1InferenceSession_aaff8c90121e88c8003c5056c418717ae}} 
 \index{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}!Output\+Metadata@{Output\+Metadata}}
 \index{Output\+Metadata@{Output\+Metadata}!Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session@{Microsoft\+::\+M\+L\+::\+Onnx\+Runtime\+::\+Inference\+Session}}
 \subsubsection{\texorpdfstring{Output\+Metadata}{OutputMetadata}}
-{\footnotesize\ttfamily I\+Read\+Only\+Dictionary$<$string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}}$>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Output\+Metadata\hspace{0.3cm}{\ttfamily [get]}}
+{\footnotesize\ttfamily I\+Read\+Only\+Dictionary$<$ string, \mbox{\hyperlink{structMicrosoft_1_1ML_1_1OnnxRuntime_1_1NodeMetadata}{Node\+Metadata}} $>$ Microsoft.\+M\+L.\+Onnx\+Runtime.\+Inference\+Session.\+Output\+Metadata\hspace{0.3cm}{\ttfamily [get]}}
 
 
 
 The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
 \item 
-onnxruntime/csharp/\+Onnx\+Runtime/\mbox{\hyperlink{InferenceSession_8cs}{Inference\+Session.\+cs}}\end{DoxyCompactItemize}
+onnxruntime/csharp/\+Onnx\+Runtime/\mbox{\hyperlink{OnnxRuntime_2InferenceSession_8cs}{Inference\+Session.\+cs}}\end{DoxyCompactItemize}

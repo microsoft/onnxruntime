@@ -55,6 +55,8 @@ int \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a9dbfd5df60f36c8283324
 \item 
 \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ab29bd2f63b9f4d5840e846f8bf705e8a}{Start\+Profiling}} (const std\+::string \&file\+\_\+prefix)
 \item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a7d688c79939567a953aa7f1b3559c7b7}{Start\+Profiling}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$logger\+\_\+ptr)
+\item 
 std\+::string \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ac9e69b0d77c3afb6c0fcad0969cfca17}{End\+Profiling}} ()
 \end{DoxyCompactItemize}
 \subsection*{Protected Member Functions}
@@ -306,12 +308,23 @@ See \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45
 \mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ab29bd2f63b9f4d5840e846f8bf705e8a}\label{classonnxruntime_1_1InferenceSession_ab29bd2f63b9f4d5840e846f8bf705e8a}} 
 \index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Start\+Profiling@{Start\+Profiling}}
 \index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
-\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
 {\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Inference\+Session\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{file\+\_\+prefix }\end{DoxyParamCaption})}
 
 Start profiling on this inference session. This simply turns on profiling events to be recorded. A corresponding End\+Profiling has to follow to write profiling data to a file. 
 \begin{DoxyParams}{Parameters}
 {\em file\+\_\+prefix} & is the prefix of the profile file. It can include a directory path. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a7d688c79939567a953aa7f1b3559c7b7}\label{classonnxruntime_1_1InferenceSession_a7d688c79939567a953aa7f1b3559c7b7}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Start\+Profiling@{Start\+Profiling}}
+\index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Inference\+Session\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} $\ast$}]{logger\+\_\+ptr }\end{DoxyParamCaption})}
+
+Start profiling on this inference session. This simply turns on profiling events to be recorded. A corresponding End\+Profiling has to follow to send profiling events through the logger\textquotesingle{}s I\+Sink. 
+\begin{DoxyParams}{Parameters}
+{\em logger\+\_\+ptr} & is pointer to the logger where profiling events will be sent to. \\
 \hline
 \end{DoxyParams}
 

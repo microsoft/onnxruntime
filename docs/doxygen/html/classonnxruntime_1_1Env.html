@@ -128,10 +128,10 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:aba47acf27bb87a6e5710e45b20e0fc4c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1b78c553e28b5d996655d81bb447c84d"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="namespaceonnxruntime.html#ab899e71c070d3fe82ae09bb53075b258">PIDType</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#a1b78c553e28b5d996655d81bb447c84d">GetSelfPid</a> () const =0</td></tr>
 <tr class="separator:a1b78c553e28b5d996655d81bb447c84d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:acb9c20a7aca7ff9f33088d18a95cc81b"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#acb9c20a7aca7ff9f33088d18a95cc81b">LoadLibrary</a> (const std::string &amp;library_filename, <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> **handle) const =0</td></tr>
-<tr class="separator:acb9c20a7aca7ff9f33088d18a95cc81b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aeabb04baa50100699264a4ecac08abce"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#aeabb04baa50100699264a4ecac08abce">UnloadLibrary</a> (<a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> *handle) const =0</td></tr>
-<tr class="separator:aeabb04baa50100699264a4ecac08abce"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abc3cc65bf355845671d84421f0a00765"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#abc3cc65bf355845671d84421f0a00765">LoadDynamicLibrary</a> (const std::string &amp;library_filename, <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> **handle) const =0</td></tr>
+<tr class="separator:abc3cc65bf355845671d84421f0a00765"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a462e73bb87bc30a18496bc311b430ede"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#a462e73bb87bc30a18496bc311b430ede">UnloadDynamicLibrary</a> (<a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> *handle) const =0</td></tr>
+<tr class="separator:a462e73bb87bc30a18496bc311b430ede"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0ac6efcb6758ce44ff78c7eb158615b4"><td class="memItemLeft" align="right" valign="top">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#a0ac6efcb6758ce44ff78c7eb158615b4">GetSymbolFromLibrary</a> (<a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> *handle, const std::string &amp;symbol_name, <a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> **symbol) const =0</td></tr>
 <tr class="separator:a0ac6efcb6758ce44ff78c7eb158615b4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a10a3d5f1d6d546321928f2860270263e"><td class="memItemLeft" align="right" valign="top">virtual std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Env.html#a10a3d5f1d6d546321928f2860270263e">FormatLibraryFileName</a> (const std::string &amp;name, const std::string &amp;<a class="el" href="mkldnn_2nn_2pool_8cc.html#a728b969e374aba4020e39aea7e02e64f">version</a>) const =0</td></tr>
@@ -560,8 +560,8 @@ Protected Member Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="acb9c20a7aca7ff9f33088d18a95cc81b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#acb9c20a7aca7ff9f33088d18a95cc81b">&#9670;&nbsp;</a></span>LoadLibrary()</h2>
+<a id="abc3cc65bf355845671d84421f0a00765"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abc3cc65bf355845671d84421f0a00765">&#9670;&nbsp;</a></span>LoadDynamicLibrary()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -570,7 +570,7 @@ Protected Member Functions</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a> onnxruntime::Env::LoadLibrary </td>
+          <td class="memname">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a> onnxruntime::Env::LoadDynamicLibrary </td>
           <td>(</td>
           <td class="paramtype">const std::string &amp;&#160;</td>
           <td class="paramname"><em>library_filename</em>, </td>
@@ -722,8 +722,8 @@ Protected Member Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="aeabb04baa50100699264a4ecac08abce"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aeabb04baa50100699264a4ecac08abce">&#9670;&nbsp;</a></span>UnloadLibrary()</h2>
+<a id="a462e73bb87bc30a18496bc311b430ede"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a462e73bb87bc30a18496bc311b430ede">&#9670;&nbsp;</a></span>UnloadDynamicLibrary()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -732,7 +732,7 @@ Protected Member Functions</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a> onnxruntime::Env::UnloadLibrary </td>
+          <td class="memname">virtual <a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a> onnxruntime::Env::UnloadDynamicLibrary </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> *&#160;</td>
           <td class="paramname"><em>handle</em></td><td>)</td>

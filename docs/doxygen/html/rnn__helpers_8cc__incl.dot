@@ -177,9 +177,9 @@ digraph "onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn_helpers.cc"
   Node62 -> Node7 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node62 -> Node78 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node78 [label="onnx/defs/schema.h",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
-  Node0 -> Node82 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
-  Node82 [label="core/providers/cpu\l/rnn/rnn_activation\l_functors.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$rnn__activation__functors_8h.html"];
-  Node82 -> Node60 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 -> Node83 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node83 [label="core/providers/cpu\l/rnn/rnn_activation\l_functors.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$rnn__activation__functors_8h.html"];
+  Node83 -> Node60 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node0 -> Node49 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
   Node0 -> Node57 [color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
 }

@@ -79,8 +79,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a26f33ca41f59c3865ec5961142b79b1b"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#a26f33ca41f59c3865ec5961142b79b1b">Model</a> (const std::string &amp;graph_name, bool is_onnx_domain_only=false, const <a class="el" href="namespaceonnxruntime.html#a13519c21da77ccc594726b670276a266">ModelMetaData</a> &amp;model_metadata=<a class="el" href="namespaceonnxruntime.html#a13519c21da77ccc594726b670276a266">ModelMetaData</a>(), const <a class="el" href="namespaceonnxruntime.html#a37a91305e7190e83fa9c66117a6a4746">IOnnxRuntimeOpSchemaRegistryList</a> local_registries={}, const std::unordered_map&lt; std::string, int &gt; &amp;domain_to_version={})</td></tr>
-<tr class="separator:a26f33ca41f59c3865ec5961142b79b1b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae48985db0bd8ad5e58cc5a6693596a7e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#ae48985db0bd8ad5e58cc5a6693596a7e">Model</a> (const std::string &amp;graph_name, bool is_onnx_domain_only=false, const <a class="el" href="namespaceonnxruntime.html#a13519c21da77ccc594726b670276a266">ModelMetaData</a> &amp;model_metadata=<a class="el" href="namespaceonnxruntime.html#a13519c21da77ccc594726b670276a266">ModelMetaData</a>(), const <a class="el" href="namespaceonnxruntime.html#a37a91305e7190e83fa9c66117a6a4746">IOnnxRuntimeOpSchemaRegistryList</a> local_registries={}, const std::unordered_map&lt; std::string, int &gt; &amp;domain_to_version={}, const std::vector&lt; ONNX_NAMESPACE::FunctionProto &gt; &amp;model_specific_functions={})</td></tr>
+<tr class="separator:ae48985db0bd8ad5e58cc5a6693596a7e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9c173259b1fbf481bd9dfdecbd34f7f0"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#a9c173259b1fbf481bd9dfdecbd34f7f0">Model</a> (const ONNX_NAMESPACE::ModelProto &amp;model_proto, const <a class="el" href="namespaceonnxruntime.html#a37a91305e7190e83fa9c66117a6a4746">IOnnxRuntimeOpSchemaRegistryList</a> *local_registries=nullptr)</td></tr>
 <tr class="separator:a9c173259b1fbf481bd9dfdecbd34f7f0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae64329b4d073efb3122d23b362c5b5f5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#ae64329b4d073efb3122d23b362c5b5f5">Model</a> (std::unique_ptr&lt; ONNX_NAMESPACE::ModelProto &gt; model_proto, const <a class="el" href="namespaceonnxruntime.html#a37a91305e7190e83fa9c66117a6a4746">IOnnxRuntimeOpSchemaRegistryList</a> *local_registries=nullptr)</td></tr>
@@ -113,6 +113,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a3107455565d368aa674ab19cd156a433"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2a97e4baaf0238d56a4c1f583c3430ab"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="classonnxruntime_1_1Graph.html">Graph</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#a2a97e4baaf0238d56a4c1f583c3430ab">MainGraph</a> () const noexcept</td></tr>
 <tr class="separator:a2a97e4baaf0238d56a4c1f583c3430ab"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a602e428a4b098e7ec95f5a05144b06f5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#a602e428a4b098e7ec95f5a05144b06f5">AddFunction</a> (const ONNX_NAMESPACE::FunctionProto &amp;func_proto)</td></tr>
+<tr class="separator:a602e428a4b098e7ec95f5a05144b06f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6548029afd30cb62977066de5f70cb90"><td class="memItemLeft" align="right" valign="top">ONNX_NAMESPACE::ModelProto&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1Model.html#a6548029afd30cb62977066de5f70cb90">ToProto</a> ()</td></tr>
 <tr class="separator:a6548029afd30cb62977066de5f70cb90"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -141,8 +143,8 @@ Static Public Attributes</h2></td></tr>
 <tr class="separator:a092dabe5ac2981fde3b0ad0875f1c0c3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a26f33ca41f59c3865ec5961142b79b1b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a26f33ca41f59c3865ec5961142b79b1b">&#9670;&nbsp;</a></span>Model() <span class="overload">[1/3]</span></h2>
+<a id="ae48985db0bd8ad5e58cc5a6693596a7e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae48985db0bd8ad5e58cc5a6693596a7e">&#9670;&nbsp;</a></span>Model() <span class="overload">[1/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -178,7 +180,13 @@ Static Public Attributes</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">const std::unordered_map&lt; std::string, int &gt; &amp;&#160;</td>
-          <td class="paramname"><em>domain_to_version</em> = <code>{}</code>&#160;</td>
+          <td class="paramname"><em>domain_to_version</em> = <code>{}</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const std::vector&lt; ONNX_NAMESPACE::FunctionProto &gt; &amp;&#160;</td>
+          <td class="paramname"><em>model_specific_functions</em> = <code>{}</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -268,6 +276,24 @@ Static Public Attributes</h2></td></tr>
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
+<a id="a602e428a4b098e7ec95f5a05144b06f5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a602e428a4b098e7ec95f5a05144b06f5">&#9670;&nbsp;</a></span>AddFunction()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="mlasi_8h.html#a88f941d423cb2a819b70a1358982b1a6">void</a> onnxruntime::Model::AddFunction </td>
+          <td>(</td>
+          <td class="paramtype">const ONNX_NAMESPACE::FunctionProto &amp;&#160;</td>
+          <td class="paramname"><em>func_proto</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="a3255fd55fde8752cc61e1d7da47b3ee2"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a3255fd55fde8752cc61e1d7da47b3ee2">&#9670;&nbsp;</a></span>DocString()</h2>
 

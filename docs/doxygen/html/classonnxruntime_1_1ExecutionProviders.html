@@ -87,8 +87,6 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a52b3a1bd0ae86e36699450a2c79f2775"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9e714cc865dbb18293020db7a372bb89"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classonnxruntime_1_1common_1_1Status.html">common::Status</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ExecutionProviders.html#a9e714cc865dbb18293020db7a372bb89">Add</a> (const std::string &amp;provider_id, std::unique_ptr&lt; <a class="el" href="classonnxruntime_1_1IExecutionProvider.html">IExecutionProvider</a> &gt; p_exec_provider)</td></tr>
 <tr class="separator:a9e714cc865dbb18293020db7a372bb89"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa824632f2f7215f2087e8b061d054663"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="classonnxruntime_1_1IExecutionProvider.html">IExecutionProvider</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ExecutionProviders.html#aa824632f2f7215f2087e8b061d054663">Get</a> (const <a class="el" href="classonnxruntime_1_1Graph.html">onnxruntime::Graph</a> &amp;graph, const <a class="el" href="namespaceonnxruntime.html#af8773b5c12b5d8fd9292eb2e268df760">onnxruntime::NodeIndex</a> &amp;idx) const</td></tr>
-<tr class="separator:aa824632f2f7215f2087e8b061d054663"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a41c2494ae4373f44ebf8f98f83e293cc"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="classonnxruntime_1_1IExecutionProvider.html">IExecutionProvider</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ExecutionProviders.html#a41c2494ae4373f44ebf8f98f83e293cc">Get</a> (const <a class="el" href="classonnxruntime_1_1Node.html">onnxruntime::Node</a> &amp;node) const</td></tr>
 <tr class="separator:a41c2494ae4373f44ebf8f98f83e293cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9545ef8343f02280aa5871579576c8ba"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="classonnxruntime_1_1IExecutionProvider.html">IExecutionProvider</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classonnxruntime_1_1ExecutionProviders.html#a9545ef8343f02280aa5871579576c8ba">Get</a> (<a class="el" href="namespaceonnxruntime.html#a863e2227cbf32aab76aad35fdadff4bb">onnxruntime::ProviderType</a> provider_id) const</td></tr>
@@ -257,44 +255,8 @@ Public Member Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="aa824632f2f7215f2087e8b061d054663"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa824632f2f7215f2087e8b061d054663">&#9670;&nbsp;</a></span>Get() <span class="overload">[1/4]</span></h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">const <a class="el" href="classonnxruntime_1_1IExecutionProvider.html">IExecutionProvider</a>* onnxruntime::ExecutionProviders::Get </td>
-          <td>(</td>
-          <td class="paramtype">const <a class="el" href="classonnxruntime_1_1Graph.html">onnxruntime::Graph</a> &amp;&#160;</td>
-          <td class="paramname"><em>graph</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const <a class="el" href="namespaceonnxruntime.html#af8773b5c12b5d8fd9292eb2e268df760">onnxruntime::NodeIndex</a> &amp;&#160;</td>
-          <td class="paramname"><em>idx</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td> const</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
 <a id="a41c2494ae4373f44ebf8f98f83e293cc"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a41c2494ae4373f44ebf8f98f83e293cc">&#9670;&nbsp;</a></span>Get() <span class="overload">[2/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a41c2494ae4373f44ebf8f98f83e293cc">&#9670;&nbsp;</a></span>Get() <span class="overload">[1/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -320,7 +282,7 @@ Public Member Functions</h2></td></tr>
 </div>
 </div>
 <a id="a9545ef8343f02280aa5871579576c8ba"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a9545ef8343f02280aa5871579576c8ba">&#9670;&nbsp;</a></span>Get() <span class="overload">[3/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a9545ef8343f02280aa5871579576c8ba">&#9670;&nbsp;</a></span>Get() <span class="overload">[2/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -346,7 +308,7 @@ Public Member Functions</h2></td></tr>
 </div>
 </div>
 <a id="a65c0368906fb2431bffe5a81fb5ea5b2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a65c0368906fb2431bffe5a81fb5ea5b2">&#9670;&nbsp;</a></span>Get() <span class="overload">[4/4]</span></h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a65c0368906fb2431bffe5a81fb5ea5b2">&#9670;&nbsp;</a></span>Get() <span class="overload">[3/3]</span></h2>
 
 <div class="memitem">
 <div class="memproto">

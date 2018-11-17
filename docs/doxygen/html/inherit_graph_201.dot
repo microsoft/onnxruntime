@@ -3,5 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::SessionState\l::NodeInfo",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1SessionState_1_1NodeInfo.html"];
+  Node0 [label="onnxruntime::SequentialExecution\lPlan::NodeExecutionPlan",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1SequentialExecutionPlan_1_1NodeExecutionPlan.html"];
 }

@@ -3,5 +3,5 @@ digraph "Graphical Class Hierarchy"
   edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
   node [fontname="Helvetica",fontsize="10",shape=record];
   rankdir="LR";
-  Node0 [label="onnxruntime::cuda::\lCudnnConvState\< cudnnConvolution\lFwdAlgo_t \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structonnxruntime_1_1cuda_1_1CudnnConvState.html"];
+  Node0 [label="onnxruntime::cuda::\lCudnnConvolutionDescriptor",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1cuda_1_1CudnnConvolutionDescriptor.html"];
 }
