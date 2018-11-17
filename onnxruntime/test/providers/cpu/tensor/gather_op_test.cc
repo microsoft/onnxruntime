@@ -59,7 +59,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
                         {10.0f, 10.1f, 10.2f, 10.3f,
                          11.0f, 11.1f, 11.2f, 11.3f,
                          12.0f, 12.1f, 12.2f, 12.3f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "axis -10 is not in valid range [-3,2]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "axis must be in [-r, r-1]");
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
@@ -73,7 +73,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   test.AddInput<int32_t>("indices", {3}, {0LL, 1L, 1000L});
   test.AddOutput<float>("output", {1}, {1.0f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 data_dim=3");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
 }
 
 #ifdef USE_CUDA

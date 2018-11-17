@@ -29,7 +29,7 @@ ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateAllocatorInfo, _In_ const char* name1, e
  * Test if two allocation info are equal
  * \return 0, equal. zero, not equal
  */
-ONNXRUNTIME_API(int, ONNXRuntimeCompareAllocatorInfo, _In_ ONNXRuntimeAllocatorInfo* info1, _In_ ONNXRuntimeAllocatorInfo* info2)
+ONNXRUNTIME_API(int, ONNXRuntimeCompareAllocatorInfo, _In_ const ONNXRuntimeAllocatorInfo* info1, _In_ const ONNXRuntimeAllocatorInfo* info2)
 ONNXRUNTIME_ALL_ARGS_NONNULL;
 /**
  * Do not free the returned value

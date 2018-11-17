@@ -11,6 +11,9 @@ namespace onnxruntime {
 TensorShape::TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {
 }
 
+TensorShape::TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {
+}
+
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : std::vector<int64_t>(dimension_count) {
   for (size_t i = 0; i < dimension_count; ++i) {
     (*this)[i] = dimension_sizes[i];

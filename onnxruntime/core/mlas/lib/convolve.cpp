@@ -220,7 +220,7 @@ Return Value:
                 }
 
                 while (CountX > 0) {
-                    MlasStoreFloat32(ColumnBuffer, ZeroFloat32x4);
+                    MlasStoreLaneFloat32x4<0>(ColumnBuffer, ZeroFloat32x4);
                     ColumnBuffer++;
                     CountX--;
                 }
@@ -440,7 +440,7 @@ Return Value:
                 }
 
                 while (CountX > 0) {
-                    MlasStoreFloat32(ColumnBuffer, ZeroFloat32x4);
+                    MlasStoreLaneFloat32x4<0>(ColumnBuffer, ZeroFloat32x4);
                     ColumnBuffer++;
                     CountX--;
                 }
@@ -1195,8 +1195,8 @@ Arguments:
 
     DilationShape - Supplies the shape of the dilation.
 
-    PaddingShape - Supplies the number of zero padding elements at the edge of
-        the input tensor.
+    Padding - Supplies the number of zero padding elements at the edge of the
+        input tensor.
 
     StrideShape - Supplies the shape of the stride.
 

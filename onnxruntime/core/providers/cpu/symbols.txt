@@ -63,3 +63,6 @@ ReleaseONNXSession
 ReleaseONNXStatus
 ReleaseONNXValue
 ReleaseONNXValueList
+ONNXRuntimeAllocatorAlloc
+ONNXRuntimeAllocatorFree
+ONNXRuntimeAllocatorGetInfo

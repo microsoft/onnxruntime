@@ -3,7 +3,7 @@
 
 #include "core/graph/function_impl.h"
 #include "core/graph/graph.h"
-#include "core/graph/function_container.h"
+#include "core/graph/model.h"
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
@@ -26,8 +26,9 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
     const auto node_op_schema = schema_registry->GetSchema(node.op_type(), (int)onnx_func_proto_->since_version(), node.domain());
     for (int i = 0; i < node.input_size(); ++i) {
       auto& in_name = node.input().Get(i);
-      if (input_name_idx_map.count(in_name)) {
-        int idx = input_name_idx_map[in_name];
+	  auto iter = input_name_idx_map.find(in_name);
+      if (iter != input_name_idx_map.end()) {
+        int idx = iter->second;
         const auto& p = node_op_schema->inputs().at(i);
         std::string type_str = p.GetTypeStr() + "in" + std::to_string(i);
         input_types_list[idx] = std::make_pair(in_name, type_str);
@@ -40,8 +41,9 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
     }
     for (int i = 0; i < node.output_size(); ++i) {
       auto& out_name = node.output().Get(i);
-      if (output_name_idx_map.count(out_name)) {
-        int idx = output_name_idx_map[out_name];
+	  auto iter = output_name_idx_map.find(out_name);
+	  if (iter != output_name_idx_map.end()) {
+		int idx = iter->second;
         const auto& p = node_op_schema->outputs().at(i);
         std::string type_str = p.GetTypeStr() + "out" + std::to_string(i);
         output_types_list[idx] = std::make_pair(out_name, type_str);
@@ -150,29 +152,45 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   body_ = std::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
                                                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   auto& sub_graph = body_->MainGraph();
-  //Add node and node args into subgraph
+  // Add node and node args into subgraph
+  // The subgraph preserved the input/output tensor names
+  // in the parent graph for later inlining purpose
   auto attr_map = node_in_parent_graph->GetAttributes();
   for (auto& node : onnx_func_proto_->node()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (int idx = 0; idx < node.input_size(); ++idx) {
       std::string tensor_name = node.input().Get(idx);
-      if (input_name_idx_map.count(tensor_name)) {
+	  auto iter = input_name_idx_map.find(tensor_name);
+	  if (iter != input_name_idx_map.end()) {
+        // Preserving NodeArg and input/output names
         ONNX_NAMESPACE::NodeProto temp_node_proto;
         node_in_parent_graph->ToProto(temp_node_proto);
         const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(temp_node_proto.input().Get(input_name_idx_map[tensor_name]));
         auto& n_input = sub_graph.GetOrCreateNodeArg(
-            tensor_name, node_arg->TypeAsProto());
+            temp_node_proto.input().Get(iter->second), node_arg->TypeAsProto());
         inputs.push_back(&n_input);
       } else {
         auto& n_input = sub_graph.GetOrCreateNodeArg(
-            tensor_name, nullptr);
+            tensor_name + "_" + std::to_string(node_index), nullptr);
         inputs.push_back(&n_input);
       }
     }
     for (int idx = 0; idx < node.output_size(); ++idx) {
       std::string tensor_name = node.output().Get(idx);
-      auto& n_output = sub_graph.GetOrCreateNodeArg(tensor_name, nullptr);
-      outputs.push_back(&n_output);
+	  auto iter = output_name_idx_map.find(tensor_name);
+      if (iter != output_name_idx_map.end()) {
+        // Preserving NodeArg and input/output names
+        ONNX_NAMESPACE::NodeProto temp_node_proto;
+        node_in_parent_graph->ToProto(temp_node_proto);
+        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(temp_node_proto.output().Get(output_name_idx_map[tensor_name]));
+        auto& n_output = sub_graph.GetOrCreateNodeArg(
+            temp_node_proto.output().Get(iter->second), node_arg->TypeAsProto());
+        outputs.push_back(&n_output);
+      } else {
+        auto& n_output = sub_graph.GetOrCreateNodeArg(
+            tensor_name + "_" + std::to_string(node_index), nullptr);
+        outputs.push_back(&n_output);
+      }
     }
 
     onnxruntime::NodeAttributes new_attr_map;
@@ -190,6 +208,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   auto status = sub_graph.Resolve();
   ONNXRUNTIME_ENFORCE(status.IsOK());
 }
+
+FunctionImpl::~FunctionImpl() = default;
 
 const ONNX_NAMESPACE::OpSchema& FunctionImpl::OpSchema() const {
   return *op_schema_;

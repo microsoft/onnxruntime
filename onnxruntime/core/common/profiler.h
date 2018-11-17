@@ -10,45 +10,6 @@ namespace onnxruntime {
 
 namespace profiling {
 
-enum EventCategory {
-  SESSION_EVENT = 0,
-  NODE_EVENT,
-  EVENT_CATEGORY_MAX
-};
-
-/*
-Event descriptions for the above session events.
-*/
-static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
-    "Session",
-    "Node"};
-
-/*
-Timing record for all events.
-*/
-struct EventRecord {
-  EventRecord(EventCategory category,
-              int process_id,
-              int thread_id,
-              std::string event_name,
-              long long time_stamp,
-              long long duration,
-              std::unordered_map<std::string, std::string>&& event_args) : cat(category),
-                                                                           pid(process_id),
-                                                                           tid(thread_id),
-                                                                           name(std::move(event_name)),
-                                                                           ts(time_stamp),
-                                                                           dur(duration),
-                                                                           args(event_args) {}
-  EventCategory cat;
-  int pid;
-  int tid;
-  std::string name;
-  long long ts;
-  long long dur;
-  std::unordered_map<std::string, std::string> args;
-};
-
 /*
 Main class for profiling. It continues to accumulate events and produce
 a corresponding "complete event (X)" in "chrome tracing" format.
@@ -58,9 +19,19 @@ class Profiler {
   Profiler() noexcept {};  // turned off by default.
 
   /*
+  Initializes Profiler with the session logger to log framework specific messages
+  */
+  void Initialize(const logging::Logger* session_logger);
+
+  /*
+  Send profiling data to custom logger
+  */
+  void StartProfiling(const logging::Logger* custom_logger);
+
+  /*
   Start profiler and record beginning time.
   */
-  void StartProfiling(const logging::Logger* session_logger, const std::string& file_name);
+  void StartProfiling(const std::string& file_name);
 
   /*
   Produce current time point for any profiling action.
@@ -81,7 +52,7 @@ class Profiler {
   Write profile data to the given stream in chrome format defined below.
   https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#
   */
-  std::string WriteProfileData();
+  std::string EndProfiling();
 
  private:
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
@@ -92,10 +63,12 @@ class Profiler {
   std::ofstream profile_stream_;
   std::string profile_stream_file_;
   const logging::Logger* session_logger_{nullptr};
+  const logging::Logger* custom_logger_{nullptr};
   TimePoint profiling_start_time_;
   std::vector<EventRecord> events_;
   bool max_events_reached{false};
   static constexpr size_t max_num_events_ = 1000000;
+  bool profile_with_logger_{false};
 };
 
 }  // namespace profiling

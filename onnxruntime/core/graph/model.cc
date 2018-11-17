@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/graph/model.h"
-#include "core/graph/function_container.h"
 #include <memory>
 
 #ifdef _MSC_VER
@@ -30,7 +29,8 @@ Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
              const IOnnxRuntimeOpSchemaRegistryList local_registries,
-             const std::unordered_map<std::string, int>& domain_to_version) {
+             const std::unordered_map<std::string, int>& domain_to_version,
+             const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions) {
   model_proto_ = std::make_unique<ModelProto>();
   model_proto_->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_->mutable_graph()->set_name(graph_name);
@@ -59,9 +59,16 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_map;
+  for (auto& func : model_functions) {
+    auto func_ptr = model_proto_->add_functions();
+    func_ptr->CopyFrom(func);
+    model_functions_map[func_ptr->name()] = func_ptr;
+  }
+
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(model_proto_->mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry));
+  graph_.reset(new Graph(model_proto_->mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry, model_functions_map));
 }
 
 Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries)
@@ -83,7 +90,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  model_proto_.reset(model_proto.release());
+  model_proto_.reset(std::move(model_proto.release()));
   for (auto& prop : model_proto_->metadata_props()) {
     model_metadata_[prop.key()] = prop.value();
   }
@@ -110,9 +117,14 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     }
   }
 
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_map;
+  for (auto& func : model_proto_->functions()) {
+    model_functions_map[func.name()] = &func;
+  }
+
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(model_proto_->mutable_graph(), domain_to_version, IrVersion(), schema_registry));
+  graph_.reset(new Graph(model_proto_->mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_functions_map));
 }
 
 Version Model::IrVersion() const {
@@ -175,6 +187,12 @@ Graph& Model::MainGraph() noexcept {
 
 const Graph& Model::MainGraph() const noexcept {
   return *graph_;
+}
+
+void Model::AddFunction(const ONNX_NAMESPACE::FunctionProto& func_proto) {
+  auto func_ptr = model_proto_->add_functions();
+  func_ptr->CopyFrom(func_proto);
+  graph_->AddFunction(func_ptr);
 }
 
 ModelProto Model::ToProto() {

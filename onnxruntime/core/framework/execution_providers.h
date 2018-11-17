@@ -52,13 +52,6 @@ class ExecutionProviders {
     return Status::OK();
   }
 
-  const IExecutionProvider* Get(const onnxruntime::Graph& graph, const onnxruntime::NodeIndex& idx) const {
-    auto node = graph.GetNode(idx);
-    ONNXRUNTIME_ENFORCE(node != nullptr, "Node with id ", idx, " was not found in graph.");
-
-    return Get(*node);
-  }
-
   const IExecutionProvider* Get(const onnxruntime::Node& node) const {
     return Get(node.GetExecutionProviderType());
   }

@@ -79,8 +79,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, err_msg.str());
   }
 
-  std::vector<int64_t> z_dims{N, num_indices};
-  Tensor* Z = context->Output(0, z_dims);
+  Tensor* Z = context->Output(0, TensorShape({N, num_indices}));
   T* z_data = Z->template MutableData<T>();
 
   for (int64_t n = 0; n < N; ++n) {

@@ -71,8 +71,7 @@ Status LinearClassifier<T>::Compute(OpKernelContext* ctx) const {
     output_classes = 2;
     add_second_class = true;
   }
-  std::vector<int64_t> dims = {N, output_classes};
-  Tensor* Z = ctx->Output(1, TensorShape(dims));
+  Tensor* Z = ctx->Output(1, TensorShape({N, output_classes}));
 
   int64_t zindex = 0;
   const auto* x_data = X->template Data<T>();

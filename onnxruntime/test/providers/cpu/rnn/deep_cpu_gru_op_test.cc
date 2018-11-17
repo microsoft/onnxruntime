@@ -35,6 +35,8 @@ static void RunGruTest(bool run_on_gpu,
                        std::vector<float> activation_betas = {}) {
   OpTester test("GRU");
 
+  test.AddShapeToTensorData();
+
   int num_directions = (direction == "bidirectional") ? 2 : 1;
 
   if (num_directions == 2 && activations.size() == 2) {
@@ -53,19 +55,21 @@ static void RunGruTest(bool run_on_gpu,
   test.AddAttribute("hidden_size", hidden_size);
   // test.AddAttribute<int64_t>("output_sequence", output_sequence);
   test.AddAttribute<int64_t>("linear_before_reset", linear_before_reset);
-  test.AddAttribute<float>("clip", clip);
+  // if clip is a very big number (usually it is default value), don't set the clip
+  if (clip < 999.f)
+	test.AddAttribute<float>("clip", clip);
 
   std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
   std::vector<int64_t> W_dims = {num_directions, 3 * hidden_size, input_size};
   std::vector<int64_t> R_dims = {num_directions, 3 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, X_data);
-  test.AddInput<float>("W", W_dims, W_data);
-  test.AddInput<float>("R", R_dims, R_data);
+  test.AddInput<float>("W", W_dims, W_data, true);
+  test.AddInput<float>("R", R_dims, R_data, true);
 
   if (B_data) {
     std::vector<int64_t> B_dims = {num_directions, 6 * hidden_size};
-    test.AddInput<float>("B", B_dims, *B_data);
+    test.AddInput<float>("B", B_dims, *B_data, true);
   }
 
   if (sequence_lengths) {
@@ -132,7 +136,7 @@ void DefaultActivationsSimpleWeightsNoBias(bool run_on_gpu,
   // the node will get removed, so only test with output_sequence == false (no Y as output) if Y_h is not optional
   if (!Y_h_data.empty())
     RunGruTest(run_on_gpu, X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
-               nullptr, nullptr, nullptr, direction, 999.f, /* output_sequence*/ false);
+               nullptr, nullptr, nullptr, direction, 9999.0, /* output_sequence*/ false);
 }
 
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {

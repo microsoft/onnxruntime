@@ -8,7 +8,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test_utils.h"
 #include "gtest/gtest.h"
-#include "core/graph/function_container.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;

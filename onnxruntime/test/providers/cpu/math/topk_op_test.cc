@@ -79,7 +79,7 @@ TEST(TopKOperator, InvalidK) {
           expected_dimensions,
           1,
           OpTester::ExpectResult::kExpectFailure,
-          "k_temp > 0");
+          "Invalid value for attribute k");
 }
 
 }  // namespace test

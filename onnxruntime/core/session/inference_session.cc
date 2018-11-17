@@ -37,7 +37,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
-#include "core/graph/function_container.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -64,6 +63,7 @@ class InferenceSession::Impl {
 
     session_state_.SetThreadPool(thread_pool_.get());
     session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern);
+    session_profiler_.Initialize(session_logger_);
     session_state_.SetProfiler(session_profiler_);
     if (session_options.enable_profiling) {
       StartProfiling(session_options.profile_file_prefix);
@@ -699,13 +699,13 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  Status Run(const RunOptions& run_options0,
+  Status Run(const RunOptions& run_options,
              const NameMLValMap& feeds,
              const std::vector<std::string>& output_names,
              std::vector<MLValue>* p_fetches) {
     auto tp = session_profiler_.StartTime();
     Status retval = Status::OK();
-    const RunOptions run_options(run_options0);
+
     try {
       {
         std::lock_guard<std::mutex> l(session_mutex_);
@@ -748,9 +748,9 @@ class InferenceSession::Impl {
 
       if (retval.IsOK()) {
         if (session_options_.enable_sequential_execution) {
-          p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor());
+          p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(run_options.terminate));
         } else {
-          p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state_));
+          p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state_, run_options.terminate));
         }
       }
 
@@ -839,12 +839,16 @@ class InferenceSession::Impl {
   void StartProfiling(const std::string& file_prefix) {
     std::ostringstream ss;
     ss << file_prefix << "_" << GetCurrentTimeString() << ".json";
-    session_profiler_.StartProfiling(session_logger_, ss.str());
+    session_profiler_.StartProfiling(ss.str());
+  }
+
+  void StartProfiling(const logging::Logger* logger_ptr) {
+    session_profiler_.StartProfiling(logger_ptr);
   }
 
   std::string EndProfiling() {
     if (is_model_loaded_) {
-      return session_profiler_.WriteProfileData();
+      return session_profiler_.EndProfiling();
     }
     LOGS(*session_logger_, ERROR) << "Could not write a profile because no model was loaded.";
     return std::string();
@@ -1104,6 +1108,10 @@ int InferenceSession::GetCurrentNumRuns() {
 
 void InferenceSession::StartProfiling(const std::string& file_prefix) {
   impl_->StartProfiling(file_prefix);
+}
+
+void InferenceSession::StartProfiling(const logging::Logger* custom_logger) {
+    impl_->StartProfiling(custom_logger);
 }
 
 std::string InferenceSession::EndProfiling() {

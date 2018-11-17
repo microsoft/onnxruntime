@@ -134,13 +134,13 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status LoadLibrary(const std::string& library_filename, void** handle) const override {
+  virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     ONNXRUNTIME_UNUSED_PARAMETER(library_filename);
     ONNXRUNTIME_UNUSED_PARAMETER(handle);
     ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  virtual common::Status UnloadLibrary(void* handle) const override {
+  virtual common::Status UnloadDynamicLibrary(void* handle) const override {
     ONNXRUNTIME_UNUSED_PARAMETER(handle);
     ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }

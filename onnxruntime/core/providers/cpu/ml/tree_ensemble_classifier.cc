@@ -305,8 +305,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];  // TODO(task 495): how does this work in the case of 3D tensors?
   int64_t N = x_dims.size() == 1 ? 1 : x_dims[0];
   Tensor* Y = context->Output(0, TensorShape({N}));
-  std::vector<int64_t> z_dims = {N, class_count_};
-  auto* Z = context->Output(1, TensorShape(z_dims));
+  auto* Z = context->Output(1, TensorShape({N, class_count_}));
 
   int64_t zindex = 0;
   const T* x_data = X.template Data<T>();
@@ -317,8 +316,8 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   for (int64_t i = 0; i < N; ++i) {
     scores.clear();
     int64_t current_weight_0 = i * stride;
-    std::unordered_map<int64_t, float> classes;
-    // fill ion base values, this might be empty but that is ok
+    std::map<int64_t, float> classes;
+    // fill in base values, this might be empty but that is ok
     for (int64_t k = 0, end = static_cast<int64_t>(base_values_.size()); k < end; ++k) {
       auto p1 = std::make_pair<int64_t&, const float&>(k, base_values_[k]);
       classes.insert(p1);
@@ -432,7 +431,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
 }
 
 template <typename T>
-common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::unordered_map<int64_t, float>& classes,
+common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::map<int64_t, float>& classes,
                                                           int64_t treeindex,
                                                           const T* x_data,
                                                           int64_t feature_base) const {
@@ -492,7 +491,7 @@ common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::unordered_map<int
   while (treeid == nodes_treeids_[treeindex] && nodeid == nodes_nodeids_[treeindex]) {
     int64_t classid = std::get<2>(leafnodedata_[index]);
     float weight = std::get<3>(leafnodedata_[index]);
-    std::unordered_map<int64_t, float>::iterator it_classes;
+    std::map<int64_t, float>::iterator it_classes;
     it_classes = classes.find(classid);
     if (it_classes != classes.end()) {
       it_classes->second += weight;

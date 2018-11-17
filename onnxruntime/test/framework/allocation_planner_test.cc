@@ -12,8 +12,6 @@
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/graph/function_container.h"
-
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {

@@ -11,9 +11,19 @@ using namespace std::chrono;
   return std::chrono::high_resolution_clock::now();
 }
 
-void Profiler::StartProfiling(const logging::Logger* session_logger, const std::string& file_name) {
+void Profiler::Initialize(const logging::Logger* session_logger) {
   ONNXRUNTIME_ENFORCE(session_logger != nullptr);
   session_logger_ = session_logger;
+}
+
+void Profiler::StartProfiling(const logging::Logger* custom_logger) {
+  ONNXRUNTIME_ENFORCE(custom_logger != nullptr);
+  profile_with_logger_ = true;
+  custom_logger_ = custom_logger;
+  profiling_start_time_ = StartTime();
+}
+
+void Profiler::StartProfiling(const std::string& file_name) {
   enabled_ = true;
   profile_stream_ = std::ofstream(file_name, std::ios::out | std::ios::trunc);
   profile_stream_file_ = file_name;
@@ -25,25 +35,34 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      TimePoint& start_time,
                                      std::unordered_map<std::string, std::string>&& event_args,
                                      bool /*sync_gpu*/) {
-  if (!enabled_)
+  if (!enabled_ && !profile_with_logger_)
     return;
-  //TODO: sync_gpu if needed.
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (events_.size() < max_num_events_) {
-    long long dur = TimeDiffMicroSeconds(start_time);
-    long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
-    events_.emplace_back(category, logging::GetProcessId(),
-                         logging::GetThreadId(), event_name, ts, dur, std::move(event_args));
+  long long dur = TimeDiffMicroSeconds(start_time);
+  long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
+  EventRecord event(category, logging::GetProcessId(),
+                    logging::GetThreadId(), event_name, ts, dur, std::move(event_args));
+  if (profile_with_logger_) {
+    custom_logger_->SendProfileEvent(event);
   } else {
-    if (session_logger_ && !max_events_reached) {
-      LOGS(*session_logger_, ERROR)
-          << "Maximum number of events reached, could not record profile event.";
-      max_events_reached = true;
+    //TODO: sync_gpu if needed.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (events_.size() < max_num_events_) {
+      events_.emplace_back(event);
+    } else {
+      if (session_logger_ && !max_events_reached) {
+        LOGS(*session_logger_, ERROR)
+            << "Maximum number of events reached, could not record profile event.";
+        max_events_reached = true;
+      }
     }
   }
 }
 
-std::string Profiler::WriteProfileData() {
+std::string Profiler::EndProfiling() {
+  if (profile_with_logger_) {
+    profile_with_logger_ = false;
+    return std::string();
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   profile_stream_ << "[\n";
 

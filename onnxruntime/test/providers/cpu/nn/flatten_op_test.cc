@@ -38,7 +38,7 @@ TEST_F(FlattenOpTest, Flatten_invalid_axis) {
   test_.AddAttribute<int64_t>("axis", 5L);
   test_.AddInput<float>("data", {1L, 2L, 4L, 2L}, data1_);
   test_.AddOutput<float>("output", {1L, 16L}, data1_);
-  test_.Run(OpTester::ExpectResult::kExpectFailure, "The rank of input tensor must be >= axis");
+  test_.Run(OpTester::ExpectResult::kExpectFailure, "Invalid value(5) for attribute 'axis'");
 }
 
 TEST_F(FlattenOpTest, Flatten_axis3) {

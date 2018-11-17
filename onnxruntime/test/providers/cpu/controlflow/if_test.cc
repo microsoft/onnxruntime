@@ -20,7 +20,7 @@ struct RunOptions {
   bool include_dim_values_in_subgraph = true;
 };
 
-static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, RunOptions options);
+static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
 
 /*
  Main graph
@@ -119,7 +119,7 @@ ELSE branch
                    add_out_1    [11]
 */
 
-static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, RunOptions options) {
+static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options) {
   bool include_dim_values = options.include_dim_values_in_subgraph;
 
   Model model(then_branch ? "If_then" : "If_else");
@@ -206,7 +206,7 @@ void RunTest(bool condition_value,
 }
 
 TEST(If, ShapeInMainGraph_NoShapeInSubgraph_True) {
-  RunOptions options;
+  RunOptions options{};
   options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
@@ -214,7 +214,7 @@ TEST(If, ShapeInMainGraph_NoShapeInSubgraph_True) {
 }
 
 TEST(If, ShapeInMainGraph_NoShapeInSubgraph_False) {
-  RunOptions options;
+  RunOptions options{};
   options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
@@ -222,7 +222,7 @@ TEST(If, ShapeInMainGraph_NoShapeInSubgraph_False) {
 }
 
 TEST(If, NoShapeInMainGraph_ShapeInSubgraph_True) {
-  RunOptions options;
+  RunOptions options{};
   options.include_dim_values_in_main_graph = false;
   options.include_dim_values_in_subgraph = true;
 
@@ -230,7 +230,7 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_True) {
 }
 
 TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
-  RunOptions options;
+  RunOptions options{};
   options.include_dim_values_in_main_graph = false;
   options.include_dim_values_in_subgraph = true;
 

@@ -9,6 +9,7 @@ namespace test {
 
 TEST(ContribOpTest, ExpandDims_0) {
   OpTester test("ExpandDims", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test
   test.AddInput<float>("X", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int32_t>("axis", {}, {-1});
   test.AddOutput<float>("Y", {2, 3, 1}, std::vector<float>(6, 1.0f));
@@ -17,6 +18,7 @@ TEST(ContribOpTest, ExpandDims_0) {
 
 TEST(ContribOpTest, ExpandDims_1) {
   OpTester test("ExpandDims", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test
   test.AddInput<float>("X", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int32_t>("axis", {}, {1});
   test.AddOutput<float>("Y", {2, 1, 3}, std::vector<float>(6, 1.0f));

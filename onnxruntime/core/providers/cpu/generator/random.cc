@@ -238,8 +238,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "num_samples is < 1");
   }
 
-  std::vector<int64_t> Y_dims{batch_size, num_samples_};
-  Tensor* Y = ctx->Output(0, Y_dims);
+  Tensor* Y = ctx->Output(0, TensorShape({batch_size, num_samples_}));
 
   Status status = Status::OK();
   switch (output_dtype_) {
@@ -258,7 +257,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-/* 
+/*
 alternative interpretation of the spec is that the input tensor contains the dimensions as ints.
 Keeping this temporarily in case we go back to that.
 

@@ -61,6 +61,9 @@ TestEnvironment::~TestEnvironment() {
 #else
   ::google::protobuf::ShutdownProtobufLibrary();
 #endif
+
+  // dispose logging manager manually to make sure it's destructed before the default logging mutex
+  s_default_logging_manager = nullptr;
 }
 
 }  // namespace test

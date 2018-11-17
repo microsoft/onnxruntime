@@ -96,12 +96,8 @@ class Conv2dPrimitive : public PrimitiveBase {
 
   mkldnn::memory::format GetDstMemoryFormat() const { return context_.dst_fmt; }
 
-  std::shared_ptr<mkldnn::memory::desc> GetDstMemoryDesc() const { return context_.dst_md; }
-
-  std::shared_ptr<mkldnn::convolution_forward::primitive_desc>
-
-  GetPrimitiveDesc() const {
-    return context_.conv_fwd_pd;
+  mkldnn::convolution_forward::primitive_desc* GetPrimitiveDesc() const {
+    return context_.conv_fwd_pd.get();
   }
 
  private:
@@ -110,22 +106,22 @@ class Conv2dPrimitive : public PrimitiveBase {
     mkldnn::memory::format filter_fmt;
     mkldnn::memory::format dst_fmt;
 
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> filter_mem;
-    std::shared_ptr<mkldnn::memory> bias_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::unique_ptr<mkldnn::memory> src_mem;
+    std::unique_ptr<mkldnn::memory> filter_mem;
+    std::unique_ptr<mkldnn::memory> bias_mem;
+    std::unique_ptr<mkldnn::memory> dst_mem;
 
-    std::shared_ptr<mkldnn::convolution_forward::desc> fwd_desc;
+    std::unique_ptr<mkldnn::convolution_forward::desc> fwd_desc;
 
-    std::shared_ptr<mkldnn::memory::desc> src_md;
-    std::shared_ptr<mkldnn::memory::desc> filter_md;
-    std::shared_ptr<mkldnn::memory::desc> bias_md;
-    std::shared_ptr<mkldnn::memory::desc> dst_md;
+    std::unique_ptr<mkldnn::memory::desc> src_md;
+    std::unique_ptr<mkldnn::memory::desc> filter_md;
+    std::unique_ptr<mkldnn::memory::desc> bias_md;
+    std::unique_ptr<mkldnn::memory::desc> dst_md;
 
-    std::shared_ptr<mkldnn::convolution_forward::primitive_desc> conv_fwd_pd;
-    std::shared_ptr<mkldnn::primitive> conv_fwd;
+    std::unique_ptr<mkldnn::convolution_forward::primitive_desc> conv_fwd_pd;
+    std::unique_ptr<mkldnn::primitive> conv_fwd;
 
-    std::shared_ptr<mkldnn::stream> stream;
+    std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
 
     Conv2dContext()
@@ -263,15 +259,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
     return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                           " W: ", W->Shape().ToString().c_str());
+                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                   " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_shape.size(); ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                     " W: ", W->Shape().ToString().c_str());
     }
   }
 
@@ -340,7 +336,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                dst_dims_mkl, strides_mkl, dilations_mkl,
                                padding_left_mkl, padding_right_mkl);
     Conv2dPrimitive<T>* conv2d_primitive = Conv2dPrimitivePool<T>::Get(conv2d_params);
-    std::shared_ptr<mkldnn::convolution_forward::primitive_desc> conv_fwd_pd = conv2d_primitive->GetPrimitiveDesc();
+    auto conv_fwd_pd = conv2d_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
 

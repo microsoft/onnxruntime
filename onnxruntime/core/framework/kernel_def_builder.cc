@@ -7,6 +7,7 @@
 
 namespace onnxruntime {
 namespace {
+
 //assume start1 <= end1, start2 <= end2
 inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
   return start1 <= end2 && start2 <= end1;
@@ -22,6 +23,7 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
   return false;
 }
 }  // namespace
+
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
     return false;
@@ -79,4 +81,78 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   }
   return !(output_memory_type_args_.empty() && !other.OutputMemoryType().empty());
 }
+
+KernelDefBuilder& KernelDefBuilder::SetName(const std::string& op_name) {
+  kernel_def_->op_name_ = op_name;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::SetName(const char* op_name) {
+  kernel_def_->op_name_ = std::string(op_name);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::SetDomain(const std::string& domain) {
+  kernel_def_->op_domain_ = domain;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::SetDomain(const char* domain) {
+  kernel_def_->op_domain_ = std::string(domain);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::Provider(onnxruntime::ProviderType provider_type) {
+  kernel_def_->provider_type_ = provider_type;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::Provider(const char* provider_type) {
+  kernel_def_->provider_type_ = std::string(provider_type);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
+                                                   const std::vector<MLDataType>& supported_types) {
+  kernel_def_->type_constraints_[arg_name] = supported_types;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
+                                                   const std::vector<MLDataType>& supported_types) {
+  return TypeConstraint(std::string(arg_name), supported_types);
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
+                                                   MLDataType supported_type) {
+  kernel_def_->type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
+                                                   MLDataType supported_type) {
+  return TypeConstraint(std::string(arg_name), supported_type);
+}
+
+KernelDefBuilder& KernelDefBuilder::MayInplace(const std::vector<std::pair<int, int>>& inplaces) {
+  kernel_def_->inplace_map_ = inplaces;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::MayInplace(int input_index, int output_index) {
+  // TODO: validate inputs.
+  kernel_def_->inplace_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::Alias(const std::vector<std::pair<int, int>>& aliases) {
+  kernel_def_->alias_map_ = aliases;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::Alias(int input_index, int output_index) {
+  kernel_def_->alias_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+
 }  // namespace onnxruntime

@@ -32,7 +32,7 @@ struct IndexedSubGraph {
     // Outputs of customized Sub-Graph/FunctionProto.
     std::vector<std::string> outputs;
     // Attributes of customized Sub-Graph/FunctionProto.
-    std::vector<std::string> attributes;
+    NodeAttributes attributes;
     // Doc string of customized Sub-Graph/FunctionProto.
     std::string doc_string;
   };

@@ -32,6 +32,8 @@ class TensorShape : private std::vector<int64_t> {
 
   TensorShape(const std::vector<int64_t>& dims);
 
+  TensorShape(const std::initializer_list<int64_t>& dims);
+
   TensorShape(const TensorShape& /*other*/) = default;
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);

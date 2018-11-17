@@ -57,6 +57,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Mul,
     7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Mul<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Mul,
+    7,
     int32_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
     Mul<int32_t>);
