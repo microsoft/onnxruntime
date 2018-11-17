@@ -1,0 +1,322 @@
+\hypertarget{classonnxruntime_1_1InferenceSession}{}\section{onnxruntime\+:\+:Inference\+Session Class Reference}
+\label{classonnxruntime_1_1InferenceSession}\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+
+
+This is the main class used to Run a model. Sample simple usage\+: \mbox{\hyperlink{structonnxruntime_1_1CPUExecutionProviderInfo}{C\+P\+U\+Execution\+Provider\+Info}} epi; Provider\+Option po\{\char`\"{}\+C\+P\+U\+Execution\+Provider\char`\"{}, epi\}; \mbox{\hyperlink{structonnxruntime_1_1SessionOptions}{Session\+Options}} so(vector$<$\+Provider\+Option$>$\{po\}); \mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{Inference\+Session}} session\+\_\+object\{so\}; \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Load(\+M\+O\+D\+E\+L\+\_\+\+U\+R\+I); \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Initialize();.  
+
+
+
+
+{\ttfamily \#include $<$inference\+\_\+session.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_1_1Impl}{Impl}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ae17b4c203f1a897ba86b7858d6984156}{Inference\+Session}} (const \mbox{\hyperlink{structonnxruntime_1_1SessionOptions}{Session\+Options}} \&session\+\_\+options, \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{logging\+::\+Logging\+Manager}} $\ast$logging\+\_\+manager=nullptr)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ac65abf4735716f82dd91a6dc3ad0000e}{$\sim$\+Inference\+Session}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a85f935178f4bcd8de35e36a2a9e84669}{Register\+Execution\+Provider}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $>$ p\+\_\+exec\+\_\+provider)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a0aa67768d7e26977dae70be76a3f8200}{Register\+Graph\+Transformer}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer}{onnxruntime\+::\+Graph\+Transformer}} $>$ p\+\_\+graph\+\_\+transformer)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a038b1a768eb597f03959867f3aa23bff}{Load\+Custom\+Ops}} (const std\+::vector$<$ std\+::string $>$ \&dso\+\_\+list)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a4118c53534b5927473a86f0c1323cf6c}{Register\+Custom\+Registry}} (std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1CustomRegistry}{Custom\+Registry}} $>$ custom\+\_\+registry)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a2cba03dfe0b8399e2d366bdcef2c9dc9}{Load}} (const std\+::string \&model\+\_\+uri)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_adc261dabbe5b1e346736b35394272081}{Load}} (std\+::istream \&model\+\_\+istream)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aef2b179e956c7450ccf22d0be3374b6e}{Initialize}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}{Run}} (const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&feeds, const std\+::vector$<$ std\+::string $>$ \&output\+\_\+names, std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$p\+\_\+fetches)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ad15921c8bc265da60685fd1c20ba3b62}{Run}} (const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&run\+\_\+options, const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&feeds, const std\+::vector$<$ std\+::string $>$ \&output\+\_\+names, std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$p\+\_\+fetches)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a1cdd5e4a373360fc01377678ad059822}{New\+I\+O\+Binding}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} $>$ $\ast$io\+\_\+binding)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aabfd4a072935636d0e9f975f015a7c47}{Run}} (const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&run\+\_\+options, \mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} \&io\+\_\+binding)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a368fe68929fde82474199bfe581e24ce}{Run}} (\mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} \&io\+\_\+binding)
+\item 
+std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{structonnxruntime_1_1ModelMetadata}{Model\+Metadata}} $\ast$ $>$ \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a1ef429e9018e8bc9989c0f0c59330c87}{Get\+Model\+Metadata}} () const
+\item 
+std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{namespaceonnxruntime_ab363b0109a9af018fb3e355aac00a360}{Input\+Def\+List}} $\ast$ $>$ \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ae8519d7cd45b56ba6bf83c13757cd55e}{Get\+Model\+Inputs}} () const
+\item 
+std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{namespaceonnxruntime_a4b3c292f33b95d038b5059f6103f287a}{Output\+Def\+List}} $\ast$ $>$ \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a7a705fa4164dc161e76a7641820fe65a}{Get\+Model\+Outputs}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a9dbfd5df60f36c82833248db96dbe8fc}{Get\+Current\+Num\+Runs}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ab29bd2f63b9f4d5840e846f8bf705e8a}{Start\+Profiling}} (const std\+::string \&file\+\_\+prefix)
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_ac9e69b0d77c3afb6c0fcad0969cfca17}{End\+Profiling}} ()
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aa5f2da68be50bff8a01e9801c28c77b2}{Load}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&model\+\_\+proto)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aa26b302ae1387cbd87025470a8ebb449}{Load}} (std\+::unique\+\_\+ptr$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $>$ p\+\_\+model\+\_\+proto)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+This is the main class used to Run a model. Sample simple usage\+: \mbox{\hyperlink{structonnxruntime_1_1CPUExecutionProviderInfo}{C\+P\+U\+Execution\+Provider\+Info}} epi; Provider\+Option po\{\char`\"{}\+C\+P\+U\+Execution\+Provider\char`\"{}, epi\}; \mbox{\hyperlink{structonnxruntime_1_1SessionOptions}{Session\+Options}} so(vector$<$\+Provider\+Option$>$\{po\}); \mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{Inference\+Session}} session\+\_\+object\{so\}; \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Load(\+M\+O\+D\+E\+L\+\_\+\+U\+R\+I); \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Initialize();. 
+
+Name\+M\+L\+Val\+Map feeds; feeds.\+insert(\{\}); ... std\+::vector$<$std\+::string$>$ output\+\_\+names; output\+\_\+names.\+insert(...); ... std\+::vector$<$\+M\+L\+Value$>$ fetches; \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Run(run\+\_\+options, feeds, output\+\_\+names, \&fetches); process the output here... 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ae17b4c203f1a897ba86b7858d6984156}\label{classonnxruntime_1_1InferenceSession_ae17b4c203f1a897ba86b7858d6984156}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Inference\+Session@{Inference\+Session}}
+\index{Inference\+Session@{Inference\+Session}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Inference\+Session()}{InferenceSession()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Inference\+Session\+::\+Inference\+Session (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1SessionOptions}{Session\+Options}} \&}]{session\+\_\+options,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{logging\+::\+Logging\+Manager}} $\ast$}]{logging\+\_\+manager = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+Create a new \mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{Inference\+Session}} 
+\begin{DoxyParams}{Parameters}
+{\em session\+\_\+options} & Session options. \\
+\hline
+{\em logging\+\_\+manager} & Optional logging manager instance that will enable per session logger output using session\+\_\+options.\+session\+\_\+logid as the logger id in messages. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} nullptr, the default Logging\+Manager M\+U\+ST have been created previously as it will be used for logging. This will use the default logger id in messages. See \mbox{\hyperlink{logging_8h}{core/common/logging/logging.\+h}} for details, and how Logging\+Manager\+::\+Default\+Logger works. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ac65abf4735716f82dd91a6dc3ad0000e}\label{classonnxruntime_1_1InferenceSession_ac65abf4735716f82dd91a6dc3ad0000e}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!````~Inference\+Session@{$\sim$\+Inference\+Session}}
+\index{````~Inference\+Session@{$\sim$\+Inference\+Session}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{$\sim$\+Inference\+Session()}{~InferenceSession()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Inference\+Session\+::$\sim$\+Inference\+Session (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ac9e69b0d77c3afb6c0fcad0969cfca17}\label{classonnxruntime_1_1InferenceSession_ac9e69b0d77c3afb6c0fcad0969cfca17}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!End\+Profiling@{End\+Profiling}}
+\index{End\+Profiling@{End\+Profiling}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{End\+Profiling()}{EndProfiling()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Inference\+Session\+::\+End\+Profiling (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+Write captured profile events in chromium format. \begin{DoxyReturn}{Returns}
+the name of the profile file. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a9dbfd5df60f36c82833248db96dbe8fc}\label{classonnxruntime_1_1InferenceSession_a9dbfd5df60f36c82833248db96dbe8fc}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Get\+Current\+Num\+Runs@{Get\+Current\+Num\+Runs}}
+\index{Get\+Current\+Num\+Runs@{Get\+Current\+Num\+Runs}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Get\+Current\+Num\+Runs()}{GetCurrentNumRuns()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Inference\+Session\+::\+Get\+Current\+Num\+Runs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+Get the current number of in-\/progress concurrent Run calls. \mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ae8519d7cd45b56ba6bf83c13757cd55e}\label{classonnxruntime_1_1InferenceSession_ae8519d7cd45b56ba6bf83c13757cd55e}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Get\+Model\+Inputs@{Get\+Model\+Inputs}}
+\index{Get\+Model\+Inputs@{Get\+Model\+Inputs}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Get\+Model\+Inputs()}{GetModelInputs()}}
+{\footnotesize\ttfamily std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{namespaceonnxruntime_ab363b0109a9af018fb3e355aac00a360}{Input\+Def\+List}} $\ast$ $>$ onnxruntime\+::\+Inference\+Session\+::\+Get\+Model\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Get all input definitions of the model. This does not include weights. Use this to get the name/type/shapes of the inputs. \begin{DoxyReturn}{Returns}
+pair.\+first = OK; F\+A\+IL otherwise. pair.\+second is non-\/\+N\+U\+LL when pair.\+first = OK. 
+\end{DoxyReturn}
+\begin{DoxyNote}{Note}
+lifetime of the returned pointer is valid as long as the Session object is live. 
+\end{DoxyNote}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a1ef429e9018e8bc9989c0f0c59330c87}\label{classonnxruntime_1_1InferenceSession_a1ef429e9018e8bc9989c0f0c59330c87}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Get\+Model\+Metadata@{Get\+Model\+Metadata}}
+\index{Get\+Model\+Metadata@{Get\+Model\+Metadata}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Get\+Model\+Metadata()}{GetModelMetadata()}}
+{\footnotesize\ttfamily std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{structonnxruntime_1_1ModelMetadata}{Model\+Metadata}} $\ast$ $>$ onnxruntime\+::\+Inference\+Session\+::\+Get\+Model\+Metadata (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\begin{DoxyReturn}{Returns}
+pair.\+first = OK; F\+A\+IL otherwise. pair.\+second is non-\/\+N\+U\+LL when pair.\+first = OK. 
+\end{DoxyReturn}
+\begin{DoxyNote}{Note}
+lifetime of the returned pointer is valid as long as the Session object is live. 
+\end{DoxyNote}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a7a705fa4164dc161e76a7641820fe65a}\label{classonnxruntime_1_1InferenceSession_a7a705fa4164dc161e76a7641820fe65a}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Get\+Model\+Outputs@{Get\+Model\+Outputs}}
+\index{Get\+Model\+Outputs@{Get\+Model\+Outputs}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Get\+Model\+Outputs()}{GetModelOutputs()}}
+{\footnotesize\ttfamily std\+::pair$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}, const \mbox{\hyperlink{namespaceonnxruntime_a4b3c292f33b95d038b5059f6103f287a}{Output\+Def\+List}} $\ast$ $>$ onnxruntime\+::\+Inference\+Session\+::\+Get\+Model\+Outputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Get all output definitions of the model. Use this to get the name/type/shapes of the outputs. \begin{DoxyReturn}{Returns}
+pair.\+first = OK; F\+A\+IL otherwise. pair.\+second is non-\/\+N\+U\+LL when pair.\+first = OK. 
+\end{DoxyReturn}
+\begin{DoxyNote}{Note}
+lifetime of the returned pointer is valid as long as the Session object is live. 
+\end{DoxyNote}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_aef2b179e956c7450ccf22d0be3374b6e}\label{classonnxruntime_1_1InferenceSession_aef2b179e956c7450ccf22d0be3374b6e}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Initialize@{Initialize}}
+\index{Initialize@{Initialize}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Initialize()}{Initialize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Initialize (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+Initializes a previously loaded model. Initialization includes but is not limited to graph transformations, construction of kernels, etc. This method assumes that a method has been loaded previously. \begin{DoxyReturn}{Returns}
+OK if success 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a2cba03dfe0b8399e2d366bdcef2c9dc9}\label{classonnxruntime_1_1InferenceSession_a2cba03dfe0b8399e2d366bdcef2c9dc9}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Load (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{model\+\_\+uri }\end{DoxyParamCaption})}
+
+Load an O\+N\+NX model. 
+\begin{DoxyParams}{Parameters}
+{\em model\+\_\+uri} & absolute path of the model file. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_adc261dabbe5b1e346736b35394272081}\label{classonnxruntime_1_1InferenceSession_adc261dabbe5b1e346736b35394272081}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Load (\begin{DoxyParamCaption}\item[{std\+::istream \&}]{model\+\_\+istream }\end{DoxyParamCaption})}
+
+Load an O\+N\+NX model. 
+\begin{DoxyParams}{Parameters}
+{\em istream} & object of the model. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_aa5f2da68be50bff8a01e9801c28c77b2}\label{classonnxruntime_1_1InferenceSession_aa5f2da68be50bff8a01e9801c28c77b2}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Load (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&}]{model\+\_\+proto }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}}
+
+Load an O\+N\+NX model. 
+\begin{DoxyParams}{Parameters}
+{\em protobuf} & object corresponding to the model file. model\+\_\+proto will be copied by the A\+PI. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_aa26b302ae1387cbd87025470a8ebb449}\label{classonnxruntime_1_1InferenceSession_aa26b302ae1387cbd87025470a8ebb449}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Load (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $>$}]{p\+\_\+model\+\_\+proto }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}}
+
+Load an O\+N\+NX model. 
+\begin{DoxyParams}{Parameters}
+{\em protobuf} & object corresponding to the model file. This is primarily to support large models. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a038b1a768eb597f03959867f3aa23bff}\label{classonnxruntime_1_1InferenceSession_a038b1a768eb597f03959867f3aa23bff}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Load\+Custom\+Ops@{Load\+Custom\+Ops}}
+\index{Load\+Custom\+Ops@{Load\+Custom\+Ops}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Load\+Custom\+Ops()}{LoadCustomOps()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Load\+Custom\+Ops (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ std\+::string $>$ \&}]{dso\+\_\+list }\end{DoxyParamCaption})}
+
+Load custom ops implemented in a dynamically linked shared library. 
+\begin{DoxyParams}{Parameters}
+{\em dso\+\_\+list} & list of library file paths containing the custom ops implementation. In order to implement a custom op please see file\+: \mbox{\hyperlink{custom__ops__author_8h}{custom\+\_\+ops\+\_\+author.\+h}} T\+O\+DO add sample code \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+OK if success 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a1cdd5e4a373360fc01377678ad059822}\label{classonnxruntime_1_1InferenceSession_a1cdd5e4a373360fc01377678ad059822}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!New\+I\+O\+Binding@{New\+I\+O\+Binding}}
+\index{New\+I\+O\+Binding@{New\+I\+O\+Binding}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{New\+I\+O\+Binding()}{NewIOBinding()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+New\+I\+O\+Binding (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} $>$ $\ast$}]{io\+\_\+binding }\end{DoxyParamCaption})}
+
+Creates a new binding object for binding inputs and outputs. 
+\begin{DoxyParams}{Parameters}
+{\em provider\+\_\+type} & specifies the location where the inputs need to be potentially copied. See \mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} class for more info. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a4118c53534b5927473a86f0c1323cf6c}\label{classonnxruntime_1_1InferenceSession_a4118c53534b5927473a86f0c1323cf6c}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Register\+Custom\+Registry@{Register\+Custom\+Registry}}
+\index{Register\+Custom\+Registry@{Register\+Custom\+Registry}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Register\+Custom\+Registry()}{RegisterCustomRegistry()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Register\+Custom\+Registry (\begin{DoxyParamCaption}\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1CustomRegistry}{Custom\+Registry}} $>$}]{custom\+\_\+registry }\end{DoxyParamCaption})}
+
+Register a custom registry for operator schema and kernels. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} you\textquotesingle{}ve one to register, call this before invoking \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aef2b179e956c7450ccf22d0be3374b6e}{Initialize()}}. The order of invocation indicates the reversed preference order\+: Register your most preferred registry at the end. Calling this A\+PI is optional. \begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a85f935178f4bcd8de35e36a2a9e84669}\label{classonnxruntime_1_1InferenceSession_a85f935178f4bcd8de35e36a2a9e84669}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Register\+Execution\+Provider@{Register\+Execution\+Provider}}
+\index{Register\+Execution\+Provider@{Register\+Execution\+Provider}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Register\+Execution\+Provider()}{RegisterExecutionProvider()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Register\+Execution\+Provider (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $>$}]{p\+\_\+exec\+\_\+provider }\end{DoxyParamCaption})}
+
+Register an execution provider. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} you\textquotesingle{}ve one to register, call this before invoking \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aef2b179e956c7450ccf22d0be3374b6e}{Initialize()}}. The order of invocation indicates the preference order as well. In other words call this method on your most preferred execution provider first followed by the less preferred ones. Calling this A\+PI is optional in which case onnxruntime will use its internal C\+PU execution provider. \begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a0aa67768d7e26977dae70be76a3f8200}\label{classonnxruntime_1_1InferenceSession_a0aa67768d7e26977dae70be76a3f8200}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Register\+Graph\+Transformer@{Register\+Graph\+Transformer}}
+\index{Register\+Graph\+Transformer@{Register\+Graph\+Transformer}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Register\+Graph\+Transformer()}{RegisterGraphTransformer()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Register\+Graph\+Transformer (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer}{onnxruntime\+::\+Graph\+Transformer}} $>$}]{p\+\_\+graph\+\_\+transformer }\end{DoxyParamCaption})}
+
+Register a graph transformer. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} you\textquotesingle{}ve one to register, call this before invoking \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_aef2b179e956c7450ccf22d0be3374b6e}{Initialize()}}. Calling this A\+PI is optional. \begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}\label{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Run@{Run}}
+\index{Run@{Run}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Run (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$}]{p\+\_\+fetches }\end{DoxyParamCaption})}
+
+Run a pre-\/loaded and pre-\/intialized model. Multiple threads are allowed to run this function; hence its thread-\/safe. 
+\begin{DoxyParams}{Parameters}
+{\em feeds} & named inputs owned by client code and should not be changed during execution of this function. \\
+\hline
+{\em output\+\_\+names} & output names \\
+\hline
+{\em p\+\_\+fetches} & output values in the order specified by output\+\_\+names. This should not be changed during execution of this function. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ad15921c8bc265da60685fd1c20ba3b62}\label{classonnxruntime_1_1InferenceSession_ad15921c8bc265da60685fd1c20ba3b62}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Run@{Run}}
+\index{Run@{Run}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Run (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&}]{run\+\_\+options,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ $\ast$}]{p\+\_\+fetches }\end{DoxyParamCaption})}
+
+See \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}{Run(const Name\+M\+L\+Val\+Map\& feeds, const std\+::vector$<$std\+::string$>$\& output\+\_\+names, std\+::vector$<$\+M\+L\+Value$>$$\ast$ p\+\_\+fetches)}} for details. 
+\begin{DoxyParams}{Parameters}
+{\em run\+\_\+options} & use this to tune the Run call to your needs. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_aabfd4a072935636d0e9f975f015a7c47}\label{classonnxruntime_1_1InferenceSession_aabfd4a072935636d0e9f975f015a7c47}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Run@{Run}}
+\index{Run@{Run}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Run (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_a28ccb3d97f6827bf04d2ce259ff968f1}{Run\+Options}} \&}]{run\+\_\+options,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} \&}]{io\+\_\+binding }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_a368fe68929fde82474199bfe581e24ce}\label{classonnxruntime_1_1InferenceSession_a368fe68929fde82474199bfe581e24ce}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Run@{Run}}
+\index{Run@{Run}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Run()}{Run()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Inference\+Session\+::\+Run (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} \&}]{io\+\_\+binding }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceSession_ab29bd2f63b9f4d5840e846f8bf705e8a}\label{classonnxruntime_1_1InferenceSession_ab29bd2f63b9f4d5840e846f8bf705e8a}} 
+\index{onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}!Start\+Profiling@{Start\+Profiling}}
+\index{Start\+Profiling@{Start\+Profiling}!onnxruntime\+::\+Inference\+Session@{onnxruntime\+::\+Inference\+Session}}
+\subsubsection{\texorpdfstring{Start\+Profiling()}{StartProfiling()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Inference\+Session\+::\+Start\+Profiling (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{file\+\_\+prefix }\end{DoxyParamCaption})}
+
+Start profiling on this inference session. This simply turns on profiling events to be recorded. A corresponding End\+Profiling has to follow to write profiling data to a file. 
+\begin{DoxyParams}{Parameters}
+{\em file\+\_\+prefix} & is the prefix of the profile file. It can include a directory path. \\
+\hline
+\end{DoxyParams}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{inference__session_8h}{inference\+\_\+session.\+h}}\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{inference__session_8cc}{inference\+\_\+session.\+cc}}\end{DoxyCompactItemize}

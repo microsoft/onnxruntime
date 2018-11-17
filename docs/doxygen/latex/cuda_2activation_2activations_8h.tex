@@ -1,0 +1,117 @@
+\hypertarget{cuda_2activation_2activations_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/activation/activations.h File Reference}
+\label{cuda_2activation_2activations_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/activation/activations.\+h@{onnxruntime/onnxruntime/core/providers/cuda/activation/activations.\+h}}
+{\ttfamily \#include \char`\"{}core/providers/cuda/cuda\+\_\+common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}activations\+\_\+impl.\+h\char`\"{}}\newline
+Include dependency graph for activations.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Affine}{onnxruntime\+::cuda\+::\+Affine$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Elu}{onnxruntime\+::cuda\+::\+Elu$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1HardSigmoid}{onnxruntime\+::cuda\+::\+Hard\+Sigmoid$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1LeakyRelu}{onnxruntime\+::cuda\+::\+Leaky\+Relu$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ParametricSoftplus}{onnxruntime\+::cuda\+::\+Parametric\+Softplus$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Relu}{onnxruntime\+::cuda\+::\+Relu$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ScaledTanh}{onnxruntime\+::cuda\+::\+Scaled\+Tanh$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Selu}{onnxruntime\+::cuda\+::\+Selu$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Sigmoid}{onnxruntime\+::cuda\+::\+Sigmoid$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Softplus}{onnxruntime\+::cuda\+::\+Softplus$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Softsign}{onnxruntime\+::cuda\+::\+Softsign$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Tanh}{onnxruntime\+::cuda\+::\+Tanh$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ThresholdedRelu}{onnxruntime\+::cuda\+::\+Thresholded\+Relu$<$ T $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8h_a3e87c21a47ff5014d7b5c7f4391220a5}{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA}}()
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8h_a77e768efc88a860460a356661317509e}{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA}}()
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8h_a4adf53d93df8406e926103ba0639058d}{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA}}()
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8h_a0963b8f0dd518f86d67da3d653f49997}{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL}}()
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda_2activation_2activations_8h_a3e87c21a47ff5014d7b5c7f4391220a5}\label{cuda_2activation_2activations_8h_a3e87c21a47ff5014d7b5c7f4391220a5}} 
+\index{cuda/activation/activations.\+h@{cuda/activation/activations.\+h}!M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA}}
+\index{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA}!cuda/activation/activations.\+h@{cuda/activation/activations.\+h}}
+\subsubsection{\texorpdfstring{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA}{MAKE\_FUNC\_CTX\_ALPHA}}
+{\footnotesize\ttfamily \#define M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+HA(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{inline} CtxAlpha MakeFuncCtx()\textcolor{keyword}{ const }\{ \(\backslash\)
+    CtxAlpha ctx;                       \(\backslash\)
+    ctx.alpha = \mbox{\hyperlink{mkldnn_2nn_2lrn_8cc_abe83297ecd31666a90e5478606d5deb1}{alpha\_}};                 \(\backslash\)
+    return ctx;                         \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2activation_2activations_8h_a77e768efc88a860460a356661317509e}\label{cuda_2activation_2activations_8h_a77e768efc88a860460a356661317509e}} 
+\index{cuda/activation/activations.\+h@{cuda/activation/activations.\+h}!M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA}}
+\index{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA}!cuda/activation/activations.\+h@{cuda/activation/activations.\+h}}
+\subsubsection{\texorpdfstring{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA}{MAKE\_FUNC\_CTX\_ALPHA\_BETA}}
+{\footnotesize\ttfamily \#define M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+B\+E\+TA(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{inline} CtxAlphaBeta MakeFuncCtx()\textcolor{keyword}{ const }\{ \(\backslash\)
+    CtxAlphaBeta ctx;                       \(\backslash\)
+    ctx.alpha = \mbox{\hyperlink{mkldnn_2nn_2lrn_8cc_abe83297ecd31666a90e5478606d5deb1}{alpha\_}};                     \(\backslash\)
+    ctx.beta = \mbox{\hyperlink{mkldnn_2nn_2lrn_8cc_a1c20a6698c62cad6311ed1ed6ba64d67}{beta\_}};                       \(\backslash\)
+    return ctx;                             \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2activation_2activations_8h_a4adf53d93df8406e926103ba0639058d}\label{cuda_2activation_2activations_8h_a4adf53d93df8406e926103ba0639058d}} 
+\index{cuda/activation/activations.\+h@{cuda/activation/activations.\+h}!M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA}}
+\index{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA}!cuda/activation/activations.\+h@{cuda/activation/activations.\+h}}
+\subsubsection{\texorpdfstring{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA}{MAKE\_FUNC\_CTX\_ALPHA\_GAMMA}}
+{\footnotesize\ttfamily \#define M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+A\+L\+P\+H\+A\+\_\+\+G\+A\+M\+MA(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{inline} CtxAlphaGamma MakeFuncCtx()\textcolor{keyword}{ const }\{ \(\backslash\)
+    CtxAlphaGamma ctx;                       \(\backslash\)
+    ctx.alpha = \mbox{\hyperlink{mkldnn_2nn_2lrn_8cc_abe83297ecd31666a90e5478606d5deb1}{alpha\_}};                      \(\backslash\)
+    ctx.gamma = gamma\_;                      \(\backslash\)
+    return ctx;                              \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2activation_2activations_8h_a0963b8f0dd518f86d67da3d653f49997}\label{cuda_2activation_2activations_8h_a0963b8f0dd518f86d67da3d653f49997}} 
+\index{cuda/activation/activations.\+h@{cuda/activation/activations.\+h}!M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL}}
+\index{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL@{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL}!cuda/activation/activations.\+h@{cuda/activation/activations.\+h}}
+\subsubsection{\texorpdfstring{M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL}{MAKE\_FUNC\_CTX\_NULL}}
+{\footnotesize\ttfamily \#define M\+A\+K\+E\+\_\+\+F\+U\+N\+C\+\_\+\+C\+T\+X\+\_\+\+N\+U\+LL(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{inline} CtxNull MakeFuncCtx()\textcolor{keyword}{ const }\{ \(\backslash\)
+    CtxNull ctx;                       \(\backslash\)
+    return ctx;                        \(\backslash\)
+  \}
+\end{DoxyCode}

@@ -1,0 +1,57 @@
+\hypertarget{classonnxruntime_1_1MaxPool_3_011_01_4}{}\section{onnxruntime\+:\+:Max\+Pool$<$ 1 $>$ Class Template Reference}
+\label{classonnxruntime_1_1MaxPool_3_011_01_4}\index{onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}}
+
+
+{\ttfamily \#include $<$pool\+\_\+base.\+h$>$}
+
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static float \mbox{\hyperlink{classonnxruntime_1_1MaxPool_3_011_01_4_a367e8d3ad38fd5a76cf422ef6915b104}{Initialize}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MaxPool_3_011_01_4_a02cd39e53eae93f41f8d10332e214b05}{Process}} (const T \&x\+\_\+data, T \&y\+\_\+data, const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&)
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MaxPool_3_011_01_4_ac23fd7b4bd131e2aa202b89b5d9565b2}{Finalize}} (const int64\+\_\+t, T \&, const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} \mbox{\hyperlink{classonnxruntime_1_1MaxPool_3_011_01_4_a9fcb4025fec4b8807dc1237b820b4594}{type}} = \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060a5ff72b0901ac2c36434cfecb86f6d5ff}{Pool\+Type\+::k\+Max\+Pool}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MaxPool_3_011_01_4_ac23fd7b4bd131e2aa202b89b5d9565b2}\label{classonnxruntime_1_1MaxPool_3_011_01_4_ac23fd7b4bd131e2aa202b89b5d9565b2}} 
+\index{onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}!Finalize@{Finalize}}
+\index{Finalize@{Finalize}!onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}}
+\subsubsection{\texorpdfstring{Finalize()}{Finalize()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MaxPool}{onnxruntime\+::\+Max\+Pool}}$<$ 1 $>$\+::Finalize (\begin{DoxyParamCaption}\item[{const int64\+\_\+t}]{,  }\item[{T \&}]{,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MaxPool_3_011_01_4_a367e8d3ad38fd5a76cf422ef6915b104}\label{classonnxruntime_1_1MaxPool_3_011_01_4_a367e8d3ad38fd5a76cf422ef6915b104}} 
+\index{onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}!Initialize@{Initialize}}
+\index{Initialize@{Initialize}!onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}}
+\subsubsection{\texorpdfstring{Initialize()}{Initialize()}}
+{\footnotesize\ttfamily static float \mbox{\hyperlink{classonnxruntime_1_1MaxPool}{onnxruntime\+::\+Max\+Pool}}$<$ 1 $>$\+::Initialize (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MaxPool_3_011_01_4_a02cd39e53eae93f41f8d10332e214b05}\label{classonnxruntime_1_1MaxPool_3_011_01_4_a02cd39e53eae93f41f8d10332e214b05}} 
+\index{onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}!Process@{Process}}
+\index{Process@{Process}!onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}}
+\subsubsection{\texorpdfstring{Process()}{Process()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MaxPool}{onnxruntime\+::\+Max\+Pool}}$<$ 1 $>$\+::Process (\begin{DoxyParamCaption}\item[{const T \&}]{x\+\_\+data,  }\item[{T \&}]{y\+\_\+data,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MaxPool_3_011_01_4_a9fcb4025fec4b8807dc1237b820b4594}\label{classonnxruntime_1_1MaxPool_3_011_01_4_a9fcb4025fec4b8807dc1237b820b4594}} 
+\index{onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}!type@{type}}
+\index{type@{type}!onnxruntime\+::\+Max\+Pool$<$ 1 $>$@{onnxruntime\+::\+Max\+Pool$<$ 1 $>$}}
+\subsubsection{\texorpdfstring{type}{type}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} \mbox{\hyperlink{classonnxruntime_1_1MaxPool}{onnxruntime\+::\+Max\+Pool}}$<$ 1 $>$\+::type = \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060a5ff72b0901ac2c36434cfecb86f6d5ff}{Pool\+Type\+::k\+Max\+Pool}}\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{pool__base_8h}{pool\+\_\+base.\+h}}\end{DoxyCompactItemize}

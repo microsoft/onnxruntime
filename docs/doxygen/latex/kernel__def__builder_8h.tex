@@ -1,0 +1,37 @@
+\hypertarget{kernel__def__builder_8h}{}\section{onnxruntime/include/onnxruntime/core/framework/kernel\+\_\+def\+\_\+builder.h File Reference}
+\label{kernel__def__builder_8h}\index{onnxruntime/include/onnxruntime/core/framework/kernel\+\_\+def\+\_\+builder.\+h@{onnxruntime/include/onnxruntime/core/framework/kernel\+\_\+def\+\_\+builder.\+h}}
+{\ttfamily \#include $<$memory$>$}\newline
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include $<$unordered\+\_\+map$>$}\newline
+{\ttfamily \#include $<$vector$>$}\newline
+{\ttfamily \#include $<$limits.\+h$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/basic\+\_\+types.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/data\+\_\+types.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/allocator.\+h\char`\"{}}\newline
+Include dependency graph for kernel\+\_\+def\+\_\+builder.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{onnxruntime\+::\+Kernel\+Def}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef std\+::map$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}, \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} $>$ \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{onnxruntime\+::\+Mem\+Type\+Map}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_afa996ec85090645ef69ad3a7e3eb6ddd}{onnxruntime\+::\+Mem\+Type\+On\+Cpu\+Explicitly}} (const Mem\+Type\+Map \&mem\+\_\+type\+\_\+map, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index)
+\end{DoxyCompactItemize}

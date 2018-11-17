@@ -1,0 +1,14 @@
+digraph "onnxruntime/onnxruntime/core/graph/function_container.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node27 [label="onnxruntime/onnxruntime\l/core/graph/function_container.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node27 -> Node28 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node28 [label="onnxruntime/onnxruntime\l/core/graph/function.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$function_8cc.html"];
+  Node27 -> Node29 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node29 [label="onnxruntime/onnxruntime\l/core/graph/graph.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph_8cc.html"];
+  Node27 -> Node30 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node30 [label="onnxruntime/onnxruntime\l/core/graph/model.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$model_8cc.html"];
+  Node27 -> Node31 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node31 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+}

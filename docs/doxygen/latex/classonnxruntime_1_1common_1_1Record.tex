@@ -1,0 +1,80 @@
+\hypertarget{classonnxruntime_1_1common_1_1Record}{}\section{onnxruntime\+:\+:common\+:\+:Record$<$ Types $>$ Class Template Reference}
+\label{classonnxruntime_1_1common_1_1Record}\index{onnxruntime\+::common\+::\+Record$<$ Types $>$@{onnxruntime\+::common\+::\+Record$<$ Types $>$}}
+
+
+{\ttfamily \#include $<$record.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+typedef std\+::tuple$<$ Types... $>$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}{Values}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_a0c48360a12cb27f6b629597a39594bfe}{Record}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_aceab9dca4d56c06ba4b03efce0ec6551}{Record}} (const std\+::vector$<$ std\+::string $>$ \&names, const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}{Values}} \&values)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_a3639716e0101db2c3bb0dc821f26dd0c}{Record}} (const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{Record}}$<$ Types... $>$ \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_aa90ebb80f43a3ed7f626a39c8f139812}{Get\+Name}} (int index, const std\+::string $\ast$$\ast$pp\+\_\+name) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}{Values}} \& \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_ac05fe4d52b275bf655b5d18503c6b0b5}{Get\+Values}} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}\label{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}} 
+\index{onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}!Values@{Values}}
+\index{Values@{Values}!onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}}
+\subsubsection{\texorpdfstring{Values}{Values}}
+{\footnotesize\ttfamily template$<$class... Types$>$ \\
+typedef std\+::tuple$<$Types...$>$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{onnxruntime\+::common\+::\+Record}}$<$ Types $>$\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}{Values}}}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Record_a0c48360a12cb27f6b629597a39594bfe}\label{classonnxruntime_1_1common_1_1Record_a0c48360a12cb27f6b629597a39594bfe}} 
+\index{onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}!Record@{Record}}
+\index{Record@{Record}!onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}}
+\subsubsection{\texorpdfstring{Record()}{Record()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily template$<$class... Types$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{onnxruntime\+::common\+::\+Record}}$<$ Types $>$\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{Record}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Record_aceab9dca4d56c06ba4b03efce0ec6551}\label{classonnxruntime_1_1common_1_1Record_aceab9dca4d56c06ba4b03efce0ec6551}} 
+\index{onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}!Record@{Record}}
+\index{Record@{Record}!onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}}
+\subsubsection{\texorpdfstring{Record()}{Record()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily template$<$class... Types$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{onnxruntime\+::common\+::\+Record}}$<$ Types $>$\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{Record}} (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ std\+::string $>$ \&}]{names,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}{Values}} \&}]{values }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Record_a3639716e0101db2c3bb0dc821f26dd0c}\label{classonnxruntime_1_1common_1_1Record_a3639716e0101db2c3bb0dc821f26dd0c}} 
+\index{onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}!Record@{Record}}
+\index{Record@{Record}!onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}}
+\subsubsection{\texorpdfstring{Record()}{Record()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily template$<$class... Types$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{onnxruntime\+::common\+::\+Record}}$<$ Types $>$\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{Record}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{Record}}$<$ Types... $>$ \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Record_aa90ebb80f43a3ed7f626a39c8f139812}\label{classonnxruntime_1_1common_1_1Record_aa90ebb80f43a3ed7f626a39c8f139812}} 
+\index{onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}!Get\+Name@{Get\+Name}}
+\index{Get\+Name@{Get\+Name}!onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}}
+\subsubsection{\texorpdfstring{Get\+Name()}{GetName()}}
+{\footnotesize\ttfamily template$<$class... Types$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{onnxruntime\+::common\+::\+Record}}$<$ Types $>$\+::Get\+Name (\begin{DoxyParamCaption}\item[{int}]{index,  }\item[{const std\+::string $\ast$$\ast$}]{pp\+\_\+name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Record_ac05fe4d52b275bf655b5d18503c6b0b5}\label{classonnxruntime_1_1common_1_1Record_ac05fe4d52b275bf655b5d18503c6b0b5}} 
+\index{onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}!Get\+Values@{Get\+Values}}
+\index{Get\+Values@{Get\+Values}!onnxruntime\+::common\+::\+Record@{onnxruntime\+::common\+::\+Record}}
+\subsubsection{\texorpdfstring{Get\+Values()}{GetValues()}}
+{\footnotesize\ttfamily template$<$class... Types$>$ \\
+const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record_adf21ddd0ae1bfd54963165bde0b417d7}{Values}}\& \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{onnxruntime\+::common\+::\+Record}}$<$ Types $>$\+::Get\+Values (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{record_8h}{record.\+h}}\end{DoxyCompactItemize}

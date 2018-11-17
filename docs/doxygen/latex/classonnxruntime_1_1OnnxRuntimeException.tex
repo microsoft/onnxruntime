@@ -1,0 +1,61 @@
+\hypertarget{classonnxruntime_1_1OnnxRuntimeException}{}\section{onnxruntime\+:\+:Onnx\+Runtime\+Exception Class Reference}
+\label{classonnxruntime_1_1OnnxRuntimeException}\index{onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}}
+
+
+{\ttfamily \#include $<$exceptions.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Onnx\+Runtime\+Exception\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Onnx\+Runtime\+Exception\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeException_a4ba563524d67ddae1cfdf183bffd4815}{Onnx\+Runtime\+Exception}} (const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&location, const std\+::string \&msg) noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeException_aa3c08c0c5da0d75e65c5e82845b71473}{Onnx\+Runtime\+Exception}} (const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&location, const char $\ast$failed\+\_\+condition, const std\+::string \&msg)
+\item 
+const char $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeException_af476a02759e2cf658cb7af3824f45bcc}{what}} () const noexcept override
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeException_a4ba563524d67ddae1cfdf183bffd4815}\label{classonnxruntime_1_1OnnxRuntimeException_a4ba563524d67ddae1cfdf183bffd4815}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}!Onnx\+Runtime\+Exception@{Onnx\+Runtime\+Exception}}
+\index{Onnx\+Runtime\+Exception@{Onnx\+Runtime\+Exception}!onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}}
+\subsubsection{\texorpdfstring{Onnx\+Runtime\+Exception()}{OnnxRuntimeException()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Onnx\+Runtime\+Exception\+::\+Onnx\+Runtime\+Exception (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&}]{location,  }\item[{const std\+::string \&}]{msg }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeException_aa3c08c0c5da0d75e65c5e82845b71473}\label{classonnxruntime_1_1OnnxRuntimeException_aa3c08c0c5da0d75e65c5e82845b71473}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}!Onnx\+Runtime\+Exception@{Onnx\+Runtime\+Exception}}
+\index{Onnx\+Runtime\+Exception@{Onnx\+Runtime\+Exception}!onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}}
+\subsubsection{\texorpdfstring{Onnx\+Runtime\+Exception()}{OnnxRuntimeException()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Onnx\+Runtime\+Exception\+::\+Onnx\+Runtime\+Exception (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&}]{location,  }\item[{const char $\ast$}]{failed\+\_\+condition,  }\item[{const std\+::string \&}]{msg }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Create a new exception that captures the location it was thrown from. 
+\begin{DoxyParams}{Parameters}
+{\em location} & Location in the source code the exception is being thrown from \\
+\hline
+{\em failed\+\_\+condition} & Optional string containing the condition that failed. e.\+g. \char`\"{}tensor.\+Size() == input.\+Size()\char`\"{}. May be nullptr. \\
+\hline
+{\em msg} & Message containing additional information about the exception cause. \\
+\hline
+\end{DoxyParams}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeException_af476a02759e2cf658cb7af3824f45bcc}\label{classonnxruntime_1_1OnnxRuntimeException_af476a02759e2cf658cb7af3824f45bcc}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}!what@{what}}
+\index{what@{what}!onnxruntime\+::\+Onnx\+Runtime\+Exception@{onnxruntime\+::\+Onnx\+Runtime\+Exception}}
+\subsubsection{\texorpdfstring{what()}{what()}}
+{\footnotesize\ttfamily const char$\ast$ onnxruntime\+::\+Onnx\+Runtime\+Exception\+::what (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/\mbox{\hyperlink{exceptions_8h}{exceptions.\+h}}\end{DoxyCompactItemize}

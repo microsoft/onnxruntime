@@ -1,0 +1,110 @@
+\hypertarget{classonnxruntime_1_1LRN}{}\section{onnxruntime\+:\+:L\+RN$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1LRN}\index{onnxruntime\+::\+L\+R\+N$<$ T $>$@{onnxruntime\+::\+L\+R\+N$<$ T $>$}}
+
+
+{\ttfamily \#include $<$lrn.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:L\+RN$<$ T $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:L\+RN$<$ T $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1LRN_aafd00073623f8b5491667abd25b81ae7}{L\+RN}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1LRN_ada28bb5cd885b738d8ed17e738a35ed7}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$p\+\_\+op\+\_\+kernel\+\_\+context) const override
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1LRN_a1d387326090789f94aa5ddba6432a8a4}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+float \mbox{\hyperlink{classonnxruntime_1_1LRN_aefd9baabbd775eeae8702f4d508fb1ea}{alpha\+\_\+}}
+\item 
+float \mbox{\hyperlink{classonnxruntime_1_1LRN_a690f2ff9893fad8423d0534af3e04869}{beta\+\_\+}}
+\item 
+float \mbox{\hyperlink{classonnxruntime_1_1LRN_a94db5cd6e1d3ffebdee9413a08af9d90}{bias\+\_\+}}
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1LRN_a4b87739b763f4acccd164dfd4c3397cb}{size\+\_\+}}
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_aafd00073623f8b5491667abd25b81ae7}\label{classonnxruntime_1_1LRN_aafd00073623f8b5491667abd25b81ae7}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!L\+RN@{L\+RN}}
+\index{L\+RN@{L\+RN}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{L\+R\+N()}{LRN()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1LRN}{L\+RN}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_a1d387326090789f94aa5ddba6432a8a4}\label{classonnxruntime_1_1LRN_a1d387326090789f94aa5ddba6432a8a4}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ float $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_ada28bb5cd885b738d8ed17e738a35ed7}\label{classonnxruntime_1_1LRN_ada28bb5cd885b738d8ed17e738a35ed7}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{p\+\_\+op\+\_\+kernel\+\_\+context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+Reimplemented in \mbox{\hyperlink{classonnxruntime_1_1mkl__dnn_1_1LRN_a8167c16afafb252e4c04542b0b37c3f2}{onnxruntime\+::mkl\+\_\+dnn\+::\+L\+R\+N$<$ T $>$}}.
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_aefd9baabbd775eeae8702f4d508fb1ea}\label{classonnxruntime_1_1LRN_aefd9baabbd775eeae8702f4d508fb1ea}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!alpha\+\_\+@{alpha\+\_\+}}
+\index{alpha\+\_\+@{alpha\+\_\+}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{alpha\+\_\+}{alpha\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+float \mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ T $>$\+::alpha\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_a690f2ff9893fad8423d0534af3e04869}\label{classonnxruntime_1_1LRN_a690f2ff9893fad8423d0534af3e04869}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!beta\+\_\+@{beta\+\_\+}}
+\index{beta\+\_\+@{beta\+\_\+}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{beta\+\_\+}{beta\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+float \mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ T $>$\+::beta\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_a94db5cd6e1d3ffebdee9413a08af9d90}\label{classonnxruntime_1_1LRN_a94db5cd6e1d3ffebdee9413a08af9d90}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!bias\+\_\+@{bias\+\_\+}}
+\index{bias\+\_\+@{bias\+\_\+}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{bias\+\_\+}{bias\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+float \mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ T $>$\+::bias\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LRN_a4b87739b763f4acccd164dfd4c3397cb}\label{classonnxruntime_1_1LRN_a4b87739b763f4acccd164dfd4c3397cb}} 
+\index{onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}!size\+\_\+@{size\+\_\+}}
+\index{size\+\_\+@{size\+\_\+}!onnxruntime\+::\+L\+RN@{onnxruntime\+::\+L\+RN}}
+\subsubsection{\texorpdfstring{size\+\_\+}{size\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+int \mbox{\hyperlink{classonnxruntime_1_1LRN}{onnxruntime\+::\+L\+RN}}$<$ T $>$\+::size\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{cpu_2nn_2lrn_8h}{lrn.\+h}}\end{DoxyCompactItemize}

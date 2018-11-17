@@ -1,0 +1,16 @@
+digraph "onnxruntime/onnxruntime/core/common/logging" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_f076573d92a781e267d0abe091aa4112 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="common" fontname="Helvetica", fontsize="10", URL="dir_f076573d92a781e267d0abe091aa4112.html"]
+  subgraph clusterdir_1f4c91770d7e35599dc08a95a87e8046 {
+    graph [ bgcolor="#eeeeff", pencolor="black", label="" URL="dir_1f4c91770d7e35599dc08a95a87e8046.html"];
+    dir_1f4c91770d7e35599dc08a95a87e8046 [shape=plaintext label="logging"];
+    dir_499eb2b1b9e0e536cc730c1bcca58585 [shape=box label="sinks" color="black" fillcolor="white" style="filled" URL="dir_499eb2b1b9e0e536cc730c1bcca58585.html"];
+  }
+  }
+  dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
+  dir_499eb2b1b9e0e536cc730c1bcca58585->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="4", labeldistance=1.5 headhref="dir_000026_000004.html"];
+  dir_1f4c91770d7e35599dc08a95a87e8046->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="9", labeldistance=1.5 headhref="dir_000025_000004.html"];
+}

@@ -1,0 +1,439 @@
+\hypertarget{cpu__execution__provider_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/cpu\+\_\+execution\+\_\+provider.cc File Reference}
+\label{cpu__execution__provider_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/cpu\+\_\+execution\+\_\+provider.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/cpu\+\_\+execution\+\_\+provider.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/cpu\+\_\+execution\+\_\+provider.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/kernel\+\_\+registry.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}contrib\+\_\+ops/contrib\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/computation\+\_\+capacity.\+h\char`\"{}}\newline
+Include dependency graph for cpu\+\_\+execution\+\_\+provider.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_abfce6c8738472c3d336778855d38ed75}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Clip)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac659857d9f0d7d394d2e594d62330b42}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Elu)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab14a2f908d3efd490cd559191b89e400}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Hard\+Sigmoid)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aefc2947542c3afe33bca0778b954aaff}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Leaky\+Relu)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a0c1188bb1b575eda8c73b605a58e81ed}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Parametric\+Softplus)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad7293aad6895e2dc9103adf56e5f42de}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Relu)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a205c10297d918f61b3f5283a692b34bb}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Scaled\+Tanh)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a669d31597973866abb59697f99683f30}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Selu)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a1a009c4000b20ba06af984ba37f14365}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Sigmoid)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8a3c7d4d6dd162af60f0f981497fe63e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Softplus)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a2e9133371202d53236ca68b3c168899d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Softsign)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5e1324b3bb65dfa1dc73dacdc6d74a2c}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Tanh)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a531d8a4bd44833a721207d82f536795c}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Thresholded\+Relu)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a332bf321057b564df7db3dd026fbb619}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, 9, P\+Relu)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a12fb6bc7b44eb0ab7164c5b5b3fc8006}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Random\+Normal)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aa3c2ada74daad7044d922890027d8fdc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Random\+Uniform)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7e4ff7b35bb3cb993b5147a82d866829}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Random\+Normal\+Like)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_abdd27f04e072567e9eacb162ab9ad087}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Random\+Uniform\+Like)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_afeed750bc903465998dbc6202bb82a75}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Multinomial)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab20ae811c8b6e70398c5682973cbbebf}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, float, Add)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a218259384d64429ddcf6e8f54d37cc56}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int32\+\_\+t, Add)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a083186d62cf1fc284212e5b4250368e0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int64\+\_\+t, Add)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac5ddc76de08d29cfe2f23c92add2062c}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, float, Sub)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a0c6b8eb4f639312020528cd5ab7e30df}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int32\+\_\+t, Sub)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a24c316eeadb4fee80a386665bb995278}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int64\+\_\+t, Sub)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a3d2c63ebebe95b4eb25bcf24f4dafe85}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, float, Mul)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a9cf0d099719c3c2ccd10cb408b1127fe}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int32\+\_\+t, Mul)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7ba737c5571f5522a1a44586e1171ae1}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int64\+\_\+t, Mul)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a4a7cd7d0a97554d8584d5a45b960f550}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, float, Div)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aa7d9c7001ef39acd2b9cb91317584e73}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int32\+\_\+t, Div)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a1e2c1a321e11aa57689d9e5583189d85}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int64\+\_\+t, Div)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a01abc1c7e1c1ffd1f7ebe13e1b3f545c}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, float, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aaf09c73bd430a2645e3b6a1b667f06b1}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, double, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aec7e5257705e3cd898a13faca469eef0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int8\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a2288e36f63bd5e7c2b548bce8c395a39}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int16\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a751c8a3023992a74094ba056dbf4445e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int32\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aab3e56221a79dd86860980e8de4740ba}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int64\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5efd3288e4b658a44e53f7bc3e0dbfe5}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint8\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7a38a64ff68c74d620094ef2e8d4f60a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint16\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5b60ad279657b1d332dff7bb6a957cdf}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint32\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a87df0c45a785d374d4d99c6e690b747f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint64\+\_\+t, Abs)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae1b05e167a59c1ccf5f21140a3e0e062}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, float, Neg)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad3cad38eb12e6b1708cbb2856f9ed66f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int8\+\_\+t, Neg)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad080648e12b23687b01d9c5e0a4bbc64}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int32\+\_\+t, Neg)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a077868e62db61abaf45e96ede4eefb30}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Floor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae1e520726d6785fe18d472f607f43a00}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Ceil)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a42929c30bb2552fc360d6ddf4a0ee3d8}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Reciprocal)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac1942b4599b6d6a986026d2dcd920760}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Sqrt)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aa141c75aab04c3e2baa7c10a9c6c4049}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Pow)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab9720080d6d45a102e82731b462e5e4f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Exp)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a0aa35ccb23d9da8b42c3b13967bb4150}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Log)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a841d98caabe573da13f810663678478e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, 7, Sum)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a56a874d9ded236f44f34c9a94ddadc31}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, Sum)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad735721c84695998fb44bcd3f89fe080}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, 7, Min)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a04db3b3e41cd500974363ffb6df5cc93}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, Min)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8e463fc07f5b3667d41e09370bc44817}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, 7, Max)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8740a79ec1d5fe23fc7c89894eb3c5d6}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, Max)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a79930ad8050cd531d828e976ef4f7953}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Not)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5c772f4e224d58dfe1a7bd0b5ceba3f1}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, And)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a69757aa4da0723e1463600da0d09bacf}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Or)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a06fac8a6bbc1707459779ea1f32d2d95}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Xor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a80b0d8c59fccbc335c9f7db1bee29178}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, 9, float, Less)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8e49c966e01faae3d768a10350ae87cd}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 9, int32\+\_\+t, Less)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a77bb3298cc194338192eec536b54d168}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, 9, float, Greater)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab6149549b0081f100c6d320f94666f30}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 9, int32\+\_\+t, Greater)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aabe9cd2a081cc8590855f613b9ceb1c4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, bool, Equal)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a59ac7fa8c33c074bdd92f241e5cfb83d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int32\+\_\+t, Equal)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aaaaa92f90c7b068f89fd6072b6f78ecd}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int64\+\_\+t, Equal)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab61d37b915340f8203be9b101b56073d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, 7, Mean)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad8ee0e3e41768948ad8e8c994d1c4be0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, Mean)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac420aafa2763b1f6adfca6739fe319ce}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Affine)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a4b93d85e5d4e17b54164e1b71d6180f7}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Sin)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a153b7d3b1db08d350db9f55de33ced65}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Cos)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a472ff9ce4c5d46b0a931a5db5b7f26c2}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Tan)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a88c908346aba06f79438fb32a8ca5917}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Asin)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5721250aff4498dd89cc0c921b31bfff}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Acos)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a84b38d59290803249e8775fc3a195447}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Atan)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_afa7e22e28d27bc3b00222d2cb24e4587}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, 9, Gemm)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a018b643905cfa6bff5b9d52501a2c560}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Hardmax)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a706c432096e23a6e496fc724f94d7fd3}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Log\+Softmax)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac97f6e52aae8128b3506d45070944740}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, 9, Mat\+Mul)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae6bec2cff47e65e5d93ace02f62ef0c6}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Softmax)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a956cb41c0dc69510953fe3ffd45d70be}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, TopK)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8f7143eb6222c4e1a597913ccf721672}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Batch\+Normalization)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a1cbd010ac2a5026f53fcc6239b121565}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Conv)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aa3118dd4f09dca1642b5af1a883d6efa}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Conv\+Transpose)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a2915b971e5ed29752ee10076e5974c68}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, 9, Flatten)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aba23373a72adffd27988557f163c9c0e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Instance\+Normalization)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a3e798c1f547bbec32096d0d9025317ae}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Lp\+Normalization)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5ce99a4c45b8cbb4b150fada977d55bd}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, L\+RN)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac8c9a03f93aa60ef34f14fcaf9191c67}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Average\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_acc133a7a55bbf71be809e71dd9c9e224}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, 7, Max\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a4e8da153081e54ade6d38c74d3aebdf4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, Max\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aab06e94de164263d16b5bc25a46d95f4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 2, Lp\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad7e5bad658cccb28c8e6ad8dfbdac484}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 2, Global\+Lp\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_acaba69a3b275e77ba1e4097c947ee539}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Global\+Average\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8351a1b855e46ac13ce6cf397195d49c}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Global\+Max\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a9fb5869ffc13bd77b46e6b41b1bab0c4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Max\+Roi\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7c8964c6daeb7122000a5a388f1d0da7}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+L1)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a48a20f515c312cb50d82b188f601fff9}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+L1)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a71824afd5266ef5166e6e907b6c753b9}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+L2)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a52f4489799d4b953892cf8135b6b3a10}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+L2)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a52d634d26ddf25acf39a058135cd91d1}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Log\+Sum)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a42404045301ce642f206a2f3606a8d80}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Log\+Sum)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a6577f74737c85ba6164e0712fab5ea15}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Log\+Sum\+Exp)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_addc8f82d4bb691eda1756e16fd44742e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Log\+Sum\+Exp)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad5358164337a231c58c5defa176a1b9f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Max)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae8ddbec920ed92995fba9a6c11e188d8}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Max)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_acc9a9252d2daa86531d686709077aa43}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Mean)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae26a83217605629ff2fd37692119a9c3}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Mean)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab611af8ff221eac064c6b0710c5b8d0b}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Min)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a073c63018f66edaff07589801c4c0550}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Min)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7f2de0e5aeb76a9cec75530eb5099d0a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Prod)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a77710086c7f30274ee0fa5bd80516344}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Prod)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab20055feb149300ab556017aabe6e67b}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Sum)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae23e46690ee05c0a408d047145f656b3}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Sum)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a13efe0a641511c8c0baee80312534fdf}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Reduce\+Sum\+Square)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a6efcbb6bdd0e6a69f5b205b948bff511}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Reduce\+Sum\+Square)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7d1c185115fe4fc7b748f116413d32b6}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Arg\+Max)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a2cc008961325f1e7b4c94dac6187fd9d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Arg\+Max)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a764bd83dab7507a725043683d42a0911}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, float, Arg\+Min)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a40a6fc772f0c61fc5a5bb104e01733fc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, int32\+\_\+t, Arg\+Min)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a7c13b35e5736f61bd2437d772bf7eff4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, G\+RU)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5069b889c5db4ca5b1696a2186194677}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, L\+S\+TM)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a72af4c297543981aae01558d8d02780a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, R\+NN)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ab6dfb47a25259045fdef0e525cb9f571}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint8\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ac0007cad97d82ff80823af9ba0ab58f5}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint16\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_adbeef75f221103d419ae68031a93a10b}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint32\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a0fd9bc7dfd6533bc132b021400f591f0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, uint64\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad5284920b05ffa209c589af19e625ac2}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int8\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a4c21830b645e5c9fcdb2607d24dd3c6d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int16\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae253e7f7dd2120b25e4e88ce5f8aa530}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int32\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a9a95c1291a4f78f2e14e31c747c5ade6}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, int64\+\_\+t, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a6936619d558c09bebb0f7d0f535cdeb4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, bool, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aea02cc7d3dfc30f11efaf118b36740f4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, float, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a747ebddd2c5e93de4d958853cdc38557}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, double, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_adef2378fc471aa97e91ac2f57ebcc280}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, M\+L\+Float16, Cast)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a41ac4413d9dd6d50f4f32415d3ec2e85}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 4, Concat)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8849c168f50b18c7782ceb3faeb50860}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Crop)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a8ab4619fd61d7ba6d7f3be4573c1c7a9}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Gather)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a1bc3ae36d3eb9ac34b0a6a9f54c6ba87}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, Dropout)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_af8771b1390e3a269cb4b1859b75ee344}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Identity)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a29ab0305eb538ea27a9f7c2d89999d09}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Image\+Scaler)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aa69834fbe0d88dd60551595464b51a6e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, 8, Mean\+Variance\+Normalization)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a2e41c162b22ca0a2cb686aae019bfef9}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 9, Mean\+Variance\+Normalization)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a46bbcade1e56cedad64466c2f2c423e5}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 2, Pad)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a61a638648822029e64e38976d0b7d7d5}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, 4, Reshape\+\_\+1)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a12213adc97a573701ae39e8d29cbea51}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 5, Reshape)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a12965abed5f8d0fae3ef21bdbd7793dc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Shape)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a78bdede4f00446f279512c7a9dc9b176}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Size)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a51a6eab5251ddfefe495ca83839c9488}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Slice)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a0c28e5920b6f7651cc89a7fdf32d0909}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 9, Compress)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_aed7ed22cd7d7db65c14f9403f9ec0f44}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Space\+To\+Depth)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae558d98a17e78359df25fb8d477d28fb}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, 4, Depth\+To\+Space)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a36c0ec2fff272942c2819f05adb8fde7}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 2, Split)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a38a4e1f9751674c8911c57fc2dd19cd3}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Squeeze)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a5049df6ae588f0574f648bfc1e0aa6c9}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 6, Tile)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_abaf12d7bc4091a5ed825fd72e8389cd2}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Transpose)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a0c9ce3d6275de74c5242ea6e21d67bc5}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Unsqueeze)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ae192554a22522a8922593dad24703283}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, float, Upsample)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_abfd966d7e49a21b7f0073b2327a90f03}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 7, int32\+\_\+t, Upsample)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a73a9ff1cc2bf61f7de4ba0a14f4abffc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, float, Expand)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a79703a06b30b1cfb233e61dbb1933d2f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 8, Scan)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a331b0234a8bd1bd59d86a30f5d0d82ab}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, Scale)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_ad4b457ba7cbbd0ca8a732d155c311cdc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 1, If)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_a416db211dc941754e3c721edc5c09b0a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+Onnx\+Domain, 9, Constant\+Like)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a189f98a839b5ddb9402d334f852cfcea}{onnxruntime\+::\+Register\+Onnx\+Operator\+Kernels}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(Kernel\+Create\+Info \&\&)$>$ fn)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ae081b91c0e45719184dcf3c80c864de9}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, float, Array\+Feature\+Extractor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a713c41118c4973db050ec0cce8210330}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, double, Array\+Feature\+Extractor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a6e21d65250b79fabb8e617257799e5ce}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int32\+\_\+t, Array\+Feature\+Extractor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_abb4aa917a23b43c6b954169e1c33a292}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t, Array\+Feature\+Extractor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a5cce4b7d507ae46a6fb6d742f65e9427}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, string, Array\+Feature\+Extractor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_af58d26bdbda62175c43e0f79662715d9}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Binarizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b020f8dff14c8d400aaa49e9fa0ebe0}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Cast\+Map)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a81774f8a761c11327fcb6e36e5c32ce1}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Category\+Mapper)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a8426e85b2c5788b8bfb5f09576245753}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, string\+\_\+int64\+\_\+t, Dict\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a275c2f7658ebac2b5fbdcde70b935f36}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, string\+\_\+float, Dict\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a29a6cd706aa997c3b309e1443c159a4d}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, string\+\_\+double, Dict\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a7ea36715d290134d65e5d820380a5ae7}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t\+\_\+string, Dict\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_abb607362e12f644526ed85340eddeaf0}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t\+\_\+float, Dict\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_af807d4f4a563446d130e43cbb6556b87}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t\+\_\+double, Dict\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ab478b918b30f75237fe75262f5846436}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Feature\+Vectorizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_adf3976bbe4dc37ecbf0b965049ba1460}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Imputer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ab18ec3a3fc651fa6eac9ce6be0c97295}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Label\+Encoder)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_aca6cc0da36d4661500ed5cce653a24d6}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, float, Linear\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a9238ef982fb6529a919d1a502da7425c}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, double, Linear\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a6364e484a8a6047684c09a849c6b1b24}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t, Linear\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a0514e0a360a726822a7c29379989fd1c}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int32\+\_\+t, Linear\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a5c80d73ea7a0a2d8d09e4dba9ad56503}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Linear\+Regressor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a9ec007497b86e981b970684dc9b30ab0}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Normalizer)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a598c3e17bafc064c48fa4067420eab71}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t, One\+Hot\+Encoder)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a5554d68a4eddedca620f7e912f201227}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, float, One\+Hot\+Encoder)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a5d9d9955a1eb323b2cad1988009b944b}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, double, One\+Hot\+Encoder)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_afdf5bf8eb96ef2ad816f1b7b73ed53e7}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, string, One\+Hot\+Encoder)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ab1e1a80612c5e1271ba92d85e40e2066}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, float, Scaler)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a1ac2c71f227351fab1cd4b1eae17e6e6}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, double, Scaler)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a58c82c046761900905514f7f322daf72}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t, Scaler)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a75e8af132924e35f012cdaafea11ca2f}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int32\+\_\+t, Scaler)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a1bbaf789d7f56ba4453590d2f7c59e0d}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, float, S\+V\+M\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a2c3ab16a59733584e3a546f01fc17ecf}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, double, S\+V\+M\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ade0c6b3c1eec0c6173fcdc0d56d08a87}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t, S\+V\+M\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a013c4a377c524c3ebbd7d452740001c0}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int32\+\_\+t, S\+V\+M\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_af3c7afba6fc8faa316c8523a7d6c443e}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, S\+V\+M\+Regressor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_af0b64ed16284c50318c32afa712f0fb3}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, float, Tree\+Ensemble\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a740e6beef268ec2b5d3a5336b3f6c970}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, double, Tree\+Ensemble\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ad8fa51ed3b91718363b52170315c4943}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int64\+\_\+t, Tree\+Ensemble\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_af444341429f6802a1a20f9e54cf2f4aa}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, int32\+\_\+t, Tree\+Ensemble\+Classifier)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ad6ca832e117319817cdf8851ed76a9db}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Tree\+Ensemble\+Regressor)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a4cf257b56f29c3bfc7e979a135a5500f}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Cpu\+Execution\+Provider, k\+M\+L\+Domain, 1, Zip\+Map)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a33e2946a334cfd6342a084f9cc1b1f93}{onnxruntime\+::ml\+::\+Register\+Onnx\+M\+L\+Operator\+Kernels}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(Kernel\+Create\+Info \&\&)$>$ fn)
+\end{DoxyCompactItemize}

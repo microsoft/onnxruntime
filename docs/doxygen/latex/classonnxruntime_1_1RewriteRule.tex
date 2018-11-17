@@ -1,0 +1,64 @@
+\hypertarget{classonnxruntime_1_1RewriteRule}{}\section{onnxruntime\+:\+:Rewrite\+Rule Class Reference}
+\label{classonnxruntime_1_1RewriteRule}\index{onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}}
+
+
+{\ttfamily \#include $<$rewrite\+\_\+rule.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Rewrite\+Rule\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1RewriteRule_a3fa857ff053c83ddb4bf5feddaf270db}{Rewrite\+Rule}} (const std\+::string \&name, const std\+::string \&desc)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1RewriteRule_a965539324a76c8ae0e4c019fe6efbd1e}{$\sim$\+Rewrite\+Rule}} ()=default
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1RewriteRule_a64f78e1ac1ffefb29f37e66f892dcc40}{Name}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1RewriteRule_aafea189c5808aa548e21b59650406357}{Description}} () const noexcept
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1RewriteRule_acdd4eadfe4aca121e3912dc12bd82f17}{Check\+Condition\+And\+Apply}} (\mbox{\hyperlink{classonnxruntime_1_1GraphEditor}{Graph\+Editor}} $\ast$graph\+\_\+editor, \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$node, bool $\ast$modified)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1RewriteRule_a3fa857ff053c83ddb4bf5feddaf270db}\label{classonnxruntime_1_1RewriteRule_a3fa857ff053c83ddb4bf5feddaf270db}} 
+\index{onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}!Rewrite\+Rule@{Rewrite\+Rule}}
+\index{Rewrite\+Rule@{Rewrite\+Rule}!onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}}
+\subsubsection{\texorpdfstring{Rewrite\+Rule()}{RewriteRule()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Rewrite\+Rule\+::\+Rewrite\+Rule (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{desc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1RewriteRule_a965539324a76c8ae0e4c019fe6efbd1e}\label{classonnxruntime_1_1RewriteRule_a965539324a76c8ae0e4c019fe6efbd1e}} 
+\index{onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}!````~Rewrite\+Rule@{$\sim$\+Rewrite\+Rule}}
+\index{````~Rewrite\+Rule@{$\sim$\+Rewrite\+Rule}!onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}}
+\subsubsection{\texorpdfstring{$\sim$\+Rewrite\+Rule()}{~RewriteRule()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+Rewrite\+Rule\+::$\sim$\+Rewrite\+Rule (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1RewriteRule_acdd4eadfe4aca121e3912dc12bd82f17}\label{classonnxruntime_1_1RewriteRule_acdd4eadfe4aca121e3912dc12bd82f17}} 
+\index{onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}!Check\+Condition\+And\+Apply@{Check\+Condition\+And\+Apply}}
+\index{Check\+Condition\+And\+Apply@{Check\+Condition\+And\+Apply}!onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}}
+\subsubsection{\texorpdfstring{Check\+Condition\+And\+Apply()}{CheckConditionAndApply()}}
+{\footnotesize\ttfamily \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Rewrite\+Rule\+::\+Check\+Condition\+And\+Apply (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1GraphEditor}{Graph\+Editor}} $\ast$}]{graph\+\_\+editor,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$}]{node,  }\item[{bool $\ast$}]{modified }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1RewriteRule_aafea189c5808aa548e21b59650406357}\label{classonnxruntime_1_1RewriteRule_aafea189c5808aa548e21b59650406357}} 
+\index{onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}!Description@{Description}}
+\index{Description@{Description}!onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}}
+\subsubsection{\texorpdfstring{Description()}{Description()}}
+{\footnotesize\ttfamily const std\+::string\& onnxruntime\+::\+Rewrite\+Rule\+::\+Description (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1RewriteRule_a64f78e1ac1ffefb29f37e66f892dcc40}\label{classonnxruntime_1_1RewriteRule_a64f78e1ac1ffefb29f37e66f892dcc40}} 
+\index{onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}!Name@{Name}}
+\index{Name@{Name}!onnxruntime\+::\+Rewrite\+Rule@{onnxruntime\+::\+Rewrite\+Rule}}
+\subsubsection{\texorpdfstring{Name()}{Name()}}
+{\footnotesize\ttfamily const std\+::string\& onnxruntime\+::\+Rewrite\+Rule\+::\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{rewrite__rule_8h}{rewrite\+\_\+rule.\+h}}\end{DoxyCompactItemize}

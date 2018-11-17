@@ -1,0 +1,101 @@
+\hypertarget{classonnxruntime_1_1IOBinding}{}\section{onnxruntime\+:\+:I\+O\+Binding Class Reference}
+\label{classonnxruntime_1_1IOBinding}\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+
+
+{\ttfamily \#include $<$I\+O\+Binding.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1IOBinding_ac1217bbb8ec78b47ad58c343cdd15f7c}{Bind\+Input}} (const std\+::string \&name, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&ml\+\_\+value)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1IOBinding_a03022da7eb066502cae7288f13ef1625}{Synchronize\+Inputs}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1IOBinding_a2d4ea18ada1b7227d9fd73a4576713f8}{Synchronize\+Outputs}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1IOBinding_ad060d48245f5873694878e419cd2fdc9}{Bind\+Output}} (const std\+::string \&name, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&ml\+\_\+value)
+\item 
+const std\+::vector$<$ std\+::string $>$ \& \mbox{\hyperlink{classonnxruntime_1_1IOBinding_a42617f235c1a5cc9b5efe8bfeabedfd1}{Get\+Output\+Names}} () const
+\item 
+std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1IOBinding_a2200c675c3fa6c3aa11de0847082fe33}{Get\+Outputs}} ()
+\item 
+const std\+::unordered\+\_\+map$<$ std\+::string, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1IOBinding_a97181d4c755d6588da31fe25d7dbed49}{Get\+Inputs}} () const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1IOBinding_a1210c428eaa9cf938914c9e38e6b9a77}{Get\+C\+P\+U\+Allocator}} (int id, \mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} provider\+\_\+type) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Input/\+Output binding. Usage is as follows\+:
+
+\mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{Inference\+Session}} session; session.\+Load(); session.\+Initialize(); ... shared\+\_\+ptr$<$\+I\+O\+Binding$>$ io\+\_\+binding; session.\+New\+I\+O\+Binding(\char`\"{}\+D\+M\+L\char`\"{}, \&io\+\_\+binding); io\+\_\+binding-\/$>$Bind\+Input(...); io\+\_\+binding-\/$>$Bind\+Input(...); io\+\_\+binding-\/$>$\mbox{\hyperlink{classonnxruntime_1_1IOBinding_a03022da7eb066502cae7288f13ef1625}{Synchronize\+Inputs()}};
+
+io\+\_\+binding-\/$>$Bind\+Output(...); io\+\_\+binding-\/$>$Bind\+Output(...);
+
+session.\+Run(io\+\_\+binding);
+
+vector$<$\+M\+L\+Value$>$\& outputs = io\+\_\+binding-\/$>$\mbox{\hyperlink{classonnxruntime_1_1IOBinding_a2200c675c3fa6c3aa11de0847082fe33}{Get\+Outputs()}}; 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1IOBinding_ac1217bbb8ec78b47ad58c343cdd15f7c}\label{classonnxruntime_1_1IOBinding_ac1217bbb8ec78b47ad58c343cdd15f7c}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Bind\+Input@{Bind\+Input}}
+\index{Bind\+Input@{Bind\+Input}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Bind\+Input()}{BindInput()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+I\+O\+Binding\+::\+Bind\+Input (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{ml\+\_\+value }\end{DoxyParamCaption})}
+
+Call repeatedly to bind as many inputs as required. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} the input mlvalue is not at the desired location (specified by the execution provider), this will copy it to the desired location. This copy may or may not be async. It depends on the exec provider. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} the input mlvalue is not at the desired location, it should be preallocated \mbox{\hyperlink{classonnxruntime_1_1If}{If}} the input mlvalue isn\textquotesingle{}t preallocated, it should have memtype of O\+N\+N\+X\+Runtime\+Mem\+Type\+Default For copying it leverages \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a2b9bb47c0d2d72598ceb381688adfe26}{I\+Execution\+Provider\+::\+Copy\+Tensor()}}. \mbox{\Hypertarget{classonnxruntime_1_1IOBinding_ad060d48245f5873694878e419cd2fdc9}\label{classonnxruntime_1_1IOBinding_ad060d48245f5873694878e419cd2fdc9}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Bind\+Output@{Bind\+Output}}
+\index{Bind\+Output@{Bind\+Output}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Bind\+Output()}{BindOutput()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+I\+O\+Binding\+::\+Bind\+Output (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{ml\+\_\+value }\end{DoxyParamCaption})}
+
+This simply provides the names and optionally allocated output containers. \mbox{\Hypertarget{classonnxruntime_1_1IOBinding_a1210c428eaa9cf938914c9e38e6b9a77}\label{classonnxruntime_1_1IOBinding_a1210c428eaa9cf938914c9e38e6b9a77}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Get\+C\+P\+U\+Allocator@{Get\+C\+P\+U\+Allocator}}
+\index{Get\+C\+P\+U\+Allocator@{Get\+C\+P\+U\+Allocator}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Get\+C\+P\+U\+Allocator()}{GetCPUAllocator()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} onnxruntime\+::\+I\+O\+Binding\+::\+Get\+C\+P\+U\+Allocator (\begin{DoxyParamCaption}\item[{int}]{id,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{provider\+\_\+type }\end{DoxyParamCaption}) const}
+
+Get a C\+PU allocator from provider for async copy later if the provider supports that \mbox{\hyperlink{classonnxruntime_1_1If}{If}} it doesn\textquotesingle{}t support that, return the default allocator from C\+PU provider \begin{DoxyReturn}{Returns}
+a nonnull pointer 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1IOBinding_a97181d4c755d6588da31fe25d7dbed49}\label{classonnxruntime_1_1IOBinding_a97181d4c755d6588da31fe25d7dbed49}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Get\+Inputs@{Get\+Inputs}}
+\index{Get\+Inputs@{Get\+Inputs}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Get\+Inputs()}{GetInputs()}}
+{\footnotesize\ttfamily const std\+::unordered\+\_\+map$<$ std\+::string, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \& onnxruntime\+::\+I\+O\+Binding\+::\+Get\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1IOBinding_a42617f235c1a5cc9b5efe8bfeabedfd1}\label{classonnxruntime_1_1IOBinding_a42617f235c1a5cc9b5efe8bfeabedfd1}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Get\+Output\+Names@{Get\+Output\+Names}}
+\index{Get\+Output\+Names@{Get\+Output\+Names}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Get\+Output\+Names()}{GetOutputNames()}}
+{\footnotesize\ttfamily const std\+::vector$<$ std\+::string $>$ \& onnxruntime\+::\+I\+O\+Binding\+::\+Get\+Output\+Names (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+This simply collects the outputs obtained after calling Run() inside the
+\begin{DoxyParams}{Parameters}
+{\em outputs.} & \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1IOBinding_a2200c675c3fa6c3aa11de0847082fe33}\label{classonnxruntime_1_1IOBinding_a2200c675c3fa6c3aa11de0847082fe33}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Get\+Outputs@{Get\+Outputs}}
+\index{Get\+Outputs@{Get\+Outputs}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Get\+Outputs()}{GetOutputs()}}
+{\footnotesize\ttfamily std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \& onnxruntime\+::\+I\+O\+Binding\+::\+Get\+Outputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1IOBinding_a03022da7eb066502cae7288f13ef1625}\label{classonnxruntime_1_1IOBinding_a03022da7eb066502cae7288f13ef1625}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Synchronize\+Inputs@{Synchronize\+Inputs}}
+\index{Synchronize\+Inputs@{Synchronize\+Inputs}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Synchronize\+Inputs()}{SynchronizeInputs()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+I\+O\+Binding\+::\+Synchronize\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+\mbox{\hyperlink{classonnxruntime_1_1If}{If}} the Bind\+Input calls are async this function acts as a barrier to ensure all inputs are fully copied before you call the Run() method. There is no point calling Run() if you\textquotesingle{}re inputs are not ready at the desired location. This is a blocking call and is a wrapper over \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a3657d5ed274547507a7b99d466fa13ef}{I\+Execution\+Provider\+::\+Sync()}}. Call \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}{Inference\+Session\+::\+Run()}} only after calling this method or else you\textquotesingle{}ll end up wasting cycles inside Run(). \mbox{\Hypertarget{classonnxruntime_1_1IOBinding_a2d4ea18ada1b7227d9fd73a4576713f8}\label{classonnxruntime_1_1IOBinding_a2d4ea18ada1b7227d9fd73a4576713f8}} 
+\index{onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}!Synchronize\+Outputs@{Synchronize\+Outputs}}
+\index{Synchronize\+Outputs@{Synchronize\+Outputs}!onnxruntime\+::\+I\+O\+Binding@{onnxruntime\+::\+I\+O\+Binding}}
+\subsubsection{\texorpdfstring{Synchronize\+Outputs()}{SynchronizeOutputs()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+I\+O\+Binding\+::\+Synchronize\+Outputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{IOBinding_8h}{I\+O\+Binding.\+h}}\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{IOBinding_8cc}{I\+O\+Binding.\+cc}}\end{DoxyCompactItemize}

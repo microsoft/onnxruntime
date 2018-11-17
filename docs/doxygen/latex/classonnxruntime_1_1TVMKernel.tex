@@ -1,0 +1,141 @@
+\hypertarget{classonnxruntime_1_1TVMKernel}{}\section{onnxruntime\+:\+:T\+V\+M\+Kernel$<$ S, M $>$ Class Template Reference}
+\label{classonnxruntime_1_1TVMKernel}\index{onnxruntime\+::\+T\+V\+M\+Kernel$<$ S, M $>$@{onnxruntime\+::\+T\+V\+M\+Kernel$<$ S, M $>$}}
+
+
+{\ttfamily \#include $<$tvm\+\_\+kernel.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:T\+V\+M\+Kernel$<$ S, M $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:T\+V\+M\+Kernel$<$ S, M $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a9244e055a706bfabafef7bdefa237c24}{T\+V\+M\+Kernel}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a5cc8f5923e72ad8d758d4471f1864591}{$\sim$\+T\+V\+M\+Kernel}} ()
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a9cb269c12f0d89742397c71aa1362573}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const override
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \& \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_abfc9494babe108121334b065a26b8289}{Get\+Output\+Shape}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context, int i) const =0
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1TVMGraph}{T\+V\+M\+Graph}} \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a40d27f1775a22e11a68c1d8f87647f64}{tvm\+\_\+graph\+\_\+}}
+\item 
+tvm\+::runtime\+::\+Module \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a5ac8938f6df7ff5b4d2945c531cdfbef}{tvm\+\_\+module\+\_\+}}
+\item 
+tvm\+::\+Packed\+Func \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a7d1cf50c7ae704db7e9206e010c866b9}{evaluate\+\_\+func\+\_\+}}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_aaad762b24a2eac608b2cec83f8acf310}{n\+\_\+args\+\_\+}}
+\item 
+T\+V\+M\+Value $\ast$ \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_af7810d51459fdd5969b1aaac3237b707}{tvm\+\_\+values\+\_\+}}
+\item 
+D\+L\+Tensor $\ast$ \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a095b6b8267de061752bf8407ab7af364}{dl\+\_\+tensors\+\_\+}}
+\item 
+int $\ast$ \mbox{\hyperlink{classonnxruntime_1_1TVMKernel_a64022db7464ce469edccf37356779a54}{tvm\+\_\+type\+\_\+codes\+\_\+}}
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a9244e055a706bfabafef7bdefa237c24}\label{classonnxruntime_1_1TVMKernel_a9244e055a706bfabafef7bdefa237c24}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!T\+V\+M\+Kernel@{T\+V\+M\+Kernel}}
+\index{T\+V\+M\+Kernel@{T\+V\+M\+Kernel}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{T\+V\+M\+Kernel()}{TVMKernel()}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::\mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{T\+V\+M\+Kernel}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a5cc8f5923e72ad8d758d4471f1864591}\label{classonnxruntime_1_1TVMKernel_a5cc8f5923e72ad8d758d4471f1864591}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!````~T\+V\+M\+Kernel@{$\sim$\+T\+V\+M\+Kernel}}
+\index{````~T\+V\+M\+Kernel@{$\sim$\+T\+V\+M\+Kernel}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{$\sim$\+T\+V\+M\+Kernel()}{~TVMKernel()}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+virtual \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::$\sim$\mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{T\+V\+M\+Kernel}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [virtual]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a9cb269c12f0d89742397c71aa1362573}\label{classonnxruntime_1_1TVMKernel_a9cb269c12f0d89742397c71aa1362573}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_abfc9494babe108121334b065a26b8289}\label{classonnxruntime_1_1TVMKernel_abfc9494babe108121334b065a26b8289}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!Get\+Output\+Shape@{Get\+Output\+Shape}}
+\index{Get\+Output\+Shape@{Get\+Output\+Shape}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{Get\+Output\+Shape()}{GetOutputShape()}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+virtual const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}}\& \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::Get\+Output\+Shape (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context,  }\item[{int}]{i }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}, {\ttfamily [pure virtual]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a095b6b8267de061752bf8407ab7af364}\label{classonnxruntime_1_1TVMKernel_a095b6b8267de061752bf8407ab7af364}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!dl\+\_\+tensors\+\_\+@{dl\+\_\+tensors\+\_\+}}
+\index{dl\+\_\+tensors\+\_\+@{dl\+\_\+tensors\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{dl\+\_\+tensors\+\_\+}{dl\_tensors\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+D\+L\+Tensor$\ast$ \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::dl\+\_\+tensors\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a7d1cf50c7ae704db7e9206e010c866b9}\label{classonnxruntime_1_1TVMKernel_a7d1cf50c7ae704db7e9206e010c866b9}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!evaluate\+\_\+func\+\_\+@{evaluate\+\_\+func\+\_\+}}
+\index{evaluate\+\_\+func\+\_\+@{evaluate\+\_\+func\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{evaluate\+\_\+func\+\_\+}{evaluate\_func\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+tvm\+::\+Packed\+Func \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::evaluate\+\_\+func\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_aaad762b24a2eac608b2cec83f8acf310}\label{classonnxruntime_1_1TVMKernel_aaad762b24a2eac608b2cec83f8acf310}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!n\+\_\+args\+\_\+@{n\+\_\+args\+\_\+}}
+\index{n\+\_\+args\+\_\+@{n\+\_\+args\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{n\+\_\+args\+\_\+}{n\_args\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::n\+\_\+args\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a40d27f1775a22e11a68c1d8f87647f64}\label{classonnxruntime_1_1TVMKernel_a40d27f1775a22e11a68c1d8f87647f64}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!tvm\+\_\+graph\+\_\+@{tvm\+\_\+graph\+\_\+}}
+\index{tvm\+\_\+graph\+\_\+@{tvm\+\_\+graph\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{tvm\+\_\+graph\+\_\+}{tvm\_graph\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+\mbox{\hyperlink{structonnxruntime_1_1TVMGraph}{T\+V\+M\+Graph}} \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::tvm\+\_\+graph\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a5ac8938f6df7ff5b4d2945c531cdfbef}\label{classonnxruntime_1_1TVMKernel_a5ac8938f6df7ff5b4d2945c531cdfbef}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!tvm\+\_\+module\+\_\+@{tvm\+\_\+module\+\_\+}}
+\index{tvm\+\_\+module\+\_\+@{tvm\+\_\+module\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{tvm\+\_\+module\+\_\+}{tvm\_module\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+tvm\+::runtime\+::\+Module \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::tvm\+\_\+module\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_a64022db7464ce469edccf37356779a54}\label{classonnxruntime_1_1TVMKernel_a64022db7464ce469edccf37356779a54}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!tvm\+\_\+type\+\_\+codes\+\_\+@{tvm\+\_\+type\+\_\+codes\+\_\+}}
+\index{tvm\+\_\+type\+\_\+codes\+\_\+@{tvm\+\_\+type\+\_\+codes\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{tvm\+\_\+type\+\_\+codes\+\_\+}{tvm\_type\_codes\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+int$\ast$ \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::tvm\+\_\+type\+\_\+codes\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TVMKernel_af7810d51459fdd5969b1aaac3237b707}\label{classonnxruntime_1_1TVMKernel_af7810d51459fdd5969b1aaac3237b707}} 
+\index{onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}!tvm\+\_\+values\+\_\+@{tvm\+\_\+values\+\_\+}}
+\index{tvm\+\_\+values\+\_\+@{tvm\+\_\+values\+\_\+}!onnxruntime\+::\+T\+V\+M\+Kernel@{onnxruntime\+::\+T\+V\+M\+Kernel}}
+\subsubsection{\texorpdfstring{tvm\+\_\+values\+\_\+}{tvm\_values\_}}
+{\footnotesize\ttfamily template$<$T\+V\+M\+Schedule\+Creator S, T\+V\+M\+Module\+Builder M$>$ \\
+T\+V\+M\+Value$\ast$ \mbox{\hyperlink{classonnxruntime_1_1TVMKernel}{onnxruntime\+::\+T\+V\+M\+Kernel}}$<$ S, M $>$\+::tvm\+\_\+values\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/codegen/tvm/\mbox{\hyperlink{tvm__kernel_8h}{tvm\+\_\+kernel.\+h}}\end{DoxyCompactItemize}

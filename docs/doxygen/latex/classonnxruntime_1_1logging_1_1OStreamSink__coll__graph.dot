@@ -1,0 +1,8 @@
+digraph "onnxruntime::logging::OStreamSink"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node5 [label="onnxruntime::logging\l::OStreamSink",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node6 -> Node5 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node6 [label="onnxruntime::logging\l::ISink",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1logging_1_1ISink.html"];
+}

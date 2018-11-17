@@ -1,0 +1,43 @@
+\hypertarget{classonnxruntime_1_1Environment}{}\section{onnxruntime\+:\+:Environment Class Reference}
+\label{classonnxruntime_1_1Environment}\index{onnxruntime\+::\+Environment@{onnxruntime\+::\+Environment}}
+
+
+{\ttfamily \#include $<$environment.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Environment_ab59b65980fbca4d8511596c5fb246360}{$\sim$\+Environment}} ()
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Environment_a27156c3c3c75745309a93a5fa9713942}{Create}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Environment}{Environment}} $>$ \&environment)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Provides the runtime environment for onnxruntime. Create one instance for the duration of execution. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Environment_ab59b65980fbca4d8511596c5fb246360}\label{classonnxruntime_1_1Environment_ab59b65980fbca4d8511596c5fb246360}} 
+\index{onnxruntime\+::\+Environment@{onnxruntime\+::\+Environment}!````~Environment@{$\sim$\+Environment}}
+\index{````~Environment@{$\sim$\+Environment}!onnxruntime\+::\+Environment@{onnxruntime\+::\+Environment}}
+\subsubsection{\texorpdfstring{$\sim$\+Environment()}{~Environment()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Environment\+::$\sim$\+Environment (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+This function will call \+::google\+::protobuf\+::\+Shutdown\+Protobuf\+Library 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Environment_a27156c3c3c75745309a93a5fa9713942}\label{classonnxruntime_1_1Environment_a27156c3c3c75745309a93a5fa9713942}} 
+\index{onnxruntime\+::\+Environment@{onnxruntime\+::\+Environment}!Create@{Create}}
+\index{Create@{Create}!onnxruntime\+::\+Environment@{onnxruntime\+::\+Environment}}
+\subsubsection{\texorpdfstring{Create()}{Create()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Environment\+::\+Create (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Environment}{Environment}} $>$ \&}]{environment }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+Create and initialize the runtime environment. 
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{environment_8h}{environment.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{environment_8cc}{environment.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,79 @@
+\hypertarget{structONNXRuntimeTensorTypeAndShapeInfo}{}\section{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info Struct Reference}
+\label{structONNXRuntimeTensorTypeAndShapeInfo}\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+
+
+Collaboration diagram for O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+:
+% FIG 0
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo}{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}} $\ast$ \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_a77b12cef7f00c2785c7f1c21f2211744}{Create}} ()
+\item 
+static uint32\+\_\+t \mbox{\hyperlink{error__code_8h_aeaeecdc9b792735c3e26fc0f9815c988}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+C\+A\+LL}} \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_a965073446ff8aaad33df5598f965f2e7}{Release\+Impl}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$this\+\_\+)
+\item 
+static uint32\+\_\+t \mbox{\hyperlink{error__code_8h_aeaeecdc9b792735c3e26fc0f9815c988}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+C\+A\+LL}} \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_ab5739090da25c31b51289c6b79b958d8}{Add\+Ref\+Impl}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$this\+\_\+)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+const \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}} $\ast$const \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_ab2f273a24cd8271724d6c9b469e5ff3b}{cls}}
+\item 
+std\+::atomic\+\_\+int \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_a365e7d1b11148a68b6a2f36c27229bcd}{ref\+\_\+count}}
+\item 
+\mbox{\hyperlink{tensor__type__and__shape__c__api_8h_acc48f6a9c9e4d7071352e45ce13324b3}{Onnx\+Runtime\+Tensor\+Element\+Data\+Type}} \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_acd65ed287f2c843d03618772b76a08ab}{type}} = \mbox{\hyperlink{tensor__type__and__shape__c__api_8h_acc48f6a9c9e4d7071352e45ce13324b3ac5b0dfee181c160755ab6d70ec09ecbc}{O\+N\+N\+X\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+E\+L\+E\+M\+E\+N\+T\+\_\+\+D\+A\+T\+A\+\_\+\+T\+Y\+P\+E\+\_\+\+F\+L\+O\+AT}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape}{onnxruntime\+::\+Tensor\+Shape}} \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo_af1c284a4dd9af384513521d0933ff7d7}{shape}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_ab5739090da25c31b51289c6b79b958d8}\label{structONNXRuntimeTensorTypeAndShapeInfo_ab5739090da25c31b51289c6b79b958d8}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!Add\+Ref\+Impl@{Add\+Ref\+Impl}}
+\index{Add\+Ref\+Impl@{Add\+Ref\+Impl}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{Add\+Ref\+Impl()}{AddRefImpl()}}
+{\footnotesize\ttfamily static uint32\+\_\+t \mbox{\hyperlink{error__code_8h_aeaeecdc9b792735c3e26fc0f9815c988}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+C\+A\+LL}} O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::\+Add\+Ref\+Impl (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{this\+\_\+ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_a77b12cef7f00c2785c7f1c21f2211744}\label{structONNXRuntimeTensorTypeAndShapeInfo_a77b12cef7f00c2785c7f1c21f2211744}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!Create@{Create}}
+\index{Create@{Create}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{Create()}{Create()}}
+{\footnotesize\ttfamily static \mbox{\hyperlink{structONNXRuntimeTensorTypeAndShapeInfo}{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}$\ast$ O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::\+Create (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_a965073446ff8aaad33df5598f965f2e7}\label{structONNXRuntimeTensorTypeAndShapeInfo_a965073446ff8aaad33df5598f965f2e7}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!Release\+Impl@{Release\+Impl}}
+\index{Release\+Impl@{Release\+Impl}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{Release\+Impl()}{ReleaseImpl()}}
+{\footnotesize\ttfamily static uint32\+\_\+t \mbox{\hyperlink{error__code_8h_aeaeecdc9b792735c3e26fc0f9815c988}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+C\+A\+LL}} O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::\+Release\+Impl (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{this\+\_\+ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_ab2f273a24cd8271724d6c9b469e5ff3b}\label{structONNXRuntimeTensorTypeAndShapeInfo_ab2f273a24cd8271724d6c9b469e5ff3b}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!cls@{cls}}
+\index{cls@{cls}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{cls}{cls}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}}$\ast$ const O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::cls}
+
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_a365e7d1b11148a68b6a2f36c27229bcd}\label{structONNXRuntimeTensorTypeAndShapeInfo_a365e7d1b11148a68b6a2f36c27229bcd}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!ref\+\_\+count@{ref\+\_\+count}}
+\index{ref\+\_\+count@{ref\+\_\+count}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{ref\+\_\+count}{ref\_count}}
+{\footnotesize\ttfamily std\+::atomic\+\_\+int O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::ref\+\_\+count}
+
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_af1c284a4dd9af384513521d0933ff7d7}\label{structONNXRuntimeTensorTypeAndShapeInfo_af1c284a4dd9af384513521d0933ff7d7}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!shape@{shape}}
+\index{shape@{shape}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{shape}{shape}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{onnxruntime\+::\+Tensor\+Shape}} O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::shape}
+
+\mbox{\Hypertarget{structONNXRuntimeTensorTypeAndShapeInfo_acd65ed287f2c843d03618772b76a08ab}\label{structONNXRuntimeTensorTypeAndShapeInfo_acd65ed287f2c843d03618772b76a08ab}} 
+\index{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}!type@{type}}
+\index{type@{type}!O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info@{O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info}}
+\subsubsection{\texorpdfstring{type}{type}}
+{\footnotesize\ttfamily \mbox{\hyperlink{tensor__type__and__shape__c__api_8h_acc48f6a9c9e4d7071352e45ce13324b3}{Onnx\+Runtime\+Tensor\+Element\+Data\+Type}} O\+N\+N\+X\+Runtime\+Tensor\+Type\+And\+Shape\+Info\+::type = \mbox{\hyperlink{tensor__type__and__shape__c__api_8h_acc48f6a9c9e4d7071352e45ce13324b3ac5b0dfee181c160755ab6d70ec09ecbc}{O\+N\+N\+X\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+E\+L\+E\+M\+E\+N\+T\+\_\+\+D\+A\+T\+A\+\_\+\+T\+Y\+P\+E\+\_\+\+F\+L\+O\+AT}}}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{tensor__type__and__shape_8cc}{tensor\+\_\+type\+\_\+and\+\_\+shape.\+cc}}\end{DoxyCompactItemize}

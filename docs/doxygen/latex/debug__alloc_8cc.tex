@@ -1,0 +1,128 @@
+\hypertarget{debug__alloc_8cc}{}\section{onnxruntime/onnxruntime/core/platform/windows/debug\+\_\+alloc.cc File Reference}
+\label{debug__alloc_8cc}\index{onnxruntime/onnxruntime/core/platform/windows/debug\+\_\+alloc.\+cc@{onnxruntime/onnxruntime/core/platform/windows/debug\+\_\+alloc.\+cc}}
+{\ttfamily \#include $<$windows.\+h$>$}\newline
+{\ttfamily \#include $<$sstream$>$}\newline
+{\ttfamily \#include $<$iostream$>$}\newline
+{\ttfamily \#include \char`\"{}debug\+\_\+alloc.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$Dbg\+Help.\+h$>$}\newline
+Include dependency graph for debug\+\_\+alloc.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structMemoryBlock}{Memory\+Block}}
+\item 
+struct \mbox{\hyperlink{structSymbolHelper}{Symbol\+Helper}}
+\item 
+struct \mbox{\hyperlink{structSymbolHelper_1_1Symbol}{Symbol\+Helper\+::\+Symbol}}
+\item 
+struct \mbox{\hyperlink{structSymbolHelper_1_1Line}{Symbol\+Helper\+::\+Line}}
+\item 
+struct {\bfseries Memory\+\_\+\+Leak\+Check}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{debug__alloc_8cc_a59fcfa46d21982786920164840924f2d}{V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC}}~0
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\+\_\+\+Ret\+\_\+notnull\+\_\+ \mbox{\hyperlink{debug__alloc_8cc_afbc9be845561bf6a905227c04a475deb}{\+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+}} (size) \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$operator new(\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{debug__alloc_8cc_a7988d271b794871cc241b736a115251a}{operator delete}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{debug__alloc_8cc_a110a5118acd3eee17e00fca299b0451a}{operator delete\mbox{[}$\,$\mbox{]}}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{debug__alloc_8cc_ad0ee7479308c921898b14a9731920f82}{Debug\+Heap\+Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size, unsigned frames\+To\+Skip)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{debug__alloc_8cc_a598f0d49f78c2805afe6ddfef1e021c5}{Debug\+Heap\+Re\+Alloc}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{debug__alloc_8cc_a8592875359769277dfa53c67646a45c4}{Debug\+Heap\+Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) noexcept
+\end{DoxyCompactItemize}
+\subsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+constexpr int \mbox{\hyperlink{debug__alloc_8cc_a1577d57cd8e28bfab7c0436ee2eb67c1}{c\+\_\+callstack\+\_\+limit}} = 16
+\item 
+unsigned \mbox{\hyperlink{debug__alloc_8cc_a1c7c5ee13a1488afa66d801dc702119a}{g\+\_\+cumulative\+Allocation\+Count}} \{\}
+\item 
+unsigned \mbox{\hyperlink{debug__alloc_8cc_a2f024be46ea364f1dae1bbb93f4fcdcb}{g\+\_\+allocation\+Count}} \{\}
+\item 
+uint64\+\_\+t \mbox{\hyperlink{debug__alloc_8cc_a1d31cc8b8e3b2d6e5d8e43716205b4fd}{g\+\_\+cumulative\+Allocation\+Bytes}} \{\}
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{debug__alloc_8cc_a59fcfa46d21982786920164840924f2d}\label{debug__alloc_8cc_a59fcfa46d21982786920164840924f2d}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC@{V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC}}
+\index{V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC@{V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC}{VALIDATE\_HEAP\_EVERY\_ALLOC}}
+{\footnotesize\ttfamily \#define V\+A\+L\+I\+D\+A\+T\+E\+\_\+\+H\+E\+A\+P\+\_\+\+E\+V\+E\+R\+Y\+\_\+\+A\+L\+L\+OC~0}
+
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{debug__alloc_8cc_afbc9be845561bf6a905227c04a475deb}\label{debug__alloc_8cc_afbc9be845561bf6a905227c04a475deb}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!\+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+@{\+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+}}
+\index{\+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+@{\+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{\+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+()}{\_Post\_writable\_byte\_size\_()}}
+{\footnotesize\ttfamily \+\_\+\+Ret\+\_\+notnull\+\_\+ \+\_\+\+Post\+\_\+writable\+\_\+byte\+\_\+size\+\_\+ (\begin{DoxyParamCaption}\item[{size}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [new]}}
+
+\mbox{\Hypertarget{debug__alloc_8cc_ad0ee7479308c921898b14a9731920f82}\label{debug__alloc_8cc_ad0ee7479308c921898b14a9731920f82}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!Debug\+Heap\+Alloc@{Debug\+Heap\+Alloc}}
+\index{Debug\+Heap\+Alloc@{Debug\+Heap\+Alloc}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{Debug\+Heap\+Alloc()}{DebugHeapAlloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ Debug\+Heap\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size,  }\item[{unsigned}]{frames\+To\+Skip }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a8592875359769277dfa53c67646a45c4}\label{debug__alloc_8cc_a8592875359769277dfa53c67646a45c4}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!Debug\+Heap\+Free@{Debug\+Heap\+Free}}
+\index{Debug\+Heap\+Free@{Debug\+Heap\+Free}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{Debug\+Heap\+Free()}{DebugHeapFree()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Debug\+Heap\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a598f0d49f78c2805afe6ddfef1e021c5}\label{debug__alloc_8cc_a598f0d49f78c2805afe6ddfef1e021c5}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!Debug\+Heap\+Re\+Alloc@{Debug\+Heap\+Re\+Alloc}}
+\index{Debug\+Heap\+Re\+Alloc@{Debug\+Heap\+Re\+Alloc}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{Debug\+Heap\+Re\+Alloc()}{DebugHeapReAlloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ Debug\+Heap\+Re\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a7988d271b794871cc241b736a115251a}\label{debug__alloc_8cc_a7988d271b794871cc241b736a115251a}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!operator delete@{operator delete}}
+\index{operator delete@{operator delete}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{operator delete()}{operator delete()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} operator delete (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a110a5118acd3eee17e00fca299b0451a}\label{debug__alloc_8cc_a110a5118acd3eee17e00fca299b0451a}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!operator delete\mbox{[}\mbox{]}@{operator delete[]}}
+\index{operator delete\mbox{[}\mbox{]}@{operator delete[]}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{operator delete[]()}{operator delete[]()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} operator delete\mbox{[}$\,$\mbox{]} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+
+
+\subsection{Variable Documentation}
+\mbox{\Hypertarget{debug__alloc_8cc_a1577d57cd8e28bfab7c0436ee2eb67c1}\label{debug__alloc_8cc_a1577d57cd8e28bfab7c0436ee2eb67c1}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!c\+\_\+callstack\+\_\+limit@{c\+\_\+callstack\+\_\+limit}}
+\index{c\+\_\+callstack\+\_\+limit@{c\+\_\+callstack\+\_\+limit}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{c\+\_\+callstack\+\_\+limit}{c\_callstack\_limit}}
+{\footnotesize\ttfamily constexpr int c\+\_\+callstack\+\_\+limit = 16}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a2f024be46ea364f1dae1bbb93f4fcdcb}\label{debug__alloc_8cc_a2f024be46ea364f1dae1bbb93f4fcdcb}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!g\+\_\+allocation\+Count@{g\+\_\+allocation\+Count}}
+\index{g\+\_\+allocation\+Count@{g\+\_\+allocation\+Count}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{g\+\_\+allocation\+Count}{g\_allocationCount}}
+{\footnotesize\ttfamily unsigned g\+\_\+allocation\+Count \{\}}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a1d31cc8b8e3b2d6e5d8e43716205b4fd}\label{debug__alloc_8cc_a1d31cc8b8e3b2d6e5d8e43716205b4fd}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!g\+\_\+cumulative\+Allocation\+Bytes@{g\+\_\+cumulative\+Allocation\+Bytes}}
+\index{g\+\_\+cumulative\+Allocation\+Bytes@{g\+\_\+cumulative\+Allocation\+Bytes}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{g\+\_\+cumulative\+Allocation\+Bytes}{g\_cumulativeAllocationBytes}}
+{\footnotesize\ttfamily uint64\+\_\+t g\+\_\+cumulative\+Allocation\+Bytes \{\}}
+
+\mbox{\Hypertarget{debug__alloc_8cc_a1c7c5ee13a1488afa66d801dc702119a}\label{debug__alloc_8cc_a1c7c5ee13a1488afa66d801dc702119a}} 
+\index{debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}!g\+\_\+cumulative\+Allocation\+Count@{g\+\_\+cumulative\+Allocation\+Count}}
+\index{g\+\_\+cumulative\+Allocation\+Count@{g\+\_\+cumulative\+Allocation\+Count}!debug\+\_\+alloc.\+cc@{debug\+\_\+alloc.\+cc}}
+\subsubsection{\texorpdfstring{g\+\_\+cumulative\+Allocation\+Count}{g\_cumulativeAllocationCount}}
+{\footnotesize\ttfamily unsigned g\+\_\+cumulative\+Allocation\+Count \{\}}
+

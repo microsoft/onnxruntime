@@ -1,0 +1,14 @@
+digraph "onnxruntime/include/onnxruntime/core/framework" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_48a215034096b7d38d25d28d3b6122be {
+    graph [ bgcolor="#ddddee", pencolor="black", label="core" fontname="Helvetica", fontsize="10", URL="dir_48a215034096b7d38d25d28d3b6122be.html"]
+  dir_14f28c7b411a31ad97b4d47c064745cf [shape=box, label="framework", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_14f28c7b411a31ad97b4d47c064745cf.html"];
+  }
+  dir_e41ba2a921c9eb25ec612c54e1511419 [shape=box label="common" fillcolor="white" style="filled" color="red" URL="dir_e41ba2a921c9eb25ec612c54e1511419.html"];
+  dir_f6c3e94e4b7724fa7d56da89f9fd2002 [shape=box label="graph" URL="dir_f6c3e94e4b7724fa7d56da89f9fd2002.html"];
+  dir_f6c3e94e4b7724fa7d56da89f9fd2002->dir_e41ba2a921c9eb25ec612c54e1511419 [headlabel="8", labeldistance=1.5 headhref="dir_000014_000007.html"];
+  dir_14f28c7b411a31ad97b4d47c064745cf->dir_e41ba2a921c9eb25ec612c54e1511419 [headlabel="19", labeldistance=1.5 headhref="dir_000012_000007.html"];
+  dir_14f28c7b411a31ad97b4d47c064745cf->dir_f6c3e94e4b7724fa7d56da89f9fd2002 [headlabel="7", labeldistance=1.5 headhref="dir_000012_000014.html"];
+}

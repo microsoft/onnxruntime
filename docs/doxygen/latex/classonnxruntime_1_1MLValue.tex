@@ -1,0 +1,121 @@
+\hypertarget{classonnxruntime_1_1MLValue}{}\section{onnxruntime\+:\+:M\+L\+Value Class Reference}
+\label{classonnxruntime_1_1MLValue}\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+
+
+{\ttfamily \#include $<$ml\+\_\+value.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue_ae9ed3dcdbcf9a6189e4afca9f007652e}{M\+L\+Value}} ()
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1MLValue_a0e138dfc687d26850bf909ece43caeb0}{$\sim$\+M\+L\+Value}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue_ac21e08ad0eb4ed195c82c8ced739ffc3}{M\+L\+Value}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p\+Data, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} type, \mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}} deleter)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MLValue_a082b73bfb1ef79b7e9b9dab2026c41e7}{Init}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p\+Data, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} type, \mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}} deleter)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1MLValue_ad4f380ab452877a2d689b6d384e80617}{Is\+Allocated}} () const
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T \& \mbox{\hyperlink{classonnxruntime_1_1MLValue_a98afe490bedddb4d7b4f263136d43a54}{Get}} () const
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1MLValue_ab1dbc96cd2d5912163aeb13ca5da0a5e}{Get\+Mutable}} ()
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1MLValue_a82f40a677063136a312807bb47789c7d}{Is\+Tensor}} () const noexcept
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1MLValue_a14fdb626b8331e8bda7e8a270d8dc9d6}{Type}} () const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1MLValue_aab8979a3d6e8aaa670da1eaed34ea72a}{Fence}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MLValue_a2d7142ee59477918df34c3a1a9fe3951}{Set\+Fence}} (\mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} fence)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MLValue_a8d2c7a667ef89c9eee27df039b62e027}{Share\+Fence\+With}} (\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&v)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Represents both tensors and non-\/tensors. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_ae9ed3dcdbcf9a6189e4afca9f007652e}\label{classonnxruntime_1_1MLValue_ae9ed3dcdbcf9a6189e4afca9f007652e}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!M\+L\+Value@{M\+L\+Value}}
+\index{M\+L\+Value@{M\+L\+Value}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{M\+L\+Value()}{MLValue()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+M\+L\+Value\+::\+M\+L\+Value (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a0e138dfc687d26850bf909ece43caeb0}\label{classonnxruntime_1_1MLValue_a0e138dfc687d26850bf909ece43caeb0}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!````~M\+L\+Value@{$\sim$\+M\+L\+Value}}
+\index{````~M\+L\+Value@{$\sim$\+M\+L\+Value}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{$\sim$\+M\+L\+Value()}{~MLValue()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+M\+L\+Value\+::$\sim$\+M\+L\+Value (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_ac21e08ad0eb4ed195c82c8ced739ffc3}\label{classonnxruntime_1_1MLValue_ac21e08ad0eb4ed195c82c8ced739ffc3}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!M\+L\+Value@{M\+L\+Value}}
+\index{M\+L\+Value@{M\+L\+Value}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{M\+L\+Value()}{MLValue()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+M\+L\+Value\+::\+M\+L\+Value (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p\+Data,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{type,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}}}]{deleter }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_aab8979a3d6e8aaa670da1eaed34ea72a}\label{classonnxruntime_1_1MLValue_aab8979a3d6e8aaa670da1eaed34ea72a}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Fence@{Fence}}
+\index{Fence@{Fence}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Fence()}{Fence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} onnxruntime\+::\+M\+L\+Value\+::\+Fence (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a98afe490bedddb4d7b4f263136d43a54}\label{classonnxruntime_1_1MLValue_a98afe490bedddb4d7b4f263136d43a54}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Get@{Get}}
+\index{Get@{Get}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Get()}{Get()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T\& onnxruntime\+::\+M\+L\+Value\+::\+Get (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_ab1dbc96cd2d5912163aeb13ca5da0a5e}\label{classonnxruntime_1_1MLValue_ab1dbc96cd2d5912163aeb13ca5da0a5e}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Get\+Mutable@{Get\+Mutable}}
+\index{Get\+Mutable@{Get\+Mutable}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Get\+Mutable()}{GetMutable()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ onnxruntime\+::\+M\+L\+Value\+::\+Get\+Mutable (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a082b73bfb1ef79b7e9b9dab2026c41e7}\label{classonnxruntime_1_1MLValue_a082b73bfb1ef79b7e9b9dab2026c41e7}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Init@{Init}}
+\index{Init@{Init}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Init()}{Init()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+M\+L\+Value\+::\+Init (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p\+Data,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{type,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}}}]{deleter }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_ad4f380ab452877a2d689b6d384e80617}\label{classonnxruntime_1_1MLValue_ad4f380ab452877a2d689b6d384e80617}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Is\+Allocated@{Is\+Allocated}}
+\index{Is\+Allocated@{Is\+Allocated}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Is\+Allocated()}{IsAllocated()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+M\+L\+Value\+::\+Is\+Allocated (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a82f40a677063136a312807bb47789c7d}\label{classonnxruntime_1_1MLValue_a82f40a677063136a312807bb47789c7d}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Is\+Tensor@{Is\+Tensor}}
+\index{Is\+Tensor@{Is\+Tensor}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Is\+Tensor()}{IsTensor()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+M\+L\+Value\+::\+Is\+Tensor (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a2d7142ee59477918df34c3a1a9fe3951}\label{classonnxruntime_1_1MLValue_a2d7142ee59477918df34c3a1a9fe3951}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Set\+Fence@{Set\+Fence}}
+\index{Set\+Fence@{Set\+Fence}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Set\+Fence()}{SetFence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+M\+L\+Value\+::\+Set\+Fence (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}}}]{fence }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a8d2c7a667ef89c9eee27df039b62e027}\label{classonnxruntime_1_1MLValue_a8d2c7a667ef89c9eee27df039b62e027}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Share\+Fence\+With@{Share\+Fence\+With}}
+\index{Share\+Fence\+With@{Share\+Fence\+With}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Share\+Fence\+With()}{ShareFenceWith()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+M\+L\+Value\+::\+Share\+Fence\+With (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{v }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValue_a14fdb626b8331e8bda7e8a270d8dc9d6}\label{classonnxruntime_1_1MLValue_a14fdb626b8331e8bda7e8a270d8dc9d6}} 
+\index{onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+M\+L\+Value@{onnxruntime\+::\+M\+L\+Value}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} onnxruntime\+::\+M\+L\+Value\+::\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{ml__value_8h}{ml\+\_\+value.\+h}}\end{DoxyCompactItemize}

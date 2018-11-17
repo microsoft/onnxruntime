@@ -1,0 +1,50 @@
+\hypertarget{lstm_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/rnn/lstm.cc File Reference}
+\label{lstm_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/rnn/lstm.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/rnn/lstm.\+cc}}
+{\ttfamily \#include \char`\"{}lstm.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cpu/rnn/rnn\+\_\+helpers.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/common.\+h\char`\"{}}\newline
+Include dependency graph for lstm.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{lstm_8cc_aba63258eca322e11a3cdfe971812428a}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}(T)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_af003050f5b8619b8e14ded14ba00da08}{onnxruntime\+::cuda\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a5d1b624b414dba6dec6a829ce2442d5a}{onnxruntime\+::cuda\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a42cc720b053b6d4b0cd5fac89629e977}{onnxruntime\+::cuda\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}} (M\+L\+Float16)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{lstm_8cc_aba63258eca322e11a3cdfe971812428a}\label{lstm_8cc_aba63258eca322e11a3cdfe971812428a}} 
+\index{lstm.\+cc@{lstm.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}!lstm.\+cc@{lstm.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}{REGISTER\_KERNEL\_TYPED}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                         \(\backslash\)
+      LSTM,                                                              \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                       \(\backslash\)
+      7,                                                                 \(\backslash\)
+      T,                                                                 \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                            \(\backslash\)
+      KernelDefBuilder()                                                 \(\backslash\)
+          .TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>())         \(\backslash\)
+          .TypeConstraint(\textcolor{stringliteral}{"T1"}, DataTypeImpl::GetTensorType<int32\_t>()), \(\backslash\)
+      LSTM<T>);
+\end{DoxyCode}

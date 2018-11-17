@@ -1,0 +1,53 @@
+\hypertarget{status_8h}{}\section{onnxruntime/include/onnxruntime/core/common/status.h File Reference}
+\label{status_8h}\index{onnxruntime/include/onnxruntime/core/common/status.\+h@{onnxruntime/include/onnxruntime/core/common/status.\+h}}
+{\ttfamily \#include $<$memory$>$}\newline
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/ml\+\_\+status.\+h\char`\"{}}\newline
+Include dependency graph for status.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1common}{onnxruntime\+::common}}
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{onnxruntime\+::common\+::\+Status\+Category}} \{ \mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a179f5946c56d4adf760171c2ed41d840}{onnxruntime\+::common\+::\+N\+O\+NE}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5ac06d8e95b2651b308d2651f8b015c33c}{onnxruntime\+::common\+::\+S\+Y\+S\+T\+EM}} = 1, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{onnxruntime\+::common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME}} = 2
+ \}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2b}{onnxruntime\+::common\+::\+Status\+Code}} \{ \newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{onnxruntime\+::common\+::\+OK}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:OK), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{onnxruntime\+::common\+::\+F\+A\+IL}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:F\+A\+IL), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baec184a24eab4bb684bef28cc8da22201}{onnxruntime\+::common\+::\+I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bab645e761fdc0c0855fb85f61dcf6976f}{onnxruntime\+::common\+::\+N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE), 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bacf7d62164020462883a9dc15007708e4}{onnxruntime\+::common\+::\+N\+O\+\_\+\+M\+O\+D\+EL}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:N\+O\+\_\+\+M\+O\+D\+EL), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bad59aa2f945cfdbdfbbfb84f3fcaaf10c}{onnxruntime\+::common\+::\+E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba70ab5e827b7fecf587452ca2b5665a6d}{onnxruntime\+::common\+::\+R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba29227b10a2986e5dba2ecdb7ddbbd0ca}{onnxruntime\+::common\+::\+I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF), 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba0cbb22e2ce1301c7b76364eecc72ee6d}{onnxruntime\+::common\+::\+M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba90df21990fe0afe17ae348264825babb}{onnxruntime\+::common\+::\+N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2badde3cc9ff31c0b963beb617b40432638}{onnxruntime\+::common\+::\+I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baa543dbaa2002e6d511a0730d11150c81}{onnxruntime\+::common\+::\+S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED), 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba63262ca46a0d3fd276c728a02e91d7ba}{onnxruntime\+::common\+::\+R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED)
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+std\+::ostream \& \mbox{\hyperlink{namespaceonnxruntime_1_1common_afdb6e3abd4b0273234996893794c5c64}{onnxruntime\+::common\+::operator$<$$<$}} (std\+::ostream \&out, const Status \&status)
+\end{DoxyCompactItemize}

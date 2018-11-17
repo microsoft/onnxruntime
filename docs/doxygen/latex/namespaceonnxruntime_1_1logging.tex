@@ -1,0 +1,138 @@
+\hypertarget{namespaceonnxruntime_1_1logging}{}\section{onnxruntime\+:\+:logging Namespace Reference}
+\label{namespaceonnxruntime_1_1logging}\index{onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category}{Category}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CErrSink}{C\+Err\+Sink}}
+\begin{DoxyCompactList}\small\item\em A std\+::cerr based \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CLogSink}{C\+Log\+Sink}}
+\begin{DoxyCompactList}\small\item\em A std\+::clog based \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink}{Composite\+Sink}}
+\begin{DoxyCompactList}\small\item\em Class that abstracts multiple \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} instances being written to. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink}{File\+Sink}}
+\begin{DoxyCompactList}\small\item\em \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} that writes to a file. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}}
+\begin{DoxyCompactList}\small\item\em The logging manager. Owns the log sink and potentially provides a default \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance. Provides filtering based on a minimum Log\+Severity level, and of messages with Data\+Type\+::\+User if enabled. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1OStreamSink}{O\+Stream\+Sink}}
+\begin{DoxyCompactList}\small\item\em A std\+::ostream based \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{Timestamp}} = std\+::chrono\+::time\+\_\+point$<$ std\+::chrono\+::system\+\_\+clock $>$
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{Data\+Type}} \{ \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}{Data\+Type\+::\+S\+Y\+S\+T\+EM}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{Data\+Type\+::\+U\+S\+ER}} = 1
+ \}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}} \{ \newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81af5194068f65bab5b3f2039fc3772b289}{Severity\+::k\+V\+E\+R\+B\+O\+SE}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a8f2ea217769b142bf5c98407367240e1}{Severity\+::k\+I\+N\+FO}} = 1, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a512261ef71a8d03f67bc92ee37d0f609}{Severity\+::k\+W\+A\+R\+N\+I\+NG}} = 2, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a6fc5d11abe2153fff3b8b751b1ea2b38}{Severity\+::k\+E\+R\+R\+OR}} = 3, 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a1c63f77c7926357cd7091bed7c77bcdb}{Severity\+::k\+F\+A\+T\+AL}} = 4
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+unsigned int \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a259f82c4ed0446ffb25aede9f830eeb9}{Get\+Thread\+Id}} ()
+\item 
+unsigned int \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a6958e73aa8c5b7142f5fd3eccf5039fb}{Get\+Process\+Id}} ()
+\end{DoxyCompactItemize}
+\subsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+constexpr const char $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a672d734a6ea0a5e05020a46b1da93835}{S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX}} = \char`\"{}V\+I\+W\+EF\char`\"{}
+\end{DoxyCompactItemize}
+
+
+\subsection{Typedef Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}\label{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}} 
+\index{onnxruntime\+::logging@{onnxruntime\+::logging}!Timestamp@{Timestamp}}
+\index{Timestamp@{Timestamp}!onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsubsection{\texorpdfstring{Timestamp}{Timestamp}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{onnxruntime\+::logging\+::\+Timestamp}} = typedef std\+::chrono\+::time\+\_\+point$<$std\+::chrono\+::system\+\_\+clock$>$}
+
+
+
+\subsection{Enumeration Type Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}\label{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}} 
+\index{onnxruntime\+::logging@{onnxruntime\+::logging}!Data\+Type@{Data\+Type}}
+\index{Data\+Type@{Data\+Type}!onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsubsection{\texorpdfstring{Data\+Type}{DataType}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{onnxruntime\+::logging\+::\+Data\+Type}}\hspace{0.3cm}{\ttfamily [strong]}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{S\+Y\+S\+T\+EM@{S\+Y\+S\+T\+EM}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!S\+Y\+S\+T\+EM@{S\+Y\+S\+T\+EM}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}\label{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}} 
+S\+Y\+S\+T\+EM&System data. \\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{U\+S\+ER@{U\+S\+ER}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!U\+S\+ER@{U\+S\+ER}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}\label{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}} 
+U\+S\+ER&Contains potentially sensitive user data. \\
+\hline
+
+\end{DoxyEnumFields}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}\label{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}} 
+\index{onnxruntime\+::logging@{onnxruntime\+::logging}!Severity@{Severity}}
+\index{Severity@{Severity}!onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsubsection{\texorpdfstring{Severity}{Severity}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{onnxruntime\+::logging\+::\+Severity}}\hspace{0.3cm}{\ttfamily [strong]}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+V\+E\+R\+B\+O\+SE@{k\+V\+E\+R\+B\+O\+SE}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!k\+V\+E\+R\+B\+O\+SE@{k\+V\+E\+R\+B\+O\+SE}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81af5194068f65bab5b3f2039fc3772b289}\label{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81af5194068f65bab5b3f2039fc3772b289}} 
+k\+V\+E\+R\+B\+O\+SE&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+I\+N\+FO@{k\+I\+N\+FO}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!k\+I\+N\+FO@{k\+I\+N\+FO}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a8f2ea217769b142bf5c98407367240e1}\label{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a8f2ea217769b142bf5c98407367240e1}} 
+k\+I\+N\+FO&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+W\+A\+R\+N\+I\+NG@{k\+W\+A\+R\+N\+I\+NG}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!k\+W\+A\+R\+N\+I\+NG@{k\+W\+A\+R\+N\+I\+NG}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a512261ef71a8d03f67bc92ee37d0f609}\label{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a512261ef71a8d03f67bc92ee37d0f609}} 
+k\+W\+A\+R\+N\+I\+NG&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+E\+R\+R\+OR@{k\+E\+R\+R\+OR}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!k\+E\+R\+R\+OR@{k\+E\+R\+R\+OR}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a6fc5d11abe2153fff3b8b751b1ea2b38}\label{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a6fc5d11abe2153fff3b8b751b1ea2b38}} 
+k\+E\+R\+R\+OR&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+F\+A\+T\+AL@{k\+F\+A\+T\+AL}!onnxruntime\+::logging@{onnxruntime\+::logging}}\index{onnxruntime\+::logging@{onnxruntime\+::logging}!k\+F\+A\+T\+AL@{k\+F\+A\+T\+AL}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a1c63f77c7926357cd7091bed7c77bcdb}\label{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81a1c63f77c7926357cd7091bed7c77bcdb}} 
+k\+F\+A\+T\+AL&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a6958e73aa8c5b7142f5fd3eccf5039fb}\label{namespaceonnxruntime_1_1logging_a6958e73aa8c5b7142f5fd3eccf5039fb}} 
+\index{onnxruntime\+::logging@{onnxruntime\+::logging}!Get\+Process\+Id@{Get\+Process\+Id}}
+\index{Get\+Process\+Id@{Get\+Process\+Id}!onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsubsection{\texorpdfstring{Get\+Process\+Id()}{GetProcessId()}}
+{\footnotesize\ttfamily unsigned int onnxruntime\+::logging\+::\+Get\+Process\+Id (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+Return the current process id. \mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a259f82c4ed0446ffb25aede9f830eeb9}\label{namespaceonnxruntime_1_1logging_a259f82c4ed0446ffb25aede9f830eeb9}} 
+\index{onnxruntime\+::logging@{onnxruntime\+::logging}!Get\+Thread\+Id@{Get\+Thread\+Id}}
+\index{Get\+Thread\+Id@{Get\+Thread\+Id}!onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsubsection{\texorpdfstring{Get\+Thread\+Id()}{GetThreadId()}}
+{\footnotesize\ttfamily unsigned int onnxruntime\+::logging\+::\+Get\+Thread\+Id (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+Return the current thread id. 
+
+\subsection{Variable Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1logging_a672d734a6ea0a5e05020a46b1da93835}\label{namespaceonnxruntime_1_1logging_a672d734a6ea0a5e05020a46b1da93835}} 
+\index{onnxruntime\+::logging@{onnxruntime\+::logging}!S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX@{S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX}}
+\index{S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX@{S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX}!onnxruntime\+::logging@{onnxruntime\+::logging}}
+\subsubsection{\texorpdfstring{S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX}{SEVERITY\_PREFIX}}
+{\footnotesize\ttfamily constexpr const char$\ast$ onnxruntime\+::logging\+::\+S\+E\+V\+E\+R\+I\+T\+Y\+\_\+\+P\+R\+E\+F\+IX = \char`\"{}V\+I\+W\+EF\char`\"{}}
+

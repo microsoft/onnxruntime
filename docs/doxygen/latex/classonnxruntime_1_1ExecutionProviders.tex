@@ -1,0 +1,109 @@
+\hypertarget{classonnxruntime_1_1ExecutionProviders}{}\section{onnxruntime\+:\+:Execution\+Providers Class Reference}
+\label{classonnxruntime_1_1ExecutionProviders}\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+
+
+{\ttfamily \#include $<$execution\+\_\+providers.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}} = typename std\+::vector$<$ std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $>$ $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a52b3a1bd0ae86e36699450a2c79f2775}{Execution\+Providers}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a9e714cc865dbb18293020db7a372bb89}{Add}} (const std\+::string \&provider\+\_\+id, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $>$ p\+\_\+exec\+\_\+provider)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_aa824632f2f7215f2087e8b061d054663}{Get}} (const \mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&graph, const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} \&idx) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a41c2494ae4373f44ebf8f98f83e293cc}{Get}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&node) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a9545ef8343f02280aa5871579576c8ba}{Get}} (\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} provider\+\_\+id) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a65c0368906fb2431bffe5a81fb5ea5b2}{Get}} (const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&allocator\+\_\+info) const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a9294aa2a1de0a08b678adbd614b3a3b1}{Empty}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a38333c56526aab3fa4686eb6f8f9db26}{begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a7ef8bcdee18b9ff7e59141171cb79ed3}{end}} () const noexcept
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Class for managing lookup of the execution providers in a session. 
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}\label{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!const\+\_\+iterator@{const\+\_\+iterator}}
+\index{const\+\_\+iterator@{const\+\_\+iterator}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{const\+\_\+iterator}{const\_iterator}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{onnxruntime\+::\+Execution\+Providers\+::const\+\_\+iterator}} =  typename std\+::vector$<$std\+::unique\+\_\+ptr$<$\mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}}$>$ $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}}}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a52b3a1bd0ae86e36699450a2c79f2775}\label{classonnxruntime_1_1ExecutionProviders_a52b3a1bd0ae86e36699450a2c79f2775}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Execution\+Providers@{Execution\+Providers}}
+\index{Execution\+Providers@{Execution\+Providers}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Execution\+Providers()}{ExecutionProviders()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Execution\+Providers\+::\+Execution\+Providers (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a9e714cc865dbb18293020db7a372bb89}\label{classonnxruntime_1_1ExecutionProviders_a9e714cc865dbb18293020db7a372bb89}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Add@{Add}}
+\index{Add@{Add}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Add()}{Add()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Execution\+Providers\+::\+Add (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{provider\+\_\+id,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $>$}]{p\+\_\+exec\+\_\+provider }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a38333c56526aab3fa4686eb6f8f9db26}\label{classonnxruntime_1_1ExecutionProviders_a38333c56526aab3fa4686eb6f8f9db26}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!begin@{begin}}
+\index{begin@{begin}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{begin()}{begin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}} onnxruntime\+::\+Execution\+Providers\+::begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a9294aa2a1de0a08b678adbd614b3a3b1}\label{classonnxruntime_1_1ExecutionProviders_a9294aa2a1de0a08b678adbd614b3a3b1}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Empty@{Empty}}
+\index{Empty@{Empty}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Empty()}{Empty()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Execution\+Providers\+::\+Empty (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a7ef8bcdee18b9ff7e59141171cb79ed3}\label{classonnxruntime_1_1ExecutionProviders_a7ef8bcdee18b9ff7e59141171cb79ed3}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!end@{end}}
+\index{end@{end}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{end()}{end()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders_a2eb06c44e805e428aa26b1bfe12348fb}{const\+\_\+iterator}} onnxruntime\+::\+Execution\+Providers\+::end (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_aa824632f2f7215f2087e8b061d054663}\label{classonnxruntime_1_1ExecutionProviders_aa824632f2f7215f2087e8b061d054663}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Get@{Get}}
+\index{Get@{Get}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Get()}{Get()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}}$\ast$ onnxruntime\+::\+Execution\+Providers\+::\+Get (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&}]{graph,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} \&}]{idx }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a41c2494ae4373f44ebf8f98f83e293cc}\label{classonnxruntime_1_1ExecutionProviders_a41c2494ae4373f44ebf8f98f83e293cc}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Get@{Get}}
+\index{Get@{Get}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Get()}{Get()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}}$\ast$ onnxruntime\+::\+Execution\+Providers\+::\+Get (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&}]{node }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a9545ef8343f02280aa5871579576c8ba}\label{classonnxruntime_1_1ExecutionProviders_a9545ef8343f02280aa5871579576c8ba}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Get@{Get}}
+\index{Get@{Get}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Get()}{Get()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}}$\ast$ onnxruntime\+::\+Execution\+Providers\+::\+Get (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{provider\+\_\+id }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionProviders_a65c0368906fb2431bffe5a81fb5ea5b2}\label{classonnxruntime_1_1ExecutionProviders_a65c0368906fb2431bffe5a81fb5ea5b2}} 
+\index{onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}!Get@{Get}}
+\index{Get@{Get}!onnxruntime\+::\+Execution\+Providers@{onnxruntime\+::\+Execution\+Providers}}
+\subsubsection{\texorpdfstring{Get()}{Get()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}}$\ast$ onnxruntime\+::\+Execution\+Providers\+::\+Get (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{allocator\+\_\+info }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{execution__providers_8h}{execution\+\_\+providers.\+h}}\end{DoxyCompactItemize}

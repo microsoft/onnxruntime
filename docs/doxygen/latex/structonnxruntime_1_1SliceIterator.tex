@@ -1,0 +1,56 @@
+\hypertarget{structonnxruntime_1_1SliceIterator}{}\section{onnxruntime\+:\+:Slice\+Iterator$<$ T $>$ Struct Template Reference}
+\label{structonnxruntime_1_1SliceIterator}\index{onnxruntime\+::\+Slice\+Iterator$<$ T $>$@{onnxruntime\+::\+Slice\+Iterator$<$ T $>$}}
+
+
+{\ttfamily \#include $<$utils.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1SliceIterator_aa6f3ea21d6235021d245744d1983718b}{Slice\+Iterator}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&tensor, gsl\+::span$<$ const int64\+\_\+t $>$ starts, gsl\+::span$<$ const int64\+\_\+t $>$ extents)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structonnxruntime_1_1SliceIterator_af23a82ce0ef66164c5b40f82d650ef0f}{Advance\+Over\+Inner\+Extent}} ()
+\item 
+const T $\ast$ \mbox{\hyperlink{structonnxruntime_1_1SliceIterator_af66a075050c630b9cc9d3da9ba7987d2}{operator++}} (int)
+\item 
+T $\ast$ \mbox{\hyperlink{structonnxruntime_1_1SliceIterator_a5f7af2187fb7a2e5431bb0b542b0e187}{Copy\+Innermost\+Axis}} (T $\ast$output)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1SliceIterator_aa6f3ea21d6235021d245744d1983718b}\label{structonnxruntime_1_1SliceIterator_aa6f3ea21d6235021d245744d1983718b}} 
+\index{onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}!Slice\+Iterator@{Slice\+Iterator}}
+\index{Slice\+Iterator@{Slice\+Iterator}!onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}}
+\subsubsection{\texorpdfstring{Slice\+Iterator()}{SliceIterator()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{structonnxruntime_1_1SliceIterator}{onnxruntime\+::\+Slice\+Iterator}}$<$ T $>$\+::\mbox{\hyperlink{structonnxruntime_1_1SliceIterator}{Slice\+Iterator}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{tensor,  }\item[{gsl\+::span$<$ const int64\+\_\+t $>$}]{starts,  }\item[{gsl\+::span$<$ const int64\+\_\+t $>$}]{extents }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1SliceIterator_af23a82ce0ef66164c5b40f82d650ef0f}\label{structonnxruntime_1_1SliceIterator_af23a82ce0ef66164c5b40f82d650ef0f}} 
+\index{onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}!Advance\+Over\+Inner\+Extent@{Advance\+Over\+Inner\+Extent}}
+\index{Advance\+Over\+Inner\+Extent@{Advance\+Over\+Inner\+Extent}!onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}}
+\subsubsection{\texorpdfstring{Advance\+Over\+Inner\+Extent()}{AdvanceOverInnerExtent()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structonnxruntime_1_1SliceIterator}{onnxruntime\+::\+Slice\+Iterator}}$<$ T $>$\+::Advance\+Over\+Inner\+Extent (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SliceIterator_a5f7af2187fb7a2e5431bb0b542b0e187}\label{structonnxruntime_1_1SliceIterator_a5f7af2187fb7a2e5431bb0b542b0e187}} 
+\index{onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}!Copy\+Innermost\+Axis@{Copy\+Innermost\+Axis}}
+\index{Copy\+Innermost\+Axis@{Copy\+Innermost\+Axis}!onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}}
+\subsubsection{\texorpdfstring{Copy\+Innermost\+Axis()}{CopyInnermostAxis()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ \mbox{\hyperlink{structonnxruntime_1_1SliceIterator}{onnxruntime\+::\+Slice\+Iterator}}$<$ T $>$\+::Copy\+Innermost\+Axis (\begin{DoxyParamCaption}\item[{T $\ast$}]{output }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SliceIterator_af66a075050c630b9cc9d3da9ba7987d2}\label{structonnxruntime_1_1SliceIterator_af66a075050c630b9cc9d3da9ba7987d2}} 
+\index{onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}!operator++@{operator++}}
+\index{operator++@{operator++}!onnxruntime\+::\+Slice\+Iterator@{onnxruntime\+::\+Slice\+Iterator}}
+\subsubsection{\texorpdfstring{operator++()}{operator++()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ \mbox{\hyperlink{structonnxruntime_1_1SliceIterator}{onnxruntime\+::\+Slice\+Iterator}}$<$ T $>$\+::operator++ (\begin{DoxyParamCaption}\item[{int}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/tensor/\mbox{\hyperlink{providers_2cpu_2tensor_2utils_8h}{utils.\+h}}\end{DoxyCompactItemize}

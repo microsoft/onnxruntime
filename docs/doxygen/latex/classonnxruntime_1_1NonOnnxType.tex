@@ -1,0 +1,105 @@
+\hypertarget{classonnxruntime_1_1NonOnnxType}{}\section{onnxruntime\+:\+:Non\+Onnx\+Type$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1NonOnnxType}\index{onnxruntime\+::\+Non\+Onnx\+Type$<$ T $>$@{onnxruntime\+::\+Non\+Onnx\+Type$<$ T $>$}}
+
+
+{\ttfamily \#include $<$data\+\_\+types.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Non\+Onnx\+Type$<$ T $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Non\+Onnx\+Type$<$ T $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType_a85fcf77182e033f38fe91c8845bb5aec}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&) const override
+\begin{DoxyCompactList}\small\item\em this A\+PI will be used to check type compatibility at runtime \end{DoxyCompactList}\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType_a563b71919e9400bb66cee0702d98b232}{Size}} () const override
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}} \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType_a98dc87744e3754168fc7fa333401b873}{Get\+Delete\+Func}} () const override
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType_af0dfad01d0ab54a20a68a7cf56a6367f}{Get\+Type\+Proto}} () const override final
+\begin{DoxyCompactList}\small\item\em Retrieves an instance of Type\+Proto for a given M\+L\+Data\+Type. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType_a40acd1095f90b416f96b54b619bc55c1}{Type}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1NonOnnxType_a98dc87744e3754168fc7fa333401b873}\label{classonnxruntime_1_1NonOnnxType_a98dc87744e3754168fc7fa333401b873}} 
+\index{onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}!Get\+Delete\+Func@{Get\+Delete\+Func}}
+\index{Get\+Delete\+Func@{Get\+Delete\+Func}!onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}}
+\subsubsection{\texorpdfstring{Get\+Delete\+Func()}{GetDeleteFunc()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}} \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType}{onnxruntime\+::\+Non\+Onnx\+Type}}$<$ T $>$\+::Get\+Delete\+Func (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_affe669c89722b1eb854f31d061a60e46}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonOnnxType_af0dfad01d0ab54a20a68a7cf56a6367f}\label{classonnxruntime_1_1NonOnnxType_af0dfad01d0ab54a20a68a7cf56a6367f}} 
+\index{onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}!Get\+Type\+Proto@{Get\+Type\+Proto}}
+\index{Get\+Type\+Proto@{Get\+Type\+Proto}!onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}}
+\subsubsection{\texorpdfstring{Get\+Type\+Proto()}{GetTypeProto()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto$\ast$ \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType}{onnxruntime\+::\+Non\+Onnx\+Type}}$<$ T $>$\+::Get\+Type\+Proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [final]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Retrieves an instance of Type\+Proto for a given M\+L\+Data\+Type. 
+
+\begin{DoxyReturn}{Returns}
+optional Type\+Proto. Only O\+N\+NX types has type proto, non-\/\+O\+N\+NX types will return nullptr. 
+\end{DoxyReturn}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a9bea0ebb8f0d94ed5a1b541c160fa33a}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonOnnxType_a85fcf77182e033f38fe91c8845bb5aec}\label{classonnxruntime_1_1NonOnnxType_a85fcf77182e033f38fe91c8845bb5aec}} 
+\index{onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}!Is\+Compatible@{Is\+Compatible}}
+\index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType}{onnxruntime\+::\+Non\+Onnx\+Type}}$<$ T $>$\+::Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{type\+\_\+proto }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+this A\+PI will be used to check type compatibility at runtime 
+
+
+\begin{DoxyParams}{Parameters}
+{\em type\+\_\+proto} & a Type\+Proto instance that is constructed for a specific type will be checked against a Type\+Proto instance contained within a corresponding M\+L\+Data\+Type instance. \\
+\hline
+\end{DoxyParams}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a94b2c274bd74068291356c81515d69a1}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonOnnxType_a563b71919e9400bb66cee0702d98b232}\label{classonnxruntime_1_1NonOnnxType_a563b71919e9400bb66cee0702d98b232}} 
+\index{onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}!Size@{Size}}
+\index{Size@{Size}!onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}}
+\subsubsection{\texorpdfstring{Size()}{Size()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType}{onnxruntime\+::\+Non\+Onnx\+Type}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1Size}{Size}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a025f1d860799cd7bc187482742ce7baa}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonOnnxType_a40acd1095f90b416f96b54b619bc55c1}\label{classonnxruntime_1_1NonOnnxType_a40acd1095f90b416f96b54b619bc55c1}} 
+\index{onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+Non\+Onnx\+Type@{onnxruntime\+::\+Non\+Onnx\+Type}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType}{onnxruntime\+::\+Non\+Onnx\+Type}}$<$ T $>$\+::Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{data__types_8h}{data\+\_\+types.\+h}}\end{DoxyCompactItemize}

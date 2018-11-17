@@ -1,0 +1,72 @@
+\hypertarget{debug__alloc_8h}{}\section{onnxruntime/onnxruntime/core/platform/windows/debug\+\_\+alloc.h File Reference}
+\label{debug__alloc_8h}\index{onnxruntime/onnxruntime/core/platform/windows/debug\+\_\+alloc.\+h@{onnxruntime/onnxruntime/core/platform/windows/debug\+\_\+alloc.\+h}}
+This graph shows which files directly or indirectly include this file\+:
+% FIG 0
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{debug__alloc_8h_a84beef8cc122add35118ec7cd35286c4}{calloc}}~Calloc\+Not\+Implemented
+\item 
+\#define \mbox{\hyperlink{debug__alloc_8h_acf143577800376dd931c059ecc61ba06}{malloc}}~\mbox{\hyperlink{debug__alloc_8h_ae19453c8f38ab61c96d505c6b6137c2f}{Debug\+Heap\+Alloc}}
+\item 
+\#define \mbox{\hyperlink{debug__alloc_8h_a1b739878adcdb46fb5d209af7ce79628}{realloc}}~\mbox{\hyperlink{debug__alloc_8h_a598f0d49f78c2805afe6ddfef1e021c5}{Debug\+Heap\+Re\+Alloc}}
+\item 
+\#define \mbox{\hyperlink{debug__alloc_8h_a2c6efa7679f8cd9f61af96e105017560}{free}}~\mbox{\hyperlink{debug__alloc_8h_a8592875359769277dfa53c67646a45c4}{Debug\+Heap\+Free}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{debug__alloc_8h_ae19453c8f38ab61c96d505c6b6137c2f}{Debug\+Heap\+Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size, unsigned frames\+To\+Skip=0)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{debug__alloc_8h_a598f0d49f78c2805afe6ddfef1e021c5}{Debug\+Heap\+Re\+Alloc}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{debug__alloc_8h_a8592875359769277dfa53c67646a45c4}{Debug\+Heap\+Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) noexcept
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{debug__alloc_8h_a84beef8cc122add35118ec7cd35286c4}\label{debug__alloc_8h_a84beef8cc122add35118ec7cd35286c4}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!calloc@{calloc}}
+\index{calloc@{calloc}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{calloc}{calloc}}
+{\footnotesize\ttfamily \#define calloc~Calloc\+Not\+Implemented}
+
+\mbox{\Hypertarget{debug__alloc_8h_a2c6efa7679f8cd9f61af96e105017560}\label{debug__alloc_8h_a2c6efa7679f8cd9f61af96e105017560}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!free@{free}}
+\index{free@{free}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{free}{free}}
+{\footnotesize\ttfamily \#define free~\mbox{\hyperlink{debug__alloc_8h_a8592875359769277dfa53c67646a45c4}{Debug\+Heap\+Free}}}
+
+\mbox{\Hypertarget{debug__alloc_8h_acf143577800376dd931c059ecc61ba06}\label{debug__alloc_8h_acf143577800376dd931c059ecc61ba06}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!malloc@{malloc}}
+\index{malloc@{malloc}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{malloc}{malloc}}
+{\footnotesize\ttfamily \#define malloc~\mbox{\hyperlink{debug__alloc_8h_ae19453c8f38ab61c96d505c6b6137c2f}{Debug\+Heap\+Alloc}}}
+
+\mbox{\Hypertarget{debug__alloc_8h_a1b739878adcdb46fb5d209af7ce79628}\label{debug__alloc_8h_a1b739878adcdb46fb5d209af7ce79628}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!realloc@{realloc}}
+\index{realloc@{realloc}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{realloc}{realloc}}
+{\footnotesize\ttfamily \#define realloc~\mbox{\hyperlink{debug__alloc_8h_a598f0d49f78c2805afe6ddfef1e021c5}{Debug\+Heap\+Re\+Alloc}}}
+
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{debug__alloc_8h_ae19453c8f38ab61c96d505c6b6137c2f}\label{debug__alloc_8h_ae19453c8f38ab61c96d505c6b6137c2f}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!Debug\+Heap\+Alloc@{Debug\+Heap\+Alloc}}
+\index{Debug\+Heap\+Alloc@{Debug\+Heap\+Alloc}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{Debug\+Heap\+Alloc()}{DebugHeapAlloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ Debug\+Heap\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size,  }\item[{unsigned}]{frames\+To\+Skip = {\ttfamily 0} }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{debug__alloc_8h_a8592875359769277dfa53c67646a45c4}\label{debug__alloc_8h_a8592875359769277dfa53c67646a45c4}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!Debug\+Heap\+Free@{Debug\+Heap\+Free}}
+\index{Debug\+Heap\+Free@{Debug\+Heap\+Free}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{Debug\+Heap\+Free()}{DebugHeapFree()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Debug\+Heap\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{debug__alloc_8h_a598f0d49f78c2805afe6ddfef1e021c5}\label{debug__alloc_8h_a598f0d49f78c2805afe6ddfef1e021c5}} 
+\index{debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}!Debug\+Heap\+Re\+Alloc@{Debug\+Heap\+Re\+Alloc}}
+\index{Debug\+Heap\+Re\+Alloc@{Debug\+Heap\+Re\+Alloc}!debug\+\_\+alloc.\+h@{debug\+\_\+alloc.\+h}}
+\subsubsection{\texorpdfstring{Debug\+Heap\+Re\+Alloc()}{DebugHeapReAlloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ Debug\+Heap\+Re\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})}
+

@@ -1,0 +1,69 @@
+\hypertarget{classonnxruntime_1_1OpKernelContextInternal}{}\section{onnxruntime\+:\+:Op\+Kernel\+Context\+Internal Class Reference}
+\label{classonnxruntime_1_1OpKernelContextInternal}\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+
+
+{\ttfamily \#include $<$op\+\_\+kernel\+\_\+context\+\_\+internal.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Op\+Kernel\+Context\+Internal\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Op\+Kernel\+Context\+Internal\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a60c587c4074ee1bf53178358ce085533}{Op\+Kernel\+Context\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} \&frame, const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}{kernel}}, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger, const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&implicit\+\_\+inputs)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_ae6c150d6d6d27669b65f556b45be25ce}{Subgraph\+Session\+State}} (const std\+::string \&attribute\+\_\+name)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a3144560a95fe27fb7cfbcdb91415a886}{Get\+Input\+M\+L\+Value}} (int index) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a30c4d27e0424e71e71ca65d111ed413d}{Get\+Output\+M\+L\+Value}} (int index)
+\item 
+std\+::unordered\+\_\+map$<$ std\+::string, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ $>$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContextInternal_a6b9ba81c79b1899a7aee0154691e0761}{Get\+Implicit\+Inputs}} () const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_a60c587c4074ee1bf53178358ce085533}\label{classonnxruntime_1_1OpKernelContextInternal_a60c587c4074ee1bf53178358ce085533}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Op\+Kernel\+Context\+Internal@{Op\+Kernel\+Context\+Internal}}
+\index{Op\+Kernel\+Context\+Internal@{Op\+Kernel\+Context\+Internal}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+\subsubsection{\texorpdfstring{Op\+Kernel\+Context\+Internal()}{OpKernelContextInternal()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Op\+Kernel\+Context\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} \&}]{frame,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} \&}]{kernel,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger,  }\item[{const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{implicit\+\_\+inputs }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_a6b9ba81c79b1899a7aee0154691e0761}\label{classonnxruntime_1_1OpKernelContextInternal_a6b9ba81c79b1899a7aee0154691e0761}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Get\+Implicit\+Inputs@{Get\+Implicit\+Inputs}}
+\index{Get\+Implicit\+Inputs@{Get\+Implicit\+Inputs}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+\subsubsection{\texorpdfstring{Get\+Implicit\+Inputs()}{GetImplicitInputs()}}
+{\footnotesize\ttfamily std\+::unordered\+\_\+map$<$std\+::string, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}$\ast$$>$ onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Get\+Implicit\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_a3144560a95fe27fb7cfbcdb91415a886}\label{classonnxruntime_1_1OpKernelContextInternal_a3144560a95fe27fb7cfbcdb91415a886}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Get\+Input\+M\+L\+Value@{Get\+Input\+M\+L\+Value}}
+\index{Get\+Input\+M\+L\+Value@{Get\+Input\+M\+L\+Value}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+\subsubsection{\texorpdfstring{Get\+Input\+M\+L\+Value()}{GetInputMLValue()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Get\+Input\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_a30c4d27e0424e71e71ca65d111ed413d}\label{classonnxruntime_1_1OpKernelContextInternal_a30c4d27e0424e71e71ca65d111ed413d}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Get\+Output\+M\+L\+Value@{Get\+Output\+M\+L\+Value}}
+\index{Get\+Output\+M\+L\+Value@{Get\+Output\+M\+L\+Value}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+\subsubsection{\texorpdfstring{Get\+Output\+M\+L\+Value()}{GetOutputMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Get\+Output\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContextInternal_ae6c150d6d6d27669b65f556b45be25ce}\label{classonnxruntime_1_1OpKernelContextInternal_ae6c150d6d6d27669b65f556b45be25ce}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}!Subgraph\+Session\+State@{Subgraph\+Session\+State}}
+\index{Subgraph\+Session\+State@{Subgraph\+Session\+State}!onnxruntime\+::\+Op\+Kernel\+Context\+Internal@{onnxruntime\+::\+Op\+Kernel\+Context\+Internal}}
+\subsubsection{\texorpdfstring{Subgraph\+Session\+State()}{SubgraphSessionState()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}}$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+Internal\+::\+Subgraph\+Session\+State (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{attribute\+\_\+name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{op__kernel__context__internal_8h}{op\+\_\+kernel\+\_\+context\+\_\+internal.\+h}}\end{DoxyCompactItemize}

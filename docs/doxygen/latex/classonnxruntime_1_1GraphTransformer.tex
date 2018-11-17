@@ -1,0 +1,68 @@
+\hypertarget{classonnxruntime_1_1GraphTransformer}{}\section{onnxruntime\+:\+:Graph\+Transformer Class Reference}
+\label{classonnxruntime_1_1GraphTransformer}\index{onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}}
+
+
+{\ttfamily \#include $<$graph\+\_\+transformer.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Graph\+Transformer\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphTransformer_a14aabd7b57a4a7bad158c3bc17e7b43a}{Graph\+Transformer}} (const std\+::string \&name, const std\+::string \&desc)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer_a17d436d4bb632f9a1d30b469946dd7ab}{$\sim$\+Graph\+Transformer}} ()=default
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer_a280e21558a88f2a9b262d41b4a3d2e96}{Name}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer_a277d37c8cd3de6208f5a1d76b6e16689}{Description}} () const noexcept
+\item 
+virtual \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer_a690d351da797884409b1d7aa584e33b5}{Apply}} (\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \&graph, bool \&modified) const =0
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphTransformer_a14aabd7b57a4a7bad158c3bc17e7b43a}\label{classonnxruntime_1_1GraphTransformer_a14aabd7b57a4a7bad158c3bc17e7b43a}} 
+\index{onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}!Graph\+Transformer@{Graph\+Transformer}}
+\index{Graph\+Transformer@{Graph\+Transformer}!onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Graph\+Transformer()}{GraphTransformer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Graph\+Transformer\+::\+Graph\+Transformer (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{desc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphTransformer_a17d436d4bb632f9a1d30b469946dd7ab}\label{classonnxruntime_1_1GraphTransformer_a17d436d4bb632f9a1d30b469946dd7ab}} 
+\index{onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}!````~Graph\+Transformer@{$\sim$\+Graph\+Transformer}}
+\index{````~Graph\+Transformer@{$\sim$\+Graph\+Transformer}!onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{$\sim$\+Graph\+Transformer()}{~GraphTransformer()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+Graph\+Transformer\+::$\sim$\+Graph\+Transformer (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphTransformer_a690d351da797884409b1d7aa584e33b5}\label{classonnxruntime_1_1GraphTransformer_a690d351da797884409b1d7aa584e33b5}} 
+\index{onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}!Apply@{Apply}}
+\index{Apply@{Apply}!onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Apply()}{Apply()}}
+{\footnotesize\ttfamily virtual \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Graph\+Transformer\+::\+Apply (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \&}]{graph,  }\item[{bool \&}]{modified }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1TopDownRuleBasedTransformer_ae7604b4ac9da64b2bcae450b4759f624}{onnxruntime\+::\+Top\+Down\+Rule\+Based\+Transformer}}, \mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer_a059a832a759981af5fdeed0780e65904}{onnxruntime\+::\+Insert\+Cast\+Transformer}}, \mbox{\hyperlink{classonnxruntime_1_1ConvAddFusion_aacc7121b10b0bb9744117b7b227fdcb3}{onnxruntime\+::\+Conv\+Add\+Fusion}}, \mbox{\hyperlink{classonnxruntime_1_1ConvBNFusion_af12cb45d190871716c8e88f73b6b0bfa}{onnxruntime\+::\+Conv\+B\+N\+Fusion}}, \mbox{\hyperlink{classonnxruntime_1_1UnsqueezeElimination_afef298d0f56f50ee8b5336b103bbd96e}{onnxruntime\+::\+Unsqueeze\+Elimination}}, and \mbox{\hyperlink{classonnxruntime_1_1ConvMulFusion_abea2001e37642a6e2c667e115b6b23f0}{onnxruntime\+::\+Conv\+Mul\+Fusion}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphTransformer_a277d37c8cd3de6208f5a1d76b6e16689}\label{classonnxruntime_1_1GraphTransformer_a277d37c8cd3de6208f5a1d76b6e16689}} 
+\index{onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}!Description@{Description}}
+\index{Description@{Description}!onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Description()}{Description()}}
+{\footnotesize\ttfamily const std\+::string\& onnxruntime\+::\+Graph\+Transformer\+::\+Description (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphTransformer_a280e21558a88f2a9b262d41b4a3d2e96}\label{classonnxruntime_1_1GraphTransformer_a280e21558a88f2a9b262d41b4a3d2e96}} 
+\index{onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}!Name@{Name}}
+\index{Name@{Name}!onnxruntime\+::\+Graph\+Transformer@{onnxruntime\+::\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Name()}{Name()}}
+{\footnotesize\ttfamily const std\+::string\& onnxruntime\+::\+Graph\+Transformer\+::\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph__transformer_8h}{graph\+\_\+transformer.\+h}}\end{DoxyCompactItemize}

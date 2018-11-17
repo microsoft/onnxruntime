@@ -1,0 +1,500 @@
+\hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu}{}\section{onnxruntime\+:\+:rnn\+:\+:detail\+:\+:deepcpu Namespace Reference}
+\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu}\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b1f80ae5020b2ff8e057c5aa8180c28}{Add\+Bias\+Into\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, const int)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae72a03e6191d492760e3d7b02f470564}{Clip\+With\+Bias\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float, const float $\ast$, float $\ast$, const int)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}{Activation\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a51c9012fb1a1a79abced776e7be2ca47}{Activation\+Func\+B\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}{Lstm\+Merge\+Gates\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, const float $\ast$, float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}{Gru\+Reset\+Gate\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}{Gru\+Output\+Gate\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(float $\ast$, const float $\ast$, const float $\ast$, float $\ast$, const int, const float, const float)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a01ab560a52e774245edc32e83fe452c8}{clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place}} (float $\ast$ps, int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ade13495ecdc6b24e88f524a5e1cd7db4}{clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place}} (float $\ast$ps, int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a034813bde0d4b9284702418298320dae}{clip\+\_\+for\+\_\+sigmoid}} (const float $\ast$ps, float $\ast$pd, int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a49ed3198030c8a96e144cd1dd3cbfb94}{clip\+\_\+for\+\_\+tanh}} (const float $\ast$ps, float $\ast$pd, int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a21971e995528934d1c65711f56bdeafd}{add\+\_\+bias\+\_\+into\+\_\+ignore}} (const float $\ast$ps, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1d9034a17f1cfa963791766930c88649}{add\+\_\+bias\+\_\+into}} (const float $\ast$ps, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8ea6b06af7c12a5578de7d7aaad35ff5}{clip}} (const float b, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a3cfaf91d3560d9f84b376f61461a9973}{clip\+\_\+ignore\+\_\+bias}} (const float b, const float $\ast$pb, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acd60c3700240c698443b8d45bf6a4e65}{clip\+\_\+add\+\_\+bias}} (const float b, const float $\ast$pb, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1f8aaad863b8c54e1da63bc6e8973a59}{sigmoid\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aae689eb766818fc1c1da8aa2bc923b31}{tanh\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdd30b5fdc3181eeac5fe57327468438}{relu\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a78584ae89a0559ff0001b4ffc3d0dcb7}{composed\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f774e13fe051815ea772646cbf8c1e4}{sigmoid\+\_\+exact\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a58cffec73fb2b97544714c6d4a5b3767}{tanh\+\_\+exact\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab977a8d517ba2f63e0c831bc548e8c11}{sigmoid}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa90e134184fd5d4cc0b541e82ab265fc}{tanh}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a75ee182dbe346d81dd2f8545ae0db59e}{relu}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_af7a1c48db5b0ac20916af44b02931ab8}{sigmoid\+\_\+exact}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad249f79929fe978ce97ef9d64b36367b}{tanh\+\_\+exact}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a27d683ef39f7917b5ca03d2d8b0167c3}{merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory}} (const float $\ast$pprev, const float $\ast$pi, const float $\ast$pf, const float $\ast$pg, float $\ast$pcurr, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1af846c78baadc9451b56bc1c515d679}{gru\+\_\+reset\+\_\+gate\+\_\+tanh}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1b4d38d57effefd3a8c1566e5f3495bc}{gru\+\_\+reset\+\_\+gate\+\_\+sigmoid}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad5420f147be377034238001dd54dcedb}{gru\+\_\+reset\+\_\+gate\+\_\+relu}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_abfd832861f6bbba6a17be29e3150438b}{gru\+\_\+reset\+\_\+gate\+\_\+composed}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b6250d6233998108f91689c51fde355}{gru\+\_\+output\+\_\+gate\+\_\+tanh}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a020e1f61b777f9731726419e8cc6057d}{gru\+\_\+output\+\_\+gate\+\_\+relu}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a2ad004b217fbf44c0b3c813b6aefd876}{gru\+\_\+output\+\_\+gate\+\_\+composed}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7d9cf1331cc4a7af8a2e3d65165ea56c}{gru\+\_\+output\+\_\+gate\+\_\+sigmoid}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aed42d86aab19336ba36bd825717e9b96}{composed\+\_\+activation\+\_\+func}} (float $\ast$ps, const int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae0681862958cc7ac5a8b2f361cc4a800}{composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func}} (float $\ast$ps, const int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a26f2b2ed3d836a627d6173913d935a00}{composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func}} (float $\ast$ps, const int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9725ef079492f7e405fae8e8450f44ae}{composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func}} (float $\ast$ps, const int c, std\+::function$<$ float(float, float, float)$>$ func, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}{Activation\+Func\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f47346831720de77ac02a76b55cbc0c}{Activation\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}{Lstm\+Merge\+Gates\+Func\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7ee3d83a8606c6343be8855fe0fa8091}{Lstm\+Merge\+Gates\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}{Gru\+Reset\+Gate\+Func\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acb0ad8059b037801ea6e83d9a2b37dfc}{Gru\+Reset\+Gate\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}{Gru\+Output\+Gate\+Func\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06d0cf0fd4f9c739f2358820a6ed257}{Gru\+Output\+Gate\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9250a1433c8822a6593c27f1f4b867c7}{elementwise\+\_\+product}} (const float $\ast$op1, const float $\ast$op2, float $\ast$dest, const int size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab294ebaa35b1aa35d75a9ccf5b363ddb}{elementwise\+\_\+sum1}} (const float $\ast$src, float $\ast$dest, const int size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4136092f6bcb01967ae4b82f668a9fd6}{elementwise\+\_\+sum2}} (const float $\ast$src1, const float $\ast$src2, float $\ast$dest, const int size)
+\end{DoxyCompactItemize}
+\subsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4154e74f0cb2dfec9e757e9f5711852b}{alpha\+\_\+1}} = 4.\+89352455891786e-\/03f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab9b55fe6a85d7c18fc0feb3025e90a88}{alpha\+\_\+3}} = 6.\+37261928875436e-\/04f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac3f505a29030ea4f67231c1c19366d06}{alpha\+\_\+5}} = 1.\+48572235717979e-\/05f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a052d505a0bb4c2a69037877e0499b965}{alpha\+\_\+7}} = 5.\+12229709037114e-\/08f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdded6f83ed73bbcd27bd90abab6a202}{alpha\+\_\+9}} = -\/8.\+60467152213735e-\/11f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a0935025c2ccffdf953a545ace9496992}{alpha\+\_\+11}} = 2.\+00018790482477e-\/13f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a61d9a3b62bffdbdf5c89fd6d9124e43c}{alpha\+\_\+13}} = -\/2.\+76076847742355e-\/16f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a0ad5d1492edf9db329b66c7e822bffbd}{beta\+\_\+0}} = 4.\+89352518554385e-\/03f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a92da2bcd7e3c3e092ac24bbd6630f2f2}{beta\+\_\+2}} = 2.\+26843463243900e-\/03f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a445505f7bbf83b7c36790df4c93edcc4}{beta\+\_\+4}} = 1.\+18534705686654e-\/04f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa4b4fe678d7989e1dfd0ade43ef542fb}{beta\+\_\+6}} = 1.\+19825839466702e-\/06f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acec36c5e955a487bbbe5886ad123d4c4}{sigmoid\+\_\+bound}} = 20.\+0f
+\item 
+const float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06b1c48ef7654bd1fd35a1f9f0d0bee}{tanh\+\_\+bound}} = 10.\+0f
+\end{DoxyCompactItemize}
+
+
+\subsection{Typedef Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a51c9012fb1a1a79abced776e7be2ca47}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a51c9012fb1a1a79abced776e7be2ca47}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Activation\+Func\+B\+Ptr@{Activation\+Func\+B\+Ptr}}
+\index{Activation\+Func\+B\+Ptr@{Activation\+Func\+B\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Activation\+Func\+B\+Ptr}{ActivationFuncBPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a51c9012fb1a1a79abced776e7be2ca47}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Activation\+Func\+B\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(const float$\ast$, float$\ast$, const int, const float, const float)}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Activation\+Func\+Ptr@{Activation\+Func\+Ptr}}
+\index{Activation\+Func\+Ptr@{Activation\+Func\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Activation\+Func\+Ptr}{ActivationFuncPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Activation\+Func\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(float$\ast$, const int, const float, const float)}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b1f80ae5020b2ff8e057c5aa8180c28}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b1f80ae5020b2ff8e057c5aa8180c28}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Add\+Bias\+Into\+Func\+Ptr@{Add\+Bias\+Into\+Func\+Ptr}}
+\index{Add\+Bias\+Into\+Func\+Ptr@{Add\+Bias\+Into\+Func\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Add\+Bias\+Into\+Func\+Ptr}{AddBiasIntoFuncPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b1f80ae5020b2ff8e057c5aa8180c28}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Add\+Bias\+Into\+Func\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(const float$\ast$, float$\ast$, const int)}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae72a03e6191d492760e3d7b02f470564}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae72a03e6191d492760e3d7b02f470564}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Clip\+With\+Bias\+Func\+Ptr@{Clip\+With\+Bias\+Func\+Ptr}}
+\index{Clip\+With\+Bias\+Func\+Ptr@{Clip\+With\+Bias\+Func\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Clip\+With\+Bias\+Func\+Ptr}{ClipWithBiasFuncPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae72a03e6191d492760e3d7b02f470564}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Clip\+With\+Bias\+Func\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(const float, const float$\ast$, float$\ast$, const int)}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Gru\+Output\+Gate\+Func\+Ptr@{Gru\+Output\+Gate\+Func\+Ptr}}
+\index{Gru\+Output\+Gate\+Func\+Ptr@{Gru\+Output\+Gate\+Func\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Gru\+Output\+Gate\+Func\+Ptr}{GruOutputGateFuncPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Output\+Gate\+Func\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(float$\ast$, const float$\ast$, const float$\ast$, float$\ast$, const int, const float, const float)}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Gru\+Reset\+Gate\+Func\+Ptr@{Gru\+Reset\+Gate\+Func\+Ptr}}
+\index{Gru\+Reset\+Gate\+Func\+Ptr@{Gru\+Reset\+Gate\+Func\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Gru\+Reset\+Gate\+Func\+Ptr}{GruResetGateFuncPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Reset\+Gate\+Func\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(const float$\ast$, float$\ast$, float$\ast$, const int, const float, const float)}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Lstm\+Merge\+Gates\+Func\+Ptr@{Lstm\+Merge\+Gates\+Func\+Ptr}}
+\index{Lstm\+Merge\+Gates\+Func\+Ptr@{Lstm\+Merge\+Gates\+Func\+Ptr}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Lstm\+Merge\+Gates\+Func\+Ptr}{LstmMergeGatesFuncPtr}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Lstm\+Merge\+Gates\+Func\+Ptr}} = typedef \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} ($\ast$)(const float$\ast$, float$\ast$, const float$\ast$, float$\ast$, const int, const float, const float)}
+
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f47346831720de77ac02a76b55cbc0c}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f47346831720de77ac02a76b55cbc0c}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Activation\+Func\+By\+Name@{Activation\+Func\+By\+Name}}
+\index{Activation\+Func\+By\+Name@{Activation\+Func\+By\+Name}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Activation\+Func\+By\+Name()}{ActivationFuncByName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}{Activation\+Func\+Ptr}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Activation\+Func\+By\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{func }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1d9034a17f1cfa963791766930c88649}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1d9034a17f1cfa963791766930c88649}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!add\+\_\+bias\+\_\+into@{add\+\_\+bias\+\_\+into}}
+\index{add\+\_\+bias\+\_\+into@{add\+\_\+bias\+\_\+into}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{add\+\_\+bias\+\_\+into()}{add\_bias\_into()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::add\+\_\+bias\+\_\+into (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a21971e995528934d1c65711f56bdeafd}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a21971e995528934d1c65711f56bdeafd}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!add\+\_\+bias\+\_\+into\+\_\+ignore@{add\+\_\+bias\+\_\+into\+\_\+ignore}}
+\index{add\+\_\+bias\+\_\+into\+\_\+ignore@{add\+\_\+bias\+\_\+into\+\_\+ignore}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{add\+\_\+bias\+\_\+into\+\_\+ignore()}{add\_bias\_into\_ignore()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::add\+\_\+bias\+\_\+into\+\_\+ignore (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8ea6b06af7c12a5578de7d7aaad35ff5}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8ea6b06af7c12a5578de7d7aaad35ff5}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip@{clip}}
+\index{clip@{clip}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip()}{clip()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip (\begin{DoxyParamCaption}\item[{const float}]{b,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acd60c3700240c698443b8d45bf6a4e65}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acd60c3700240c698443b8d45bf6a4e65}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip\+\_\+add\+\_\+bias@{clip\+\_\+add\+\_\+bias}}
+\index{clip\+\_\+add\+\_\+bias@{clip\+\_\+add\+\_\+bias}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip\+\_\+add\+\_\+bias()}{clip\_add\_bias()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+add\+\_\+bias (\begin{DoxyParamCaption}\item[{const float}]{b,  }\item[{const float $\ast$}]{pb,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a034813bde0d4b9284702418298320dae}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a034813bde0d4b9284702418298320dae}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip\+\_\+for\+\_\+sigmoid@{clip\+\_\+for\+\_\+sigmoid}}
+\index{clip\+\_\+for\+\_\+sigmoid@{clip\+\_\+for\+\_\+sigmoid}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip\+\_\+for\+\_\+sigmoid()}{clip\_for\_sigmoid()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+for\+\_\+sigmoid (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a01ab560a52e774245edc32e83fe452c8}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a01ab560a52e774245edc32e83fe452c8}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place@{clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place}}
+\index{clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place@{clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place()}{clip\_for\_sigmoid\_in\_place()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+for\+\_\+sigmoid\+\_\+in\+\_\+place (\begin{DoxyParamCaption}\item[{float $\ast$}]{ps,  }\item[{int}]{c }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a49ed3198030c8a96e144cd1dd3cbfb94}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a49ed3198030c8a96e144cd1dd3cbfb94}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip\+\_\+for\+\_\+tanh@{clip\+\_\+for\+\_\+tanh}}
+\index{clip\+\_\+for\+\_\+tanh@{clip\+\_\+for\+\_\+tanh}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip\+\_\+for\+\_\+tanh()}{clip\_for\_tanh()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+for\+\_\+tanh (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ade13495ecdc6b24e88f524a5e1cd7db4}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ade13495ecdc6b24e88f524a5e1cd7db4}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place@{clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place}}
+\index{clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place@{clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place()}{clip\_for\_tanh\_in\_place()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+for\+\_\+tanh\+\_\+in\+\_\+place (\begin{DoxyParamCaption}\item[{float $\ast$}]{ps,  }\item[{int}]{c }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a3cfaf91d3560d9f84b376f61461a9973}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a3cfaf91d3560d9f84b376f61461a9973}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!clip\+\_\+ignore\+\_\+bias@{clip\+\_\+ignore\+\_\+bias}}
+\index{clip\+\_\+ignore\+\_\+bias@{clip\+\_\+ignore\+\_\+bias}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{clip\+\_\+ignore\+\_\+bias()}{clip\_ignore\_bias()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+ignore\+\_\+bias (\begin{DoxyParamCaption}\item[{const float}]{b,  }\item[{const float $\ast$}]{pb,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aed42d86aab19336ba36bd825717e9b96}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aed42d86aab19336ba36bd825717e9b96}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!composed\+\_\+activation\+\_\+func@{composed\+\_\+activation\+\_\+func}}
+\index{composed\+\_\+activation\+\_\+func@{composed\+\_\+activation\+\_\+func}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{composed\+\_\+activation\+\_\+func()}{composed\_activation\_func()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::composed\+\_\+activation\+\_\+func (\begin{DoxyParamCaption}\item[{float $\ast$}]{ps,  }\item[{const int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9725ef079492f7e405fae8e8450f44ae}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9725ef079492f7e405fae8e8450f44ae}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func@{composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func}}
+\index{composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func@{composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func()}{composed\_gru\_output\_gate\_func()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::composed\+\_\+gru\+\_\+output\+\_\+gate\+\_\+func (\begin{DoxyParamCaption}\item[{float $\ast$}]{ps,  }\item[{const int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a26f2b2ed3d836a627d6173913d935a00}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a26f2b2ed3d836a627d6173913d935a00}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func@{composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func}}
+\index{composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func@{composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func()}{composed\_gru\_reset\_gate\_func()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::composed\+\_\+gru\+\_\+reset\+\_\+gate\+\_\+func (\begin{DoxyParamCaption}\item[{float $\ast$}]{ps,  }\item[{const int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae0681862958cc7ac5a8b2f361cc4a800}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae0681862958cc7ac5a8b2f361cc4a800}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func@{composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func}}
+\index{composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func@{composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func()}{composed\_lstm\_merge\_gates\_func()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::composed\+\_\+lstm\+\_\+merge\+\_\+gates\+\_\+func (\begin{DoxyParamCaption}\item[{float $\ast$}]{ps,  }\item[{const int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a78584ae89a0559ff0001b4ffc3d0dcb7}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a78584ae89a0559ff0001b4ffc3d0dcb7}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!composed\+\_\+m@{composed\+\_\+m}}
+\index{composed\+\_\+m@{composed\+\_\+m}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{composed\+\_\+m()}{composed\_m()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::composed\+\_\+m (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps1\+\_\+c,  }\item[{const float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9250a1433c8822a6593c27f1f4b867c7}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9250a1433c8822a6593c27f1f4b867c7}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!elementwise\+\_\+product@{elementwise\+\_\+product}}
+\index{elementwise\+\_\+product@{elementwise\+\_\+product}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{elementwise\+\_\+product()}{elementwise\_product()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::elementwise\+\_\+product (\begin{DoxyParamCaption}\item[{const float $\ast$}]{op1,  }\item[{const float $\ast$}]{op2,  }\item[{float $\ast$}]{dest,  }\item[{const int}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab294ebaa35b1aa35d75a9ccf5b363ddb}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab294ebaa35b1aa35d75a9ccf5b363ddb}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!elementwise\+\_\+sum1@{elementwise\+\_\+sum1}}
+\index{elementwise\+\_\+sum1@{elementwise\+\_\+sum1}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{elementwise\+\_\+sum1()}{elementwise\_sum1()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::elementwise\+\_\+sum1 (\begin{DoxyParamCaption}\item[{const float $\ast$}]{src,  }\item[{float $\ast$}]{dest,  }\item[{const int}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4136092f6bcb01967ae4b82f668a9fd6}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4136092f6bcb01967ae4b82f668a9fd6}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!elementwise\+\_\+sum2@{elementwise\+\_\+sum2}}
+\index{elementwise\+\_\+sum2@{elementwise\+\_\+sum2}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{elementwise\+\_\+sum2()}{elementwise\_sum2()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::elementwise\+\_\+sum2 (\begin{DoxyParamCaption}\item[{const float $\ast$}]{src1,  }\item[{const float $\ast$}]{src2,  }\item[{float $\ast$}]{dest,  }\item[{const int}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a2ad004b217fbf44c0b3c813b6aefd876}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a2ad004b217fbf44c0b3c813b6aefd876}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+output\+\_\+gate\+\_\+composed@{gru\+\_\+output\+\_\+gate\+\_\+composed}}
+\index{gru\+\_\+output\+\_\+gate\+\_\+composed@{gru\+\_\+output\+\_\+gate\+\_\+composed}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+output\+\_\+gate\+\_\+composed()}{gru\_output\_gate\_composed()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+composed (\begin{DoxyParamCaption}\item[{float $\ast$}]{ph,  }\item[{const float $\ast$}]{pz,  }\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{po,  }\item[{const int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a020e1f61b777f9731726419e8cc6057d}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a020e1f61b777f9731726419e8cc6057d}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+output\+\_\+gate\+\_\+relu@{gru\+\_\+output\+\_\+gate\+\_\+relu}}
+\index{gru\+\_\+output\+\_\+gate\+\_\+relu@{gru\+\_\+output\+\_\+gate\+\_\+relu}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+output\+\_\+gate\+\_\+relu()}{gru\_output\_gate\_relu()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+relu (\begin{DoxyParamCaption}\item[{float $\ast$}]{ph,  }\item[{const float $\ast$}]{pz,  }\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{po,  }\item[{const int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7d9cf1331cc4a7af8a2e3d65165ea56c}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7d9cf1331cc4a7af8a2e3d65165ea56c}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+output\+\_\+gate\+\_\+sigmoid@{gru\+\_\+output\+\_\+gate\+\_\+sigmoid}}
+\index{gru\+\_\+output\+\_\+gate\+\_\+sigmoid@{gru\+\_\+output\+\_\+gate\+\_\+sigmoid}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+output\+\_\+gate\+\_\+sigmoid()}{gru\_output\_gate\_sigmoid()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+sigmoid (\begin{DoxyParamCaption}\item[{float $\ast$}]{ph,  }\item[{const float $\ast$}]{pz,  }\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{po,  }\item[{const int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b6250d6233998108f91689c51fde355}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b6250d6233998108f91689c51fde355}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+output\+\_\+gate\+\_\+tanh@{gru\+\_\+output\+\_\+gate\+\_\+tanh}}
+\index{gru\+\_\+output\+\_\+gate\+\_\+tanh@{gru\+\_\+output\+\_\+gate\+\_\+tanh}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+output\+\_\+gate\+\_\+tanh()}{gru\_output\_gate\_tanh()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+tanh (\begin{DoxyParamCaption}\item[{float $\ast$}]{ph,  }\item[{const float $\ast$}]{pz,  }\item[{const float $\ast$}]{ps,  }\item[{float $\ast$}]{po,  }\item[{const int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_abfd832861f6bbba6a17be29e3150438b}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_abfd832861f6bbba6a17be29e3150438b}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+reset\+\_\+gate\+\_\+composed@{gru\+\_\+reset\+\_\+gate\+\_\+composed}}
+\index{gru\+\_\+reset\+\_\+gate\+\_\+composed@{gru\+\_\+reset\+\_\+gate\+\_\+composed}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+reset\+\_\+gate\+\_\+composed()}{gru\_reset\_gate\_composed()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+composed (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c,  }\item[{std\+::function$<$ float(float, float, float)$>$}]{func,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad5420f147be377034238001dd54dcedb}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad5420f147be377034238001dd54dcedb}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+reset\+\_\+gate\+\_\+relu@{gru\+\_\+reset\+\_\+gate\+\_\+relu}}
+\index{gru\+\_\+reset\+\_\+gate\+\_\+relu@{gru\+\_\+reset\+\_\+gate\+\_\+relu}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+reset\+\_\+gate\+\_\+relu()}{gru\_reset\_gate\_relu()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+relu (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1b4d38d57effefd3a8c1566e5f3495bc}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1b4d38d57effefd3a8c1566e5f3495bc}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+reset\+\_\+gate\+\_\+sigmoid@{gru\+\_\+reset\+\_\+gate\+\_\+sigmoid}}
+\index{gru\+\_\+reset\+\_\+gate\+\_\+sigmoid@{gru\+\_\+reset\+\_\+gate\+\_\+sigmoid}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+reset\+\_\+gate\+\_\+sigmoid()}{gru\_reset\_gate\_sigmoid()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+sigmoid (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1af846c78baadc9451b56bc1c515d679}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1af846c78baadc9451b56bc1c515d679}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!gru\+\_\+reset\+\_\+gate\+\_\+tanh@{gru\+\_\+reset\+\_\+gate\+\_\+tanh}}
+\index{gru\+\_\+reset\+\_\+gate\+\_\+tanh@{gru\+\_\+reset\+\_\+gate\+\_\+tanh}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{gru\+\_\+reset\+\_\+gate\+\_\+tanh()}{gru\_reset\_gate\_tanh()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+tanh (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{const int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06d0cf0fd4f9c739f2358820a6ed257}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06d0cf0fd4f9c739f2358820a6ed257}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Gru\+Output\+Gate\+Func\+By\+Name@{Gru\+Output\+Gate\+Func\+By\+Name}}
+\index{Gru\+Output\+Gate\+Func\+By\+Name@{Gru\+Output\+Gate\+Func\+By\+Name}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Gru\+Output\+Gate\+Func\+By\+Name()}{GruOutputGateFuncByName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}{Gru\+Output\+Gate\+Func\+Ptr}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Output\+Gate\+Func\+By\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{func }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acb0ad8059b037801ea6e83d9a2b37dfc}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acb0ad8059b037801ea6e83d9a2b37dfc}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Gru\+Reset\+Gate\+Func\+By\+Name@{Gru\+Reset\+Gate\+Func\+By\+Name}}
+\index{Gru\+Reset\+Gate\+Func\+By\+Name@{Gru\+Reset\+Gate\+Func\+By\+Name}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Gru\+Reset\+Gate\+Func\+By\+Name()}{GruResetGateFuncByName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}{Gru\+Reset\+Gate\+Func\+Ptr}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Reset\+Gate\+Func\+By\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{func }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7ee3d83a8606c6343be8855fe0fa8091}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7ee3d83a8606c6343be8855fe0fa8091}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!Lstm\+Merge\+Gates\+Func\+By\+Name@{Lstm\+Merge\+Gates\+Func\+By\+Name}}
+\index{Lstm\+Merge\+Gates\+Func\+By\+Name@{Lstm\+Merge\+Gates\+Func\+By\+Name}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{Lstm\+Merge\+Gates\+Func\+By\+Name()}{LstmMergeGatesFuncByName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}{Lstm\+Merge\+Gates\+Func\+Ptr}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Lstm\+Merge\+Gates\+Func\+By\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{func }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a27d683ef39f7917b5ca03d2d8b0167c3}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a27d683ef39f7917b5ca03d2d8b0167c3}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory@{merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory}}
+\index{merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory@{merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory()}{merge\_lstm\_gates\_to\_memory()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory (\begin{DoxyParamCaption}\item[{const float $\ast$}]{pprev,  }\item[{const float $\ast$}]{pi,  }\item[{const float $\ast$}]{pf,  }\item[{const float $\ast$}]{pg,  }\item[{float $\ast$}]{pcurr,  }\item[{const int}]{c }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a75ee182dbe346d81dd2f8545ae0db59e}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a75ee182dbe346d81dd2f8545ae0db59e}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!relu@{relu}}
+\index{relu@{relu}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{relu()}{relu()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::relu (\begin{DoxyParamCaption}\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdd30b5fdc3181eeac5fe57327468438}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdd30b5fdc3181eeac5fe57327468438}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!relu\+\_\+m@{relu\+\_\+m}}
+\index{relu\+\_\+m@{relu\+\_\+m}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{relu\+\_\+m()}{relu\_m()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::relu\+\_\+m (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps1\+\_\+c,  }\item[{const float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab977a8d517ba2f63e0c831bc548e8c11}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab977a8d517ba2f63e0c831bc548e8c11}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!sigmoid@{sigmoid}}
+\index{sigmoid@{sigmoid}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{sigmoid()}{sigmoid()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid (\begin{DoxyParamCaption}\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_af7a1c48db5b0ac20916af44b02931ab8}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_af7a1c48db5b0ac20916af44b02931ab8}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!sigmoid\+\_\+exact@{sigmoid\+\_\+exact}}
+\index{sigmoid\+\_\+exact@{sigmoid\+\_\+exact}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{sigmoid\+\_\+exact()}{sigmoid\_exact()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+exact (\begin{DoxyParamCaption}\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f774e13fe051815ea772646cbf8c1e4}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f774e13fe051815ea772646cbf8c1e4}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!sigmoid\+\_\+exact\+\_\+m@{sigmoid\+\_\+exact\+\_\+m}}
+\index{sigmoid\+\_\+exact\+\_\+m@{sigmoid\+\_\+exact\+\_\+m}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{sigmoid\+\_\+exact\+\_\+m()}{sigmoid\_exact\_m()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+exact\+\_\+m (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps1\+\_\+c,  }\item[{const float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1f8aaad863b8c54e1da63bc6e8973a59}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1f8aaad863b8c54e1da63bc6e8973a59}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!sigmoid\+\_\+m@{sigmoid\+\_\+m}}
+\index{sigmoid\+\_\+m@{sigmoid\+\_\+m}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{sigmoid\+\_\+m()}{sigmoid\_m()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+m (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps1\+\_\+c,  }\item[{const float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa90e134184fd5d4cc0b541e82ab265fc}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa90e134184fd5d4cc0b541e82ab265fc}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!tanh@{tanh}}
+\index{tanh@{tanh}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{tanh()}{tanh()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh (\begin{DoxyParamCaption}\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad249f79929fe978ce97ef9d64b36367b}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad249f79929fe978ce97ef9d64b36367b}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!tanh\+\_\+exact@{tanh\+\_\+exact}}
+\index{tanh\+\_\+exact@{tanh\+\_\+exact}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{tanh\+\_\+exact()}{tanh\_exact()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+exact (\begin{DoxyParamCaption}\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a58cffec73fb2b97544714c6d4a5b3767}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a58cffec73fb2b97544714c6d4a5b3767}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!tanh\+\_\+exact\+\_\+m@{tanh\+\_\+exact\+\_\+m}}
+\index{tanh\+\_\+exact\+\_\+m@{tanh\+\_\+exact\+\_\+m}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{tanh\+\_\+exact\+\_\+m()}{tanh\_exact\_m()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+exact\+\_\+m (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps1\+\_\+c,  }\item[{const float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aae689eb766818fc1c1da8aa2bc923b31}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aae689eb766818fc1c1da8aa2bc923b31}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!tanh\+\_\+m@{tanh\+\_\+m}}
+\index{tanh\+\_\+m@{tanh\+\_\+m}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{tanh\+\_\+m()}{tanh\_m()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+m (\begin{DoxyParamCaption}\item[{const float $\ast$}]{ps1,  }\item[{float $\ast$}]{ps1\+\_\+c,  }\item[{const float $\ast$}]{ps2,  }\item[{float $\ast$}]{pd,  }\item[{int}]{c,  }\item[{const float}]{alpha,  }\item[{const float}]{beta }\end{DoxyParamCaption})}
+
+
+
+\subsection{Variable Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4154e74f0cb2dfec9e757e9f5711852b}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4154e74f0cb2dfec9e757e9f5711852b}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+1@{alpha\+\_\+1}}
+\index{alpha\+\_\+1@{alpha\+\_\+1}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+1}{alpha\_1}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+1 = 4.\+89352455891786e-\/03f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a0935025c2ccffdf953a545ace9496992}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a0935025c2ccffdf953a545ace9496992}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+11@{alpha\+\_\+11}}
+\index{alpha\+\_\+11@{alpha\+\_\+11}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+11}{alpha\_11}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+11 = 2.\+00018790482477e-\/13f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a61d9a3b62bffdbdf5c89fd6d9124e43c}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a61d9a3b62bffdbdf5c89fd6d9124e43c}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+13@{alpha\+\_\+13}}
+\index{alpha\+\_\+13@{alpha\+\_\+13}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+13}{alpha\_13}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+13 = -\/2.\+76076847742355e-\/16f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab9b55fe6a85d7c18fc0feb3025e90a88}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab9b55fe6a85d7c18fc0feb3025e90a88}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+3@{alpha\+\_\+3}}
+\index{alpha\+\_\+3@{alpha\+\_\+3}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+3}{alpha\_3}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+3 = 6.\+37261928875436e-\/04f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac3f505a29030ea4f67231c1c19366d06}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac3f505a29030ea4f67231c1c19366d06}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+5@{alpha\+\_\+5}}
+\index{alpha\+\_\+5@{alpha\+\_\+5}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+5}{alpha\_5}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+5 = 1.\+48572235717979e-\/05f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a052d505a0bb4c2a69037877e0499b965}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a052d505a0bb4c2a69037877e0499b965}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+7@{alpha\+\_\+7}}
+\index{alpha\+\_\+7@{alpha\+\_\+7}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+7}{alpha\_7}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+7 = 5.\+12229709037114e-\/08f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdded6f83ed73bbcd27bd90abab6a202}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdded6f83ed73bbcd27bd90abab6a202}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!alpha\+\_\+9@{alpha\+\_\+9}}
+\index{alpha\+\_\+9@{alpha\+\_\+9}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{alpha\+\_\+9}{alpha\_9}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::alpha\+\_\+9 = -\/8.\+60467152213735e-\/11f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a0ad5d1492edf9db329b66c7e822bffbd}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a0ad5d1492edf9db329b66c7e822bffbd}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!beta\+\_\+0@{beta\+\_\+0}}
+\index{beta\+\_\+0@{beta\+\_\+0}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{beta\+\_\+0}{beta\_0}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::beta\+\_\+0 = 4.\+89352518554385e-\/03f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a92da2bcd7e3c3e092ac24bbd6630f2f2}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a92da2bcd7e3c3e092ac24bbd6630f2f2}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!beta\+\_\+2@{beta\+\_\+2}}
+\index{beta\+\_\+2@{beta\+\_\+2}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{beta\+\_\+2}{beta\_2}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::beta\+\_\+2 = 2.\+26843463243900e-\/03f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a445505f7bbf83b7c36790df4c93edcc4}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a445505f7bbf83b7c36790df4c93edcc4}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!beta\+\_\+4@{beta\+\_\+4}}
+\index{beta\+\_\+4@{beta\+\_\+4}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{beta\+\_\+4}{beta\_4}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::beta\+\_\+4 = 1.\+18534705686654e-\/04f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa4b4fe678d7989e1dfd0ade43ef542fb}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa4b4fe678d7989e1dfd0ade43ef542fb}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!beta\+\_\+6@{beta\+\_\+6}}
+\index{beta\+\_\+6@{beta\+\_\+6}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{beta\+\_\+6}{beta\_6}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::beta\+\_\+6 = 1.\+19825839466702e-\/06f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acec36c5e955a487bbbe5886ad123d4c4}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acec36c5e955a487bbbe5886ad123d4c4}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!sigmoid\+\_\+bound@{sigmoid\+\_\+bound}}
+\index{sigmoid\+\_\+bound@{sigmoid\+\_\+bound}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{sigmoid\+\_\+bound}{sigmoid\_bound}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+bound = 20.\+0f}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06b1c48ef7654bd1fd35a1f9f0d0bee}\label{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06b1c48ef7654bd1fd35a1f9f0d0bee}} 
+\index{onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}!tanh\+\_\+bound@{tanh\+\_\+bound}}
+\index{tanh\+\_\+bound@{tanh\+\_\+bound}!onnxruntime\+::rnn\+::detail\+::deepcpu@{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\subsubsection{\texorpdfstring{tanh\+\_\+bound}{tanh\_bound}}
+{\footnotesize\ttfamily const float onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+bound = 10.\+0f}
+

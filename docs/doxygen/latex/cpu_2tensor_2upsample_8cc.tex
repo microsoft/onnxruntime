@@ -1,0 +1,26 @@
+\hypertarget{cpu_2tensor_2upsample_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/tensor/upsample.cc File Reference}
+\label{cpu_2tensor_2upsample_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/tensor/upsample.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/tensor/upsample.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/upsample.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$math.\+h$>$}\newline
+Include dependency graph for upsample.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a4f1175ca0a938a9ec9581c64b025010a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Upsample, 7, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Upsample$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aaef1386e827b6882e3e9b5d86e210782}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Upsample, 7, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Upsample$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_af713c6d00b41cfb59d618d830aba0dbc}{onnxruntime\+::upsample\+Nearest2x}} (int64\+\_\+t batch\+\_\+size, int64\+\_\+t num\+\_\+channels, int64\+\_\+t input\+\_\+height, int64\+\_\+t input\+\_\+width, const float $\ast$input, float $\ast$output)
+\item 
+{\footnotesize template$<$typename T $>$ }\\Status \mbox{\hyperlink{namespaceonnxruntime_ad5a07366f4beea1cdd18bc29c95aa42c}{onnxruntime\+::upsample\+Nearest}} (const T $\ast$input, T $\ast$output, const Tensor\+Shape \&input\+\_\+shape, const Tensor\+Shape \&output\+\_\+shape, const vector$<$ float $>$ \&scales)
+\item 
+{\footnotesize template$<$typename T $>$ }\\Status \mbox{\hyperlink{namespaceonnxruntime_a176dc40b97b2f47e56a0f727fbc5a849}{onnxruntime\+::upsample\+Liner}} (const T $\ast$input, T $\ast$output, const Tensor\+Shape \&input\+\_\+shape, const Tensor\+Shape \&output\+\_\+shape, const vector$<$ float $>$ \&scales)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a3737421ec6d1ac008d20b89f9812f674}{onnxruntime\+::upsample\+Bilinear}} (int64\+\_\+t batch\+\_\+size, int64\+\_\+t num\+\_\+channels, int64\+\_\+t input\+\_\+height, int64\+\_\+t input\+\_\+width, float height\+\_\+scale, float width\+\_\+scale, const T $\ast$Xdata, T $\ast$Ydata)
+\end{DoxyCompactItemize}

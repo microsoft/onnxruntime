@@ -1,0 +1,72 @@
+\hypertarget{binary__elementwise__ops__impl_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops\+\_\+impl.h File Reference}
+\label{binary__elementwise__ops__impl_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{onnxruntime/onnxruntime/core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+{\ttfamily \#include $<$stdint.\+h$>$}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.\+h\char`\"{}}\newline
+Include dependency graph for binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops__impl_8h_aa5da6c3c8682b495dc35cfe5876fdcff}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS}}()
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops__impl_8h_a0c9ca78ec6ea70dcdd8a7d8a3658de50}{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops__impl_8h_a261a868323d14fc75601b21a35f07255}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}}(name,  expr)~\mbox{\hyperlink{binary__elementwise__ops__impl_8h_a0c9ca78ec6ea70dcdd8a7d8a3658de50}{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name);
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{binary__elementwise__ops__impl_8h_a0c9ca78ec6ea70dcdd8a7d8a3658de50}\label{binary__elementwise__ops__impl_8h_a0c9ca78ec6ea70dcdd8a7d8a3658de50}} 
+\index{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}!B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}!binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}{BINARY\_ELEMENTWISE\_IMPL\_DECLARATION}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{name }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <\textcolor{keyword}{typename} T>                           \(\backslash\)
+  void Impl\_##name(                               \(\backslash\)
+      \textcolor{keywordtype}{size\_t} output\_rank\_or\_simple\_broadcast,     \(\backslash\)
+      \textcolor{keyword}{const} int64\_t* lhs\_padded\_strides,          \(\backslash\)
+      \textcolor{keyword}{const} T* lhs\_data,                          \(\backslash\)
+      \textcolor{keyword}{const} int64\_t* rhs\_padded\_strides,          \(\backslash\)
+      \textcolor{keyword}{const} T* rhs\_data,                          \(\backslash\)
+      \textcolor{keyword}{const} fast\_divmod* fdm\_output\_strides,      \(\backslash\)
+      \textcolor{keyword}{const} fast\_divmod& fdm\_H,                   \(\backslash\)
+      \textcolor{keyword}{const} fast\_divmod& fdm\_C,                   \(\backslash\)
+      T* output\_data,                             \(\backslash\)
+      \textcolor{keywordtype}{size\_t} count)
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops__impl_8h_a261a868323d14fc75601b21a35f07255}\label{binary__elementwise__ops__impl_8h_a261a868323d14fc75601b21a35f07255}} 
+\index{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}!binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}{BINARY\_OP\_NAME\_EXPR}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{binary__elementwise__ops__impl_8h_a0c9ca78ec6ea70dcdd8a7d8a3658de50}{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name);}
+
+\mbox{\Hypertarget{binary__elementwise__ops__impl_8h_aa5da6c3c8682b495dc35cfe5876fdcff}\label{binary__elementwise__ops__impl_8h_aa5da6c3c8682b495dc35cfe5876fdcff}} 
+\index{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS}!binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS}{BINARY\_OPS}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+PS(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops__impl_8h_a261a868323d14fc75601b21a35f07255}{BINARY\_OP\_NAME\_EXPR}}(Add, (a + b))    \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(Sub, (a - b))    \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(Mul, (a * b))    \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(Div, (a / b))    \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(Pow, \_Pow(a, b)) \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(And, (a & b))    \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(Or, (a | b))     \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(Xor, (a ^ b))    \(\backslash\)
+  BINARY\_OP\_NAME\_EXPR(PRelu, (a > (T)0 ? a : a * b))
+\end{DoxyCode}

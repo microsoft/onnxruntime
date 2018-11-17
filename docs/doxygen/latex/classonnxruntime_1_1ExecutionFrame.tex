@@ -1,0 +1,157 @@
+\hypertarget{classonnxruntime_1_1ExecutionFrame}{}\section{onnxruntime\+:\+:Execution\+Frame Class Reference}
+\label{classonnxruntime_1_1ExecutionFrame}\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+
+
+{\ttfamily \#include $<$execution\+\_\+frame.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a178fde48605c7e07f08f39d8aa8148f8}{Execution\+Frame}} (const std\+::unordered\+\_\+map$<$ std\+::string, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&feeds, const std\+::vector$<$ std\+::string $>$ \&output\+\_\+names, const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&fetches, const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_ae3466a98440b293795cb6d3bbab14692}{$\sim$\+Execution\+Frame}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a97f2f3f7e7eade038b84beff760a1c31}{Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer}} (int mlvalue\+\_\+index, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} element\+\_\+type, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&location, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&shape, bool create\+\_\+fence=false)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_ab9258655e4e9c24ccf6db9ba320a668b}{Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer}} (int mlvalue\+\_\+index\+\_\+to\+\_\+allocate, int mlvalue\+\_\+index\+\_\+reuse, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} element\+\_\+type, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&location, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&shape, bool create\+\_\+fence=false)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a6ae368c852cfcf373900369c11b0ce02}{Allocate\+Tensor\+With\+Self\+Own\+Buffer}} (int index, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} element\+\_\+type, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&location, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&shape, bool create\+\_\+fence=false)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a6ab674e3c30323807a8d98ad5a293845}{Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer}} (int offset, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p\+Buffer, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} element\+\_\+type, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&location, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&shape)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \& \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a1c8d41c9c63bd2f2d3756278a9c48804}{Get\+M\+L\+Value}} (int mlvalue\+\_\+index) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \& \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_acf85178795ad4f8928a59d1a9d633969}{Get\+Mutable\+M\+L\+Value}} (int mlvalue\+\_\+index)
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a04a6774b853a170323aa5d44ccd9205d}{Get\+First\+Arg\+Index}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} index) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a90468380156a27d66f6758cb93514e12}{Get\+Node\+Input\+Or\+Output\+M\+L\+Value}} (int index) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a5cba0e853c0cedd6da7c171ebd6321f1}{Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value}} (int index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_ad2a0d87a9a924e9da843f8b3a7c8bfc0}{Get\+Or\+Create\+Node\+Output\+M\+L\+Value}} (int index, const \mbox{\hyperlink{structonnxruntime_1_1MLValueAllocationParameters}{M\+L\+Value\+Allocation\+Parameters}} \&parameters, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$\&p\+\_\+mlvalue)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_ac37c6f260ecd4c0c3231ddd2ce0da5fc}{Get\+Allocator}} (const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_af1bc334c5b33e50593b5b4604724eac6}{Release\+M\+L\+Value}} (int mlvalue\+\_\+idx)
+\item 
+const \+::\mbox{\hyperlink{classonnxruntime_1_1SessionState}{onnxruntime\+::\+Session\+State}} \& \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_ad8c2bf7d42371d918c46390637fa7169}{Session\+State}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_a80bbb5fe5e837a6c10b5fd512f76c504}{Generate\+Patterns}} (\mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $\ast$out) const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame_ad71f0d94ccc79c50cd0110f35fe90c4c}{Has\+Plan}} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a178fde48605c7e07f08f39d8aa8148f8}\label{classonnxruntime_1_1ExecutionFrame_a178fde48605c7e07f08f39d8aa8148f8}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Execution\+Frame@{Execution\+Frame}}
+\index{Execution\+Frame@{Execution\+Frame}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Execution\+Frame()}{ExecutionFrame()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Execution\+Frame\+::\+Execution\+Frame (\begin{DoxyParamCaption}\item[{const std\+::unordered\+\_\+map$<$ std\+::string, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&}]{fetches,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_ae3466a98440b293795cb6d3bbab14692}\label{classonnxruntime_1_1ExecutionFrame_ae3466a98440b293795cb6d3bbab14692}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!````~Execution\+Frame@{$\sim$\+Execution\+Frame}}
+\index{````~Execution\+Frame@{$\sim$\+Execution\+Frame}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{$\sim$\+Execution\+Frame()}{~ExecutionFrame()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Execution\+Frame\+::$\sim$\+Execution\+Frame (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_ab9258655e4e9c24ccf6db9ba320a668b}\label{classonnxruntime_1_1ExecutionFrame_ab9258655e4e9c24ccf6db9ba320a668b}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer@{Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer}}
+\index{Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer@{Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer()}{AllocateMLValueTensorPreAllocateBuffer()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Allocate\+M\+L\+Value\+Tensor\+Pre\+Allocate\+Buffer (\begin{DoxyParamCaption}\item[{int}]{mlvalue\+\_\+index\+\_\+to\+\_\+allocate,  }\item[{int}]{mlvalue\+\_\+index\+\_\+reuse,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{element\+\_\+type,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{location,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{shape,  }\item[{bool}]{create\+\_\+fence = {\ttfamily false} }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a97f2f3f7e7eade038b84beff760a1c31}\label{classonnxruntime_1_1ExecutionFrame_a97f2f3f7e7eade038b84beff760a1c31}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer@{Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer}}
+\index{Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer@{Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer()}{AllocateMLValueTensorSelfOwnBuffer()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Allocate\+M\+L\+Value\+Tensor\+Self\+Own\+Buffer (\begin{DoxyParamCaption}\item[{int}]{mlvalue\+\_\+index,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{element\+\_\+type,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{location,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{shape,  }\item[{bool}]{create\+\_\+fence = {\ttfamily false} }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a6ab674e3c30323807a8d98ad5a293845}\label{classonnxruntime_1_1ExecutionFrame_a6ab674e3c30323807a8d98ad5a293845}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer@{Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer}}
+\index{Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer@{Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer()}{AllocateTensorWithPreAllocateBuffer()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Allocate\+Tensor\+With\+Pre\+Allocate\+Buffer (\begin{DoxyParamCaption}\item[{int}]{offset,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p\+Buffer,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{element\+\_\+type,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{location,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{shape }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a6ae368c852cfcf373900369c11b0ce02}\label{classonnxruntime_1_1ExecutionFrame_a6ae368c852cfcf373900369c11b0ce02}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Allocate\+Tensor\+With\+Self\+Own\+Buffer@{Allocate\+Tensor\+With\+Self\+Own\+Buffer}}
+\index{Allocate\+Tensor\+With\+Self\+Own\+Buffer@{Allocate\+Tensor\+With\+Self\+Own\+Buffer}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Allocate\+Tensor\+With\+Self\+Own\+Buffer()}{AllocateTensorWithSelfOwnBuffer()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Allocate\+Tensor\+With\+Self\+Own\+Buffer (\begin{DoxyParamCaption}\item[{int}]{index,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{element\+\_\+type,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{location,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{shape,  }\item[{bool}]{create\+\_\+fence = {\ttfamily false} }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a80bbb5fe5e837a6c10b5fd512f76c504}\label{classonnxruntime_1_1ExecutionFrame_a80bbb5fe5e837a6c10b5fd512f76c504}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Generate\+Patterns@{Generate\+Patterns}}
+\index{Generate\+Patterns@{Generate\+Patterns}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Generate\+Patterns()}{GeneratePatterns()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Generate\+Patterns (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $\ast$}]{out }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_ac37c6f260ecd4c0c3231ddd2ce0da5fc}\label{classonnxruntime_1_1ExecutionFrame_ac37c6f260ecd4c0c3231ddd2ce0da5fc}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+Allocator@{Get\+Allocator}}
+\index{Get\+Allocator@{Get\+Allocator}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+Allocator()}{GetAllocator()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} onnxruntime\+::\+Execution\+Frame\+::\+Get\+Allocator (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a04a6774b853a170323aa5d44ccd9205d}\label{classonnxruntime_1_1ExecutionFrame_a04a6774b853a170323aa5d44ccd9205d}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+First\+Arg\+Index@{Get\+First\+Arg\+Index}}
+\index{Get\+First\+Arg\+Index@{Get\+First\+Arg\+Index}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+First\+Arg\+Index()}{GetFirstArgIndex()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Execution\+Frame\+::\+Get\+First\+Arg\+Index (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a1c8d41c9c63bd2f2d3756278a9c48804}\label{classonnxruntime_1_1ExecutionFrame_a1c8d41c9c63bd2f2d3756278a9c48804}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+M\+L\+Value@{Get\+M\+L\+Value}}
+\index{Get\+M\+L\+Value@{Get\+M\+L\+Value}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+M\+L\+Value()}{GetMLValue()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}\& onnxruntime\+::\+Execution\+Frame\+::\+Get\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{mlvalue\+\_\+index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_acf85178795ad4f8928a59d1a9d633969}\label{classonnxruntime_1_1ExecutionFrame_acf85178795ad4f8928a59d1a9d633969}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+Mutable\+M\+L\+Value@{Get\+Mutable\+M\+L\+Value}}
+\index{Get\+Mutable\+M\+L\+Value@{Get\+Mutable\+M\+L\+Value}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+Mutable\+M\+L\+Value()}{GetMutableMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}\& onnxruntime\+::\+Execution\+Frame\+::\+Get\+Mutable\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{mlvalue\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a5cba0e853c0cedd6da7c171ebd6321f1}\label{classonnxruntime_1_1ExecutionFrame_a5cba0e853c0cedd6da7c171ebd6321f1}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value@{Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value}}
+\index{Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value@{Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value()}{GetMutableNodeInputOrOutputMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ onnxruntime\+::\+Execution\+Frame\+::\+Get\+Mutable\+Node\+Input\+Or\+Output\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_a90468380156a27d66f6758cb93514e12}\label{classonnxruntime_1_1ExecutionFrame_a90468380156a27d66f6758cb93514e12}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+Node\+Input\+Or\+Output\+M\+L\+Value@{Get\+Node\+Input\+Or\+Output\+M\+L\+Value}}
+\index{Get\+Node\+Input\+Or\+Output\+M\+L\+Value@{Get\+Node\+Input\+Or\+Output\+M\+L\+Value}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+Node\+Input\+Or\+Output\+M\+L\+Value()}{GetNodeInputOrOutputMLValue()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ onnxruntime\+::\+Execution\+Frame\+::\+Get\+Node\+Input\+Or\+Output\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_ad2a0d87a9a924e9da843f8b3a7c8bfc0}\label{classonnxruntime_1_1ExecutionFrame_ad2a0d87a9a924e9da843f8b3a7c8bfc0}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Get\+Or\+Create\+Node\+Output\+M\+L\+Value@{Get\+Or\+Create\+Node\+Output\+M\+L\+Value}}
+\index{Get\+Or\+Create\+Node\+Output\+M\+L\+Value@{Get\+Or\+Create\+Node\+Output\+M\+L\+Value}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Get\+Or\+Create\+Node\+Output\+M\+L\+Value()}{GetOrCreateNodeOutputMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Get\+Or\+Create\+Node\+Output\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1MLValueAllocationParameters}{M\+L\+Value\+Allocation\+Parameters}} \&}]{parameters,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$\&}]{p\+\_\+mlvalue }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_ad71f0d94ccc79c50cd0110f35fe90c4c}\label{classonnxruntime_1_1ExecutionFrame_ad71f0d94ccc79c50cd0110f35fe90c4c}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Has\+Plan@{Has\+Plan}}
+\index{Has\+Plan@{Has\+Plan}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Has\+Plan()}{HasPlan()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Execution\+Frame\+::\+Has\+Plan (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_af1bc334c5b33e50593b5b4604724eac6}\label{classonnxruntime_1_1ExecutionFrame_af1bc334c5b33e50593b5b4604724eac6}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Release\+M\+L\+Value@{Release\+M\+L\+Value}}
+\index{Release\+M\+L\+Value@{Release\+M\+L\+Value}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Release\+M\+L\+Value()}{ReleaseMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Execution\+Frame\+::\+Release\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{mlvalue\+\_\+idx }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ExecutionFrame_ad8c2bf7d42371d918c46390637fa7169}\label{classonnxruntime_1_1ExecutionFrame_ad8c2bf7d42371d918c46390637fa7169}} 
+\index{onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}!Session\+State@{Session\+State}}
+\index{Session\+State@{Session\+State}!onnxruntime\+::\+Execution\+Frame@{onnxruntime\+::\+Execution\+Frame}}
+\subsubsection{\texorpdfstring{Session\+State()}{SessionState()}}
+{\footnotesize\ttfamily const \+::\mbox{\hyperlink{classonnxruntime_1_1SessionState}{onnxruntime\+::\+Session\+State}}\& onnxruntime\+::\+Execution\+Frame\+::\+Session\+State (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{execution__frame_8h}{execution\+\_\+frame.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{execution__frame_8cc}{execution\+\_\+frame.\+cc}}\end{DoxyCompactItemize}

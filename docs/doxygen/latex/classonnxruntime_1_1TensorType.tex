@@ -1,0 +1,64 @@
+\hypertarget{classonnxruntime_1_1TensorType}{}\section{onnxruntime\+:\+:Tensor\+Type$<$ elemT $>$ Class Template Reference}
+\label{classonnxruntime_1_1TensorType}\index{onnxruntime\+::\+Tensor\+Type$<$ elem\+T $>$@{onnxruntime\+::\+Tensor\+Type$<$ elem\+T $>$}}
+
+
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} type. This type does not have a C++ type associated with it at registration time except the element type. One of the types mentioned above at Is\+Tensor\+Contained\+Type$<$$>$ list is acceptable.  
+
+
+
+
+{\ttfamily \#include $<$data\+\_\+types.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Tensor\+Type$<$ elemT $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Tensor\+Type$<$ elemT $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1TensorType_a63ac5e9ac296db98f04899fde5c2221e}{Get\+Element\+Type}} () const override
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1TensorType_a4c00722e54c14583892b2aa75e4568ce}{Type}} ()
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Detailed Description}
+\subsubsection*{template$<$typename elemT$>$\newline
+class onnxruntime\+::\+Tensor\+Type$<$ elem\+T $>$}
+
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} type. This type does not have a C++ type associated with it at registration time except the element type. One of the types mentioned above at Is\+Tensor\+Contained\+Type$<$$>$ list is acceptable. 
+
+Usage\+: O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R(\+E\+L\+E\+M\+E\+N\+T\+\_\+\+T\+Y\+P\+E) Currently all of the Tensors irrespective of the dimensions are mapped to Tensor$<$type$>$ type. \mbox{\hyperlink{classonnxruntime_1_1TensorTypeBase_a24c6755da5656503337ec14e9a4ebbf8}{Is\+Compatible()}} currently ignores shape. 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TensorType_a63ac5e9ac296db98f04899fde5c2221e}\label{classonnxruntime_1_1TensorType_a63ac5e9ac296db98f04899fde5c2221e}} 
+\index{onnxruntime\+::\+Tensor\+Type@{onnxruntime\+::\+Tensor\+Type}!Get\+Element\+Type@{Get\+Element\+Type}}
+\index{Get\+Element\+Type@{Get\+Element\+Type}!onnxruntime\+::\+Tensor\+Type@{onnxruntime\+::\+Tensor\+Type}}
+\subsubsection{\texorpdfstring{Get\+Element\+Type()}{GetElementType()}}
+{\footnotesize\ttfamily template$<$typename elemT $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1TensorType}{onnxruntime\+::\+Tensor\+Type}}$<$ elemT $>$\+::Get\+Element\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Tensors only can contain basic data types that have been previously registered with O\+N\+N\+X\+Runtime 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1TensorTypeBase_a4f3b2fcd0cd32a16607ef39bae0111af}{onnxruntime\+::\+Tensor\+Type\+Base}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorType_a4c00722e54c14583892b2aa75e4568ce}\label{classonnxruntime_1_1TensorType_a4c00722e54c14583892b2aa75e4568ce}} 
+\index{onnxruntime\+::\+Tensor\+Type@{onnxruntime\+::\+Tensor\+Type}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+Tensor\+Type@{onnxruntime\+::\+Tensor\+Type}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily template$<$typename elemT $>$ \\
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1TensorType}{onnxruntime\+::\+Tensor\+Type}}$<$ elemT $>$\+::Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{data__types_8h}{data\+\_\+types.\+h}}\end{DoxyCompactItemize}

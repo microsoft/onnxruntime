@@ -1,0 +1,106 @@
+\hypertarget{classonnxruntime_1_1PadBase}{}\section{onnxruntime\+:\+:Pad\+Base Class Reference}
+\label{classonnxruntime_1_1PadBase}\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+
+
+{\ttfamily \#include $<$pad.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Pad\+Base\+:
+% FIG 0
+\subsection*{Protected Types}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cb}{Mode}} \+: int \{ \mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbacb17869fe51048b5a5c4c6106551a255}{Mode\+::\+Constant}} = 0, 
+\mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cba74de3e45e4491e956e8dc18d841d9b00}{Mode\+::\+Reflect}}, 
+\mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbae4a297a0f76119a442c2595ac040673e}{Mode\+::\+Edge}}
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1PadBase_a7a994ce532bb95fed45b722277ddff59}{Pad\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1PadBase_a784dbc912e637a4c071c3f96c4254aa4}{$\sim$\+Pad\+Base}} ()
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cb}{Mode}} \mbox{\hyperlink{classonnxruntime_1_1PadBase_aeae03e3dbb204b98dfe81c4a636fe92d}{mode\+\_\+}} \{\mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbacb17869fe51048b5a5c4c6106551a255}{Mode\+::\+Constant}}\}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1PadBase_a6006078a8a2e5bb6eff4fc9343e4e9cf}{pads\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1PadBase_ab3a9aa2183eba840c2b0138623bbf84b}{slices\+\_\+}}
+\item 
+const float \mbox{\hyperlink{classonnxruntime_1_1PadBase_aa286f7814c0b9b8185adca26b40553af}{value\+\_\+}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Enumeration Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cb}\label{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cb}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!Mode@{Mode}}
+\index{Mode@{Mode}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{Mode}{Mode}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cb}{onnxruntime\+::\+Pad\+Base\+::\+Mode}} \+: int\hspace{0.3cm}{\ttfamily [strong]}, {\ttfamily [protected]}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Constant@{Constant}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!Constant@{Constant}}}\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbacb17869fe51048b5a5c4c6106551a255}\label{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbacb17869fe51048b5a5c4c6106551a255}} 
+Constant&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Reflect@{Reflect}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!Reflect@{Reflect}}}\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cba74de3e45e4491e956e8dc18d841d9b00}\label{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cba74de3e45e4491e956e8dc18d841d9b00}} 
+Reflect&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Edge@{Edge}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!Edge@{Edge}}}\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbae4a297a0f76119a442c2595ac040673e}\label{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbae4a297a0f76119a442c2595ac040673e}} 
+Edge&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a7a994ce532bb95fed45b722277ddff59}\label{classonnxruntime_1_1PadBase_a7a994ce532bb95fed45b722277ddff59}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!Pad\+Base@{Pad\+Base}}
+\index{Pad\+Base@{Pad\+Base}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{Pad\+Base()}{PadBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Pad\+Base\+::\+Pad\+Base (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a784dbc912e637a4c071c3f96c4254aa4}\label{classonnxruntime_1_1PadBase_a784dbc912e637a4c071c3f96c4254aa4}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!````~Pad\+Base@{$\sim$\+Pad\+Base}}
+\index{````~Pad\+Base@{$\sim$\+Pad\+Base}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{$\sim$\+Pad\+Base()}{~PadBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Pad\+Base\+::$\sim$\+Pad\+Base (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_aeae03e3dbb204b98dfe81c4a636fe92d}\label{classonnxruntime_1_1PadBase_aeae03e3dbb204b98dfe81c4a636fe92d}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!mode\+\_\+@{mode\+\_\+}}
+\index{mode\+\_\+@{mode\+\_\+}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{mode\+\_\+}{mode\_}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cb}{Mode}} onnxruntime\+::\+Pad\+Base\+::mode\+\_\+ \{\mbox{\hyperlink{classonnxruntime_1_1PadBase_a9dccdf2fa457b3cd7322d0e79a2e53cbacb17869fe51048b5a5c4c6106551a255}{Mode\+::\+Constant}}\}\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_a6006078a8a2e5bb6eff4fc9343e4e9cf}\label{classonnxruntime_1_1PadBase_a6006078a8a2e5bb6eff4fc9343e4e9cf}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!pads\+\_\+@{pads\+\_\+}}
+\index{pads\+\_\+@{pads\+\_\+}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{pads\+\_\+}{pads\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Pad\+Base\+::pads\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_ab3a9aa2183eba840c2b0138623bbf84b}\label{classonnxruntime_1_1PadBase_ab3a9aa2183eba840c2b0138623bbf84b}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!slices\+\_\+@{slices\+\_\+}}
+\index{slices\+\_\+@{slices\+\_\+}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{slices\+\_\+}{slices\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Pad\+Base\+::slices\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PadBase_aa286f7814c0b9b8185adca26b40553af}\label{classonnxruntime_1_1PadBase_aa286f7814c0b9b8185adca26b40553af}} 
+\index{onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}!value\+\_\+@{value\+\_\+}}
+\index{value\+\_\+@{value\+\_\+}!onnxruntime\+::\+Pad\+Base@{onnxruntime\+::\+Pad\+Base}}
+\subsubsection{\texorpdfstring{value\+\_\+}{value\_}}
+{\footnotesize\ttfamily const float onnxruntime\+::\+Pad\+Base\+::value\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/tensor/\mbox{\hyperlink{cpu_2tensor_2pad_8h}{pad.\+h}}\end{DoxyCompactItemize}

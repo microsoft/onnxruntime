@@ -1,0 +1,29 @@
+\hypertarget{lp__norm_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/nn/lp\+\_\+norm.cc File Reference}
+\label{lp__norm_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/nn/lp\+\_\+norm.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/nn/lp\+\_\+norm.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/nn/lp\+\_\+norm.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+Include dependency graph for lp\+\_\+norm.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_aa66c7d9fd2b2c4d713447da3d8f7aa8e}{onnxruntime\+::\+Inner\+Stride}} = Eigen\+::\+Inner\+Stride$<$ Eigen\+::\+Dynamic $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a04292808f038fc6b369326fecef285fd}{onnxruntime\+::\+Strided\+Vec}} = Eigen\+::\+Map$<$ Eigen\+::\+Matrix$<$ float, 1, Eigen\+::\+Dynamic $>$, 0, Inner\+Stride $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a8b34a40056623cbec4789c53d1381d82}{onnxruntime\+::\+Const\+Strided\+Vec}} = Eigen\+::\+Map$<$ const Eigen\+::\+Matrix$<$ float, 1, Eigen\+::\+Dynamic $>$, 0, Inner\+Stride $>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_adc52e13ce36f1d03fb400c0f7489dbe8}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Lp\+Normalization, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Lp\+Norm$<$ float $>$)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_ae496da6e75c2924416f85d7eb41da7c0}{onnxruntime\+::\+Do\+Normalize\+P2}} (const float $\ast$x\+Data, float $\ast$y\+Data, const int64\+\_\+t m, const int64\+\_\+t n, const int64\+\_\+t sf)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_af67704c97c039836aea6f28df46fc23f}{onnxruntime\+::\+Do\+Normalize\+P1}} (const float $\ast$x\+Data, float $\ast$y\+Data, const int64\+\_\+t m, const int64\+\_\+t n, const int64\+\_\+t sf)
+\end{DoxyCompactItemize}

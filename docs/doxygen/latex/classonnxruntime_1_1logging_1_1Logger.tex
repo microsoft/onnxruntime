@@ -1,0 +1,83 @@
+\hypertarget{classonnxruntime_1_1logging_1_1Logger}{}\section{onnxruntime\+:\+:logging\+:\+:Logger Class Reference}
+\label{classonnxruntime_1_1logging_1_1Logger}\index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}
+
+
+{\ttfamily \#include $<$logging.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_a93669a2737346f2ee71b1b91eebdf453}{Logger}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} \&logging\+Manager, std\+::string id, \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}} severity, bool filter\+\_\+user\+\_\+data, int vlog\+\_\+level)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_ac42898a3e3c2623280b244180f28490d}{Output\+Is\+Enabled}} (\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}} severity, \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{Data\+Type}} data\+\_\+type) const noexcept
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_af2e3439096494a094a9780eb2e238c95}{V\+L\+O\+G\+Max\+Level}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger_a72e6467ee8cede10dbc9d2aea649f8fe}{Log}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} provides a per-\/instance log id. Everything else is passed back up to the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Logger_a93669a2737346f2ee71b1b91eebdf453}\label{classonnxruntime_1_1logging_1_1Logger_a93669a2737346f2ee71b1b91eebdf453}} 
+\index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}!Logger@{Logger}}
+\index{Logger@{Logger}!onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}
+\subsubsection{\texorpdfstring{Logger()}{Logger()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+Logger\+::\+Logger (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} \&}]{logging\+Manager,  }\item[{std\+::string}]{id,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}}}]{severity,  }\item[{bool}]{filter\+\_\+user\+\_\+data,  }\item[{int}]{vlog\+\_\+level }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} class. 
+\begin{DoxyParams}{Parameters}
+{\em logging\+Manager} & The logging manager. \\
+\hline
+{\em id} & The identifier for messages coming from this \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}}. \\
+\hline
+{\em severity} & Minimum severity for messages to be created and logged. \\
+\hline
+{\em filter\+\_\+user\+\_\+data} & Should U\+S\+ER data be filtered from output. \\
+\hline
+{\em vlog\+\_\+level} & Minimum level for V\+L\+OG messages to be created. Note that a severity of k\+V\+E\+R\+B\+O\+SE must be provided for V\+L\+OG messages to be logged. \\
+\hline
+\end{DoxyParams}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Logger_a72e6467ee8cede10dbc9d2aea649f8fe}\label{classonnxruntime_1_1logging_1_1Logger_a72e6467ee8cede10dbc9d2aea649f8fe}} 
+\index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}!Log@{Log}}
+\index{Log@{Log}!onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}
+\subsubsection{\texorpdfstring{Log()}{Log()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+Logger\+::\+Log (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&}]{message }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Logs the captured message. 
+\begin{DoxyParams}{Parameters}
+{\em message} & The log message. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Logger_ac42898a3e3c2623280b244180f28490d}\label{classonnxruntime_1_1logging_1_1Logger_ac42898a3e3c2623280b244180f28490d}} 
+\index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}!Output\+Is\+Enabled@{Output\+Is\+Enabled}}
+\index{Output\+Is\+Enabled@{Output\+Is\+Enabled}!onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}
+\subsubsection{\texorpdfstring{Output\+Is\+Enabled()}{OutputIsEnabled()}}
+{\footnotesize\ttfamily bool onnxruntime\+::logging\+::\+Logger\+::\+Output\+Is\+Enabled (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}}}]{severity,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{Data\+Type}}}]{data\+\_\+type }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+Check if output is enabled for the provided Log\+Severity and Data\+Type values. 
+\begin{DoxyParams}{Parameters}
+{\em severity} & The severity. \\
+\hline
+{\em data\+\_\+type} & Type of the data. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+True if a message with these values will be logged. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Logger_af2e3439096494a094a9780eb2e238c95}\label{classonnxruntime_1_1logging_1_1Logger_af2e3439096494a094a9780eb2e238c95}} 
+\index{onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}!V\+L\+O\+G\+Max\+Level@{V\+L\+O\+G\+Max\+Level}}
+\index{V\+L\+O\+G\+Max\+Level@{V\+L\+O\+G\+Max\+Level}!onnxruntime\+::logging\+::\+Logger@{onnxruntime\+::logging\+::\+Logger}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+Max\+Level()}{VLOGMaxLevel()}}
+{\footnotesize\ttfamily int onnxruntime\+::logging\+::\+Logger\+::\+V\+L\+O\+G\+Max\+Level (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+Return the maximum V\+L\+OG level allowed. 
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/logging/\mbox{\hyperlink{logging_8h}{logging.\+h}}\end{DoxyCompactItemize}

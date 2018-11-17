@@ -1,0 +1,58 @@
+\hypertarget{tensorprotoutils_8cc}{}\section{onnxruntime/onnxruntime/core/framework/tensorprotoutils.cc File Reference}
+\label{tensorprotoutils_8cc}\index{onnxruntime/onnxruntime/core/framework/tensorprotoutils.\+cc@{onnxruntime/onnxruntime/core/framework/tensorprotoutils.\+cc}}
+{\ttfamily \#include \char`\"{}core/framework/tensorprotoutils.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$memory$>$}\newline
+{\ttfamily \#include \char`\"{}core/graph/onnx\+\_\+protobuf.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensorutils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensor.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/ml\+\_\+value\+\_\+patterns\+\_\+planner.\+h\char`\"{}}\newline
+Include dependency graph for tensorprotoutils.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1utils}{onnxruntime\+::utils}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{tensorprotoutils_8cc_a3849c3f268553002295bf080c2200ddc}{C\+A\+S\+E\+\_\+\+P\+R\+O\+TO}}(X,  Y)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a058a261f33e28422b7563ae84f71f55b}{onnxruntime\+::utils\+::\+Get\+Tensor\+Shape\+From\+Tensor\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto)
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1utils_aa06bea787e7bab1d7a773107fa1f8862}{onnxruntime\+::utils\+::\+Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Shape\+Proto \&tensor\+\_\+shape\+\_\+proto)
+\item 
+{\footnotesize template$<$typename T $>$ }\\common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a4b262f6da83860e920ce90279a3fb400}{onnxruntime\+::utils\+::\+Get\+Tensor\+By\+Type\+From\+Tensor\+Proto}} (const Tensor\+Proto \&tensor\+\_\+proto, const Tensor\+Shape \&tensor\+\_\+shape, std\+::unique\+\_\+ptr$<$ Tensor $>$ $\ast$p\+\_\+tensor, Allocator\+Ptr alloc, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+{\footnotesize template$<$$>$ }\\common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a732845e9a1ac398d4fd4d8968e3ebc1e}{onnxruntime\+::utils\+::\+Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$}} (const Tensor\+Proto \&tensor\+\_\+proto, const Tensor\+Shape \&tensor\+\_\+shape, std\+::unique\+\_\+ptr$<$ Tensor $>$ $\ast$p\+\_\+tensor, Allocator\+Ptr alloc, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+{\footnotesize template$<$$>$ }\\common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a969c0e118d0d6c6ef5d023abadaad937}{onnxruntime\+::utils\+::\+Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$}} (const Tensor\+Proto \&tensor\+\_\+proto, const Tensor\+Shape \&tensor\+\_\+shape, std\+::unique\+\_\+ptr$<$ Tensor $>$ $\ast$p\+\_\+tensor, Allocator\+Ptr alloc, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_af3f247a91aa48e3f4c056314b0c69501}{onnxruntime\+::utils\+::\+Tensor\+Proto\+To\+M\+L\+Value}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&input, Allocator\+Ptr allocator, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size, M\+L\+Value \&value)
+\item 
+common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a37c9ecf5c17ff148a413861223e1b450}{onnxruntime\+::utils\+::\+Get\+Tensor\+From\+Tensor\+Proto}} (const Tensor\+Proto \&tensor\+\_\+proto, std\+::unique\+\_\+ptr$<$ Tensor $>$ $\ast$p\+\_\+tensor, Allocator\+Ptr allocator, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+Tensor\+Proto\+::\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a58bc30bc1665255748d3e98960193ab2}{onnxruntime\+::utils\+::\+Get\+Tensor\+Proto\+Type}} (const Tensor \&tensor)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{tensorprotoutils_8cc_a3849c3f268553002295bf080c2200ddc}\label{tensorprotoutils_8cc_a3849c3f268553002295bf080c2200ddc}} 
+\index{tensorprotoutils.\+cc@{tensorprotoutils.\+cc}!C\+A\+S\+E\+\_\+\+P\+R\+O\+TO@{C\+A\+S\+E\+\_\+\+P\+R\+O\+TO}}
+\index{C\+A\+S\+E\+\_\+\+P\+R\+O\+TO@{C\+A\+S\+E\+\_\+\+P\+R\+O\+TO}!tensorprotoutils.\+cc@{tensorprotoutils.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+S\+E\+\_\+\+P\+R\+O\+TO}{CASE\_PROTO}}
+{\footnotesize\ttfamily \#define C\+A\+S\+E\+\_\+\+P\+R\+O\+TO(\begin{DoxyParamCaption}\item[{}]{X,  }\item[{}]{Y }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{case} ONNX\_NAMESPACE::TensorProto\_DataType::TensorProto\_DataType\_##X: \(\backslash\)
+    return GetTensorByTypeFromTensorProto<Y>(tensor\_proto, tensor\_shape, p\_tensor, allocator, preallocated,
+       preallocated\_size);
+\end{DoxyCode}

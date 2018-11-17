@@ -1,0 +1,93 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise}{}\section{onnxruntime\+:\+:cuda\+:\+:Binary\+Elementwise$<$ Broadcast\+Trait $>$ Class Template Reference}
+\label{classonnxruntime_1_1cuda_1_1BinaryElementwise}\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise$<$ Broadcast\+Trait $>$@{onnxruntime\+::cuda\+::\+Binary\+Elementwise$<$ Broadcast\+Trait $>$}}
+
+
+{\ttfamily \#include $<$binary\+\_\+elementwise\+\_\+ops.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:cuda\+:\+:Binary\+Elementwise$<$ Broadcast\+Trait $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Binary\+Elementwise$<$ Broadcast\+Trait $>$\+:
+% FIG 1
+\subsection*{Protected Types}
+\begin{DoxyCompactItemize}
+\item 
+typedef Broadcast\+Trait \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a6b23a26618db540bab3ea9073b798a56}{broadcast\+\_\+type}}
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a5e501927ce96138fa54117f613657a7a}{Binary\+Elementwise}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a63654a27650f1b9d96d6b97d40c8ba54}{Compute\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$) const override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_ab910a5bedfd2fe53ef82d618bf76c6bb}{Prepare}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context, int device\+\_\+id, \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{Binary\+Elementwise\+Preparation}} $\ast$p) const
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a3783aa6f761a634f68f8601b7ce1116d}{Prepare}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context, int, \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{Binary\+Elementwise\+Preparation}} $\ast$p) const
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_ab158e192cd4f7e19992ecbd21be5ecad}{Prepare}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context, int device\+\_\+id, \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{Binary\+Elementwise\+Preparation}} $\ast$p) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise_a6b23a26618db540bab3ea9073b798a56}\label{classonnxruntime_1_1cuda_1_1BinaryElementwise_a6b23a26618db540bab3ea9073b798a56}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}!broadcast\+\_\+type@{broadcast\+\_\+type}}
+\index{broadcast\+\_\+type@{broadcast\+\_\+type}!onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}
+\subsubsection{\texorpdfstring{broadcast\+\_\+type}{broadcast\_type}}
+{\footnotesize\ttfamily template$<$typename Broadcast\+Trait$>$ \\
+typedef Broadcast\+Trait \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}$<$ Broadcast\+Trait $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a6b23a26618db540bab3ea9073b798a56}{broadcast\+\_\+type}}\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise_a5e501927ce96138fa54117f613657a7a}\label{classonnxruntime_1_1cuda_1_1BinaryElementwise_a5e501927ce96138fa54117f613657a7a}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}!Binary\+Elementwise@{Binary\+Elementwise}}
+\index{Binary\+Elementwise@{Binary\+Elementwise}!onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}
+\subsubsection{\texorpdfstring{Binary\+Elementwise()}{BinaryElementwise()}}
+{\footnotesize\ttfamily template$<$typename Broadcast\+Trait$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}$<$ Broadcast\+Trait $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{Binary\+Elementwise}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise_a63654a27650f1b9d96d6b97d40c8ba54}\label{classonnxruntime_1_1cuda_1_1BinaryElementwise_a63654a27650f1b9d96d6b97d40c8ba54}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}!Compute\+Internal@{Compute\+Internal}}
+\index{Compute\+Internal@{Compute\+Internal}!onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}
+\subsubsection{\texorpdfstring{Compute\+Internal()}{ComputeInternal()}}
+{\footnotesize\ttfamily template$<$typename Broadcast\+Trait$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}$<$ Broadcast\+Trait $>$\+::Compute\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [protected]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_aca7af04ae448017d6023d30bba231ebb}{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise_a3783aa6f761a634f68f8601b7ce1116d}\label{classonnxruntime_1_1cuda_1_1BinaryElementwise_a3783aa6f761a634f68f8601b7ce1116d}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}!Prepare@{Prepare}}
+\index{Prepare@{Prepare}!onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}
+\subsubsection{\texorpdfstring{Prepare()}{Prepare()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}$<$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ShouldNotBroadcast}{Should\+Not\+Broadcast}} $>$\+::Prepare (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context,  }\item[{int}]{,  }\item[{\mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{Binary\+Elementwise\+Preparation}} $\ast$}]{p }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise_ab158e192cd4f7e19992ecbd21be5ecad}\label{classonnxruntime_1_1cuda_1_1BinaryElementwise_ab158e192cd4f7e19992ecbd21be5ecad}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}!Prepare@{Prepare}}
+\index{Prepare@{Prepare}!onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}
+\subsubsection{\texorpdfstring{Prepare()}{Prepare()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}$<$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ShouldBroadcast}{Should\+Broadcast}} $>$\+::Prepare (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context,  }\item[{int}]{device\+\_\+id,  }\item[{\mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{Binary\+Elementwise\+Preparation}} $\ast$}]{p }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1BinaryElementwise_ab910a5bedfd2fe53ef82d618bf76c6bb}\label{classonnxruntime_1_1cuda_1_1BinaryElementwise_ab910a5bedfd2fe53ef82d618bf76c6bb}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}!Prepare@{Prepare}}
+\index{Prepare@{Prepare}!onnxruntime\+::cuda\+::\+Binary\+Elementwise@{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}
+\subsubsection{\texorpdfstring{Prepare()}{Prepare()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily template$<$typename Broadcast\+Trait$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise}{onnxruntime\+::cuda\+::\+Binary\+Elementwise}}$<$ Broadcast\+Trait $>$\+::Prepare (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context,  }\item[{int}]{device\+\_\+id,  }\item[{\mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{Binary\+Elementwise\+Preparation}} $\ast$}]{p }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/math/\mbox{\hyperlink{binary__elementwise__ops_8h}{binary\+\_\+elementwise\+\_\+ops.\+h}}\end{DoxyCompactItemize}

@@ -1,0 +1,92 @@
+\hypertarget{cuda__common_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+common.h File Reference}
+\label{cuda__common_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+common.\+h@{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+common.\+h}}
+{\ttfamily \#include \char`\"{}cuda\+\_\+pch.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}shared\+\_\+inc/cuda\+\_\+call.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}cuda\+\_\+execution\+\_\+provider.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}shared\+\_\+inc/fast\+\_\+divmod.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}cuda\+\_\+fwd.\+h\char`\"{}}\newline
+Include dependency graph for cuda\+\_\+common.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ToCudaType}{onnxruntime\+::cuda\+::\+To\+Cuda\+Type$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ToCudaType_3_01MLFloat16_01_4}{onnxruntime\+::cuda\+::\+To\+Cuda\+Type$<$ M\+L\+Float16 $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda__common_8h_a2f98b9672b0096eec8a406685020d263}{C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(expr)~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a95dc0691407fb1c27b700eade028c555}{C\+U\+D\+A\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))
+\item 
+\#define \mbox{\hyperlink{cuda__common_8h_aac7cb576ca39c41d99681f56a001aa47}{C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(expr)~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a86892a59abdc71aca5e0bfc999fa3028}{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))
+\item 
+\#define \mbox{\hyperlink{cuda__common_8h_a3eb4bf73a70997b55f6e01ed31fc102f}{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(expr)~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a795519b1d64d9d97d2d2e1d4c28ba9b5}{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))
+\item 
+\#define \mbox{\hyperlink{cuda__common_8h_a8513bf1154ca22bb933773032c237277}{C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(expr)~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a5908b26d47a6f3bd80dd8222f61680b3}{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))
+\item 
+\#define \mbox{\hyperlink{cuda__common_8h_a3b0f79362e24a45066034bc75601862e}{C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(expr)~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a1f7d4124eb0e6ac96ba17e1cf3a0e684}{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))
+\item 
+\#define \mbox{\hyperlink{cuda__common_8h_a82089691d67811bf6a5a6875a6675601}{C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(expr,  m)~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_ae9f1eab56d5075064dd48d4a804c9c88}{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2}}(expr, m) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_ad1695824538013a3c72989f1a78ce5ec}{onnxruntime\+::cuda\+::\+Calculate\+Fdm\+Strides}} (gsl\+::span$<$ fast\+\_\+divmod $>$ p, const std\+::vector$<$ int64\+\_\+t $>$ \&dims)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda__common_8h_aac7cb576ca39c41d99681f56a001aa47}\label{cuda__common_8h_aac7cb576ca39c41d99681f56a001aa47}} 
+\index{cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}!C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}
+\index{C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}!cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}{CUBLAS\_RETURN\_IF\_ERROR}}
+{\footnotesize\ttfamily \#define C\+U\+B\+L\+A\+S\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a86892a59abdc71aca5e0bfc999fa3028}{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))}
+
+\mbox{\Hypertarget{cuda__common_8h_a2f98b9672b0096eec8a406685020d263}\label{cuda__common_8h_a2f98b9672b0096eec8a406685020d263}} 
+\index{cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}!C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}
+\index{C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}!cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}{CUDA\_RETURN\_IF\_ERROR}}
+{\footnotesize\ttfamily \#define C\+U\+D\+A\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a95dc0691407fb1c27b700eade028c555}{C\+U\+D\+A\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))}
+
+\mbox{\Hypertarget{cuda__common_8h_a82089691d67811bf6a5a6875a6675601}\label{cuda__common_8h_a82089691d67811bf6a5a6875a6675601}} 
+\index{cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}!C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}
+\index{C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}!cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}{CUDNN2\_RETURN\_IF\_ERROR}}
+{\footnotesize\ttfamily \#define C\+U\+D\+N\+N2\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr,  }\item[{}]{m }\end{DoxyParamCaption})~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_ae9f1eab56d5075064dd48d4a804c9c88}{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2}}(expr, m) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))}
+
+\mbox{\Hypertarget{cuda__common_8h_a3b0f79362e24a45066034bc75601862e}\label{cuda__common_8h_a3b0f79362e24a45066034bc75601862e}} 
+\index{cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}!C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}
+\index{C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}!cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}{CUDNN\_RETURN\_IF\_ERROR}}
+{\footnotesize\ttfamily \#define C\+U\+D\+N\+N\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a1f7d4124eb0e6ac96ba17e1cf3a0e684}{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))}
+
+\mbox{\Hypertarget{cuda__common_8h_a8513bf1154ca22bb933773032c237277}\label{cuda__common_8h_a8513bf1154ca22bb933773032c237277}} 
+\index{cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}!C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}
+\index{C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}!cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}{CURAND\_RETURN\_IF\_ERROR}}
+{\footnotesize\ttfamily \#define C\+U\+R\+A\+N\+D\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a5908b26d47a6f3bd80dd8222f61680b3}{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))}
+
+\mbox{\Hypertarget{cuda__common_8h_a3eb4bf73a70997b55f6e01ed31fc102f}\label{cuda__common_8h_a3eb4bf73a70997b55f6e01ed31fc102f}} 
+\index{cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}!C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}
+\index{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR@{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}!cuda\+\_\+common.\+h@{cuda\+\_\+common.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}{CUSPARSE\_RETURN\_IF\_ERROR}}
+{\footnotesize\ttfamily \#define C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a4488572bf87ef9ee844a9aafbc35d8e4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+T\+U\+R\+N\+\_\+\+I\+F\+\_\+\+E\+R\+R\+OR}}(\mbox{\hyperlink{cuda__call_8h_a795519b1d64d9d97d2d2e1d4c28ba9b5}{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL}}(expr) ? common\+::\+Status\+::\+OK() \+: common\+::\+Status(common\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME, common\+::\+F\+A\+IL))}
+

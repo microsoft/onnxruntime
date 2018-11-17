@@ -1,0 +1,166 @@
+\hypertarget{mkldnn_2nn_2pool_8cc}{}\section{onnxruntime/onnxruntime/core/providers/mkldnn/nn/pool.cc File Reference}
+\label{mkldnn_2nn_2pool_8cc}\index{onnxruntime/onnxruntime/core/providers/mkldnn/nn/pool.\+cc@{onnxruntime/onnxruntime/core/providers/mkldnn/nn/pool.\+cc}}
+{\ttfamily \#include \char`\"{}core/common/cpuid\+\_\+info.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/mkldnn/mkldnn\+\_\+common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/mkldnn/nn/pool.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/mkldnn/mkldnn\+\_\+fwd.\+h\char`\"{}}\newline
+Include dependency graph for pool.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn}{onnxruntime\+::mkl\+\_\+dnn}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a522088d08e6233cc7eec0d2de2d12440}{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}}(\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}},  data\+\_\+type,  pool\+\_\+type,  since\+\_\+version,  end\+\_\+version)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a522088d08e6233cc7eec0d2de2d12440}\label{mkldnn_2nn_2pool_8cc_a522088d08e6233cc7eec0d2de2d12440}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL@{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}}
+\index{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL@{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}{POOLING\_KERNEL}}
+{\footnotesize\ttfamily \#define P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}},  }\item[{}]{data\+\_\+type,  }\item[{}]{pool\+\_\+type,  }\item[{}]{since\+\_\+version,  }\item[{}]{end\+\_\+version }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_EX}}(                            
+                        \(\backslash\)
+      \mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\_name}},                                                                          \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                                      \(\backslash\)
+      since\_version,                                                                    \(\backslash\)
+      end\_version,                                                                      \(\backslash\)
+      data\_type,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_abd1901c951bcb5845eeeaff9dd75ce97}{kMklDnnExecutionProvider}},                                                    
+           \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<data\_type>()), \(\backslash\)
+      Pool<data\_type, pool\_type>);
+\end{DoxyCode}
+
+
+\subsection{Variable Documentation}
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a8774e1891f04b685b919bdbbb4c5ddb4}\label{mkldnn_2nn_2pool_8cc_a8774e1891f04b685b919bdbbb4c5ddb4}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!count\+\_\+include\+\_\+pad@{count\+\_\+include\+\_\+pad}}
+\index{count\+\_\+include\+\_\+pad@{count\+\_\+include\+\_\+pad}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{count\+\_\+include\+\_\+pad}{count\_include\_pad}}
+{\footnotesize\ttfamily bool count\+\_\+include\+\_\+pad}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_affbe3a8ff496dc3413d4c11e7759b962}\label{mkldnn_2nn_2pool_8cc_affbe3a8ff496dc3413d4c11e7759b962}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!dst\+\_\+dims@{dst\+\_\+dims}}
+\index{dst\+\_\+dims@{dst\+\_\+dims}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{dst\+\_\+dims}{dst\_dims}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& dst\+\_\+dims}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_af16916bf8be298fe16d55c36a9ccaf01}\label{mkldnn_2nn_2pool_8cc_af16916bf8be298fe16d55c36a9ccaf01}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!dst\+\_\+fmt@{dst\+\_\+fmt}}
+\index{dst\+\_\+fmt@{dst\+\_\+fmt}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{dst\+\_\+fmt}{dst\_fmt}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::format dst\+\_\+fmt}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a4a900f27a02665296368001e75d4b87c}\label{mkldnn_2nn_2pool_8cc_a4a900f27a02665296368001e75d4b87c}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!dst\+\_\+md@{dst\+\_\+md}}
+\index{dst\+\_\+md@{dst\+\_\+md}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{dst\+\_\+md}{dst\_md}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory\+::desc$>$ dst\+\_\+md}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_ae463fb99d336659d042cff1652317662}\label{mkldnn_2nn_2pool_8cc_ae463fb99d336659d042cff1652317662}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!dst\+\_\+mem@{dst\+\_\+mem}}
+\index{dst\+\_\+mem@{dst\+\_\+mem}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{dst\+\_\+mem}{dst\_mem}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory$>$ dst\+\_\+mem}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a65cb3ea7550aec536d1552f3711470ce}\label{mkldnn_2nn_2pool_8cc_a65cb3ea7550aec536d1552f3711470ce}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!fwd\+\_\+desc@{fwd\+\_\+desc}}
+\index{fwd\+\_\+desc@{fwd\+\_\+desc}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{fwd\+\_\+desc}{fwd\_desc}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::pooling\+\_\+forward\+::desc$>$ fwd\+\_\+desc}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a59c09cb64644524223e27e254711d156}\label{mkldnn_2nn_2pool_8cc_a59c09cb64644524223e27e254711d156}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!fwd\+\_\+primitive\+\_\+desc@{fwd\+\_\+primitive\+\_\+desc}}
+\index{fwd\+\_\+primitive\+\_\+desc@{fwd\+\_\+primitive\+\_\+desc}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{fwd\+\_\+primitive\+\_\+desc}{fwd\_primitive\_desc}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::pooling\+\_\+forward\+::primitive\+\_\+desc$>$ fwd\+\_\+primitive\+\_\+desc}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}\label{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!kernel@{kernel}}
+\index{kernel@{kernel}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{kernel}{kernel}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& kernel}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a3a43d84cf8a2dbe5389e08fe73ee8c67}\label{mkldnn_2nn_2pool_8cc_a3a43d84cf8a2dbe5389e08fe73ee8c67}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!net@{net}}
+\index{net@{net}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{net}{net}}
+{\footnotesize\ttfamily std\+::vector$<$mkldnn\+::primitive$>$ net}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}\label{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!op\+\_\+name@{op\+\_\+name}}
+\index{op\+\_\+name@{op\+\_\+name}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{op\+\_\+name}{op\_name}}
+{\footnotesize\ttfamily std\+::string op\+\_\+name}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_acd2de199b62bfb1af8569489df5dbe07}\label{mkldnn_2nn_2pool_8cc_acd2de199b62bfb1af8569489df5dbe07}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!padding\+\_\+left@{padding\+\_\+left}}
+\index{padding\+\_\+left@{padding\+\_\+left}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{padding\+\_\+left}{padding\_left}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& padding\+\_\+left}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a07da86d3df6350852b9164dcf7205440}\label{mkldnn_2nn_2pool_8cc_a07da86d3df6350852b9164dcf7205440}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!padding\+\_\+right@{padding\+\_\+right}}
+\index{padding\+\_\+right@{padding\+\_\+right}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{padding\+\_\+right}{padding\_right}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& padding\+\_\+right}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a3da28bbb8a98c7a066fcf495118de043}\label{mkldnn_2nn_2pool_8cc_a3da28bbb8a98c7a066fcf495118de043}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!pool\+\_\+fwd@{pool\+\_\+fwd}}
+\index{pool\+\_\+fwd@{pool\+\_\+fwd}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{pool\+\_\+fwd}{pool\_fwd}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::primitive$>$ pool\+\_\+fwd}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_af89ceb7458bceda1c3c2beed4a8e48ee}\label{mkldnn_2nn_2pool_8cc_af89ceb7458bceda1c3c2beed4a8e48ee}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!src\+\_\+dims@{src\+\_\+dims}}
+\index{src\+\_\+dims@{src\+\_\+dims}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+dims}{src\_dims}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& src\+\_\+dims}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a3811e16df7a159ac958f9b6fa7df82ba}\label{mkldnn_2nn_2pool_8cc_a3811e16df7a159ac958f9b6fa7df82ba}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!src\+\_\+fmt@{src\+\_\+fmt}}
+\index{src\+\_\+fmt@{src\+\_\+fmt}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+fmt}{src\_fmt}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::format src\+\_\+fmt}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a6d4a0e5f31dfce120a5d153fb1cc879f}\label{mkldnn_2nn_2pool_8cc_a6d4a0e5f31dfce120a5d153fb1cc879f}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!src\+\_\+md@{src\+\_\+md}}
+\index{src\+\_\+md@{src\+\_\+md}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+md}{src\_md}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory\+::desc$>$ src\+\_\+md}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a18a015be745b85f05bac7696ea665585}\label{mkldnn_2nn_2pool_8cc_a18a015be745b85f05bac7696ea665585}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!src\+\_\+mem@{src\+\_\+mem}}
+\index{src\+\_\+mem@{src\+\_\+mem}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+mem}{src\_mem}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory$>$ src\+\_\+mem}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}\label{mkldnn_2nn_2pool_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!stream@{stream}}
+\index{stream@{stream}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{stream}{stream}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::stream$>$ stream}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_abdced837e2fca213b15df1588e8782c4}\label{mkldnn_2nn_2pool_8cc_abdced837e2fca213b15df1588e8782c4}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!strides@{strides}}
+\index{strides@{strides}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{strides}{strides}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& strides}
+
+\mbox{\Hypertarget{mkldnn_2nn_2pool_8cc_a728b969e374aba4020e39aea7e02e64f}\label{mkldnn_2nn_2pool_8cc_a728b969e374aba4020e39aea7e02e64f}} 
+\index{mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}!version@{version}}
+\index{version@{version}!mkldnn/nn/pool.\+cc@{mkldnn/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{version}{version}}
+{\footnotesize\ttfamily std\+::string version}
+

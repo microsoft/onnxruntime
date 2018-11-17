@@ -1,0 +1,49 @@
+\hypertarget{classonnxruntime_1_1SequentialExecutor}{}\section{onnxruntime\+:\+:Sequential\+Executor Class Reference}
+\label{classonnxruntime_1_1SequentialExecutor}\index{onnxruntime\+::\+Sequential\+Executor@{onnxruntime\+::\+Sequential\+Executor}}
+
+
+{\ttfamily \#include $<$sequential\+\_\+executor.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Sequential\+Executor\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Sequential\+Executor\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SequentialExecutor_ad78638739bd7ca7c8fedc469ef7529ce}{Sequential\+Executor}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1SequentialExecutor_ade54efc80e70d9e2d1d5024abe40a60c}{Execute}} (const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state, const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&feeds, const std\+::vector$<$ std\+::string $>$ \&output\+\_\+names, std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&fetches, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger) override
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SequentialExecutor_ad78638739bd7ca7c8fedc469ef7529ce}\label{classonnxruntime_1_1SequentialExecutor_ad78638739bd7ca7c8fedc469ef7529ce}} 
+\index{onnxruntime\+::\+Sequential\+Executor@{onnxruntime\+::\+Sequential\+Executor}!Sequential\+Executor@{Sequential\+Executor}}
+\index{Sequential\+Executor@{Sequential\+Executor}!onnxruntime\+::\+Sequential\+Executor@{onnxruntime\+::\+Sequential\+Executor}}
+\subsubsection{\texorpdfstring{Sequential\+Executor()}{SequentialExecutor()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Sequential\+Executor\+::\+Sequential\+Executor (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SequentialExecutor_ade54efc80e70d9e2d1d5024abe40a60c}\label{classonnxruntime_1_1SequentialExecutor_ade54efc80e70d9e2d1d5024abe40a60c}} 
+\index{onnxruntime\+::\+Sequential\+Executor@{onnxruntime\+::\+Sequential\+Executor}!Execute@{Execute}}
+\index{Execute@{Execute}!onnxruntime\+::\+Sequential\+Executor@{onnxruntime\+::\+Sequential\+Executor}}
+\subsubsection{\texorpdfstring{Execute()}{Execute()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Sequential\+Executor\+::\+Execute (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a48b01f0410ec8d693dbd40d1132bd66c}{Name\+M\+L\+Val\+Map}} \&}]{feeds,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{output\+\_\+names,  }\item[{std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \&}]{fetches,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutor_a72794c9d86c407a835858c739ac4fb3e}{onnxruntime\+::\+I\+Executor}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{sequential__executor_8h}{sequential\+\_\+executor.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{sequential__executor_8cc}{sequential\+\_\+executor.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,78 @@
+\hypertarget{classonnxruntime_1_1SequenceType}{}\section{onnxruntime\+:\+:Sequence\+Type$<$ C\+P\+P\+Type $>$ Class Template Reference}
+\label{classonnxruntime_1_1SequenceType}\index{onnxruntime\+::\+Sequence\+Type$<$ C\+P\+P\+Type $>$@{onnxruntime\+::\+Sequence\+Type$<$ C\+P\+P\+Type $>$}}
+
+
+\mbox{\hyperlink{classonnxruntime_1_1SequenceType}{Sequence\+Type}}. Use to register sequences.  
+
+
+
+
+{\ttfamily \#include $<$data\+\_\+types.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Sequence\+Type$<$ C\+P\+P\+Type $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Sequence\+Type$<$ C\+P\+P\+Type $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1SequenceType_afb9213564cca50fa7ad862aea0bca547}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&type\+\_\+proto) const override
+\begin{DoxyCompactList}\small\item\em this A\+PI will be used to check type compatibility at runtime \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1SequenceType_a0dcda7dce2a65f8cb0a82a6bcb891e5a}{Type}} ()
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Detailed Description}
+\subsubsection*{template$<$typename C\+P\+P\+Type$>$\newline
+class onnxruntime\+::\+Sequence\+Type$<$ C\+P\+P\+Type $>$}
+
+\mbox{\hyperlink{classonnxruntime_1_1SequenceType}{Sequence\+Type}}. Use to register sequences. 
+
+
+\begin{DoxyParams}{Parameters}
+{\em T} & -\/ C\+PP type that you wish to register as Sequence runtime type.\\
+\hline
+\end{DoxyParams}
+Usage\+: O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ(C++\+Type) The type is required to have value\+\_\+type defined 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SequenceType_afb9213564cca50fa7ad862aea0bca547}\label{classonnxruntime_1_1SequenceType_afb9213564cca50fa7ad862aea0bca547}} 
+\index{onnxruntime\+::\+Sequence\+Type@{onnxruntime\+::\+Sequence\+Type}!Is\+Compatible@{Is\+Compatible}}
+\index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::\+Sequence\+Type@{onnxruntime\+::\+Sequence\+Type}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}}
+{\footnotesize\ttfamily template$<$typename C\+P\+P\+Type $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1SequenceType}{onnxruntime\+::\+Sequence\+Type}}$<$ C\+P\+P\+Type $>$\+::Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{type\+\_\+proto }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+this A\+PI will be used to check type compatibility at runtime 
+
+
+\begin{DoxyParams}{Parameters}
+{\em type\+\_\+proto} & a Type\+Proto instance that is constructed for a specific type will be checked against a Type\+Proto instance contained within a corresponding M\+L\+Data\+Type instance. \\
+\hline
+\end{DoxyParams}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a94b2c274bd74068291356c81515d69a1}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1SequenceType_a0dcda7dce2a65f8cb0a82a6bcb891e5a}\label{classonnxruntime_1_1SequenceType_a0dcda7dce2a65f8cb0a82a6bcb891e5a}} 
+\index{onnxruntime\+::\+Sequence\+Type@{onnxruntime\+::\+Sequence\+Type}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+Sequence\+Type@{onnxruntime\+::\+Sequence\+Type}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily template$<$typename C\+P\+P\+Type $>$ \\
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1SequenceType}{onnxruntime\+::\+Sequence\+Type}}$<$ C\+P\+P\+Type $>$\+::Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{data__types_8h}{data\+\_\+types.\+h}}\end{DoxyCompactItemize}

@@ -1,0 +1,58 @@
+\hypertarget{cpu_2tensor_2cast__op_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/tensor/cast\+\_\+op.cc File Reference}
+\label{cpu_2tensor_2cast__op_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/tensor/cast\+\_\+op.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/tensor/cast\+\_\+op.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/cast\+\_\+op.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$sstream$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+Include dependency graph for cast\+\_\+op.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cpu_2tensor_2cast__op_8cc_a1c91dc8085c6ce51aa388875055dddc4}{A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}}(in\+\_\+type)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a547f0a8117e6245556dc680337891468}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (uint8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a9b66386f5b328fe3c85bd692ae8da3cc}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (uint16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ac7d760c8b776e11cde947e9cb9f1f7ed}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (uint32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab21ffdd557f4ba696b97b88a39bd5016}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (uint64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_abb5a7ebb9e18ce196fbc1b7a8e031470}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (int8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a3f938bd2dea859d469548f6c1262711c}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (int16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a177d55f971e64d462ff6168b173c4468}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (int32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af6c698de5e089e635ccc71b4b5fb4632}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad52f3f2a2440d0664e5983f1511dac76}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (bool)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a779771b245e78e8bf95007957acc0f20}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8f880bac8d8427bd2fe2ae310074e590}{onnxruntime\+::\+A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_abb81e17736ab300daf10b2aca47912ad}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Cast, 6, M\+L\+Float16, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T1\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ M\+L\+Float16 $>$()).Type\+Constraint(\char`\"{}T2\char`\"{}, cast\+Op\+Type\+Constraints), Cast$<$ M\+L\+Float16 $>$)
+\end{DoxyCompactItemize}
+\subsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+const std\+::vector$<$ M\+L\+Data\+Type $>$ \mbox{\hyperlink{namespaceonnxruntime_a2dba74e72194e59c7cb75bd0c838fb0b}{onnxruntime\+::cast\+Op\+Type\+Constraints}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cpu_2tensor_2cast__op_8cc_a1c91dc8085c6ce51aa388875055dddc4}\label{cpu_2tensor_2cast__op_8cc_a1c91dc8085c6ce51aa388875055dddc4}} 
+\index{cpu/tensor/cast\+\_\+op.\+cc@{cpu/tensor/cast\+\_\+op.\+cc}!A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP@{A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}}
+\index{A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP@{A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}!cpu/tensor/cast\+\_\+op.\+cc@{cpu/tensor/cast\+\_\+op.\+cc}}
+\subsubsection{\texorpdfstring{A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP}{ADD\_FROM\_CAST\_OP}}
+{\footnotesize\ttfamily \#define A\+D\+D\+\_\+\+F\+R\+O\+M\+\_\+\+C\+A\+S\+T\+\_\+\+OP(\begin{DoxyParamCaption}\item[{}]{in\+\_\+type }\end{DoxyParamCaption})}
+

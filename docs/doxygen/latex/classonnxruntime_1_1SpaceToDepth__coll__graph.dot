@@ -1,0 +1,10 @@
+digraph "onnxruntime::SpaceToDepth&lt; T &gt;"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node3 [label="onnxruntime::SpaceToDepth\< T \>",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node4 -> Node3 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node4 [label="onnxruntime::SpaceDepthBase",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1SpaceDepthBase.html"];
+  Node5 -> Node4 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node5 [label="onnxruntime::OpKernel",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1OpKernel.html"];
+}

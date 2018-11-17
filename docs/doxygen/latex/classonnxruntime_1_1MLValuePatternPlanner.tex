@@ -1,0 +1,53 @@
+\hypertarget{classonnxruntime_1_1MLValuePatternPlanner}{}\section{onnxruntime\+:\+:M\+L\+Value\+Pattern\+Planner Class Reference}
+\label{classonnxruntime_1_1MLValuePatternPlanner}\index{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}}
+
+
+{\ttfamily \#include $<$ml\+\_\+value\+\_\+patterns\+\_\+planner.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValuePatternPlanner_a9c738e5c55937ceec949adfa09c13ae4}{M\+L\+Value\+Pattern\+Planner}} (const \mbox{\hyperlink{structonnxruntime_1_1SequentialExecutionPlan}{Sequential\+Execution\+Plan}} \&execution\+\_\+plan)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1MLValuePatternPlanner_a4a1c4b2462f7d42ea10db427c9ea669a}{Trace\+Allocation}} (int ml\+\_\+value\+\_\+idx, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1MLValuePatternPlanner_ac7ead95fa51ba48e2b1921363b29d235}{Trace\+Free}} (int ml\+\_\+value\+\_\+index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1MLValuePatternPlanner_a0dc593c2ad38a00d42c8f9efebc354c2}{Generate\+Patterns}} (\mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $\ast$out)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValuePatternPlanner_a9c738e5c55937ceec949adfa09c13ae4}\label{classonnxruntime_1_1MLValuePatternPlanner_a9c738e5c55937ceec949adfa09c13ae4}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}!M\+L\+Value\+Pattern\+Planner@{M\+L\+Value\+Pattern\+Planner}}
+\index{M\+L\+Value\+Pattern\+Planner@{M\+L\+Value\+Pattern\+Planner}!onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{M\+L\+Value\+Pattern\+Planner()}{MLValuePatternPlanner()}}
+{\footnotesize\ttfamily onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner\+::\+M\+L\+Value\+Pattern\+Planner (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1SequentialExecutionPlan}{Sequential\+Execution\+Plan}} \&}]{execution\+\_\+plan }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValuePatternPlanner_a0dc593c2ad38a00d42c8f9efebc354c2}\label{classonnxruntime_1_1MLValuePatternPlanner_a0dc593c2ad38a00d42c8f9efebc354c2}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}!Generate\+Patterns@{Generate\+Patterns}}
+\index{Generate\+Patterns@{Generate\+Patterns}!onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Generate\+Patterns()}{GeneratePatterns()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner\+::\+Generate\+Patterns (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $\ast$}]{out }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValuePatternPlanner_a4a1c4b2462f7d42ea10db427c9ea669a}\label{classonnxruntime_1_1MLValuePatternPlanner_a4a1c4b2462f7d42ea10db427c9ea669a}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}!Trace\+Allocation@{Trace\+Allocation}}
+\index{Trace\+Allocation@{Trace\+Allocation}!onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Trace\+Allocation()}{TraceAllocation()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner\+::\+Trace\+Allocation (\begin{DoxyParamCaption}\item[{int}]{ml\+\_\+value\+\_\+idx,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValuePatternPlanner_ac7ead95fa51ba48e2b1921363b29d235}\label{classonnxruntime_1_1MLValuePatternPlanner_ac7ead95fa51ba48e2b1921363b29d235}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}!Trace\+Free@{Trace\+Free}}
+\index{Trace\+Free@{Trace\+Free}!onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner@{onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Trace\+Free()}{TraceFree()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+M\+L\+Value\+Pattern\+Planner\+::\+Trace\+Free (\begin{DoxyParamCaption}\item[{int}]{ml\+\_\+value\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{ml__value__patterns__planner_8h}{ml\+\_\+value\+\_\+patterns\+\_\+planner.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{ml__value__pattern__planner_8cc}{ml\+\_\+value\+\_\+pattern\+\_\+planner.\+cc}}\end{DoxyCompactItemize}

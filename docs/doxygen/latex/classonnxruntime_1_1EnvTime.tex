@@ -1,0 +1,84 @@
+\hypertarget{classonnxruntime_1_1EnvTime}{}\section{onnxruntime\+:\+:Env\+Time Class Reference}
+\label{classonnxruntime_1_1EnvTime}\index{onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}}
+
+
+An interface used by the onnxruntime implementation to access timer related operations.  
+
+
+
+
+{\ttfamily \#include $<$env\+\_\+time.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1EnvTime_a394e559d985427cc8abbf94523715769}{Env\+Time}} ()
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1EnvTime_a8d8335a02d598df1f03843e9b6503500}{$\sim$\+Env\+Time}} ()=default
+\item 
+virtual uint64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1EnvTime_a1041208f7cb0ba8afaaa3d354e0a6e63}{Now\+Micros}} ()=0
+\begin{DoxyCompactList}\small\item\em Returns the number of micro-\/seconds since the Unix epoch. \end{DoxyCompactList}\item 
+virtual uint64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1EnvTime_a1c0c2e072d0afbf63f64729c2cb764df}{Now\+Seconds}} ()
+\begin{DoxyCompactList}\small\item\em Returns the number of seconds since the Unix epoch. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{classonnxruntime_1_1EnvTime}{Env\+Time}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1EnvTime_a44c73be1935c14769fc2879f9618cebf}{Default}} ()
+\begin{DoxyCompactList}\small\item\em Returns a default impl suitable for the current operating system. \end{DoxyCompactList}\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+An interface used by the onnxruntime implementation to access timer related operations. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1EnvTime_a394e559d985427cc8abbf94523715769}\label{classonnxruntime_1_1EnvTime_a394e559d985427cc8abbf94523715769}} 
+\index{onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}!Env\+Time@{Env\+Time}}
+\index{Env\+Time@{Env\+Time}!onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}}
+\subsubsection{\texorpdfstring{Env\+Time()}{EnvTime()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Env\+Time\+::\+Env\+Time (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1EnvTime_a8d8335a02d598df1f03843e9b6503500}\label{classonnxruntime_1_1EnvTime_a8d8335a02d598df1f03843e9b6503500}} 
+\index{onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}!````~Env\+Time@{$\sim$\+Env\+Time}}
+\index{````~Env\+Time@{$\sim$\+Env\+Time}!onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}}
+\subsubsection{\texorpdfstring{$\sim$\+Env\+Time()}{~EnvTime()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+Env\+Time\+::$\sim$\+Env\+Time (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1EnvTime_a44c73be1935c14769fc2879f9618cebf}\label{classonnxruntime_1_1EnvTime_a44c73be1935c14769fc2879f9618cebf}} 
+\index{onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}!Default@{Default}}
+\index{Default@{Default}!onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}}
+\subsubsection{\texorpdfstring{Default()}{Default()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1EnvTime}{Env\+Time}} $\ast$ onnxruntime\+::\+Env\+Time\+::\+Default (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+Returns a default impl suitable for the current operating system. 
+
+The result of \mbox{\hyperlink{classonnxruntime_1_1EnvTime_a44c73be1935c14769fc2879f9618cebf}{Default()}} belongs to this library and must never be deleted. \mbox{\Hypertarget{classonnxruntime_1_1EnvTime_a1041208f7cb0ba8afaaa3d354e0a6e63}\label{classonnxruntime_1_1EnvTime_a1041208f7cb0ba8afaaa3d354e0a6e63}} 
+\index{onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}!Now\+Micros@{Now\+Micros}}
+\index{Now\+Micros@{Now\+Micros}!onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}}
+\subsubsection{\texorpdfstring{Now\+Micros()}{NowMicros()}}
+{\footnotesize\ttfamily virtual uint64\+\_\+t onnxruntime\+::\+Env\+Time\+::\+Now\+Micros (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Returns the number of micro-\/seconds since the Unix epoch. 
+
+\mbox{\Hypertarget{classonnxruntime_1_1EnvTime_a1c0c2e072d0afbf63f64729c2cb764df}\label{classonnxruntime_1_1EnvTime_a1c0c2e072d0afbf63f64729c2cb764df}} 
+\index{onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}!Now\+Seconds@{Now\+Seconds}}
+\index{Now\+Seconds@{Now\+Seconds}!onnxruntime\+::\+Env\+Time@{onnxruntime\+::\+Env\+Time}}
+\subsubsection{\texorpdfstring{Now\+Seconds()}{NowSeconds()}}
+{\footnotesize\ttfamily virtual uint64\+\_\+t onnxruntime\+::\+Env\+Time\+::\+Now\+Seconds (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [virtual]}}
+
+
+
+Returns the number of seconds since the Unix epoch. 
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/platform/\mbox{\hyperlink{env__time_8h}{env\+\_\+time.\+h}}\item 
+onnxruntime/onnxruntime/core/platform/\mbox{\hyperlink{env__time_8cc}{env\+\_\+time.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,133 @@
+\hypertarget{classonnxruntime_1_1GraphViewer}{}\section{onnxruntime\+:\+:Graph\+Viewer Class Reference}
+\label{classonnxruntime_1_1GraphViewer}\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+
+
+{\ttfamily \#include $<$graph.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphViewer_a1e00fee3a376800a386a9ff632785e60}{Graph\+Viewer}} (const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \&graph)
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_ae3759522c35f54fffb7ca164218b5a18}{Name}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_a1d74a922adecb9759a4aa7ad79b944b5}{Description}} () const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_ad097d3796e17076e45eab1c5f435b272}{Get\+Initialized\+Tensor}} (const std\+::string \&tensor\+\_\+name, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$\&value) const
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_aee4ecc6e53635c7de6056e45f9e7d0af}{Get\+Inputs}} () const noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_aa1d445709d7c1348a2821a566bd8ae5d}{Get\+Inputs\+Including\+Initializers}} () const noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_aa61861e1e355026a7fef98fc374a3b23}{Get\+Outputs}} () const noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_a86d02dde7f7ef35ace579fe6c1009651}{Get\+Value\+Info}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_a28c2a2c0c9ef24a4b62ef2de888d849b}{Get\+Node}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} node\+\_\+index) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes}{Graph\+Nodes}} \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_ab4f10284fb8bee8eae31bbeb8197fd63}{Nodes}} () const noexcept
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_aecfc743ec5d8e4a5209b7a43b32c8e1d}{Number\+Of\+Nodes}} () const noexcept
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_a4d19d0ffa0b5f8b3abe7430cbb5c3b32}{Max\+Node\+Index}} () const noexcept
+\item 
+const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_aca9d5071746718e647bb49d7852e89c0}{Get\+Nodes\+In\+Topological\+Order}} () const
+\item 
+const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1GraphViewer_a9167351a5042b3e2583be502eb2b9f95}{Get\+Root\+Nodes}} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_a1e00fee3a376800a386a9ff632785e60}\label{classonnxruntime_1_1GraphViewer_a1e00fee3a376800a386a9ff632785e60}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Graph\+Viewer@{Graph\+Viewer}}
+\index{Graph\+Viewer@{Graph\+Viewer}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Graph\+Viewer()}{GraphViewer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Graph\+Viewer\+::\+Graph\+Viewer (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \&}]{graph }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_a1d74a922adecb9759a4aa7ad79b944b5}\label{classonnxruntime_1_1GraphViewer_a1d74a922adecb9759a4aa7ad79b944b5}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Description@{Description}}
+\index{Description@{Description}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Description()}{Description()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Graph\+Viewer\+::\+Description (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_ad097d3796e17076e45eab1c5f435b272}\label{classonnxruntime_1_1GraphViewer_ad097d3796e17076e45eab1c5f435b272}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Initialized\+Tensor@{Get\+Initialized\+Tensor}}
+\index{Get\+Initialized\+Tensor@{Get\+Initialized\+Tensor}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Initialized\+Tensor()}{GetInitializedTensor()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Initialized\+Tensor (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{tensor\+\_\+name,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$\&}]{value }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_aee4ecc6e53635c7de6056e45f9e7d0af}\label{classonnxruntime_1_1GraphViewer_aee4ecc6e53635c7de6056e45f9e7d0af}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Inputs@{Get\+Inputs}}
+\index{Get\+Inputs@{Get\+Inputs}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Inputs()}{GetInputs()}}
+{\footnotesize\ttfamily const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_aa1d445709d7c1348a2821a566bd8ae5d}\label{classonnxruntime_1_1GraphViewer_aa1d445709d7c1348a2821a566bd8ae5d}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Inputs\+Including\+Initializers@{Get\+Inputs\+Including\+Initializers}}
+\index{Get\+Inputs\+Including\+Initializers@{Get\+Inputs\+Including\+Initializers}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Inputs\+Including\+Initializers()}{GetInputsIncludingInitializers()}}
+{\footnotesize\ttfamily const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Inputs\+Including\+Initializers (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_a28c2a2c0c9ef24a4b62ef2de888d849b}\label{classonnxruntime_1_1GraphViewer_a28c2a2c0c9ef24a4b62ef2de888d849b}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Node@{Get\+Node}}
+\index{Get\+Node@{Get\+Node}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Node()}{GetNode()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Node (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{node\+\_\+index }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_aca9d5071746718e647bb49d7852e89c0}\label{classonnxruntime_1_1GraphViewer_aca9d5071746718e647bb49d7852e89c0}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Nodes\+In\+Topological\+Order@{Get\+Nodes\+In\+Topological\+Order}}
+\index{Get\+Nodes\+In\+Topological\+Order@{Get\+Nodes\+In\+Topological\+Order}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Nodes\+In\+Topological\+Order()}{GetNodesInTopologicalOrder()}}
+{\footnotesize\ttfamily const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ \& onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Nodes\+In\+Topological\+Order (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_aa61861e1e355026a7fef98fc374a3b23}\label{classonnxruntime_1_1GraphViewer_aa61861e1e355026a7fef98fc374a3b23}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Outputs@{Get\+Outputs}}
+\index{Get\+Outputs@{Get\+Outputs}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Outputs()}{GetOutputs()}}
+{\footnotesize\ttfamily const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Outputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_a9167351a5042b3e2583be502eb2b9f95}\label{classonnxruntime_1_1GraphViewer_a9167351a5042b3e2583be502eb2b9f95}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Root\+Nodes@{Get\+Root\+Nodes}}
+\index{Get\+Root\+Nodes@{Get\+Root\+Nodes}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Root\+Nodes()}{GetRootNodes()}}
+{\footnotesize\ttfamily const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ \& onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Root\+Nodes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_a86d02dde7f7ef35ace579fe6c1009651}\label{classonnxruntime_1_1GraphViewer_a86d02dde7f7ef35ace579fe6c1009651}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Get\+Value\+Info@{Get\+Value\+Info}}
+\index{Get\+Value\+Info@{Get\+Value\+Info}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Get\+Value\+Info()}{GetValueInfo()}}
+{\footnotesize\ttfamily const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& onnxruntime\+::\+Graph\+Viewer\+::\+Get\+Value\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_a4d19d0ffa0b5f8b3abe7430cbb5c3b32}\label{classonnxruntime_1_1GraphViewer_a4d19d0ffa0b5f8b3abe7430cbb5c3b32}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Max\+Node\+Index@{Max\+Node\+Index}}
+\index{Max\+Node\+Index@{Max\+Node\+Index}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Max\+Node\+Index()}{MaxNodeIndex()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Graph\+Viewer\+::\+Max\+Node\+Index (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_ae3759522c35f54fffb7ca164218b5a18}\label{classonnxruntime_1_1GraphViewer_ae3759522c35f54fffb7ca164218b5a18}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Name@{Name}}
+\index{Name@{Name}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Name()}{Name()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Graph\+Viewer\+::\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_ab4f10284fb8bee8eae31bbeb8197fd63}\label{classonnxruntime_1_1GraphViewer_ab4f10284fb8bee8eae31bbeb8197fd63}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Nodes@{Nodes}}
+\index{Nodes@{Nodes}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Nodes()}{Nodes()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes}{Graph\+Nodes}} \& onnxruntime\+::\+Graph\+Viewer\+::\+Nodes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphViewer_aecfc743ec5d8e4a5209b7a43b32c8e1d}\label{classonnxruntime_1_1GraphViewer_aecfc743ec5d8e4a5209b7a43b32c8e1d}} 
+\index{onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}!Number\+Of\+Nodes@{Number\+Of\+Nodes}}
+\index{Number\+Of\+Nodes@{Number\+Of\+Nodes}!onnxruntime\+::\+Graph\+Viewer@{onnxruntime\+::\+Graph\+Viewer}}
+\subsubsection{\texorpdfstring{Number\+Of\+Nodes()}{NumberOfNodes()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Graph\+Viewer\+::\+Number\+Of\+Nodes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph_8h}{graph.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{graph__viewer_8cc}{graph\+\_\+viewer.\+cc}}\end{DoxyCompactItemize}

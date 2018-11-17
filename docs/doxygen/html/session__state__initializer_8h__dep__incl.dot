@@ -1,0 +1,10 @@
+digraph "onnxruntime/onnxruntime/core/framework/session_state_initializer.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node39 [label="onnxruntime/onnxruntime\l/core/framework/session\l_state_initializer.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node39 -> Node40 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node40 [label="onnxruntime/onnxruntime\l/core/framework/session\l_state_initializer.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$session__state__initializer_8cc.html"];
+  Node39 -> Node41 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node41 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+}

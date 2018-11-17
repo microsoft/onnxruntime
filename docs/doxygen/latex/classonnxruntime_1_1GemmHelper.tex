@@ -1,0 +1,60 @@
+\hypertarget{classonnxruntime_1_1GemmHelper}{}\section{onnxruntime\+:\+:Gemm\+Helper Class Reference}
+\label{classonnxruntime_1_1GemmHelper}\index{onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}}
+
+
+{\ttfamily \#include $<$gemm\+\_\+helper.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GemmHelper_a88277da4d551a09245d8e4c9a395ca82}{Gemm\+Helper}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&left, bool trans\+\_\+left, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&right, bool trans\+\_\+right, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&bias)
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1GemmHelper_a4c263b6e85ef1b5bf407d40130deeb95}{M}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1GemmHelper_ae66f09f6fd7e69f65381fd4e2a11270e}{N}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1GemmHelper_aa53f075f2978dd1ffcd6780637f5a493}{K}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1GemmHelper_a08b89ea29f2cc3e3e1eea15c5f14df1c}{State}} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GemmHelper_a88277da4d551a09245d8e4c9a395ca82}\label{classonnxruntime_1_1GemmHelper_a88277da4d551a09245d8e4c9a395ca82}} 
+\index{onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}!Gemm\+Helper@{Gemm\+Helper}}
+\index{Gemm\+Helper@{Gemm\+Helper}!onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}}
+\subsubsection{\texorpdfstring{Gemm\+Helper()}{GemmHelper()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Gemm\+Helper\+::\+Gemm\+Helper (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{left,  }\item[{bool}]{trans\+\_\+left,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{right,  }\item[{bool}]{trans\+\_\+right,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{bias }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GemmHelper_aa53f075f2978dd1ffcd6780637f5a493}\label{classonnxruntime_1_1GemmHelper_aa53f075f2978dd1ffcd6780637f5a493}} 
+\index{onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}!K@{K}}
+\index{K@{K}!onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}}
+\subsubsection{\texorpdfstring{K()}{K()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Gemm\+Helper\+::K (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GemmHelper_a4c263b6e85ef1b5bf407d40130deeb95}\label{classonnxruntime_1_1GemmHelper_a4c263b6e85ef1b5bf407d40130deeb95}} 
+\index{onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}!M@{M}}
+\index{M@{M}!onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}}
+\subsubsection{\texorpdfstring{M()}{M()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Gemm\+Helper\+::M (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GemmHelper_ae66f09f6fd7e69f65381fd4e2a11270e}\label{classonnxruntime_1_1GemmHelper_ae66f09f6fd7e69f65381fd4e2a11270e}} 
+\index{onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}!N@{N}}
+\index{N@{N}!onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}}
+\subsubsection{\texorpdfstring{N()}{N()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Gemm\+Helper\+::N (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GemmHelper_a08b89ea29f2cc3e3e1eea15c5f14df1c}\label{classonnxruntime_1_1GemmHelper_a08b89ea29f2cc3e3e1eea15c5f14df1c}} 
+\index{onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}!State@{State}}
+\index{State@{State}!onnxruntime\+::\+Gemm\+Helper@{onnxruntime\+::\+Gemm\+Helper}}
+\subsubsection{\texorpdfstring{State()}{State()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Gemm\+Helper\+::\+State (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/math/\mbox{\hyperlink{gemm__helper_8h}{gemm\+\_\+helper.\+h}}\end{DoxyCompactItemize}

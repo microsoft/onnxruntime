@@ -1,0 +1,16 @@
+digraph "onnxruntime/onnxruntime/core/framework/utils.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node32 [label="onnxruntime/onnxruntime\l/core/framework/utils.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node32 -> Node33 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node33 [label="onnxruntime/onnxruntime\l/core/framework/allocation\l_planner.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$allocation__planner_8cc.html"];
+  Node32 -> Node34 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node34 [label="onnxruntime/onnxruntime\l/core/framework/execution\l_frame.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$execution__frame_8cc.html"];
+  Node32 -> Node35 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node35 [label="onnxruntime/onnxruntime\l/core/framework/session\l_state_initializer.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$session__state__initializer_8cc.html"];
+  Node32 -> Node36 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node36 [label="onnxruntime/onnxruntime\l/core/framework/utils.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$utils_8cc.html"];
+  Node32 -> Node37 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node37 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+}

@@ -1,0 +1,33 @@
+\hypertarget{classonnxruntime_1_1BatchNormHelper}{}\section{onnxruntime\+:\+:Batch\+Norm\+Helper Class Reference}
+\label{classonnxruntime_1_1BatchNormHelper}\index{onnxruntime\+::\+Batch\+Norm\+Helper@{onnxruntime\+::\+Batch\+Norm\+Helper}}
+
+
+{\ttfamily \#include $<$batch\+\_\+norm\+\_\+helper.\+h$>$}
+
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1BatchNormHelper_a21bb103bcaf585134f58764ae1bad7dd}{Validate\+Inputs}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$X, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$scale, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$mean, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$var)
+\item 
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1BatchNormHelper_a9422bf5b6ed1096bb08569130ae39366}{Normalize\+Dims}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&x\+\_\+shape, std\+::vector$<$ int64\+\_\+t $>$ \&new\+\_\+dims)
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1BatchNormHelper_a9422bf5b6ed1096bb08569130ae39366}\label{classonnxruntime_1_1BatchNormHelper_a9422bf5b6ed1096bb08569130ae39366}} 
+\index{onnxruntime\+::\+Batch\+Norm\+Helper@{onnxruntime\+::\+Batch\+Norm\+Helper}!Normalize\+Dims@{Normalize\+Dims}}
+\index{Normalize\+Dims@{Normalize\+Dims}!onnxruntime\+::\+Batch\+Norm\+Helper@{onnxruntime\+::\+Batch\+Norm\+Helper}}
+\subsubsection{\texorpdfstring{Normalize\+Dims()}{NormalizeDims()}}
+{\footnotesize\ttfamily static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Batch\+Norm\+Helper\+::\+Normalize\+Dims (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{x\+\_\+shape,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ \&}]{new\+\_\+dims }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1BatchNormHelper_a21bb103bcaf585134f58764ae1bad7dd}\label{classonnxruntime_1_1BatchNormHelper_a21bb103bcaf585134f58764ae1bad7dd}} 
+\index{onnxruntime\+::\+Batch\+Norm\+Helper@{onnxruntime\+::\+Batch\+Norm\+Helper}!Validate\+Inputs@{Validate\+Inputs}}
+\index{Validate\+Inputs@{Validate\+Inputs}!onnxruntime\+::\+Batch\+Norm\+Helper@{onnxruntime\+::\+Batch\+Norm\+Helper}}
+\subsubsection{\texorpdfstring{Validate\+Inputs()}{ValidateInputs()}}
+{\footnotesize\ttfamily static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Batch\+Norm\+Helper\+::\+Validate\+Inputs (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{X,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{scale,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{B,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{mean,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{var }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{batch__norm__helper_8h}{batch\+\_\+norm\+\_\+helper.\+h}}\end{DoxyCompactItemize}

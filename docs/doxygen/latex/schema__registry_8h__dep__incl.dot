@@ -1,0 +1,25 @@
+digraph "onnxruntime/include/onnxruntime/core/graph/schema_registry.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node26 [label="onnxruntime/include\l/onnxruntime/core/graph\l/schema_registry.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node26 -> Node27 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node27 [label="onnxruntime/include\l/onnxruntime/core/framework\l/customregistry.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$customregistry_8h.html"];
+  Node27 -> Node28 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node28 [label="onnxruntime/onnxruntime\l/core/framework/customregistry.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$customregistry_8cc.html"];
+  Node27 -> Node29 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node29 [label="onnxruntime/onnxruntime\l/core/framework/kernel\l_registry_manager.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry__manager_8cc.html"];
+  Node27 -> Node30 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node30 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8h.html"];
+  Node30 -> Node31 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node31 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8cc.html"];
+  Node30 -> Node32 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node32 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+  Node27 -> Node32 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node26 -> Node33 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node33 [label="onnxruntime/onnxruntime\l/core/graph/graph.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph_8cc.html"];
+  Node26 -> Node34 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node34 [label="onnxruntime/onnxruntime\l/core/graph/model.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$model_8cc.html"];
+  Node26 -> Node35 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node35 [label="onnxruntime/onnxruntime\l/core/graph/schema_registry.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$schema__registry_8cc.html"];
+}

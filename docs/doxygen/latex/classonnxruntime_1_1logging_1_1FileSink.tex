@@ -1,0 +1,87 @@
+\hypertarget{classonnxruntime_1_1logging_1_1FileSink}{}\section{onnxruntime\+:\+:logging\+:\+:File\+Sink Class Reference}
+\label{classonnxruntime_1_1logging_1_1FileSink}\index{onnxruntime\+::logging\+::\+File\+Sink@{onnxruntime\+::logging\+::\+File\+Sink}}
+
+
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} that writes to a file.  
+
+
+
+
+{\ttfamily \#include $<$file\+\_\+sink.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:logging\+:\+:File\+Sink\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:logging\+:\+:File\+Sink\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink_ae0a80ac42257771d6c01abeb8b38f8d7}{File\+Sink}} (std\+::unique\+\_\+ptr$<$ std\+::ofstream $>$ file, bool filter\+\_\+user\+\_\+data)
+\begin{DoxyCompactList}\small\item\em Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink}{File\+Sink}} class. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink_a910d3af5b40f4efc87a612ce609fbc67}{File\+Sink}} (const std\+::string \&filename, bool append, bool filter\+\_\+user\+\_\+data)
+\begin{DoxyCompactList}\small\item\em Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink}{File\+Sink}} class. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Detailed Description}
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} that writes to a file. 
+
+\begin{DoxySeeAlso}{See also}
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}}
+
+
+\end{DoxySeeAlso}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1FileSink_ae0a80ac42257771d6c01abeb8b38f8d7}\label{classonnxruntime_1_1logging_1_1FileSink_ae0a80ac42257771d6c01abeb8b38f8d7}} 
+\index{onnxruntime\+::logging\+::\+File\+Sink@{onnxruntime\+::logging\+::\+File\+Sink}!File\+Sink@{File\+Sink}}
+\index{File\+Sink@{File\+Sink}!onnxruntime\+::logging\+::\+File\+Sink@{onnxruntime\+::logging\+::\+File\+Sink}}
+\subsubsection{\texorpdfstring{File\+Sink()}{FileSink()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+File\+Sink\+::\+File\+Sink (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ std\+::ofstream $>$}]{file,  }\item[{bool}]{filter\+\_\+user\+\_\+data }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink}{File\+Sink}} class. 
+
+
+\begin{DoxyParams}{Parameters}
+{\em filename} & The filename to write to.\\
+\hline
+{\em append} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} set to {\ttfamily true} \mbox{[}append to file\mbox{]}. Otherwise truncate.\\
+\hline
+{\em filter\+\_\+user\+\_\+data} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} set to {\ttfamily true} \mbox{[}removes user data\mbox{]}.\\
+\hline
+\end{DoxyParams}
+
+
+Filtering of user data can alternatively be done at the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} level.\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1FileSink_a910d3af5b40f4efc87a612ce609fbc67}\label{classonnxruntime_1_1logging_1_1FileSink_a910d3af5b40f4efc87a612ce609fbc67}} 
+\index{onnxruntime\+::logging\+::\+File\+Sink@{onnxruntime\+::logging\+::\+File\+Sink}!File\+Sink@{File\+Sink}}
+\index{File\+Sink@{File\+Sink}!onnxruntime\+::logging\+::\+File\+Sink@{onnxruntime\+::logging\+::\+File\+Sink}}
+\subsubsection{\texorpdfstring{File\+Sink()}{FileSink()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+File\+Sink\+::\+File\+Sink (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{filename,  }\item[{bool}]{append,  }\item[{bool}]{filter\+\_\+user\+\_\+data }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1FileSink}{File\+Sink}} class. 
+
+
+\begin{DoxyParams}{Parameters}
+{\em filename} & The filename to write to.\\
+\hline
+{\em append} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} set to {\ttfamily true} \mbox{[}append to file\mbox{]}. Otherwise truncate.\\
+\hline
+{\em filter\+\_\+user\+\_\+data} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} set to {\ttfamily true} \mbox{[}removes user data\mbox{]}.\\
+\hline
+\end{DoxyParams}
+
+
+Filtering of user data can alternatively be done at the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} level.
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/common/logging/sinks/\mbox{\hyperlink{file__sink_8h}{file\+\_\+sink.\+h}}\end{DoxyCompactItemize}

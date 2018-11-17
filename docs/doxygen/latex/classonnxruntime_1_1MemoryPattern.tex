@@ -1,0 +1,74 @@
+\hypertarget{classonnxruntime_1_1MemoryPattern}{}\section{onnxruntime\+:\+:Memory\+Pattern Class Reference}
+\label{classonnxruntime_1_1MemoryPattern}\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+
+
+{\ttfamily \#include $<$mem\+\_\+pattern.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern_a6d6d1c67dbc9bff7cc9ce9d38508e00c}{Memory\+Pattern}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern_af15769f849757f058bf01621126e9d1d}{Memory\+Pattern}} (\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} \&\&rhs)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} \& \mbox{\hyperlink{classonnxruntime_1_1MemoryPattern_a8560ab094f5c6a3fe43aa88a4efb3d11}{operator=}} (\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} \&\&rhs)
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1MemoryPattern_a61a44707c0b66b5a982538d4d077eba8}{Peak\+Size}} () const
+\item 
+const \mbox{\hyperlink{structonnxruntime_1_1MemoryBlock}{Memory\+Block}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1MemoryPattern_a98a28a361c9db40e72e4cf8479738032}{Get\+Block}} (int ml\+\_\+value\+\_\+idx) const
+\end{DoxyCompactItemize}
+\subsection*{Friends}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1MemoryPattern_aa36168f9ccd4b68ca71a05b1c108237c}{Mem\+Pattern\+Planner}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MemoryPattern_a6d6d1c67dbc9bff7cc9ce9d38508e00c}\label{classonnxruntime_1_1MemoryPattern_a6d6d1c67dbc9bff7cc9ce9d38508e00c}} 
+\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}!Memory\+Pattern@{Memory\+Pattern}}
+\index{Memory\+Pattern@{Memory\+Pattern}!onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+\subsubsection{\texorpdfstring{Memory\+Pattern()}{MemoryPattern()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Memory\+Pattern\+::\+Memory\+Pattern (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemoryPattern_af15769f849757f058bf01621126e9d1d}\label{classonnxruntime_1_1MemoryPattern_af15769f849757f058bf01621126e9d1d}} 
+\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}!Memory\+Pattern@{Memory\+Pattern}}
+\index{Memory\+Pattern@{Memory\+Pattern}!onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+\subsubsection{\texorpdfstring{Memory\+Pattern()}{MemoryPattern()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Memory\+Pattern\+::\+Memory\+Pattern (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} \&\&}]{rhs }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MemoryPattern_a98a28a361c9db40e72e4cf8479738032}\label{classonnxruntime_1_1MemoryPattern_a98a28a361c9db40e72e4cf8479738032}} 
+\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}!Get\+Block@{Get\+Block}}
+\index{Get\+Block@{Get\+Block}!onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+\subsubsection{\texorpdfstring{Get\+Block()}{GetBlock()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structonnxruntime_1_1MemoryBlock}{Memory\+Block}}$\ast$ onnxruntime\+::\+Memory\+Pattern\+::\+Get\+Block (\begin{DoxyParamCaption}\item[{int}]{ml\+\_\+value\+\_\+idx }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemoryPattern_a8560ab094f5c6a3fe43aa88a4efb3d11}\label{classonnxruntime_1_1MemoryPattern_a8560ab094f5c6a3fe43aa88a4efb3d11}} 
+\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}!operator=@{operator=}}
+\index{operator=@{operator=}!onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+\subsubsection{\texorpdfstring{operator=()}{operator=()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}}\& onnxruntime\+::\+Memory\+Pattern\+::operator= (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} \&\&}]{rhs }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemoryPattern_a61a44707c0b66b5a982538d4d077eba8}\label{classonnxruntime_1_1MemoryPattern_a61a44707c0b66b5a982538d4d077eba8}} 
+\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}!Peak\+Size@{Peak\+Size}}
+\index{Peak\+Size@{Peak\+Size}!onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+\subsubsection{\texorpdfstring{Peak\+Size()}{PeakSize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Memory\+Pattern\+::\+Peak\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Friends And Related Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MemoryPattern_aa36168f9ccd4b68ca71a05b1c108237c}\label{classonnxruntime_1_1MemoryPattern_aa36168f9ccd4b68ca71a05b1c108237c}} 
+\index{onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}!Mem\+Pattern\+Planner@{Mem\+Pattern\+Planner}}
+\index{Mem\+Pattern\+Planner@{Mem\+Pattern\+Planner}!onnxruntime\+::\+Memory\+Pattern@{onnxruntime\+::\+Memory\+Pattern}}
+\subsubsection{\texorpdfstring{Mem\+Pattern\+Planner}{MemPatternPlanner}}
+{\footnotesize\ttfamily friend class \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner}{Mem\+Pattern\+Planner}}\hspace{0.3cm}{\ttfamily [friend]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mem__pattern_8h}{mem\+\_\+pattern.\+h}}\end{DoxyCompactItemize}

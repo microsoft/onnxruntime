@@ -1,0 +1,121 @@
+\hypertarget{unary__elementwise__ops_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops.cc File Reference}
+\label{unary__elementwise__ops_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops.\+cc}}
+{\ttfamily \#include \char`\"{}unary\+\_\+elementwise\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h\char`\"{}}\newline
+Include dependency graph for unary\+\_\+elementwise\+\_\+ops.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops_8cc_ac151adabad3e97c73d30fd51d4c8f905}{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL}}(x,  ver,  T)
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops_8cc_a54719cb2a8ac1859acc2cd7fee83512d}{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}}(x,  T)
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops_8cc_ade433064d08797b4cc329ab3ba2e8f21}{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}}(name,  ver,  T)
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops_8cc_a7d8900ce1a18f2f2211a29b08c3a22dc}{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}}(name,  ver)
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops_8cc_a8e03ef3f54eccbe8126af9bab9c01634}{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD}}(name,  ver)
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops_8cc_a81750123733b81f8d98b14138102bc14}{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD}}(name,  ver)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{unary__elementwise__ops_8cc_a54719cb2a8ac1859acc2cd7fee83512d}\label{unary__elementwise__ops_8cc_a54719cb2a8ac1859acc2cd7fee83512d}} 
+\index{unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}!U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE@{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}}
+\index{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE@{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}!unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}{UNARY\_ELEMENTWISE\_COMPUTE}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                                             \(\backslash\)
+  Status x<T>::ComputeInternal(OpKernelContext* context)\textcolor{keyword}{ const }\{                                          \(\backslash\)
+    UnaryElementwisePreparation p;                                                                        \(\backslash\)
+    UnaryElementwise::Prepare(context, &p);                                                               \(\backslash\)
+    Impl\_##x(                                                                                             \(\backslash\)
+        \textcolor{keyword}{reinterpret\_cast<}\textcolor{keyword}{const }typename ToCudaType<T>::MappedType*\textcolor{keyword}{>}(p.input\_tensor->template Data<T>()),  \(\backslash\)
+        reinterpret\_cast<\textcolor{keyword}{typename} ToCudaType<T>::MappedType*>(p.output\_tensor->template MutableData<T>()),\(\backslash\)
+        p.output\_tensor->Shape().Size());                                                                 \(\backslash\)
+                                                                                                          \(\backslash\)
+    return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                                         
+               \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{unary__elementwise__ops_8cc_ac151adabad3e97c73d30fd51d4c8f905}\label{unary__elementwise__ops_8cc_ac151adabad3e97c73d30fd51d4c8f905}} 
+\index{unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}!U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL@{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL}}
+\index{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL@{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL}!unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL}{UNARY\_ELEMENTWISE\_REGISTER\_KERNEL}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{ver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                                
+      \(\backslash\)
+      x,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                              \(\backslash\)
+      ver,                                                                      \(\backslash\)
+      T,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                                   \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>()), \(\backslash\)
+      x<T>);
+\end{DoxyCode}
+\mbox{\Hypertarget{unary__elementwise__ops_8cc_a81750123733b81f8d98b14138102bc14}\label{unary__elementwise__ops_8cc_a81750123733b81f8d98b14138102bc14}} 
+\index{unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}!U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD}}
+\index{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD}!unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD}{UNARY\_OP\_BWUZCSILHFD}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+B\+W\+U\+Z\+C\+S\+I\+L\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{unary__elementwise__ops_8cc_ade433064d08797b4cc329ab3ba2e8f21}{UNARY\_OP\_TYPED}}(name, ver, uint8\_t)    \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, uint16\_t)   \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, uint32\_t)   \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, uint64\_t)   \(\backslash\)
+  UNARY\_OP\_CSILHFD(name, ver)
+\end{DoxyCode}
+\mbox{\Hypertarget{unary__elementwise__ops_8cc_a8e03ef3f54eccbe8126af9bab9c01634}\label{unary__elementwise__ops_8cc_a8e03ef3f54eccbe8126af9bab9c01634}} 
+\index{unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}!U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD}}
+\index{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD}!unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD}{UNARY\_OP\_CSILHFD}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+C\+S\+I\+L\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{unary__elementwise__ops_8cc_ade433064d08797b4cc329ab3ba2e8f21}{UNARY\_OP\_TYPED}}(name, ver, int8\_t)  \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, int16\_t) \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, int32\_t) \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, int64\_t) \(\backslash\)
+  UNARY\_OP\_HFD(name, ver)
+\end{DoxyCode}
+\mbox{\Hypertarget{unary__elementwise__ops_8cc_a7d8900ce1a18f2f2211a29b08c3a22dc}\label{unary__elementwise__ops_8cc_a7d8900ce1a18f2f2211a29b08c3a22dc}} 
+\index{unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}!U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}}
+\index{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}!unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}{UNARY\_OP\_HFD}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{unary__elementwise__ops_8cc_ade433064d08797b4cc329ab3ba2e8f21}{UNARY\_OP\_TYPED}}(name, ver, MLFloat16) \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, \textcolor{keywordtype}{float})     \(\backslash\)
+  UNARY\_OP\_TYPED(name, ver, \textcolor{keywordtype}{double})
+\end{DoxyCode}
+\mbox{\Hypertarget{unary__elementwise__ops_8cc_ade433064d08797b4cc329ab3ba2e8f21}\label{unary__elementwise__ops_8cc_ade433064d08797b4cc329ab3ba2e8f21}} 
+\index{unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}!U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}}
+\index{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}!unary\+\_\+elementwise\+\_\+ops.\+cc@{unary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}{UNARY\_OP\_TYPED}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{unary__elementwise__ops_8cc_ac151adabad3e97c73d30fd51d4c8f905}{UNARY\_ELEMENTWISE\_REGISTER\_KERNEL}}(name, ver, T) \(\backslash\)
+  UNARY\_ELEMENTWISE\_COMPUTE(name, T)
+\end{DoxyCode}

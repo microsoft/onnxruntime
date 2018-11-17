@@ -1,0 +1,79 @@
+\hypertarget{dictvectorizer_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/ml/dictvectorizer.cc File Reference}
+\label{dictvectorizer_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/ml/dictvectorizer.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/ml/dictvectorizer.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/ml/dictvectorizer.\+h\char`\"{}}\newline
+Include dependency graph for dictvectorizer.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{dictvectorizer_8cc_a9b7c0c1197935e2691c5993e6688b612}{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}(name,  T1,  T2)
+\item 
+\#define \mbox{\hyperlink{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}}(T1,  T2)~\mbox{\hyperlink{dictvectorizer_8cc_a9b7c0c1197935e2691c5993e6688b612}{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}(T1\#\#\+\_\+\#\#T2, T1, T2)
+\item 
+\#define \mbox{\hyperlink{dictvectorizer_8cc_a238e22e3a5af66183f92d19f824bf7df}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}}(T)~\mbox{\hyperlink{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}}(string, T);
+\item 
+\#define \mbox{\hyperlink{dictvectorizer_8cc_a7be52ac2db60b1705d423f8574fa9cf9}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}}(T)~\mbox{\hyperlink{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}}(int64\+\_\+t, T);
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a493e9ffba17d90f9d0f24753de63f411}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_aab6318d5e3b268c074dcaa233a7573da}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a103c1040f9a30019489fd11e9dc951dc}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_af2473f5c9934a4dbe535752cf671bc78}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}} (string)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a92b9e7d54ae3e5738a345238fb780862}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a2d5408ae698d884da2be882c7b635380}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}} (double)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{dictvectorizer_8cc_a7be52ac2db60b1705d423f8574fa9cf9}\label{dictvectorizer_8cc_a7be52ac2db60b1705d423f8574fa9cf9}} 
+\index{dictvectorizer.\+cc@{dictvectorizer.\+cc}!R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}!dictvectorizer.\+cc@{dictvectorizer.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL}{REG\_MY\_INT64\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+\_\+\+M\+Y\+\_\+\+I\+N\+T64\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})~\mbox{\hyperlink{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}}(int64\+\_\+t, T);}
+
+\mbox{\Hypertarget{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}\label{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}} 
+\index{dictvectorizer.\+cc@{dictvectorizer.\+cc}!R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}!dictvectorizer.\+cc@{dictvectorizer.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}{REG\_MY\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{T1,  }\item[{}]{T2 }\end{DoxyParamCaption})~\mbox{\hyperlink{dictvectorizer_8cc_a9b7c0c1197935e2691c5993e6688b612}{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}(T1\#\#\+\_\+\#\#T2, T1, T2)}
+
+\mbox{\Hypertarget{dictvectorizer_8cc_a238e22e3a5af66183f92d19f824bf7df}\label{dictvectorizer_8cc_a238e22e3a5af66183f92d19f824bf7df}} 
+\index{dictvectorizer.\+cc@{dictvectorizer.\+cc}!R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}!dictvectorizer.\+cc@{dictvectorizer.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}{REG\_MY\_STRING\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+\_\+\+M\+Y\+\_\+\+S\+T\+R\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})~\mbox{\hyperlink{dictvectorizer_8cc_a2479d6cf9c52740c8d8dc14108a19dc6}{R\+E\+G\+\_\+\+M\+Y\+\_\+\+K\+E\+R\+N\+EL}}(string, T);}
+
+\mbox{\Hypertarget{dictvectorizer_8cc_a9b7c0c1197935e2691c5993e6688b612}\label{dictvectorizer_8cc_a9b7c0c1197935e2691c5993e6688b612}} 
+\index{dictvectorizer.\+cc@{dictvectorizer.\+cc}!R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL}!dictvectorizer.\+cc@{dictvectorizer.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL}{REG\_NAMED\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+\_\+\+N\+A\+M\+E\+D\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{T1,  }\item[{}]{T2 }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}{ONNX\_CPU\_OPERATOR\_TYPED\_ML\_KERNEL}}(                                        
+                                                                            \(\backslash\)
+      DictVectorizer,                                                                                      
+                                             \(\backslash\)
+      1,                                                                                                   
+                                             \(\backslash\)
+      name,                                                                                                
+                                             \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T1"}, DataTypeImpl::GetType<std::map<T1, T2>>()).TypeConstraint(\textcolor{stringliteral}{"T2
+      "}, DataTypeImpl::GetTensorType<T2>()), \(\backslash\)
+      DictVectorizerOp<T1, T2>);
+\end{DoxyCode}

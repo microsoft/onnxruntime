@@ -1,0 +1,75 @@
+\hypertarget{classonnxruntime_1_1Scan}{}\section{onnxruntime\+:\+:Scan Class Reference}
+\label{classonnxruntime_1_1Scan}\index{onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}}
+
+
+{\ttfamily \#include $<$scan.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Scan\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Scan\+:
+% FIG 1
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dcc}{Direction}} \{ \mbox{\hyperlink{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dccae7c3602dce09c755e09250077a601a51}{Direction\+::k\+Forward}} = 0, 
+\mbox{\hyperlink{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dccabec8e974f160af3e10611c35be7972be}{Direction\+::k\+Reverse}} = 1
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Scan_a3448b5b4cfae6fcd6deb4bf98f585299}{Scan}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Scan_a8b765a2fd147e1ca9d5d2d3d15487953}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$ctx) const override
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Enumeration Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dcc}\label{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dcc}} 
+\index{onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}!Direction@{Direction}}
+\index{Direction@{Direction}!onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}}
+\subsubsection{\texorpdfstring{Direction}{Direction}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dcc}{onnxruntime\+::\+Scan\+::\+Direction}}\hspace{0.3cm}{\ttfamily [strong]}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Forward@{k\+Forward}!onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}}\index{onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}!k\+Forward@{k\+Forward}}}\mbox{\Hypertarget{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dccae7c3602dce09c755e09250077a601a51}\label{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dccae7c3602dce09c755e09250077a601a51}} 
+k\+Forward&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Reverse@{k\+Reverse}!onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}}\index{onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}!k\+Reverse@{k\+Reverse}}}\mbox{\Hypertarget{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dccabec8e974f160af3e10611c35be7972be}\label{classonnxruntime_1_1Scan_abd9c1538172fe44f60cbf8e273fb2dccabec8e974f160af3e10611c35be7972be}} 
+k\+Reverse&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Scan_a3448b5b4cfae6fcd6deb4bf98f585299}\label{classonnxruntime_1_1Scan_a3448b5b4cfae6fcd6deb4bf98f585299}} 
+\index{onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}!Scan@{Scan}}
+\index{Scan@{Scan}!onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}}
+\subsubsection{\texorpdfstring{Scan()}{Scan()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Scan\+::\+Scan (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Scan_a8b765a2fd147e1ca9d5d2d3d15487953}\label{classonnxruntime_1_1Scan_a8b765a2fd147e1ca9d5d2d3d15487953}} 
+\index{onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Scan@{onnxruntime\+::\+Scan}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Scan\+::\+Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{ctx }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/controlflow/\mbox{\hyperlink{scan_8h}{scan.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cpu/controlflow/\mbox{\hyperlink{scan_8cc}{scan.\+cc}}\end{DoxyCompactItemize}

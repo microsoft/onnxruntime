@@ -1,0 +1,29 @@
+\hypertarget{space__depth__ops_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/tensor/space\+\_\+depth\+\_\+ops.cc File Reference}
+\label{space__depth__ops_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/tensor/space\+\_\+depth\+\_\+ops.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/tensor/space\+\_\+depth\+\_\+ops.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/space\+\_\+depth\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/eigen\+\_\+common\+\_\+wrapper.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$array$>$}\newline
+Include dependency graph for space\+\_\+depth\+\_\+ops.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef Eigen\+::\+Tensor\+Map$<$ Eigen\+::\+Tensor$<$ float, Intermediate\+Tensor\+Rank, Eigen\+::\+Row\+Major, int64\+\_\+t $>$, Eigen\+::\+Aligned $>$ \mbox{\hyperlink{namespaceonnxruntime_ab7d616c868a1ec06b740dc57a0e467b9}{onnxruntime\+::\+Eigen\+Tensor\+Map}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8d296e69170ff04069b18d07b5f108ae}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Space\+To\+Depth, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Space\+To\+Depth$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad19549b26d355c2feface36aba41cfbd}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Depth\+To\+Space, 1, 4, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Depth\+To\+Space$<$ float $>$)
+\end{DoxyCompactItemize}
+\subsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+const int \mbox{\hyperlink{namespaceonnxruntime_a4d3d095c777de3e01ad735f72a5072d5}{onnxruntime\+::\+Intermediate\+Tensor\+Rank}} = 6
+\end{DoxyCompactItemize}

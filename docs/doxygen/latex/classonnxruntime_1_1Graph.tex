@@ -1,0 +1,403 @@
+\hypertarget{classonnxruntime_1_1Graph}{}\section{onnxruntime\+:\+:Graph Class Reference}
+\label{classonnxruntime_1_1Graph}\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+
+
+{\ttfamily \#include $<$graph\+\_\+base.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Graph_a339e752e0557c49da5e81e9fa8e3cb54}{Resolve}} ()
+\item 
+virtual const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a94415a0533dea6f376c373a63a2bdc6e}{Name}} () const noexcept
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_aefeff3396d82aee4254a1ed21dc6469a}{Set\+Name}} (const std\+::string \&name)
+\item 
+virtual const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a3cde3be78cc7acab2626b189af64f82f}{Description}} () const noexcept
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_abf45d42d7f95a9147c7830d9c2cd25ae}{Set\+Description}} (const std\+::string \&description)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_a5699ed675666c1b351bd35490d94be6d}{Add\+Initialized\+Tensor}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_a061af24d8be21ae2367a458cec6e5fc1}{Remove\+Initialized\+Tensor}} (const std\+::string \&tensor\+\_\+name)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Graph_ae0637d52edb20ae9a2700a29eb931e9c}{Get\+Initialized\+Tensor}} (const std\+::string \&tensor\+\_\+name, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$\&value) const
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_a80c06ce917adca79f4a9c0f9ad3147f8}{Initialized\+Tensor\+Set}} \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a1c73d249e30812794524d1791048d8f1}{Get\+All\+Initialized\+Tensors}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_adf174d71ce23ccbf32f80b18ee1fa244}{Clean\+All\+Initialized\+Tensors}} () noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a902f1039ac6666c1eb912694d73336d9}{Get\+Inputs}} () const noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a8862e9a9d1e7f6ee12fab84e1763e125}{Get\+Inputs\+Including\+Initializers}} () const noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a99c7d068aa441c8206c05539843586fa}{Get\+Outputs}} () const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Graph_a6792107741a304a958ff78dc1fc137e0}{Is\+Node\+Outputs\+In\+Graph\+Outputs}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&node)
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a3fe55ea6089b37f31c4f1446b9a8e6b1}{Get\+Value\+Info}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_aec5e2348351170dc20d2c5a14b0a889c}{Get\+Node}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} node\+\_\+index) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_a39d036c40a8ffd4fe06ecbb472b3cfb8}{Get\+Node}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} node\+\_\+index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes}{Graph\+Nodes}} \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a0a4641ee31a7b5498ef7b9203208a98e}{Nodes}} () noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes}{Graph\+Nodes}} \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a6ebaafa47a4b7516769b9ea5f57e3792}{Nodes}} () const noexcept
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1Graph_a7164d4ed047a5359058c3fd87bea5ce1}{Max\+Node\+Index}} () const noexcept
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1Graph_addf43a7353a5eb2713f2f25d067e548f}{Number\+Of\+Nodes}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_ae7aacecdca718dca43c64ac05cdc1c91}{Get\+Node\+Arg}} (const std\+::string \&name)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_a1246bcd9846dcc887e9c2c30ea36a7b9}{Get\+Node\+Arg}} (const std\+::string \&name) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a89e037a8adec37ab95c8da2c725bba8f}{Get\+Or\+Create\+Node\+Arg}} (const std\+::string \&name, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$p\+\_\+arg\+\_\+type)
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1Graph_a2c3e936d9d58b04ba1e7f93a9d41dab6}{Generate\+Node\+Arg\+Name}} (const std\+::string \&base\+\_\+name)
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1Graph_ab9b804ad292ab80434def67fd8d6c436}{Generate\+Node\+Name}} (const std\+::string \&base\+\_\+name)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_aac8515a9a51b8fc25bff257c4e1c0bb6}{Add\+Node}} (const std\+::string \&name, const std\+::string \&op\+\_\+type, const std\+::string \&description, const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&input\+\_\+args, const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&output\+\_\+args, const \mbox{\hyperlink{namespaceonnxruntime_a7fa616c461850e300cfa552afd46eed4}{Node\+Attributes}} $\ast$attributes=nullptr, const std\+::string \&domain=\char`\"{}\char`\"{})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_a667f9dc9ebc7f8d3d0737161fbcee1cd}{Add\+Node}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&other)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Graph_a44fd12c96e89cbdd1517ae959069d7e1}{Remove\+Node}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} node\+\_\+index)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_a1f29d2bd901e3bb473c964ff711aa724}{Add\+Edge}} (\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&src, \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&dst, const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&node\+\_\+arg)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Graph_aa348aa7dc35abaeb91399992122e9b11}{Add\+Control\+Edge}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} src\+\_\+node\+\_\+index, \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} dst\+\_\+node\+\_\+index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Graph_afaf08ac8665824c22b979927e02fb2e4}{Get\+Nodes\+In\+Topological\+Order}} (const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ $\ast$\&pp\+\_\+nodes) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& \mbox{\hyperlink{classonnxruntime_1_1Graph_abd668cfb112919d34b6260ebb2084742}{Set\+Graph\+Resolve\+Needed}} () noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Graph_af84afc5b0cb3876c1860c19c4ea249d7}{Graph\+Resolve\+Needed}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a086860d8eaa4f562e97d0ebbec731819}{Set\+Graph\+Proto\+Sync\+Needed}} () noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Graph_ae1709643bf3a2f41c7ef59b532590a0f}{Graph\+Proto\+Sync\+Needed}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_a1b4379710f3916fd237e2692c130ddd5}{Reverse\+D\+F\+S\+From}} (const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ \&from, const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&enter, const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&leave, const std\+::function$<$ bool(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$, const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&comp=\{\}) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_ab9ff5067db6b6dade2962c9e77cf6591}{Reverse\+D\+F\+S\+From}} (const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$$>$ \&from, const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&enter, const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&leave, const std\+::function$<$ bool(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$, const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&comp=\{\}) const
+\item 
+const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a46d1e58cbb0615f3e9733f15fb7aa1cc}{Domain\+To\+Version\+Map}} () const noexcept
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Graph\+Proto \& \mbox{\hyperlink{classonnxruntime_1_1Graph_a9fdaa2f3924b5b06a2a6cda0821d9d6a}{To\+Graph\+Proto}} ()
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af9a8d0a11a8e0ccd714c7ddc2fabe41d}{I\+Onnx\+Runtime\+Op\+Schema\+Collection\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1Graph_a75e0404bbe9fbd90955553ecdf777cbe}{Get\+Schema\+Registry}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_a4d09a87a881969281aaca973ec5bebd4}{Fuse\+Sub\+Graph}} (std\+::unique\+\_\+ptr$<$\+::\mbox{\hyperlink{structonnxruntime_1_1IndexedSubGraph}{onnxruntime\+::\+Indexed\+Sub\+Graph}} $>$ sub\+\_\+graph, const std\+::string \&fused\+\_\+node\+\_\+name)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_a6627ca765d7547bcd1e5fca2cd53233e}{Get\+Mutable\+Subgraph}} (const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} index, const std\+::string \&attribute\+\_\+name)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Graph_a863474f1c1ba9e413990640996e2e154}{Get\+Subgraph}} (const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} index, const std\+::string \&attribute\+\_\+name) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Graph_ac88de928fb7e920ec2028ac5f049ecc3}{Add\+Outer\+Scope\+Node\+Arg}} (const std\+::string \&name)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1Graph_a798f54e43ac6ba2b10cf026a6365cdc5}{$\sim$\+Graph}} ()
+\end{DoxyCompactItemize}
+\subsection*{Friends}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Graph_a2bf2a0e9b454c55aa5dcb5aa4698697b}{Model}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a798f54e43ac6ba2b10cf026a6365cdc5}\label{classonnxruntime_1_1Graph_a798f54e43ac6ba2b10cf026a6365cdc5}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!````~Graph@{$\sim$\+Graph}}
+\index{````~Graph@{$\sim$\+Graph}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{$\sim$\+Graph()}{~Graph()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Graph\+::$\sim$\+Graph (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_aa348aa7dc35abaeb91399992122e9b11}\label{classonnxruntime_1_1Graph_aa348aa7dc35abaeb91399992122e9b11}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Add\+Control\+Edge@{Add\+Control\+Edge}}
+\index{Add\+Control\+Edge@{Add\+Control\+Edge}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Add\+Control\+Edge()}{AddControlEdge()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+::\+Add\+Control\+Edge (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{src\+\_\+node\+\_\+index,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{dst\+\_\+node\+\_\+index }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a1f29d2bd901e3bb473c964ff711aa724}\label{classonnxruntime_1_1Graph_a1f29d2bd901e3bb473c964ff711aa724}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Add\+Edge@{Add\+Edge}}
+\index{Add\+Edge@{Add\+Edge}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Add\+Edge()}{AddEdge()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Add\+Edge (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{src,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{dst,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&}]{node\+\_\+arg }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a5699ed675666c1b351bd35490d94be6d}\label{classonnxruntime_1_1Graph_a5699ed675666c1b351bd35490d94be6d}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Add\+Initialized\+Tensor@{Add\+Initialized\+Tensor}}
+\index{Add\+Initialized\+Tensor@{Add\+Initialized\+Tensor}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Add\+Initialized\+Tensor()}{AddInitializedTensor()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Add\+Initialized\+Tensor (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor\+\_\+proto }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_aac8515a9a51b8fc25bff257c4e1c0bb6}\label{classonnxruntime_1_1Graph_aac8515a9a51b8fc25bff257c4e1c0bb6}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Add\+Node@{Add\+Node}}
+\index{Add\+Node@{Add\+Node}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Add\+Node()}{AddNode()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ onnxruntime\+::\+Graph\+::\+Add\+Node (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{op\+\_\+type,  }\item[{const std\+::string \&}]{description,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{input\+\_\+args,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{output\+\_\+args,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a7fa616c461850e300cfa552afd46eed4}{Node\+Attributes}} $\ast$}]{attributes = {\ttfamily nullptr},  }\item[{const std\+::string \&}]{domain = {\ttfamily \char`\"{}\char`\"{}} }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a667f9dc9ebc7f8d3d0737161fbcee1cd}\label{classonnxruntime_1_1Graph_a667f9dc9ebc7f8d3d0737161fbcee1cd}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Add\+Node@{Add\+Node}}
+\index{Add\+Node@{Add\+Node}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Add\+Node()}{AddNode()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ onnxruntime\+::\+Graph\+::\+Add\+Node (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{other }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_ac88de928fb7e920ec2028ac5f049ecc3}\label{classonnxruntime_1_1Graph_ac88de928fb7e920ec2028ac5f049ecc3}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Add\+Outer\+Scope\+Node\+Arg@{Add\+Outer\+Scope\+Node\+Arg}}
+\index{Add\+Outer\+Scope\+Node\+Arg@{Add\+Outer\+Scope\+Node\+Arg}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Add\+Outer\+Scope\+Node\+Arg()}{AddOuterScopeNodeArg()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Add\+Outer\+Scope\+Node\+Arg (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_adf174d71ce23ccbf32f80b18ee1fa244}\label{classonnxruntime_1_1Graph_adf174d71ce23ccbf32f80b18ee1fa244}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Clean\+All\+Initialized\+Tensors@{Clean\+All\+Initialized\+Tensors}}
+\index{Clean\+All\+Initialized\+Tensors@{Clean\+All\+Initialized\+Tensors}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Clean\+All\+Initialized\+Tensors()}{CleanAllInitializedTensors()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Clean\+All\+Initialized\+Tensors (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a3cde3be78cc7acab2626b189af64f82f}\label{classonnxruntime_1_1Graph_a3cde3be78cc7acab2626b189af64f82f}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Description@{Description}}
+\index{Description@{Description}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Description()}{Description()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Graph\+::\+Description (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a46d1e58cbb0615f3e9733f15fb7aa1cc}\label{classonnxruntime_1_1Graph_a46d1e58cbb0615f3e9733f15fb7aa1cc}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Domain\+To\+Version\+Map@{Domain\+To\+Version\+Map}}
+\index{Domain\+To\+Version\+Map@{Domain\+To\+Version\+Map}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Domain\+To\+Version\+Map()}{DomainToVersionMap()}}
+{\footnotesize\ttfamily const std\+::unordered\+\_\+map$<$std\+::string, int$>$\& onnxruntime\+::\+Graph\+::\+Domain\+To\+Version\+Map (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a4d09a87a881969281aaca973ec5bebd4}\label{classonnxruntime_1_1Graph_a4d09a87a881969281aaca973ec5bebd4}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Fuse\+Sub\+Graph@{Fuse\+Sub\+Graph}}
+\index{Fuse\+Sub\+Graph@{Fuse\+Sub\+Graph}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Fuse\+Sub\+Graph()}{FuseSubGraph()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ onnxruntime\+::\+Graph\+::\+Fuse\+Sub\+Graph (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$\+::\mbox{\hyperlink{structonnxruntime_1_1IndexedSubGraph}{onnxruntime\+::\+Indexed\+Sub\+Graph}} $>$}]{sub\+\_\+graph,  }\item[{const std\+::string \&}]{fused\+\_\+node\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a2c3e936d9d58b04ba1e7f93a9d41dab6}\label{classonnxruntime_1_1Graph_a2c3e936d9d58b04ba1e7f93a9d41dab6}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Generate\+Node\+Arg\+Name@{Generate\+Node\+Arg\+Name}}
+\index{Generate\+Node\+Arg\+Name@{Generate\+Node\+Arg\+Name}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Generate\+Node\+Arg\+Name()}{GenerateNodeArgName()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Graph\+::\+Generate\+Node\+Arg\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{base\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_ab9b804ad292ab80434def67fd8d6c436}\label{classonnxruntime_1_1Graph_ab9b804ad292ab80434def67fd8d6c436}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Generate\+Node\+Name@{Generate\+Node\+Name}}
+\index{Generate\+Node\+Name@{Generate\+Node\+Name}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Generate\+Node\+Name()}{GenerateNodeName()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Graph\+::\+Generate\+Node\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{base\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a1c73d249e30812794524d1791048d8f1}\label{classonnxruntime_1_1Graph_a1c73d249e30812794524d1791048d8f1}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+All\+Initialized\+Tensors@{Get\+All\+Initialized\+Tensors}}
+\index{Get\+All\+Initialized\+Tensors@{Get\+All\+Initialized\+Tensors}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+All\+Initialized\+Tensors()}{GetAllInitializedTensors()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_a80c06ce917adca79f4a9c0f9ad3147f8}{Initialized\+Tensor\+Set}} \& onnxruntime\+::\+Graph\+::\+Get\+All\+Initialized\+Tensors (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_ae0637d52edb20ae9a2700a29eb931e9c}\label{classonnxruntime_1_1Graph_ae0637d52edb20ae9a2700a29eb931e9c}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Initialized\+Tensor@{Get\+Initialized\+Tensor}}
+\index{Get\+Initialized\+Tensor@{Get\+Initialized\+Tensor}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Initialized\+Tensor()}{GetInitializedTensor()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+::\+Get\+Initialized\+Tensor (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{tensor\+\_\+name,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$\&}]{value }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a902f1039ac6666c1eb912694d73336d9}\label{classonnxruntime_1_1Graph_a902f1039ac6666c1eb912694d73336d9}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Inputs@{Get\+Inputs}}
+\index{Get\+Inputs@{Get\+Inputs}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Inputs()}{GetInputs()}}
+{\footnotesize\ttfamily const std\+::vector$<$const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$\& onnxruntime\+::\+Graph\+::\+Get\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a8862e9a9d1e7f6ee12fab84e1763e125}\label{classonnxruntime_1_1Graph_a8862e9a9d1e7f6ee12fab84e1763e125}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Inputs\+Including\+Initializers@{Get\+Inputs\+Including\+Initializers}}
+\index{Get\+Inputs\+Including\+Initializers@{Get\+Inputs\+Including\+Initializers}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Inputs\+Including\+Initializers()}{GetInputsIncludingInitializers()}}
+{\footnotesize\ttfamily const std\+::vector$<$const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$\& onnxruntime\+::\+Graph\+::\+Get\+Inputs\+Including\+Initializers (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a6627ca765d7547bcd1e5fca2cd53233e}\label{classonnxruntime_1_1Graph_a6627ca765d7547bcd1e5fca2cd53233e}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Mutable\+Subgraph@{Get\+Mutable\+Subgraph}}
+\index{Get\+Mutable\+Subgraph@{Get\+Mutable\+Subgraph}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Mutable\+Subgraph()}{GetMutableSubgraph()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} $\ast$ onnxruntime\+::\+Graph\+::\+Get\+Mutable\+Subgraph (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{index,  }\item[{const std\+::string \&}]{attribute\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_aec5e2348351170dc20d2c5a14b0a889c}\label{classonnxruntime_1_1Graph_aec5e2348351170dc20d2c5a14b0a889c}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Node@{Get\+Node}}
+\index{Get\+Node@{Get\+Node}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Node()}{GetNode()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}}$\ast$ onnxruntime\+::\+Graph\+::\+Get\+Node (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{node\+\_\+index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a39d036c40a8ffd4fe06ecbb472b3cfb8}\label{classonnxruntime_1_1Graph_a39d036c40a8ffd4fe06ecbb472b3cfb8}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Node@{Get\+Node}}
+\index{Get\+Node@{Get\+Node}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Node()}{GetNode()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}}$\ast$ onnxruntime\+::\+Graph\+::\+Get\+Node (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{node\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_ae7aacecdca718dca43c64ac05cdc1c91}\label{classonnxruntime_1_1Graph_ae7aacecdca718dca43c64ac05cdc1c91}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Node\+Arg@{Get\+Node\+Arg}}
+\index{Get\+Node\+Arg@{Get\+Node\+Arg}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Node\+Arg()}{GetNodeArg()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$ onnxruntime\+::\+Graph\+::\+Get\+Node\+Arg (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a1246bcd9846dcc887e9c2c30ea36a7b9}\label{classonnxruntime_1_1Graph_a1246bcd9846dcc887e9c2c30ea36a7b9}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Node\+Arg@{Get\+Node\+Arg}}
+\index{Get\+Node\+Arg@{Get\+Node\+Arg}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Node\+Arg()}{GetNodeArg()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$ onnxruntime\+::\+Graph\+::\+Get\+Node\+Arg (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_afaf08ac8665824c22b979927e02fb2e4}\label{classonnxruntime_1_1Graph_afaf08ac8665824c22b979927e02fb2e4}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Nodes\+In\+Topological\+Order@{Get\+Nodes\+In\+Topological\+Order}}
+\index{Get\+Nodes\+In\+Topological\+Order@{Get\+Nodes\+In\+Topological\+Order}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Nodes\+In\+Topological\+Order()}{GetNodesInTopologicalOrder()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Graph\+::\+Get\+Nodes\+In\+Topological\+Order (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ $\ast$\&}]{pp\+\_\+nodes }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a89e037a8adec37ab95c8da2c725bba8f}\label{classonnxruntime_1_1Graph_a89e037a8adec37ab95c8da2c725bba8f}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Or\+Create\+Node\+Arg@{Get\+Or\+Create\+Node\+Arg}}
+\index{Get\+Or\+Create\+Node\+Arg@{Get\+Or\+Create\+Node\+Arg}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Or\+Create\+Node\+Arg()}{GetOrCreateNodeArg()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}\& onnxruntime\+::\+Graph\+::\+Get\+Or\+Create\+Node\+Arg (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$}]{p\+\_\+arg\+\_\+type }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a99c7d068aa441c8206c05539843586fa}\label{classonnxruntime_1_1Graph_a99c7d068aa441c8206c05539843586fa}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Outputs@{Get\+Outputs}}
+\index{Get\+Outputs@{Get\+Outputs}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Outputs()}{GetOutputs()}}
+{\footnotesize\ttfamily const std\+::vector$<$const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$\& onnxruntime\+::\+Graph\+::\+Get\+Outputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a75e0404bbe9fbd90955553ecdf777cbe}\label{classonnxruntime_1_1Graph_a75e0404bbe9fbd90955553ecdf777cbe}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Schema\+Registry@{Get\+Schema\+Registry}}
+\index{Get\+Schema\+Registry@{Get\+Schema\+Registry}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Schema\+Registry()}{GetSchemaRegistry()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_af9a8d0a11a8e0ccd714c7ddc2fabe41d}{I\+Onnx\+Runtime\+Op\+Schema\+Collection\+Ptr}} onnxruntime\+::\+Graph\+::\+Get\+Schema\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a863474f1c1ba9e413990640996e2e154}\label{classonnxruntime_1_1Graph_a863474f1c1ba9e413990640996e2e154}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Subgraph@{Get\+Subgraph}}
+\index{Get\+Subgraph@{Get\+Subgraph}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Subgraph()}{GetSubgraph()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} $\ast$ onnxruntime\+::\+Graph\+::\+Get\+Subgraph (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{index,  }\item[{const std\+::string \&}]{attribute\+\_\+name }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a3fe55ea6089b37f31c4f1446b9a8e6b1}\label{classonnxruntime_1_1Graph_a3fe55ea6089b37f31c4f1446b9a8e6b1}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Get\+Value\+Info@{Get\+Value\+Info}}
+\index{Get\+Value\+Info@{Get\+Value\+Info}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Get\+Value\+Info()}{GetValueInfo()}}
+{\footnotesize\ttfamily const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& onnxruntime\+::\+Graph\+::\+Get\+Value\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_ae1709643bf3a2f41c7ef59b532590a0f}\label{classonnxruntime_1_1Graph_ae1709643bf3a2f41c7ef59b532590a0f}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Graph\+Proto\+Sync\+Needed@{Graph\+Proto\+Sync\+Needed}}
+\index{Graph\+Proto\+Sync\+Needed@{Graph\+Proto\+Sync\+Needed}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Graph\+Proto\+Sync\+Needed()}{GraphProtoSyncNeeded()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+::\+Graph\+Proto\+Sync\+Needed (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_af84afc5b0cb3876c1860c19c4ea249d7}\label{classonnxruntime_1_1Graph_af84afc5b0cb3876c1860c19c4ea249d7}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Graph\+Resolve\+Needed@{Graph\+Resolve\+Needed}}
+\index{Graph\+Resolve\+Needed@{Graph\+Resolve\+Needed}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Graph\+Resolve\+Needed()}{GraphResolveNeeded()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+::\+Graph\+Resolve\+Needed (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a6792107741a304a958ff78dc1fc137e0}\label{classonnxruntime_1_1Graph_a6792107741a304a958ff78dc1fc137e0}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Is\+Node\+Outputs\+In\+Graph\+Outputs@{Is\+Node\+Outputs\+In\+Graph\+Outputs}}
+\index{Is\+Node\+Outputs\+In\+Graph\+Outputs@{Is\+Node\+Outputs\+In\+Graph\+Outputs}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Is\+Node\+Outputs\+In\+Graph\+Outputs()}{IsNodeOutputsInGraphOutputs()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+::\+Is\+Node\+Outputs\+In\+Graph\+Outputs (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{node }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a7164d4ed047a5359058c3fd87bea5ce1}\label{classonnxruntime_1_1Graph_a7164d4ed047a5359058c3fd87bea5ce1}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Max\+Node\+Index@{Max\+Node\+Index}}
+\index{Max\+Node\+Index@{Max\+Node\+Index}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Max\+Node\+Index()}{MaxNodeIndex()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Graph\+::\+Max\+Node\+Index (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a94415a0533dea6f376c373a63a2bdc6e}\label{classonnxruntime_1_1Graph_a94415a0533dea6f376c373a63a2bdc6e}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Name@{Name}}
+\index{Name@{Name}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Name()}{Name()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Graph\+::\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a0a4641ee31a7b5498ef7b9203208a98e}\label{classonnxruntime_1_1Graph_a0a4641ee31a7b5498ef7b9203208a98e}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Nodes@{Nodes}}
+\index{Nodes@{Nodes}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Nodes()}{Nodes()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes}{Graph\+Nodes}}\& onnxruntime\+::\+Graph\+::\+Nodes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a6ebaafa47a4b7516769b9ea5f57e3792}\label{classonnxruntime_1_1Graph_a6ebaafa47a4b7516769b9ea5f57e3792}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Nodes@{Nodes}}
+\index{Nodes@{Nodes}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Nodes()}{Nodes()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes}{Graph\+Nodes}}\& onnxruntime\+::\+Graph\+::\+Nodes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_addf43a7353a5eb2713f2f25d067e548f}\label{classonnxruntime_1_1Graph_addf43a7353a5eb2713f2f25d067e548f}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Number\+Of\+Nodes@{Number\+Of\+Nodes}}
+\index{Number\+Of\+Nodes@{Number\+Of\+Nodes}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Number\+Of\+Nodes()}{NumberOfNodes()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Graph\+::\+Number\+Of\+Nodes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a061af24d8be21ae2367a458cec6e5fc1}\label{classonnxruntime_1_1Graph_a061af24d8be21ae2367a458cec6e5fc1}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Remove\+Initialized\+Tensor@{Remove\+Initialized\+Tensor}}
+\index{Remove\+Initialized\+Tensor@{Remove\+Initialized\+Tensor}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Remove\+Initialized\+Tensor()}{RemoveInitializedTensor()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Remove\+Initialized\+Tensor (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{tensor\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a44fd12c96e89cbdd1517ae959069d7e1}\label{classonnxruntime_1_1Graph_a44fd12c96e89cbdd1517ae959069d7e1}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Remove\+Node@{Remove\+Node}}
+\index{Remove\+Node@{Remove\+Node}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Remove\+Node()}{RemoveNode()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+::\+Remove\+Node (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{node\+\_\+index }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a339e752e0557c49da5e81e9fa8e3cb54}\label{classonnxruntime_1_1Graph_a339e752e0557c49da5e81e9fa8e3cb54}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Resolve@{Resolve}}
+\index{Resolve@{Resolve}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Resolve()}{Resolve()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Graph\+::\+Resolve (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a1b4379710f3916fd237e2692c130ddd5}\label{classonnxruntime_1_1Graph_a1b4379710f3916fd237e2692c130ddd5}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Reverse\+D\+F\+S\+From@{Reverse\+D\+F\+S\+From}}
+\index{Reverse\+D\+F\+S\+From@{Reverse\+D\+F\+S\+From}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Reverse\+D\+F\+S\+From()}{ReverseDFSFrom()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Reverse\+D\+F\+S\+From (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} $>$ \&}]{from,  }\item[{const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&}]{enter,  }\item[{const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&}]{leave,  }\item[{const std\+::function$<$ bool(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$, const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&}]{comp = {\ttfamily \{\}} }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_ab9ff5067db6b6dade2962c9e77cf6591}\label{classonnxruntime_1_1Graph_ab9ff5067db6b6dade2962c9e77cf6591}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Reverse\+D\+F\+S\+From@{Reverse\+D\+F\+S\+From}}
+\index{Reverse\+D\+F\+S\+From@{Reverse\+D\+F\+S\+From}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Reverse\+D\+F\+S\+From()}{ReverseDFSFrom()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Reverse\+D\+F\+S\+From (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$$>$ \&}]{from,  }\item[{const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&}]{enter,  }\item[{const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&}]{leave,  }\item[{const std\+::function$<$ bool(const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$, const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$)$>$ \&}]{comp = {\ttfamily \{\}} }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_abf45d42d7f95a9147c7830d9c2cd25ae}\label{classonnxruntime_1_1Graph_abf45d42d7f95a9147c7830d9c2cd25ae}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Set\+Description@{Set\+Description}}
+\index{Set\+Description@{Set\+Description}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Set\+Description()}{SetDescription()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Set\+Description (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{description }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a086860d8eaa4f562e97d0ebbec731819}\label{classonnxruntime_1_1Graph_a086860d8eaa4f562e97d0ebbec731819}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Set\+Graph\+Proto\+Sync\+Needed@{Set\+Graph\+Proto\+Sync\+Needed}}
+\index{Set\+Graph\+Proto\+Sync\+Needed@{Set\+Graph\+Proto\+Sync\+Needed}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Set\+Graph\+Proto\+Sync\+Needed()}{SetGraphProtoSyncNeeded()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}}\& onnxruntime\+::\+Graph\+::\+Set\+Graph\+Proto\+Sync\+Needed (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_abd668cfb112919d34b6260ebb2084742}\label{classonnxruntime_1_1Graph_abd668cfb112919d34b6260ebb2084742}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Set\+Graph\+Resolve\+Needed@{Set\+Graph\+Resolve\+Needed}}
+\index{Set\+Graph\+Resolve\+Needed@{Set\+Graph\+Resolve\+Needed}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Set\+Graph\+Resolve\+Needed()}{SetGraphResolveNeeded()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}}\& onnxruntime\+::\+Graph\+::\+Set\+Graph\+Resolve\+Needed (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_aefeff3396d82aee4254a1ed21dc6469a}\label{classonnxruntime_1_1Graph_aefeff3396d82aee4254a1ed21dc6469a}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Set\+Name@{Set\+Name}}
+\index{Set\+Name@{Set\+Name}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Set\+Name()}{SetName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Graph\+::\+Set\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a9fdaa2f3924b5b06a2a6cda0821d9d6a}\label{classonnxruntime_1_1Graph_a9fdaa2f3924b5b06a2a6cda0821d9d6a}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!To\+Graph\+Proto@{To\+Graph\+Proto}}
+\index{To\+Graph\+Proto@{To\+Graph\+Proto}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{To\+Graph\+Proto()}{ToGraphProto()}}
+{\footnotesize\ttfamily const Graph\+Proto \& onnxruntime\+::\+Graph\+::\+To\+Graph\+Proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+\subsection{Friends And Related Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Graph_a2bf2a0e9b454c55aa5dcb5aa4698697b}\label{classonnxruntime_1_1Graph_a2bf2a0e9b454c55aa5dcb5aa4698697b}} 
+\index{onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}!Model@{Model}}
+\index{Model@{Model}!onnxruntime\+::\+Graph@{onnxruntime\+::\+Graph}}
+\subsubsection{\texorpdfstring{Model}{Model}}
+{\footnotesize\ttfamily friend class \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}}\hspace{0.3cm}{\ttfamily [friend]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph__base_8h}{graph\+\_\+base.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{graph_8cc}{graph.\+cc}}\end{DoxyCompactItemize}

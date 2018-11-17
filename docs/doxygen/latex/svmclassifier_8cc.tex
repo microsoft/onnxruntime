@@ -1,0 +1,52 @@
+\hypertarget{svmclassifier_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/ml/svmclassifier.cc File Reference}
+\label{svmclassifier_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/ml/svmclassifier.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/ml/svmclassifier.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/ml/svmclassifier.\+h\char`\"{}}\newline
+Include dependency graph for svmclassifier.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{svmclassifier_8cc_a37b28eb982e52a854b123dc6e333d26c}{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}}(in\+\_\+type)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a2d4ac19837d15bd1aa23d5c0b5c5a3bd}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_ae2e8618ef59921a82167b291d3935573}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_aeaaccc638222f08f55f156c0b491aed5}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a94ed8b6ea413625aa2da3af611b7b547}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (int32\+\_\+t)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{svmclassifier_8cc_a37b28eb982e52a854b123dc6e333d26c}\label{svmclassifier_8cc_a37b28eb982e52a854b123dc6e333d26c}} 
+\index{svmclassifier.\+cc@{svmclassifier.\+cc}!A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP@{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}}
+\index{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP@{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}!svmclassifier.\+cc@{svmclassifier.\+cc}}
+\subsubsection{\texorpdfstring{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}{ADD\_IN\_TYPE\_SVM\_CLASSIFIER\_OP}}
+{\footnotesize\ttfamily \#define A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+S\+V\+M\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP(\begin{DoxyParamCaption}\item[{}]{in\+\_\+type }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}{ONNX\_CPU\_OPERATOR\_TYPED\_ML\_KERNEL}}(                                        
+                                                                                                                  
+                \(\backslash\)
+      SVMClassifier,                                                                                       
+                                                                                             \(\backslash\)
+      1,                                                                                                   
+                                                                                             \(\backslash\)
+      in\_type,                                                                                             
+                                                                                             \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T1"}, DataTypeImpl::GetTensorType<in\_type>()).TypeConstraint(\textcolor{stringliteral}{"T2"}, 
+      \{DataTypeImpl::GetTensorType<int64\_t>(), DataTypeImpl::GetTensorType<std::string>()\}), \(\backslash\)
+      SVMClassifier<in\_type>);
+\end{DoxyCode}

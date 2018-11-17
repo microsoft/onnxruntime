@@ -1,0 +1,52 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1CudnnRNN}{}\section{onnxruntime\+:\+:cuda\+:\+:Cudnn\+R\+NN Class Reference}
+\label{classonnxruntime_1_1cuda_1_1CudnnRNN}\index{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}}
+
+
+{\ttfamily \#include $<$cudnn\+\_\+rnn\+\_\+base.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRNN_aad296166d24f6aae89be08d2ead6da1b}{Cudnn\+R\+NN}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRNN_ad011ce11489d06ca2750fb8cf084e8bc}{$\sim$\+Cudnn\+R\+NN}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRNN_a95bce3f205252c4d31eea609d49d3869}{Set}} (const cudnn\+Handle\+\_\+t \&cudnn\+Handle, int64\+\_\+t hidden\+\_\+size, int num\+\_\+layers, cudnn\+Dropout\+Descriptor\+\_\+t cudnn\+\_\+dropout\+\_\+desc, cudnn\+Direction\+Mode\+\_\+t cudnn\+\_\+direction\+\_\+model, cudnn\+R\+N\+N\+Mode\+\_\+t rnn\+\_\+mode, cudnn\+Data\+Type\+\_\+t data\+Type)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRNN_ab402c6e7de57dc43b89feda8eb2c2258}{operator cudnn\+R\+N\+N\+Descriptor\+\_\+t}} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRNN_aad296166d24f6aae89be08d2ead6da1b}\label{classonnxruntime_1_1cuda_1_1CudnnRNN_aad296166d24f6aae89be08d2ead6da1b}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}!Cudnn\+R\+NN@{Cudnn\+R\+NN}}
+\index{Cudnn\+R\+NN@{Cudnn\+R\+NN}!onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}}
+\subsubsection{\texorpdfstring{Cudnn\+R\+N\+N()}{CudnnRNN()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cudnn\+R\+N\+N\+::\+Cudnn\+R\+NN (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRNN_ad011ce11489d06ca2750fb8cf084e8bc}\label{classonnxruntime_1_1cuda_1_1CudnnRNN_ad011ce11489d06ca2750fb8cf084e8bc}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}!````~Cudnn\+R\+NN@{$\sim$\+Cudnn\+R\+NN}}
+\index{````~Cudnn\+R\+NN@{$\sim$\+Cudnn\+R\+NN}!onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}}
+\subsubsection{\texorpdfstring{$\sim$\+Cudnn\+R\+N\+N()}{~CudnnRNN()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cudnn\+R\+N\+N\+::$\sim$\+Cudnn\+R\+NN (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRNN_ab402c6e7de57dc43b89feda8eb2c2258}\label{classonnxruntime_1_1cuda_1_1CudnnRNN_ab402c6e7de57dc43b89feda8eb2c2258}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}!operator cudnn\+R\+N\+N\+Descriptor\+\_\+t@{operator cudnn\+R\+N\+N\+Descriptor\+\_\+t}}
+\index{operator cudnn\+R\+N\+N\+Descriptor\+\_\+t@{operator cudnn\+R\+N\+N\+Descriptor\+\_\+t}!onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}}
+\subsubsection{\texorpdfstring{operator cudnn\+R\+N\+N\+Descriptor\+\_\+t()}{operator cudnnRNNDescriptor\_t()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cudnn\+R\+N\+N\+::operator cudnn\+R\+N\+N\+Descriptor\+\_\+t (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRNN_a95bce3f205252c4d31eea609d49d3869}\label{classonnxruntime_1_1cuda_1_1CudnnRNN_a95bce3f205252c4d31eea609d49d3869}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}!Set@{Set}}
+\index{Set@{Set}!onnxruntime\+::cuda\+::\+Cudnn\+R\+NN@{onnxruntime\+::cuda\+::\+Cudnn\+R\+NN}}
+\subsubsection{\texorpdfstring{Set()}{Set()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Cudnn\+R\+N\+N\+::\+Set (\begin{DoxyParamCaption}\item[{const cudnn\+Handle\+\_\+t \&}]{cudnn\+Handle,  }\item[{int64\+\_\+t}]{hidden\+\_\+size,  }\item[{int}]{num\+\_\+layers,  }\item[{cudnn\+Dropout\+Descriptor\+\_\+t}]{cudnn\+\_\+dropout\+\_\+desc,  }\item[{cudnn\+Direction\+Mode\+\_\+t}]{cudnn\+\_\+direction\+\_\+model,  }\item[{cudnn\+R\+N\+N\+Mode\+\_\+t}]{rnn\+\_\+mode,  }\item[{cudnn\+Data\+Type\+\_\+t}]{data\+Type }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/rnn/\mbox{\hyperlink{cudnn__rnn__base_8h}{cudnn\+\_\+rnn\+\_\+base.\+h}}\end{DoxyCompactItemize}

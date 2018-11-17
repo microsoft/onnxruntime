@@ -1,0 +1,18 @@
+\hypertarget{cpu_2tensor_2gather_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/tensor/gather.cc File Reference}
+\label{cpu_2tensor_2gather_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/tensor/gather.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/tensor/gather.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/gather.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+Include dependency graph for gather.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a4d44187c07da52cfeb623e135f83dae0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Gather, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+All\+Tensor\+Types()).Type\+Constraint(\char`\"{}Tind\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()\}), Gather)
+\item 
+{\footnotesize template$<$typename Tin $>$ }\\Status \mbox{\hyperlink{namespaceonnxruntime_ac79674bd589daec518bda47bd6eaf16f}{onnxruntime\+::\+Gather\+Copy\+Data}} (const Tensor $\ast$indices\+\_\+tensor, const uint8\+\_\+t $\ast$src\+\_\+base, uint8\+\_\+t $\ast$dst\+\_\+base, bool is\+\_\+string\+\_\+type, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} element\+\_\+bytes, const int64\+\_\+t block\+\_\+size, const int64\+\_\+t M, const int64\+\_\+t N, const int64\+\_\+t data\+\_\+batch\+\_\+bytes, const int64\+\_\+t gathered\+\_\+batch\+\_\+bytes, const Tensor\+Shape \&input\+\_\+data\+\_\+shape, const int64\+\_\+t axis)
+\end{DoxyCompactItemize}

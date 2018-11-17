@@ -1,0 +1,29 @@
+\hypertarget{cpu__provider__factory_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/cpu\+\_\+provider\+\_\+factory.cc File Reference}
+\label{cpu__provider__factory_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/cpu\+\_\+provider\+\_\+factory.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/cpu\+\_\+provider\+\_\+factory.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/cpu\+\_\+provider\+\_\+factory.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$atomic$>$}\newline
+{\ttfamily \#include \char`\"{}cpu\+\_\+execution\+\_\+provider.\+h\char`\"{}}\newline
+Include dependency graph for cpu\+\_\+provider\+\_\+factory.\+cc\+:
+% FIG 0
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{cpu__provider__factory_8cc_ace4a7976f981cf8251ac4d20f23c3932}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL}} (O\+N\+N\+X\+Runtime\+Create\+Cpu\+Execution\+Provider\+Factory, int use\+\_\+arena, \mbox{\hyperlink{visibility__macros_8h_a9c50bd6a6ca6e0be76a0f3a79379b90e}{\+\_\+\+Out\+\_\+}} \mbox{\hyperlink{session__options__c__api_8h_a351bab8a857e0f355c92af5c22b759bc}{O\+N\+N\+X\+Runtime\+Provider\+Factory\+Ptr}} $\ast$$\ast$out)
+\item 
+\mbox{\hyperlink{cpu__provider__factory_8cc_a2e7fa2398566840ad1c3dcba61d638a4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL}} (O\+N\+N\+X\+Runtime\+Create\+Cpu\+Allocator\+Info, enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}} type, enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} mem\+\_\+type, \mbox{\hyperlink{visibility__macros_8h_a9c50bd6a6ca6e0be76a0f3a79379b90e}{\+\_\+\+Out\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$$\ast$out)
+\end{DoxyCompactItemize}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{cpu__provider__factory_8cc_ace4a7976f981cf8251ac4d20f23c3932}\label{cpu__provider__factory_8cc_ace4a7976f981cf8251ac4d20f23c3932}} 
+\index{cpu\+\_\+provider\+\_\+factory.\+cc@{cpu\+\_\+provider\+\_\+factory.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL}!cpu\+\_\+provider\+\_\+factory.\+cc@{cpu\+\_\+provider\+\_\+factory.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+P\+L()}{ONNXRUNTIME\_API\_STATUS\_IMPL()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+Runtime\+Create\+Cpu\+Execution\+Provider\+Factory}]{,  }\item[{int}]{use\+\_\+arena,  }\item[{\mbox{\hyperlink{visibility__macros_8h_a9c50bd6a6ca6e0be76a0f3a79379b90e}{\+\_\+\+Out\+\_\+}} \mbox{\hyperlink{session__options__c__api_8h_a351bab8a857e0f355c92af5c22b759bc}{O\+N\+N\+X\+Runtime\+Provider\+Factory\+Ptr}} $\ast$$\ast$}]{out }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{cpu__provider__factory_8cc_a2e7fa2398566840ad1c3dcba61d638a4}\label{cpu__provider__factory_8cc_a2e7fa2398566840ad1c3dcba61d638a4}} 
+\index{cpu\+\_\+provider\+\_\+factory.\+cc@{cpu\+\_\+provider\+\_\+factory.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL}!cpu\+\_\+provider\+\_\+factory.\+cc@{cpu\+\_\+provider\+\_\+factory.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+P\+L()}{ONNXRUNTIME\_API\_STATUS\_IMPL()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+I\+M\+PL (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+Runtime\+Create\+Cpu\+Allocator\+Info}]{,  }\item[{enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}}]{type,  }\item[{enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}]{mem\+\_\+type,  }\item[{\mbox{\hyperlink{visibility__macros_8h_a9c50bd6a6ca6e0be76a0f3a79379b90e}{\+\_\+\+Out\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$$\ast$}]{out }\end{DoxyParamCaption})}
+

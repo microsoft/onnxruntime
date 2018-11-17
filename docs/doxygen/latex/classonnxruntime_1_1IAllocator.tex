@@ -1,0 +1,153 @@
+\hypertarget{classonnxruntime_1_1IAllocator}{}\section{onnxruntime\+:\+:I\+Allocator Class Reference}
+\label{classonnxruntime_1_1IAllocator}\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+
+
+{\ttfamily \#include $<$allocator.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:I\+Allocator\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a0ba4d40b4b142731ff4511a2053bb72c}{$\sim$\+I\+Allocator}} ()=default
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a765590df724d3e7805c1dddbfe290b11}{Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)=0
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aeab273380d08b613b584c9e50deeb5f9}{Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p)=0
+\item 
+virtual const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a384b9f03d2346999b7b9ce3b225982a3}{Info}} () const =0
+\item 
+virtual \mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aac50b97886138b30cd0b7b3506fea459}{Create\+Fence}} (const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a9692f660ab4bd7ef7736ee38c71e5970}{Alloc\+Array}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} nmemb, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$size\+\_\+t alignment$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a228f7213f74cc1fd27c0767f51ec3c8e}{Alloc\+Array\+With\+Alignment}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} nmemb, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static bool \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aea7bc9eca606c112261e38f32fe55fbe}{Calc\+Mem\+Size\+For\+Array}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} nmemb, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$out) noexcept
+\item 
+{\footnotesize template$<$size\+\_\+t alignment$>$ }\\static bool \mbox{\hyperlink{classonnxruntime_1_1IAllocator_ae5059c340e3b8703dd8cea8bb52859d0}{Calc\+Mem\+Size\+For\+Array\+With\+Alignment}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} nmemb, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$out) noexcept \mbox{\hyperlink{visibility__macros_8h_abad8122da950a248c3f5f420091584c7}{O\+N\+N\+X\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}}
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aeca9cc0ec6d93a4be93884e69380e893}{Make\+Unique\+Ptr}} (std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator}{I\+Allocator}} $>$ allocator, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count\+\_\+or\+\_\+bytes)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_a0ba4d40b4b142731ff4511a2053bb72c}\label{classonnxruntime_1_1IAllocator_a0ba4d40b4b142731ff4511a2053bb72c}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!````~I\+Allocator@{$\sim$\+I\+Allocator}}
+\index{````~I\+Allocator@{$\sim$\+I\+Allocator}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{$\sim$\+I\+Allocator()}{~IAllocator()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+I\+Allocator\+::$\sim$\+I\+Allocator (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_a765590df724d3e7805c1dddbfe290b11}\label{classonnxruntime_1_1IAllocator_a765590df724d3e7805c1dddbfe290b11}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Alloc@{Alloc}}
+\index{Alloc@{Alloc}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Alloc()}{Alloc()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+I\+Allocator\+::\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CPUAllocator_a682cac57e48712c5c09506c21d92905c}{onnxruntime\+::\+C\+P\+U\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_aa703af32705cabad8c9f69e60efcfb6b}{onnxruntime\+::\+I\+Device\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a1e4bda05da04e05e5a9a58c3839e2a14}{onnxruntime\+::\+B\+F\+C\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a44c2bb22792ce63e5d7bfa4b3e03d968}{onnxruntime\+::\+Dummy\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_a22d04b010dc7782d37689ae50bab2535}{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a879507b0ec3b184d9bb60281191b8cd6}{onnxruntime\+::\+I\+Arena\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_aee649143cd3134b3b838fd81cfe2f457}{onnxruntime\+::\+Allocator\+Wrapper}}, and \mbox{\hyperlink{classonnxruntime_1_1CUDAAllocator_a21b66ae0d3ddcfdfd6c2bcafcffcdfda}{onnxruntime\+::\+C\+U\+D\+A\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_a9692f660ab4bd7ef7736ee38c71e5970}\label{classonnxruntime_1_1IAllocator_a9692f660ab4bd7ef7736ee38c71e5970}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Alloc\+Array@{Alloc\+Array}}
+\index{Alloc\+Array@{Alloc\+Array}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Alloc\+Array()}{AllocArray()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+I\+Allocator\+::\+Alloc\+Array (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{nmemb,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+allocate memory for an array which has nmemb items of data, each size bytes long \mbox{\Hypertarget{classonnxruntime_1_1IAllocator_a228f7213f74cc1fd27c0767f51ec3c8e}\label{classonnxruntime_1_1IAllocator_a228f7213f74cc1fd27c0767f51ec3c8e}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Alloc\+Array\+With\+Alignment@{Alloc\+Array\+With\+Alignment}}
+\index{Alloc\+Array\+With\+Alignment@{Alloc\+Array\+With\+Alignment}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Alloc\+Array\+With\+Alignment()}{AllocArrayWithAlignment()}}
+{\footnotesize\ttfamily template$<$size\+\_\+t alignment$>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+I\+Allocator\+::\+Alloc\+Array\+With\+Alignment (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{nmemb,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+allocate memory for an array which has nmemb items of data, each size bytes long \mbox{\Hypertarget{classonnxruntime_1_1IAllocator_aea7bc9eca606c112261e38f32fe55fbe}\label{classonnxruntime_1_1IAllocator_aea7bc9eca606c112261e38f32fe55fbe}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Calc\+Mem\+Size\+For\+Array@{Calc\+Mem\+Size\+For\+Array}}
+\index{Calc\+Mem\+Size\+For\+Array@{Calc\+Mem\+Size\+For\+Array}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Calc\+Mem\+Size\+For\+Array()}{CalcMemSizeForArray()}}
+{\footnotesize\ttfamily static bool onnxruntime\+::\+I\+Allocator\+::\+Calc\+Mem\+Size\+For\+Array (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{nmemb,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$}]{out }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_ae5059c340e3b8703dd8cea8bb52859d0}\label{classonnxruntime_1_1IAllocator_ae5059c340e3b8703dd8cea8bb52859d0}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Calc\+Mem\+Size\+For\+Array\+With\+Alignment@{Calc\+Mem\+Size\+For\+Array\+With\+Alignment}}
+\index{Calc\+Mem\+Size\+For\+Array\+With\+Alignment@{Calc\+Mem\+Size\+For\+Array\+With\+Alignment}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Calc\+Mem\+Size\+For\+Array\+With\+Alignment()}{CalcMemSizeForArrayWithAlignment()}}
+{\footnotesize\ttfamily template$<$size\+\_\+t alignment$>$ \\
+bool onnxruntime\+::\+I\+Allocator\+::\+Calc\+Mem\+Size\+For\+Array\+With\+Alignment (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{nmemb,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$}]{out }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}, {\ttfamily [noexcept]}}
+
+\href{https://cwe.mitre.org/data/definitions/190.html}{\tt https\+://cwe.\+mitre.\+org/data/definitions/190.\+html} 
+\begin{DoxyTemplParams}{Template Parameters}
+{\em alignment} & must be power of 2 \\
+\hline
+\end{DoxyTemplParams}
+
+\begin{DoxyParams}{Parameters}
+{\em nmemb} & \\
+\hline
+{\em size} & \\
+\hline
+{\em out} & \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+true, successful. false, overflow 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_aac50b97886138b30cd0b7b3506fea459}\label{classonnxruntime_1_1IAllocator_aac50b97886138b30cd0b7b3506fea459}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Create\+Fence@{Create\+Fence}}
+\index{Create\+Fence@{Create\+Fence}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Create\+Fence()}{CreateFence()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} onnxruntime\+::\+I\+Allocator\+::\+Create\+Fence (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [virtual]}}
+
+optional Create\+Fence interface, as provider like D\+ML has its own fence 
+
+Reimplemented in \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a2933ac1d2a3db5b2b4f242eb12d64721}{onnxruntime\+::\+B\+F\+C\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_ac484f5708f516cc19cc788404e173367}{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}, and \mbox{\hyperlink{classonnxruntime_1_1CUDAAllocator_ae53976512241587aedaf1581937f12c0}{onnxruntime\+::\+C\+U\+D\+A\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_aeab273380d08b613b584c9e50deeb5f9}\label{classonnxruntime_1_1IAllocator_aeab273380d08b613b584c9e50deeb5f9}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Free@{Free}}
+\index{Free@{Free}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Free()}{Free()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+I\+Allocator\+::\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CPUAllocator_affe0e58d7fc048fb2cef9fc6704fdd91}{onnxruntime\+::\+C\+P\+U\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_aeabef1862123ae6d9478199db974e32a}{onnxruntime\+::\+I\+Device\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a92b868aa0f335eafb2ae3542aa87b569}{onnxruntime\+::\+B\+F\+C\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a58196d32ed10a9d9aba3681457ec982d}{onnxruntime\+::\+Dummy\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_a2d28c8305e862060b9e5337073cda109}{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a3341fde74c8461678359fb903fe78df3}{onnxruntime\+::\+I\+Arena\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_ac41adbaba7d92b14697b271050d0cab2}{onnxruntime\+::\+Allocator\+Wrapper}}, and \mbox{\hyperlink{classonnxruntime_1_1CUDAAllocator_a72082fdae56347fdc45d4a3ac0f1e498}{onnxruntime\+::\+C\+U\+D\+A\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_a384b9f03d2346999b7b9ce3b225982a3}\label{classonnxruntime_1_1IAllocator_a384b9f03d2346999b7b9ce3b225982a3}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Info@{Info}}
+\index{Info@{Info}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Info()}{Info()}}
+{\footnotesize\ttfamily virtual const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}\& onnxruntime\+::\+I\+Allocator\+::\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CPUAllocator_a5eda291e0b728ea21d1f6893b5108020}{onnxruntime\+::\+C\+P\+U\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_a46b848cd863bcd50d1e63d48ad96c63c}{onnxruntime\+::\+I\+Device\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1BFCArena_acf4fc8182c636a16d62e80cf051da0e2}{onnxruntime\+::\+B\+F\+C\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a7f85a06ef904b9fe007e76d18a8d68a9}{onnxruntime\+::\+Dummy\+Arena}}, \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_af08d82e6f7b890059386326ac371950a}{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a4eb52bb1236cf59aec91161156286ba0}{onnxruntime\+::\+I\+Arena\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_a4eca2bcda00b9c970c3e8fd610d8f7b0}{onnxruntime\+::\+Allocator\+Wrapper}}, \mbox{\hyperlink{classonnxruntime_1_1MKLDNNCPUAllocator_ab5ed702febdae0ac4d7d6f17c3534cc7}{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+C\+P\+U\+Allocator}}, \mbox{\hyperlink{classonnxruntime_1_1CUDAAllocator_a347f391c14e4466bce42915feefa1f2f}{onnxruntime\+::\+C\+U\+D\+A\+Allocator}}, and \mbox{\hyperlink{classonnxruntime_1_1MKLDNNAllocator_ad8e51ea2f30a5bf719c47b5d96de41c1}{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IAllocator_aeca9cc0ec6d93a4be93884e69380e893}\label{classonnxruntime_1_1IAllocator_aeca9cc0ec6d93a4be93884e69380e893}} 
+\index{onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}!Make\+Unique\+Ptr@{Make\+Unique\+Ptr}}
+\index{Make\+Unique\+Ptr@{Make\+Unique\+Ptr}!onnxruntime\+::\+I\+Allocator@{onnxruntime\+::\+I\+Allocator}}
+\subsubsection{\texorpdfstring{Make\+Unique\+Ptr()}{MakeUniquePtr()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$T$>$ onnxruntime\+::\+I\+Allocator\+::\+Make\+Unique\+Ptr (\begin{DoxyParamCaption}\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator}{I\+Allocator}} $>$}]{allocator,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count\+\_\+or\+\_\+bytes }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+Create a std\+::unique\+\_\+ptr that is allocated and freed by the provided \mbox{\hyperlink{classonnxruntime_1_1IAllocator}{I\+Allocator}}. 
+\begin{DoxyParams}{Parameters}
+{\em allocator} & The allocator. \\
+\hline
+{\em count\+\_\+or\+\_\+bytes} & The exact bytes to allocate if T is void, otherwise the number of elements to allocate. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+std\+::unique\+\_\+ptr with allocated memory and deleter. 
+\end{DoxyReturn}
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{framework_2allocator_8h}{allocator.\+h}}\end{DoxyCompactItemize}

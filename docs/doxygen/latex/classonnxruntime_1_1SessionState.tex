@@ -1,0 +1,285 @@
+\hypertarget{classonnxruntime_1_1SessionState}{}\section{onnxruntime\+:\+:Session\+State Class Reference}
+\label{classonnxruntime_1_1SessionState}\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+
+
+{\ttfamily \#include $<$session\+\_\+state.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}}
+\end{DoxyCompactItemize}
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}{Name\+Node\+Info\+Map\+Type}} = std\+::unordered\+\_\+map$<$ std\+::string, std\+::vector$<$ \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} $>$ $>$
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SessionState_a205e81db480190a6094007f4076968e7}{Session\+State}} (const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \&execution\+\_\+providers)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a82b05bf5a5bfff13a32242a3f70eed67}{Set\+Graph\+Viewer}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1GraphViewer}{onnxruntime\+::\+Graph\+Viewer}} $>$ graph\+\_\+viewer)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1GraphViewer}{onnxruntime\+::\+Graph\+Viewer}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1SessionState_a20ed31bc58745fe97790032469f63e70}{Get\+Graph\+Viewer}} () const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1SessionState_a55c1f861930fdd86c669b86a687188aa}{Get\+Kernel}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} node\+\_\+id) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_aece5e3d91251079cc29d5047b641038f}{Add\+Kernel}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} node\+\_\+id, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $>$ p\+\_\+kernel)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_a5be9a9ca5514bb5348e767decba4adad}{Get\+Execution\+Providers}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap}{M\+L\+Value\+Name\+Idx\+Map}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_a0116cd101cba999d0795511cde756db9}{Get\+M\+L\+Value\+Name\+Idx\+Map}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap}{M\+L\+Value\+Name\+Idx\+Map}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_a2305627caea42ef2051aeb3c52b99de3}{Get\+M\+L\+Value\+Name\+Idx\+Map}} () noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a042cc35f37efe8e514d3079a3057b4bc}{Add\+Initialized\+Tensor}} (int mlvalue\+\_\+index, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&mlvalue)
+\item 
+const std\+::unordered\+\_\+map$<$ int, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_af517e5b1c5802615d61097bc2dac794c}{Get\+Initialized\+Tensors}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a3f028fc934024bfefa2de97c9616f325}{Set\+Execution\+Plan}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{structonnxruntime_1_1SequentialExecutionPlan}{Sequential\+Execution\+Plan}} $>$ p\+\_\+seq\+\_\+exec\+\_\+plan)
+\item 
+const \mbox{\hyperlink{structonnxruntime_1_1SequentialExecutionPlan}{Sequential\+Execution\+Plan}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1SessionState_ad10a1a643c133246a05014b0ece064f3}{Get\+Execution\+Plan}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_ac285bca58766bb80fa922aaeba828621}{Set\+Logger}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_af88e64c9cb77a0015935769ff1ec80c2}{Logger}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_ad15420b0775627e972dca83112970ab9}{Set\+Profiler}} (\mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler}{profiling\+::\+Profiler}} \&profiler)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler}{profiling\+::\+Profiler}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_ab7485b490fd94087096dcb7768bca814}{Profiler}} () const
+\item 
+const \mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1SessionState_a66e34a4a6a9c5262f36a33e357122421}{Get\+Memory\+Pattern\+Group}} (const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} $>$ \&input\+\_\+shapes) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a6309738563fcb395bfc41be309308829}{Update\+Memory\+Pattern\+Group\+Cache}} (const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} $>$ \&input\+\_\+shape, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $>$ mem\+\_\+patterns) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_af01f42ff9a4cbb027a914179e5d7a8b8}{Set\+Enable\+Memory\+Pattern}} (bool flag)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1SessionState_a334b886b13b3954edf9d85d2dbbbabb5}{Get\+Enable\+Memory\+Pattern}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a722e9a0c30eb23911c75019157d2a156}{Add\+Input\+Name\+To\+Node\+Info\+Mapping}} (const std\+::string \&input\+\_\+name, const \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} \&node\+\_\+info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a6764e725a348073622544a4b98332078}{Get\+Input\+Node\+Info}} (const std\+::string \&input\+\_\+name, std\+::vector$<$ \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} $>$ \&node\+\_\+info\+\_\+vec) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}{Name\+Node\+Info\+Map\+Type}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_a09f916e75db7903d8a0da8d6a78acc50}{Get\+Input\+Node\+Info\+Map}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a7f263156b095ec3edb1d5956adc4903d}{Add\+Output\+Name\+To\+Node\+Info\+Mapping}} (const std\+::string \&output\+\_\+name, const \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} \&node\+\_\+info)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}{Name\+Node\+Info\+Map\+Type}} \& \mbox{\hyperlink{classonnxruntime_1_1SessionState_a34f2a0e597991542cfadf0668b42b086}{Get\+Output\+Node\+Info\+Map}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_ab47ad35c3d00dff1aab587b2bd1cb737}{Add\+Subgraph\+Session\+State}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} index, const std\+::string \&attribute\+\_\+name, const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1SessionState_a54dbfd28320e11bb9b2d8589712c9c38}{Get\+Subgraph\+Session\+State}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} index, const std\+::string \&attribute\+\_\+name) const
+\begin{DoxyCompactList}\small\item\em Return \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} for the given \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} index and attribute name if found. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1SessionState_a756fc2e2e8e3a50af56697a431b8869b}{Get\+Thread\+Pool}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionState_a78e8fcc1e3a7fc1f0d29b8c101c57fd3}{Set\+Thread\+Pool}} (\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} $\ast$p\+\_\+pool)
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}\label{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Name\+Node\+Info\+Map\+Type@{Name\+Node\+Info\+Map\+Type}}
+\index{Name\+Node\+Info\+Map\+Type@{Name\+Node\+Info\+Map\+Type}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Name\+Node\+Info\+Map\+Type}{NameNodeInfoMapType}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}{onnxruntime\+::\+Session\+State\+::\+Name\+Node\+Info\+Map\+Type}} =  std\+::unordered\+\_\+map$<$std\+::string, std\+::vector$<$\mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}}$>$ $>$}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a205e81db480190a6094007f4076968e7}\label{classonnxruntime_1_1SessionState_a205e81db480190a6094007f4076968e7}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Session\+State@{Session\+State}}
+\index{Session\+State@{Session\+State}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Session\+State()}{SessionState()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Session\+State\+::\+Session\+State (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \&}]{execution\+\_\+providers }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a042cc35f37efe8e514d3079a3057b4bc}\label{classonnxruntime_1_1SessionState_a042cc35f37efe8e514d3079a3057b4bc}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Add\+Initialized\+Tensor@{Add\+Initialized\+Tensor}}
+\index{Add\+Initialized\+Tensor@{Add\+Initialized\+Tensor}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Add\+Initialized\+Tensor()}{AddInitializedTensor()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Add\+Initialized\+Tensor (\begin{DoxyParamCaption}\item[{int}]{mlvalue\+\_\+index,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{mlvalue }\end{DoxyParamCaption})}
+
+Adds an initialized tensor (weight) so that it can be used by the execution frame to setup the appropriate \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} vectors. \mbox{\Hypertarget{classonnxruntime_1_1SessionState_a722e9a0c30eb23911c75019157d2a156}\label{classonnxruntime_1_1SessionState_a722e9a0c30eb23911c75019157d2a156}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Add\+Input\+Name\+To\+Node\+Info\+Mapping@{Add\+Input\+Name\+To\+Node\+Info\+Mapping}}
+\index{Add\+Input\+Name\+To\+Node\+Info\+Mapping@{Add\+Input\+Name\+To\+Node\+Info\+Mapping}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Add\+Input\+Name\+To\+Node\+Info\+Mapping()}{AddInputNameToNodeInfoMapping()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Add\+Input\+Name\+To\+Node\+Info\+Mapping (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{input\+\_\+name,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} \&}]{node\+\_\+info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_aece5e3d91251079cc29d5047b641038f}\label{classonnxruntime_1_1SessionState_aece5e3d91251079cc29d5047b641038f}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Add\+Kernel@{Add\+Kernel}}
+\index{Add\+Kernel@{Add\+Kernel}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Add\+Kernel()}{AddKernel()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Add\+Kernel (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}}}]{node\+\_\+id,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $>$}]{p\+\_\+kernel }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a7f263156b095ec3edb1d5956adc4903d}\label{classonnxruntime_1_1SessionState_a7f263156b095ec3edb1d5956adc4903d}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Add\+Output\+Name\+To\+Node\+Info\+Mapping@{Add\+Output\+Name\+To\+Node\+Info\+Mapping}}
+\index{Add\+Output\+Name\+To\+Node\+Info\+Mapping@{Add\+Output\+Name\+To\+Node\+Info\+Mapping}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Add\+Output\+Name\+To\+Node\+Info\+Mapping()}{AddOutputNameToNodeInfoMapping()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Add\+Output\+Name\+To\+Node\+Info\+Mapping (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{output\+\_\+name,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} \&}]{node\+\_\+info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_ab47ad35c3d00dff1aab587b2bd1cb737}\label{classonnxruntime_1_1SessionState_ab47ad35c3d00dff1aab587b2bd1cb737}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Add\+Subgraph\+Session\+State@{Add\+Subgraph\+Session\+State}}
+\index{Add\+Subgraph\+Session\+State@{Add\+Subgraph\+Session\+State}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Add\+Subgraph\+Session\+State()}{AddSubgraphSessionState()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Add\+Subgraph\+Session\+State (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}}}]{index,  }\item[{const std\+::string \&}]{attribute\+\_\+name,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state }\end{DoxyParamCaption})}
+
+\mbox{\hyperlink{classonnxruntime_1_1Add}{Add}} a \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} instance for executing a subgraph in a \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} 
+\begin{DoxyParams}{Parameters}
+{\em index} & Index of \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} containing subgraph \\
+\hline
+{\em attribute\+\_\+name} & Name of attribute containing the subgraph Graph\+Proto \\
+\hline
+{\em session\+\_\+state} & \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} for subgraph execution \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a334b886b13b3954edf9d85d2dbbbabb5}\label{classonnxruntime_1_1SessionState_a334b886b13b3954edf9d85d2dbbbabb5}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Enable\+Memory\+Pattern@{Get\+Enable\+Memory\+Pattern}}
+\index{Get\+Enable\+Memory\+Pattern@{Get\+Enable\+Memory\+Pattern}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Enable\+Memory\+Pattern()}{GetEnableMemoryPattern()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Session\+State\+::\+Get\+Enable\+Memory\+Pattern (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Get enable memory pattern flag \mbox{\Hypertarget{classonnxruntime_1_1SessionState_ad10a1a643c133246a05014b0ece064f3}\label{classonnxruntime_1_1SessionState_ad10a1a643c133246a05014b0ece064f3}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Execution\+Plan@{Get\+Execution\+Plan}}
+\index{Get\+Execution\+Plan@{Get\+Execution\+Plan}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Execution\+Plan()}{GetExecutionPlan()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structonnxruntime_1_1SequentialExecutionPlan}{Sequential\+Execution\+Plan}} $\ast$ onnxruntime\+::\+Session\+State\+::\+Get\+Execution\+Plan (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a5be9a9ca5514bb5348e767decba4adad}\label{classonnxruntime_1_1SessionState_a5be9a9ca5514bb5348e767decba4adad}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Execution\+Providers@{Get\+Execution\+Providers}}
+\index{Get\+Execution\+Providers@{Get\+Execution\+Providers}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Execution\+Providers()}{GetExecutionProviders()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}}\& onnxruntime\+::\+Session\+State\+::\+Get\+Execution\+Providers (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a20ed31bc58745fe97790032469f63e70}\label{classonnxruntime_1_1SessionState_a20ed31bc58745fe97790032469f63e70}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Graph\+Viewer@{Get\+Graph\+Viewer}}
+\index{Get\+Graph\+Viewer@{Get\+Graph\+Viewer}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Graph\+Viewer()}{GetGraphViewer()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1GraphViewer}{onnxruntime\+::\+Graph\+Viewer}} $\ast$ onnxruntime\+::\+Session\+State\+::\+Get\+Graph\+Viewer (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_af517e5b1c5802615d61097bc2dac794c}\label{classonnxruntime_1_1SessionState_af517e5b1c5802615d61097bc2dac794c}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Initialized\+Tensors@{Get\+Initialized\+Tensors}}
+\index{Get\+Initialized\+Tensors@{Get\+Initialized\+Tensors}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Initialized\+Tensors()}{GetInitializedTensors()}}
+{\footnotesize\ttfamily const std\+::unordered\+\_\+map$<$ int, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $>$ \& onnxruntime\+::\+Session\+State\+::\+Get\+Initialized\+Tensors (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Gets the list of all initialized tensors (weights) so that it can be used by the execution frame to setup the appropriate \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} vectors. \mbox{\Hypertarget{classonnxruntime_1_1SessionState_a6764e725a348073622544a4b98332078}\label{classonnxruntime_1_1SessionState_a6764e725a348073622544a4b98332078}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Input\+Node\+Info@{Get\+Input\+Node\+Info}}
+\index{Get\+Input\+Node\+Info@{Get\+Input\+Node\+Info}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Input\+Node\+Info()}{GetInputNodeInfo()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Session\+State\+::\+Get\+Input\+Node\+Info (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{input\+\_\+name,  }\item[{std\+::vector$<$ \mbox{\hyperlink{structonnxruntime_1_1SessionState_1_1NodeInfo}{Node\+Info}} $>$ \&}]{node\+\_\+info\+\_\+vec }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a09f916e75db7903d8a0da8d6a78acc50}\label{classonnxruntime_1_1SessionState_a09f916e75db7903d8a0da8d6a78acc50}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Input\+Node\+Info\+Map@{Get\+Input\+Node\+Info\+Map}}
+\index{Get\+Input\+Node\+Info\+Map@{Get\+Input\+Node\+Info\+Map}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Input\+Node\+Info\+Map()}{GetInputNodeInfoMap()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}{Session\+State\+::\+Name\+Node\+Info\+Map\+Type}} \& onnxruntime\+::\+Session\+State\+::\+Get\+Input\+Node\+Info\+Map (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a55c1f861930fdd86c669b86a687188aa}\label{classonnxruntime_1_1SessionState_a55c1f861930fdd86c669b86a687188aa}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Kernel@{Get\+Kernel}}
+\index{Get\+Kernel@{Get\+Kernel}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Kernel()}{GetKernel()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $\ast$ onnxruntime\+::\+Session\+State\+::\+Get\+Kernel (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}}}]{node\+\_\+id }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a66e34a4a6a9c5262f36a33e357122421}\label{classonnxruntime_1_1SessionState_a66e34a4a6a9c5262f36a33e357122421}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Memory\+Pattern\+Group@{Get\+Memory\+Pattern\+Group}}
+\index{Get\+Memory\+Pattern\+Group@{Get\+Memory\+Pattern\+Group}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Memory\+Pattern\+Group()}{GetMemoryPatternGroup()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $\ast$ onnxruntime\+::\+Session\+State\+::\+Get\+Memory\+Pattern\+Group (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} $>$ \&}]{input\+\_\+shapes }\end{DoxyParamCaption}) const}
+
+Get cached memory pattern based on input shapes \mbox{\Hypertarget{classonnxruntime_1_1SessionState_a0116cd101cba999d0795511cde756db9}\label{classonnxruntime_1_1SessionState_a0116cd101cba999d0795511cde756db9}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+M\+L\+Value\+Name\+Idx\+Map@{Get\+M\+L\+Value\+Name\+Idx\+Map}}
+\index{Get\+M\+L\+Value\+Name\+Idx\+Map@{Get\+M\+L\+Value\+Name\+Idx\+Map}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+M\+L\+Value\+Name\+Idx\+Map()}{GetMLValueNameIdxMap()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap}{M\+L\+Value\+Name\+Idx\+Map}}\& onnxruntime\+::\+Session\+State\+::\+Get\+M\+L\+Value\+Name\+Idx\+Map (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a2305627caea42ef2051aeb3c52b99de3}\label{classonnxruntime_1_1SessionState_a2305627caea42ef2051aeb3c52b99de3}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+M\+L\+Value\+Name\+Idx\+Map@{Get\+M\+L\+Value\+Name\+Idx\+Map}}
+\index{Get\+M\+L\+Value\+Name\+Idx\+Map@{Get\+M\+L\+Value\+Name\+Idx\+Map}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+M\+L\+Value\+Name\+Idx\+Map()}{GetMLValueNameIdxMap()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap}{M\+L\+Value\+Name\+Idx\+Map}}\& onnxruntime\+::\+Session\+State\+::\+Get\+M\+L\+Value\+Name\+Idx\+Map (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a34f2a0e597991542cfadf0668b42b086}\label{classonnxruntime_1_1SessionState_a34f2a0e597991542cfadf0668b42b086}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Output\+Node\+Info\+Map@{Get\+Output\+Node\+Info\+Map}}
+\index{Get\+Output\+Node\+Info\+Map@{Get\+Output\+Node\+Info\+Map}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Output\+Node\+Info\+Map()}{GetOutputNodeInfoMap()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1SessionState_ae235b8dfb073b021d014a42b5dcc0072}{Session\+State\+::\+Name\+Node\+Info\+Map\+Type}} \& onnxruntime\+::\+Session\+State\+::\+Get\+Output\+Node\+Info\+Map (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a54dbfd28320e11bb9b2d8589712c9c38}\label{classonnxruntime_1_1SessionState_a54dbfd28320e11bb9b2d8589712c9c38}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Subgraph\+Session\+State@{Get\+Subgraph\+Session\+State}}
+\index{Get\+Subgraph\+Session\+State@{Get\+Subgraph\+Session\+State}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Subgraph\+Session\+State()}{GetSubgraphSessionState()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$ onnxruntime\+::\+Session\+State\+::\+Get\+Subgraph\+Session\+State (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}}}]{index,  }\item[{const std\+::string \&}]{attribute\+\_\+name }\end{DoxyParamCaption}) const}
+
+
+
+Return \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} for the given \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} index and attribute name if found. 
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a756fc2e2e8e3a50af56697a431b8869b}\label{classonnxruntime_1_1SessionState_a756fc2e2e8e3a50af56697a431b8869b}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Get\+Thread\+Pool@{Get\+Thread\+Pool}}
+\index{Get\+Thread\+Pool@{Get\+Thread\+Pool}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Get\+Thread\+Pool()}{GetThreadPool()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}}$\ast$ onnxruntime\+::\+Session\+State\+::\+Get\+Thread\+Pool (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_af88e64c9cb77a0015935769ff1ec80c2}\label{classonnxruntime_1_1SessionState_af88e64c9cb77a0015935769ff1ec80c2}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Logger@{Logger}}
+\index{Logger@{Logger}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Logger()}{Logger()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \& onnxruntime\+::\+Session\+State\+::\+Logger (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Get the logger for this session. Falls back to returning Logging\+::\+Logging\+Manager\+::\+Default\+Logger if Set\+Logger has not been called. \mbox{\Hypertarget{classonnxruntime_1_1SessionState_ab7485b490fd94087096dcb7768bca814}\label{classonnxruntime_1_1SessionState_ab7485b490fd94087096dcb7768bca814}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Profiler@{Profiler}}
+\index{Profiler@{Profiler}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Profiler()}{Profiler()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler}{onnxruntime\+::profiling\+::\+Profiler}} \& onnxruntime\+::\+Session\+State\+::\+Profiler (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Get the profiler for this session. It needs to be enabled via the \mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{Inference\+Session}} to perform profiling actions. \mbox{\Hypertarget{classonnxruntime_1_1SessionState_af01f42ff9a4cbb027a914179e5d7a8b8}\label{classonnxruntime_1_1SessionState_af01f42ff9a4cbb027a914179e5d7a8b8}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Set\+Enable\+Memory\+Pattern@{Set\+Enable\+Memory\+Pattern}}
+\index{Set\+Enable\+Memory\+Pattern@{Set\+Enable\+Memory\+Pattern}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Set\+Enable\+Memory\+Pattern()}{SetEnableMemoryPattern()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Set\+Enable\+Memory\+Pattern (\begin{DoxyParamCaption}\item[{bool}]{flag }\end{DoxyParamCaption})}
+
+Set enable memory pattern flag \mbox{\Hypertarget{classonnxruntime_1_1SessionState_a3f028fc934024bfefa2de97c9616f325}\label{classonnxruntime_1_1SessionState_a3f028fc934024bfefa2de97c9616f325}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Set\+Execution\+Plan@{Set\+Execution\+Plan}}
+\index{Set\+Execution\+Plan@{Set\+Execution\+Plan}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Set\+Execution\+Plan()}{SetExecutionPlan()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Set\+Execution\+Plan (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{structonnxruntime_1_1SequentialExecutionPlan}{Sequential\+Execution\+Plan}} $>$}]{p\+\_\+seq\+\_\+exec\+\_\+plan }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a82b05bf5a5bfff13a32242a3f70eed67}\label{classonnxruntime_1_1SessionState_a82b05bf5a5bfff13a32242a3f70eed67}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Set\+Graph\+Viewer@{Set\+Graph\+Viewer}}
+\index{Set\+Graph\+Viewer@{Set\+Graph\+Viewer}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Set\+Graph\+Viewer()}{SetGraphViewer()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Set\+Graph\+Viewer (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1GraphViewer}{onnxruntime\+::\+Graph\+Viewer}} $>$}]{graph\+\_\+viewer }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_ac285bca58766bb80fa922aaeba828621}\label{classonnxruntime_1_1SessionState_ac285bca58766bb80fa922aaeba828621}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Set\+Logger@{Set\+Logger}}
+\index{Set\+Logger@{Set\+Logger}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Set\+Logger()}{SetLogger()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \& onnxruntime\+::\+Session\+State\+::\+Set\+Logger (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger }\end{DoxyParamCaption})}
+
+Set the logger to use for this session. \mbox{\Hypertarget{classonnxruntime_1_1SessionState_ad15420b0775627e972dca83112970ab9}\label{classonnxruntime_1_1SessionState_ad15420b0775627e972dca83112970ab9}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Set\+Profiler@{Set\+Profiler}}
+\index{Set\+Profiler@{Set\+Profiler}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Set\+Profiler()}{SetProfiler()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Set\+Profiler (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1profiling_1_1Profiler}{profiling\+::\+Profiler}} \&}]{profiler }\end{DoxyParamCaption})}
+
+Set the profiler for this session. \mbox{\Hypertarget{classonnxruntime_1_1SessionState_a78e8fcc1e3a7fc1f0d29b8c101c57fd3}\label{classonnxruntime_1_1SessionState_a78e8fcc1e3a7fc1f0d29b8c101c57fd3}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Set\+Thread\+Pool@{Set\+Thread\+Pool}}
+\index{Set\+Thread\+Pool@{Set\+Thread\+Pool}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Set\+Thread\+Pool()}{SetThreadPool()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+State\+::\+Set\+Thread\+Pool (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} $\ast$}]{p\+\_\+pool }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionState_a6309738563fcb395bfc41be309308829}\label{classonnxruntime_1_1SessionState_a6309738563fcb395bfc41be309308829}} 
+\index{onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}!Update\+Memory\+Pattern\+Group\+Cache@{Update\+Memory\+Pattern\+Group\+Cache}}
+\index{Update\+Memory\+Pattern\+Group\+Cache@{Update\+Memory\+Pattern\+Group\+Cache}!onnxruntime\+::\+Session\+State@{onnxruntime\+::\+Session\+State}}
+\subsubsection{\texorpdfstring{Update\+Memory\+Pattern\+Group\+Cache()}{UpdateMemoryPatternGroupCache()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Session\+State\+::\+Update\+Memory\+Pattern\+Group\+Cache (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} $>$ \&}]{input\+\_\+shape,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{structonnxruntime_1_1MemoryPatternGroup}{Memory\+Pattern\+Group}} $>$}]{mem\+\_\+patterns }\end{DoxyParamCaption}) const}
+
+Set generated memory pattern with a given input shapes. Const as it\textquotesingle{}s an internal cache update only. 
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{session__state_8h}{session\+\_\+state.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{session__state_8cc}{session\+\_\+state.\+cc}}\end{DoxyCompactItemize}

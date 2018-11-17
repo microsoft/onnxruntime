@@ -1,0 +1,86 @@
+\hypertarget{classonnxruntime_1_1MLValueTensorSlicer}{}\section{onnxruntime\+:\+:M\+L\+Value\+Tensor\+Slicer$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1MLValueTensorSlicer}\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer$<$ T $>$@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer$<$ T $>$}}
+
+
+{\ttfamily \#include $<$mlvalue\+\_\+tensor\+\_\+slicer.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_a61d4d62904415b8ed0b12516f396b2d1}{begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_a708fbd080203261cda938c0f260fd099}{end}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_ac20f401c1a705f484b8733c10eaf23ff}{rbegin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_a83c331a5f9c9ba240a074e8e86919ff0}{rend}} () const noexcept
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{M\+L\+Value\+Tensor\+Slicer}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_ac99401612f9fd60873bc56b84bc003c6}{Create}} (T \&mlvalue, int64\+\_\+t slice\+\_\+dimension=0, int64\+\_\+t dim0\+\_\+offset=0)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+\subsubsection*{template$<$typename T$>$\newline
+class onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer$<$ T $>$}
+
+Class to provide a slicing service over a \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} stored within an \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} with shape \{batch size, sequence length, $<$input shape$>$=\char`\"{}\char`\"{}$>$\}. Access to the slices is via an iterator interface.
+
+For each iteration an \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} will be returned containing a sub-\/\+Tensor of the original \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}}. The sub-\/\+Tensor applies the relevant offset to the data address from the original \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} in order to avoid any memory allocations/copies for the tensor data. 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_a61d4d62904415b8ed0b12516f396b2d1}\label{classonnxruntime_1_1MLValueTensorSlicer_a61d4d62904415b8ed0b12516f396b2d1}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}!begin@{begin}}
+\index{begin@{begin}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}
+\subsubsection{\texorpdfstring{begin()}{begin()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_ac99401612f9fd60873bc56b84bc003c6}\label{classonnxruntime_1_1MLValueTensorSlicer_ac99401612f9fd60873bc56b84bc003c6}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}!Create@{Create}}
+\index{Create@{Create}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}
+\subsubsection{\texorpdfstring{Create()}{Create()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Create (\begin{DoxyParamCaption}\item[{T \&}]{mlvalue,  }\item[{int64\+\_\+t}]{slice\+\_\+dimension = {\ttfamily 0},  }\item[{int64\+\_\+t}]{dim0\+\_\+offset = {\ttfamily 0} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+Create a new instance to slice the \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} contained in an \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} into sub-\/\+Tensors contained within new \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} instances that are accessed via the \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}}. T must be \textquotesingle{}\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}\textquotesingle{} or \textquotesingle{}const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}\textquotesingle{} 
+\begin{DoxyParams}{Parameters}
+{\em slice\+\_\+dimension} & Dimension to slice on. \\
+\hline
+{\em dim0\+\_\+offset} & Offset to start at. Only meaningful if slice\+\_\+dimension != 0. e.\+g. if input is \mbox{[}batch, seq\+\_\+len, data\mbox{]} and you want to slice the seq\+\_\+len dimension, you need to create an \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} instance for each batch item, incrementing dim0\+\_\+offset for each one. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_a708fbd080203261cda938c0f260fd099}\label{classonnxruntime_1_1MLValueTensorSlicer_a708fbd080203261cda938c0f260fd099}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}!end@{end}}
+\index{end@{end}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}
+\subsubsection{\texorpdfstring{end()}{end()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::end (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_ac20f401c1a705f484b8733c10eaf23ff}\label{classonnxruntime_1_1MLValueTensorSlicer_ac20f401c1a705f484b8733c10eaf23ff}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}!rbegin@{rbegin}}
+\index{rbegin@{rbegin}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}
+\subsubsection{\texorpdfstring{rbegin()}{rbegin()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::rbegin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_a83c331a5f9c9ba240a074e8e86919ff0}\label{classonnxruntime_1_1MLValueTensorSlicer_a83c331a5f9c9ba240a074e8e86919ff0}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}!rend@{rend}}
+\index{rend@{rend}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}
+\subsubsection{\texorpdfstring{rend()}{rend()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::rend (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mlvalue__tensor__slicer_8h}{mlvalue\+\_\+tensor\+\_\+slicer.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mlvalue__tensor__slicer_8cc}{mlvalue\+\_\+tensor\+\_\+slicer.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,134 @@
+\hypertarget{cuda_2activation_2activations_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/activation/activations.cc File Reference}
+\label{cuda_2activation_2activations_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/activation/activations.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/activation/activations.\+cc}}
+{\ttfamily \#include \char`\"{}activations.\+h\char`\"{}}\newline
+Include dependency graph for activations.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8cc_a4768d3cdf915bba48fde5407247479ee}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL}}(x,  ver,  T)
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8cc_ad581297c7fef967c6ee61865e2731839}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE}}(x,  T)
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8cc_a6d663bc23ce92ee22309a7ff37f9f0ea}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}}(name,  ver,  T)
+\item 
+\#define \mbox{\hyperlink{cuda_2activation_2activations_8cc_aedc70ee65a3fbc6490a89003f263a5d1}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}}(name,  ver)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a527f8290d15a8af5de399ab37e5e09be}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Affine, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a457e002c7b285279e4fc144ac8800a0b}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Elu, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a647634cf5625dc6d0c46b122d5e1e221}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Hard\+Sigmoid, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a2747eea2d00e0518acf1a160deeb2d39}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Leaky\+Relu, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_af6d6a194db4dc1a50154c7d22d7890bd}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Parametric\+Softplus, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa13e51314d19d5fbde9f8467e0d1c874}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Relu, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_af35bccb7c8f0e7f723e032ddbef92627}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Scaled\+Tanh, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_af0582ac122e40e805fc2942d9602172a}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Selu, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a464ec829c08f0fb929b9349560ccc300}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Sigmoid, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a27945ae6c6e8e255a9ddc9aa7a610689}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Softplus, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a4532ab2283a50365c6344add0cecea3f}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Softsign, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a44e2351ef5877b867e78d45d1c1b32e0}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Tanh, 6)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a7d61a8374b53d76a0638f4a647d45cf7}{onnxruntime\+::cuda\+::\+U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}} (Thresholded\+Relu, 1)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda_2activation_2activations_8cc_a4768d3cdf915bba48fde5407247479ee}\label{cuda_2activation_2activations_8cc_a4768d3cdf915bba48fde5407247479ee}} 
+\index{cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL}!cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL}{REGISTER\_ACTIVATION\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{ver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                 \(\backslash\)
+      x,                                                         \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                               \(\backslash\)
+      ver,                                                       \(\backslash\)
+      T,                                                         \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                    \(\backslash\)
+      KernelDefBuilder()                                         \(\backslash\)
+          .TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>()) \(\backslash\)
+          .MayInplace(0, 0),                                     \(\backslash\)
+      x<T>);
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2activation_2activations_8cc_ad581297c7fef967c6ee61865e2731839}\label{cuda_2activation_2activations_8cc_ad581297c7fef967c6ee61865e2731839}} 
+\index{cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}!U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE}}
+\index{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE}!cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE}{UNARY\_ACTIVATION\_COMPUTE}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+C\+O\+M\+P\+U\+TE(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                                              \(\backslash\)
+  Status x<T>::ComputeInternal(OpKernelContext* context)\textcolor{keyword}{ const }\{                                           
+      \(\backslash\)
+    UnaryElementwisePreparation p;                                                                         
+      \(\backslash\)
+    UnaryElementwise::Prepare(context, &p);                                                                
+      \(\backslash\)
+    CudaAsyncBuffer<Ctx##x> func\_ctx(\textcolor{keyword}{this}, 0, MakeFuncCtx());                                              
+      \(\backslash\)
+    if (!std::is\_same<CtxNull, Ctx##x>::value)                                                             
+      \(\backslash\)
+      ONNXRUNTIME\_RETURN\_IF\_ERROR(func\_ctx.CopyToGpu());                                                   
+      \(\backslash\)
+    Impl\_##x<typename ToCudaType<T>::MappedType>(                                                          
+      \(\backslash\)
+        reinterpret\_cast<\textcolor{keyword}{const} \textcolor{keyword}{typename} ToCudaType<T>::MappedType*>(p.input\_tensor->template Data<T>()),   
+      \(\backslash\)
+        reinterpret\_cast<\textcolor{keyword}{typename} ToCudaType<T>::MappedType*>(p.output\_tensor->template MutableData<T>()), 
+      \(\backslash\)
+        func\_ctx.GpuPtr(),                                                                                 
+      \(\backslash\)
+        p.output\_tensor->Shape().Size());                                                                  
+      \(\backslash\)
+                                                                                                           
+      \(\backslash\)
+    return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                                         
+                \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2activation_2activations_8cc_aedc70ee65a3fbc6490a89003f263a5d1}\label{cuda_2activation_2activations_8cc_aedc70ee65a3fbc6490a89003f263a5d1}} 
+\index{cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}!U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}}
+\index{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}!cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD}{UNARY\_ACTIVATION\_OP\_HFD}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{cuda_2activation_2activations_8cc_a6d663bc23ce92ee22309a7ff37f9f0ea}{UNARY\_ACTIVATION\_OP\_TYPED}}(name, ver, MLFloat16) \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_TYPED(name, ver, \textcolor{keywordtype}{float})     \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_TYPED(name, ver, \textcolor{keywordtype}{double})
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2activation_2activations_8cc_a6d663bc23ce92ee22309a7ff37f9f0ea}\label{cuda_2activation_2activations_8cc_a6d663bc23ce92ee22309a7ff37f9f0ea}} 
+\index{cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}!U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}}
+\index{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}!cuda/activation/activations.\+cc@{cuda/activation/activations.\+cc}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}{UNARY\_ACTIVATION\_OP\_TYPED}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{cuda_2activation_2activations_8cc_a4768d3cdf915bba48fde5407247479ee}{REGISTER\_ACTIVATION\_KERNEL}}(name, ver, T)      \(\backslash\)
+  UNARY\_ACTIVATION\_COMPUTE(name, T)
+\end{DoxyCode}

@@ -1,0 +1,38 @@
+\hypertarget{cuda__utils_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.h File Reference}
+\label{cuda__utils_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.\+h@{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.\+h}}
+{\ttfamily \#include $<$memory$>$}\newline
+{\ttfamily \#include $<$vector$>$}\newline
+{\ttfamily \#include \char`\"{}fast\+\_\+divmod.\+h\char`\"{}}\newline
+Include dependency graph for cuda\+\_\+utils.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1IConstantBuffer}{onnxruntime\+::cuda\+::\+I\+Constant\+Buffer$<$ T $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa9f83573eddf1eee5577bb1c6aaae920}{onnxruntime\+::cuda\+::\+Simple\+Broadcast}} \+: size\+\_\+t \{ \newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa9f83573eddf1eee5577bb1c6aaae920a60212413510a410bf5192f109ecc4815}{onnxruntime\+::cuda\+::\+Simple\+Broadcast\+::\+No\+Broadcast}} = (size\+\_\+t)-\/1, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa9f83573eddf1eee5577bb1c6aaae920a2121638796bb7e7f58ffecfb894c7135}{onnxruntime\+::cuda\+::\+Simple\+Broadcast\+::\+Left\+Scalar}} = (size\+\_\+t)-\/2, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa9f83573eddf1eee5577bb1c6aaae920ad5cf49141f858c55da2682a66aa8dde6}{onnxruntime\+::cuda\+::\+Simple\+Broadcast\+::\+Right\+Scalar}} = (size\+\_\+t)-\/3, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa9f83573eddf1eee5577bb1c6aaae920af3c8c9fc27b1c282146c15e980adf190}{onnxruntime\+::cuda\+::\+Simple\+Broadcast\+::\+Right\+Per\+Channel\+Batch1}} = (size\+\_\+t)-\/4, 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_aa9f83573eddf1eee5577bb1c6aaae920ab907e3ea1ad58d2a08b02de5e8a27131}{onnxruntime\+::cuda\+::\+Simple\+Broadcast\+::\+Right\+Per\+Channel\+BatchN}} = (size\+\_\+t)-\/5
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\std\+::unique\+\_\+ptr$<$ I\+Constant\+Buffer$<$ T $>$ $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a855114def2d3cfc9e8f0ff2d267ff782}{onnxruntime\+::cuda\+::\+Create\+Constant\+Ones}} ()
+\end{DoxyCompactItemize}

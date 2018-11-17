@@ -1,0 +1,65 @@
+\hypertarget{classonnxruntime_1_1InsertCastTransformer}{}\section{onnxruntime\+:\+:Insert\+Cast\+Transformer Class Reference}
+\label{classonnxruntime_1_1InsertCastTransformer}\index{onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}}
+
+
+{\ttfamily \#include $<$insert\+\_\+cast\+\_\+transformer.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Insert\+Cast\+Transformer\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Insert\+Cast\+Transformer\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer_a0e09fe80f4600d8491bca07ec417456e}{Insert\+Cast\+Transformer}} (const std\+::string \&name)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer_ac2f4e0e5153f9c688b576b7ff0a273e6}{Add\+Kernel\+Registries}} (const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $\ast$$>$ \&kernels)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer_a97273a06a21e7972b8d489604cd9f6b2}{Add\+Kernel\+Registry}} (const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}{kernel}})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer_a059a832a759981af5fdeed0780e65904}{Apply}} (\mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&graph, bool \&modified) const override
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InsertCastTransformer_a0e09fe80f4600d8491bca07ec417456e}\label{classonnxruntime_1_1InsertCastTransformer_a0e09fe80f4600d8491bca07ec417456e}} 
+\index{onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}!Insert\+Cast\+Transformer@{Insert\+Cast\+Transformer}}
+\index{Insert\+Cast\+Transformer@{Insert\+Cast\+Transformer}!onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}}
+\subsubsection{\texorpdfstring{Insert\+Cast\+Transformer()}{InsertCastTransformer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Insert\+Cast\+Transformer\+::\+Insert\+Cast\+Transformer (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InsertCastTransformer_ac2f4e0e5153f9c688b576b7ff0a273e6}\label{classonnxruntime_1_1InsertCastTransformer_ac2f4e0e5153f9c688b576b7ff0a273e6}} 
+\index{onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}!Add\+Kernel\+Registries@{Add\+Kernel\+Registries}}
+\index{Add\+Kernel\+Registries@{Add\+Kernel\+Registries}!onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}}
+\subsubsection{\texorpdfstring{Add\+Kernel\+Registries()}{AddKernelRegistries()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Insert\+Cast\+Transformer\+::\+Add\+Kernel\+Registries (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $\ast$$>$ \&}]{kernels }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InsertCastTransformer_a97273a06a21e7972b8d489604cd9f6b2}\label{classonnxruntime_1_1InsertCastTransformer_a97273a06a21e7972b8d489604cd9f6b2}} 
+\index{onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}!Add\+Kernel\+Registry@{Add\+Kernel\+Registry}}
+\index{Add\+Kernel\+Registry@{Add\+Kernel\+Registry}!onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}}
+\subsubsection{\texorpdfstring{Add\+Kernel\+Registry()}{AddKernelRegistry()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Insert\+Cast\+Transformer\+::\+Add\+Kernel\+Registry (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} \&}]{kernel }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InsertCastTransformer_a059a832a759981af5fdeed0780e65904}\label{classonnxruntime_1_1InsertCastTransformer_a059a832a759981af5fdeed0780e65904}} 
+\index{onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}!Apply@{Apply}}
+\index{Apply@{Apply}!onnxruntime\+::\+Insert\+Cast\+Transformer@{onnxruntime\+::\+Insert\+Cast\+Transformer}}
+\subsubsection{\texorpdfstring{Apply()}{Apply()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Insert\+Cast\+Transformer\+::\+Apply (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&}]{graph,  }\item[{bool \&}]{modified }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1GraphTransformer_a690d351da797884409b1d7aa584e33b5}{onnxruntime\+::\+Graph\+Transformer}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{insert__cast__transformer_8h}{insert\+\_\+cast\+\_\+transformer.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{insert__cast__transformer_8cc}{insert\+\_\+cast\+\_\+transformer.\+cc}}\end{DoxyCompactItemize}

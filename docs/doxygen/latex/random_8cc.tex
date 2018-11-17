@@ -1,0 +1,40 @@
+\hypertarget{random_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/generator/random.cc File Reference}
+\label{random_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/generator/random.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/generator/random.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/generator/random.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$algorithm$>$}\newline
+{\ttfamily \#include $<$chrono$>$}\newline
+{\ttfamily \#include $<$random$>$}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/eigen\+\_\+common\+\_\+wrapper.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}gsl/span\char`\"{}}\newline
+Include dependency graph for random.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T , typename Index\+Type  = int64\+\_\+t$>$ }\\using \mbox{\hyperlink{namespaceonnxruntime_a5cf6121dfe1df46b79ad87327786bb2c}{onnxruntime\+::\+Matrix}} = Eigen\+::\+Tensor\+Map$<$ Eigen\+::\+Tensor$<$ T, 2, Eigen\+::\+Row\+Major, Index\+Type $>$ $>$
+\item 
+{\footnotesize template$<$typename T , typename Index\+Type  = int64\+\_\+t$>$ }\\using \mbox{\hyperlink{namespaceonnxruntime_ac83412fba3bc8df9b710483ee958e79c}{onnxruntime\+::\+Const\+Matrix}} = Eigen\+::\+Tensor\+Map$<$ Eigen\+::\+Tensor$<$ const T, 2, Eigen\+::\+Row\+Major, Index\+Type $>$ $>$
+\item 
+{\footnotesize template$<$typename T , typename Index\+Type  = int64\+\_\+t$>$ }\\using \mbox{\hyperlink{namespaceonnxruntime_a0f5d0e96b27a203da5065e22dfa6f28e}{onnxruntime\+::\+Eigen\+Vector}} = Eigen\+::\+Tensor\+Map$<$ Eigen\+::\+Tensor$<$ T, 1, Eigen\+::\+Row\+Major, Index\+Type $>$ $>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a20c06e55ee365a81a0db104741bcffe8}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Random\+Normal, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{ Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ double $>$()\}), Random\+Normal)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a0bce2b6f5be5068472629b335eae9f52}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Random\+Uniform, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{ Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ double $>$()\}), Random\+Uniform)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad86bb1b7316a9d7f4606620cf5f97036}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Random\+Normal\+Like, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T1\char`\"{}, Data\+Type\+Impl\+::\+All\+Tensor\+Types()).Type\+Constraint(\char`\"{}T2\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ double $>$()\}), Random\+Normal\+Like)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a3220079f6a2d8d344cfdbfec89ffacce}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Random\+Uniform\+Like, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T1\char`\"{}, Data\+Type\+Impl\+::\+All\+Tensor\+Types()).Type\+Constraint(\char`\"{}T2\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ double $>$()\}), Random\+Uniform\+Like)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a677b8afecbde4b434c2dadd5df33440a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Multinomial, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T1\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()).Type\+Constraint(\char`\"{}T2\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()\}), Multinomial)
+\item 
+{\footnotesize template$<$typename T , typename T\+Distribution $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_af375f3bf9afb474b936f8aa24dff75d8}{onnxruntime\+::\+Generate\+Data}} (std\+::default\+\_\+random\+\_\+engine generator, T\+Distribution distribution, Tensor \&tensor)
+\end{DoxyCompactItemize}

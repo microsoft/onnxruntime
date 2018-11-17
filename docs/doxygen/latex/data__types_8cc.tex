@@ -1,0 +1,193 @@
+\hypertarget{data__types_8cc}{}\section{onnxruntime/onnxruntime/core/framework/data\+\_\+types.cc File Reference}
+\label{data__types_8cc}\index{onnxruntime/onnxruntime/core/framework/data\+\_\+types.\+cc@{onnxruntime/onnxruntime/core/framework/data\+\_\+types.\+cc}}
+{\ttfamily \#include \char`\"{}core/framework/data\+\_\+types.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensor.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/onnx\+\_\+protobuf.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}onnx/defs/data\+\_\+type\+\_\+utils.\+h\char`\"{}}\newline
+Include dependency graph for data\+\_\+types.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1TensorContainedTypeSetter_3_01T_01_4}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Tensor\+Contained\+Type\+Setter$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1data__types__internal_1_1DataTypeRegistry}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Data\+Type\+Registry}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1TypeProtoImpl}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Type\+Proto\+Impl}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1TensorTypeBase_1_1Impl}{onnxruntime\+::\+Tensor\+Type\+Base\+::\+Impl}}
+\begin{DoxyCompactList}\small\item\em \mbox{\hyperlink{classonnxruntime_1_1TensorTypeBase}{Tensor\+Type\+Base}}. \end{DoxyCompactList}\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1NonTensorTypeBase_1_1Impl}{onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Impl}}
+\begin{DoxyCompactList}\small\item\em No\+Tensor\+Type\+Base. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal}{onnxruntime\+::data\+\_\+types\+\_\+internal}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{data__types_8cc_a06c44fcf2022a49077aff61a3a09cb26}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO}}(T\+Y\+PE,  reg\+\_\+fn)
+\item 
+\#define \mbox{\hyperlink{data__types_8cc_aeb1f1c0c15f8e1d08d2da5f31c9a0d60}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO}}(T\+Y\+PE,  reg\+\_\+fn)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a083dfe9320ee42949a5284c6989a79d1}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ad28f80ab20f3ff08f92b3821a1cb0403}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ float $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ad4eb8f9cf6acf01d5824265454b7b223}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ uint8\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_af9ca8e36fc37d90a20c9a34d84b4aa9f}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ int8\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a26712c0e041f0b0892ecec74a7de0db3}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ uint16\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_afa1e21a8cc57f4e3e734cff37c19d61a}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ int16\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_aec3d8f70c6c6e40b2c0f7c0d33e81524}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ int32\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a36dcfc6dc3ba7f1c6e6e21b1b00baea7}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ int64\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a3cc313d3f9c612ca3d515935a27b9f83}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ std\+::string $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a4b27a13ddb99a1f038164fa4e00f8d6d}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ bool $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a5814ef0fefa2bc39482b6f0e353870c8}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ M\+L\+Float16 $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_af8323c3b39bbca11365fe0a22eaa887a}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ double $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_aef5850c0443fb08be7d201ba2fc8b945}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ uint32\+\_\+t $>$}} ()
+\item 
+{\footnotesize template$<$$>$ }\\constexpr O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_aadf5ee07a814f7fdb0db09472dbf9006}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+To\+Tensor\+Data\+Type$<$ uint64\+\_\+t $>$}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ac1fd254086666e3c4b5a446f675045c2}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Copy\+Mutable\+Map\+Value}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ae8a105851088c4c54974143738dfd2d5}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Copy\+Mutable\+Seq\+Element}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a032f5531fe029539cd81b7bb954d3f47}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Assign\+Opaque\+Domain\+Name}} (const char $\ast$domain, const char $\ast$name, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&proto)
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a9099f278b70ba024c5728c05e11897ee}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Tensor \&tensor\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Tensor \&type\+\_\+proto)
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_aece255300cd5b81ed09517ea20130c58}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Map \&map\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Map \&type\+\_\+proto)
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a44bb8561823e33ae70b877bcd51251c8}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sequence \&sequence\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Sequence \&type\+\_\+proto)
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a41fe7f3e42912d2e8db13d576b646120}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Opaque \&opaque\+\_\+proto, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto\+\_\+\+Opaque \&type\+\_\+proto)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ada1f3666a57810888a98209550c1cc4b}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Register\+All\+Protos}} (const std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(M\+L\+Data\+Type)$>$ \&)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a7cae04c995eba7600072356a41a7b7a4}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (int32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab4842ef075e7a63cf2abb8f29a6f7cca}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aeb801112451d6971330754b161a1d311}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (bool)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a83bd6c53b15dd20ca4a22310a99174dc}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (std\+::string)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a861e29975d2ae5c514f15d3b667a1eb1}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (int8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af9504738762c39ac1b9b978d495ecb44}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (uint8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ac194215f91d429867c0cd7b136381adc}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (uint16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a30df2e87277826d2eb75328fdbb7d7a4}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (int16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a22f4b4ecc34814acb09848fca4d113bf}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af31e35369a91f490e0298e8551e8a179}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6725b0d289c40cfd7413a427dde9bc2c}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (uint32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_afa6e7fe400bab02f96a4bb7917de5705}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (uint64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a5f773a1e28834eac53a2082c9cbfda8e}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}} (M\+L\+Float16)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8e441dc586feb02243cbf91dcd2a9906}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+String\+To\+String)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a5f6af362930e1686b2152539c5da01b1}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+String\+To\+Int64)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ae6f0c0766d0e26c729681c2b5f979c4d}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+String\+To\+Float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab060142d6bfd6a246f64bc77264ef93d}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+String\+To\+Double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a13cef0495167d3327a15c6f75e5eb73c}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+Int64\+To\+String)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a55afdfec9a2288225c563ff27bd50bab}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+Int64\+To\+Int64)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a2d0fff8500d6c4ba57a7cf4cc9e9f548}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+Int64\+To\+Float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a976389c29833f1b91fb95c3b842f3b1d}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}} (Map\+Int64\+To\+Double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aec4e4cc4599c9c425083a9bf5827e892}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}} (Vector\+String)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af51ceed6f6363c4046c44e345ff1f40a}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}} (Vector\+Float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aebb1a699303fbd521c9a190122b800b2}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}} (Vector\+Int64)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a187a304c47d9a82dbfcb1df90e105d1f}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}} (Vector\+Double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a1d58143abe1d4986ba7478efcee1a4d0}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}} (Vector\+Map\+String\+To\+Float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a07dab456e2421ee17767939563f14f85}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}} (Vector\+Map\+Int64\+To\+Float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6fc67354d2b0ec00948d9801fb87a264}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (int32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aa377f7aa942ddb94ea3e1ecc16e6d56b}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a9a5cfe2dd7e0daf1c04b1f2320775167}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (bool)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a62de2284b9afe9764d294ee05bec0312}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (std\+::string)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a94261268547706b6af1a836c4d0f1b5a}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (int8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a414e77fdabfa773fd05e6fcc2ddcd55a}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (uint8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_acdcca5875d97004c555a2a8821bffb9d}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (uint16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_acf9ea2f8aefc34d169f416d94c36b972}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (int16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a011678689d37d9b09c991c854a39700f}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a41282bb603a7c27da813722ce5cfb4d8}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aeed44c6c73d18537206cbbcb54174207}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (uint32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a172db778d678cc99b5aecca1ada4e289}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (uint64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab7c88b70bbfc149637017812f545398a}{onnxruntime\+::\+O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}} (M\+L\+Float16)
+\item 
+std\+::ostream \& \mbox{\hyperlink{namespaceonnxruntime_a7e5dbb4b07ee5e49ad3dcdd97c926a5b}{onnxruntime\+::operator$<$$<$}} (std\+::ostream \&out, M\+L\+Data\+Type data\+\_\+type)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{data__types_8cc_aeb1f1c0c15f8e1d08d2da5f31c9a0d60}\label{data__types_8cc_aeb1f1c0c15f8e1d08d2da5f31c9a0d60}} 
+\index{data\+\_\+types.\+cc@{data\+\_\+types.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO}!data\+\_\+types.\+cc@{data\+\_\+types.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO}{REGISTER\_ONNX\_PROTO}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+N\+N\+X\+\_\+\+P\+R\+O\+TO(\begin{DoxyParamCaption}\item[{}]{T\+Y\+PE,  }\item[{}]{reg\+\_\+fn }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\{                                                    \(\backslash\)
+    MLDataType mltype = DataTypeImpl::GetType<TYPE>(); \(\backslash\)
+    reg\_fn(mltype);                                    \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{data__types_8cc_a06c44fcf2022a49077aff61a3a09cb26}\label{data__types_8cc_a06c44fcf2022a49077aff61a3a09cb26}} 
+\index{data\+\_\+types.\+cc@{data\+\_\+types.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO}!data\+\_\+types.\+cc@{data\+\_\+types.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO}{REGISTER\_TENSOR\_PROTO}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+P\+R\+O\+TO(\begin{DoxyParamCaption}\item[{}]{T\+Y\+PE,  }\item[{}]{reg\+\_\+fn }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\{                                                          \(\backslash\)
+    MLDataType mltype = DataTypeImpl::GetTensorType<TYPE>(); \(\backslash\)
+    reg\_fn(mltype);                                          \(\backslash\)
+  \}
+\end{DoxyCode}

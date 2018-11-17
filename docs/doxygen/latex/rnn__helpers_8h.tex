@@ -1,0 +1,147 @@
+\hypertarget{rnn__helpers_8h}{}\section{onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn\+\_\+helpers.h File Reference}
+\label{rnn__helpers_8h}\index{onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn\+\_\+helpers.\+h@{onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn\+\_\+helpers.\+h}}
+{\ttfamily \#include $<$algorithm$>$}\newline
+{\ttfamily \#include $<$functional$>$}\newline
+{\ttfamily \#include $<$future$>$}\newline
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include $<$vector$>$}\newline
+{\ttfamily \#include \char`\"{}gsl/span\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}gsl/gsl\+\_\+algorithm\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/task\+\_\+thread\+\_\+pool.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/allocator.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+Include dependency graph for rnn\+\_\+helpers.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs}{onnxruntime\+::rnn\+::detail\+::\+Activation\+Funcs}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{onnxruntime\+::rnn\+::detail\+::\+Activation\+Funcs\+::\+Entry}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn}{onnxruntime\+::rnn}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail}{onnxruntime\+::rnn\+::detail}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu}{onnxruntime\+::rnn\+::detail\+::deepcpu}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b1f80ae5020b2ff8e057c5aa8180c28}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Add\+Bias\+Into\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, const int)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ae72a03e6191d492760e3d7b02f470564}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Clip\+With\+Bias\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float, const float $\ast$, float $\ast$, const int)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a84524fa5e01a6b98b4bb83052910a9a6}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Activation\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a51c9012fb1a1a79abced776e7be2ca47}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Activation\+Func\+B\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4a3c3b91f46237728f04b977a7c3e5f5}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Lstm\+Merge\+Gates\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, const float $\ast$, float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac5be6e1baa411048d5f8baf3d4551e3c}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Reset\+Gate\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(const float $\ast$, float $\ast$, float $\ast$, const int, const float, const float)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a36e4209baa17c6f915ca2c8ea476decc}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Output\+Gate\+Func\+Ptr}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(float $\ast$, const float $\ast$, const float $\ast$, float $\ast$, const int, const float, const float)
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{onnxruntime\+::rnn\+::detail\+::\+Direction}} \{ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da471a88784f9f00143e0dc6b1dc9b3ea6}{onnxruntime\+::rnn\+::detail\+::k\+Forward}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1daeca0897567745c83184be011cc29f973}{onnxruntime\+::rnn\+::detail\+::k\+Reverse}} = 1, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da6d211d65b351fc4d9158892efc168bf3}{onnxruntime\+::rnn\+::detail\+::k\+Bidirectional}} = 2
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+Direction \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aeabc0c0d70045235942f55de6ea98aa1}{onnxruntime\+::rnn\+::detail\+::\+Make\+Direction}} (const std\+::string \&direction)
+\item 
+{\footnotesize template$<$typename T\+Alloc $>$ }\\gsl\+::span$<$ T\+Alloc $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aba3626475ee331edec1c2ac149af1692}{onnxruntime\+::rnn\+::detail\+::\+Allocate}} (std\+::shared\+\_\+ptr$<$ I\+Allocator $>$ allocator, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size, I\+Allocator\+Unique\+Ptr$<$ T\+Alloc $>$ \&unique\+\_\+ptr, bool fill=false, T\+Alloc fill\+\_\+value=T\+Alloc\{\})
+\item 
+Status \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a789b3f8290ac9eee1219682da56dcc6e}{onnxruntime\+::rnn\+::detail\+::\+Validate\+Common\+Rnn\+Inputs}} (const Tensor \&X, const Tensor \&W, const Tensor \&R, const Tensor $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int W\+R\+B\+\_\+dim\+\_\+1\+\_\+multipler, const Tensor $\ast$sequence\+\_\+lens, const Tensor $\ast$initial\+\_\+h, int64\+\_\+t num\+\_\+directions, int64\+\_\+t hidden\+\_\+size)
+\item 
+{\footnotesize template$<$typename T\+In\+Iter , typename T\+Out\+Iter $>$ }\\T\+Out\+Iter \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a08091b2e867821d9f8b8260c43c7840e}{onnxruntime\+::rnn\+::detail\+::\+Repeat\+Vector\+To\+Construct\+Array}} (T\+In\+Iter input\+\_\+begin, T\+In\+Iter input\+\_\+end, T\+Out\+Iter output, int64\+\_\+t repetitions)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a6949fdd6fb359403f29a7cc9594cfdab}{onnxruntime\+::rnn\+::detail\+::\+Reverse\+Sequence}} (gsl\+::span$<$ const T $>$ inputs, gsl\+::span$<$ T $>$ inputs\+\_\+reverse, gsl\+::span$<$ const int $>$ sequence\+\_\+lengths, const int max\+\_\+sequence\+\_\+length, const int batch\+\_\+size, const int input\+\_\+size, const int num\+\_\+directions)
+\item 
+{\footnotesize template$<$typename T\+Span\+A\+Iter , typename T\+Span\+B\+Iter , typename T\+Span\+C\+Iter $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a65f176827472830fb9fde7fefb96e623}{onnxruntime\+::rnn\+::detail\+::\+Compute\+Gemm}} (const int M, const int N, const int K, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T\+Span\+A\+Iter A, T\+Span\+A\+Iter A\+\_\+end, const int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, T\+Span\+B\+Iter \mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, T\+Span\+B\+Iter B\+\_\+end, const int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, T\+Span\+C\+Iter \mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, T\+Span\+C\+Iter C\+\_\+end, const int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_ac6e5fd9766ba90302551cd51d222bc91}{onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Const\+Pointer}} (typename gsl\+::span$<$ T $>$\+::const\+\_\+iterator cur, typename gsl\+::span$<$ T $>$\+::const\+\_\+iterator end, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_abac03a9f5be0f301681ee7bbfd7ffc8e}{onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Const\+Pointer}} (gsl\+::span$<$ T $>$ span, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} offset, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a7eee4ee52633bb01c2e273ea709ac3e8}{onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Pointer}} (typename gsl\+::span$<$ T $>$\+::iterator cur, typename gsl\+::span$<$ T $>$\+::iterator end, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_ae10eb0035c900f7caf6ed6852532c353}{onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Pointer}} (typename gsl\+::span$<$ T $>$ span, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} offset, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T\+Lambda $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_acd48e2c1247f45a983b648dc0d973725}{onnxruntime\+::rnn\+::detail\+::\+Execute\+Lambda\+In\+Parallel}} (const std\+::string \&name, T\+Lambda lambda, int max, int step, Task\+Thread\+Pool \&ttp, const \+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{onnxruntime\+::logging\+::\+Logger}} \&logger)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_adb3b48ba8d1bafa2344de37a71e96690}{onnxruntime\+::rnn\+::detail\+::\+Dump\+Matrix\+Impl}} (const std\+::string \&name, const float $\ast$src, int row, int col, int offset, int col\+\_\+width)
+\item 
+Activation\+Func\+Ptr \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f47346831720de77ac02a76b55cbc0c}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Activation\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+Lstm\+Merge\+Gates\+Func\+Ptr \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7ee3d83a8606c6343be8855fe0fa8091}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Lstm\+Merge\+Gates\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+Gru\+Reset\+Gate\+Func\+Ptr \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acb0ad8059b037801ea6e83d9a2b37dfc}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Reset\+Gate\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+Gru\+Output\+Gate\+Func\+Ptr \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ac06d0cf0fd4f9c739f2358820a6ed257}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::\+Gru\+Output\+Gate\+Func\+By\+Name}} (const std\+::string \&func)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a21971e995528934d1c65711f56bdeafd}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::add\+\_\+bias\+\_\+into\+\_\+ignore}} (const float $\ast$ps, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1d9034a17f1cfa963791766930c88649}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::add\+\_\+bias\+\_\+into}} (const float $\ast$ps, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8ea6b06af7c12a5578de7d7aaad35ff5}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip}} (const float b, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_acd60c3700240c698443b8d45bf6a4e65}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+add\+\_\+bias}} (const float b, const float $\ast$pb, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a3cfaf91d3560d9f84b376f61461a9973}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::clip\+\_\+ignore\+\_\+bias}} (const float b, const float $\ast$pb, float $\ast$pd, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1f8aaad863b8c54e1da63bc6e8973a59}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aae689eb766818fc1c1da8aa2bc923b31}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_afdd30b5fdc3181eeac5fe57327468438}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::relu\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a6f774e13fe051815ea772646cbf8c1e4}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+exact\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a58cffec73fb2b97544714c6d4a5b3767}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+exact\+\_\+m}} (const float $\ast$ps1, float $\ast$ps1\+\_\+c, const float $\ast$ps2, float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab977a8d517ba2f63e0c831bc548e8c11}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_aa90e134184fd5d4cc0b541e82ab265fc}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a75ee182dbe346d81dd2f8545ae0db59e}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::relu}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_af7a1c48db5b0ac20916af44b02931ab8}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::sigmoid\+\_\+exact}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad249f79929fe978ce97ef9d64b36367b}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::tanh\+\_\+exact}} (float $\ast$pd, int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a27d683ef39f7917b5ca03d2d8b0167c3}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::merge\+\_\+lstm\+\_\+gates\+\_\+to\+\_\+memory}} (const float $\ast$pprev, const float $\ast$pi, const float $\ast$pf, const float $\ast$pg, float $\ast$pcurr, const int c)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1af846c78baadc9451b56bc1c515d679}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+tanh}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a1b4d38d57effefd3a8c1566e5f3495bc}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+sigmoid}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ad5420f147be377034238001dd54dcedb}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+reset\+\_\+gate\+\_\+relu}} (const float $\ast$ps1, float $\ast$ps2, float $\ast$pd, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a8b6250d6233998108f91689c51fde355}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+tanh}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a7d9cf1331cc4a7af8a2e3d65165ea56c}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+sigmoid}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a020e1f61b777f9731726419e8cc6057d}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::gru\+\_\+output\+\_\+gate\+\_\+relu}} (float $\ast$ph, const float $\ast$pz, const float $\ast$ps, float $\ast$po, const int c, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a9250a1433c8822a6593c27f1f4b867c7}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::elementwise\+\_\+product}} (const float $\ast$op1, const float $\ast$op2, float $\ast$dest, const int size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_ab294ebaa35b1aa35d75a9ccf5b363ddb}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::elementwise\+\_\+sum1}} (const float $\ast$src, float $\ast$dest, const int size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu_a4136092f6bcb01967ae4b82f668a9fd6}{onnxruntime\+::rnn\+::detail\+::deepcpu\+::elementwise\+\_\+sum2}} (const float $\ast$src1, const float $\ast$src2, float $\ast$dest, const int size)
+\end{DoxyCompactItemize}

@@ -1,0 +1,102 @@
+\hypertarget{classonnxruntime_1_1MatMulComputeHelper}{}\section{onnxruntime\+:\+:Mat\+Mul\+Compute\+Helper Class Reference}
+\label{classonnxruntime_1_1MatMulComputeHelper}\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+
+
+{\ttfamily \#include $<$matmul\+\_\+helper.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_a03b36f22431349e37fd118581fa4699d}{Compute}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&left\+\_\+shape, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&right\+\_\+shape)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \& \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_a6cb53d90e64d3f2eb89e652c4fb80e68}{Output\+Shape}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_aeda5e04dc34b4d6265a38b399bc22699}{M}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_a1738caddac071c9807238df60a792fc9}{N}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_a74f1f2eae27647d3e68531c3901053de}{K}} () const
+\item 
+const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_a7570316c3d72e6682213683589abc959}{Left\+Offsets}} () const
+\item 
+const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_aac21fe3b8c93d9c3ec5a20b0f629d70c}{Right\+Offsets}} () const
+\item 
+const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \& \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_a1c7f9ab98b01f7c40c30930821e78523}{Output\+Offsets}} () const
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_af6b01ebe6aa134eb78a4c326200329a5}{Offset\+To\+Arrays}} (T $\ast$p, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&offsets, gsl\+::span$<$ T $\ast$$>$ arrays)
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MatMulComputeHelper_ab6aa8455fb8dbd8836d187e0e718a0c4}{Offset\+To\+Arrays}} (const T $\ast$p, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&offsets, gsl\+::span$<$ const T $\ast$$>$ arrays)
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_a03b36f22431349e37fd118581fa4699d}\label{classonnxruntime_1_1MatMulComputeHelper_a03b36f22431349e37fd118581fa4699d}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Compute (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{left\+\_\+shape,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{right\+\_\+shape }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_a74f1f2eae27647d3e68531c3901053de}\label{classonnxruntime_1_1MatMulComputeHelper_a74f1f2eae27647d3e68531c3901053de}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!K@{K}}
+\index{K@{K}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{K()}{K()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::K (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_a7570316c3d72e6682213683589abc959}\label{classonnxruntime_1_1MatMulComputeHelper_a7570316c3d72e6682213683589abc959}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Left\+Offsets@{Left\+Offsets}}
+\index{Left\+Offsets@{Left\+Offsets}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Left\+Offsets()}{LeftOffsets()}}
+{\footnotesize\ttfamily const std\+::vector$<$\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}$>$\& onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Left\+Offsets (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_aeda5e04dc34b4d6265a38b399bc22699}\label{classonnxruntime_1_1MatMulComputeHelper_aeda5e04dc34b4d6265a38b399bc22699}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!M@{M}}
+\index{M@{M}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{M()}{M()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::M (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_a1738caddac071c9807238df60a792fc9}\label{classonnxruntime_1_1MatMulComputeHelper_a1738caddac071c9807238df60a792fc9}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!N@{N}}
+\index{N@{N}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{N()}{N()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::N (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_af6b01ebe6aa134eb78a4c326200329a5}\label{classonnxruntime_1_1MatMulComputeHelper_af6b01ebe6aa134eb78a4c326200329a5}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Offset\+To\+Arrays@{Offset\+To\+Arrays}}
+\index{Offset\+To\+Arrays@{Offset\+To\+Arrays}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Offset\+To\+Arrays()}{OffsetToArrays()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Offset\+To\+Arrays (\begin{DoxyParamCaption}\item[{T $\ast$}]{p,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&}]{offsets,  }\item[{gsl\+::span$<$ T $\ast$$>$}]{arrays }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_ab6aa8455fb8dbd8836d187e0e718a0c4}\label{classonnxruntime_1_1MatMulComputeHelper_ab6aa8455fb8dbd8836d187e0e718a0c4}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Offset\+To\+Arrays@{Offset\+To\+Arrays}}
+\index{Offset\+To\+Arrays@{Offset\+To\+Arrays}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Offset\+To\+Arrays()}{OffsetToArrays()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Offset\+To\+Arrays (\begin{DoxyParamCaption}\item[{const T $\ast$}]{p,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&}]{offsets,  }\item[{gsl\+::span$<$ const T $\ast$$>$}]{arrays }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_a1c7f9ab98b01f7c40c30930821e78523}\label{classonnxruntime_1_1MatMulComputeHelper_a1c7f9ab98b01f7c40c30930821e78523}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Output\+Offsets@{Output\+Offsets}}
+\index{Output\+Offsets@{Output\+Offsets}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Output\+Offsets()}{OutputOffsets()}}
+{\footnotesize\ttfamily const std\+::vector$<$\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}$>$\& onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Output\+Offsets (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_a6cb53d90e64d3f2eb89e652c4fb80e68}\label{classonnxruntime_1_1MatMulComputeHelper_a6cb53d90e64d3f2eb89e652c4fb80e68}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Output\+Shape@{Output\+Shape}}
+\index{Output\+Shape@{Output\+Shape}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Output\+Shape()}{OutputShape()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}}\& onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Output\+Shape (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MatMulComputeHelper_aac21fe3b8c93d9c3ec5a20b0f629d70c}\label{classonnxruntime_1_1MatMulComputeHelper_aac21fe3b8c93d9c3ec5a20b0f629d70c}} 
+\index{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}!Right\+Offsets@{Right\+Offsets}}
+\index{Right\+Offsets@{Right\+Offsets}!onnxruntime\+::\+Mat\+Mul\+Compute\+Helper@{onnxruntime\+::\+Mat\+Mul\+Compute\+Helper}}
+\subsubsection{\texorpdfstring{Right\+Offsets()}{RightOffsets()}}
+{\footnotesize\ttfamily const std\+::vector$<$\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}$>$\& onnxruntime\+::\+Mat\+Mul\+Compute\+Helper\+::\+Right\+Offsets (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/math/\mbox{\hyperlink{matmul__helper_8h}{matmul\+\_\+helper.\+h}}\end{DoxyCompactItemize}

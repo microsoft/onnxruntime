@@ -1,0 +1,67 @@
+\hypertarget{classonnxruntime_1_1CustomRegistry}{}\section{onnxruntime\+:\+:Custom\+Registry Class Reference}
+\label{classonnxruntime_1_1CustomRegistry}\index{onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}}
+
+
+{\ttfamily \#include $<$customregistry.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Custom\+Registry\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Custom\+Registry\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1CustomRegistry_a0dea8240e8ae8246decbf847da832d6f}{Custom\+Registry}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1CustomRegistry_aaf13ddea9c56607927b6a2e00623a1df}{$\sim$\+Custom\+Registry}} () override=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1CustomRegistry_a577dc63a5dc382790c62341054fc39e4}{Register\+Custom\+Kernel}} (\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \&kernel\+\_\+def\+\_\+builder, const \mbox{\hyperlink{namespaceonnxruntime_a2e23731e78afbe4e5e15a18493162335}{Kernel\+Create\+Fn}} \&kernel\+\_\+creator)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1CustomRegistry_ab931a32b12dd5193f5354f1f89b6e10f}{Register\+Custom\+Kernel}} (\mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} \&)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Represents a registry that contains both custom kernels and custom schemas. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1CustomRegistry_a0dea8240e8ae8246decbf847da832d6f}\label{classonnxruntime_1_1CustomRegistry_a0dea8240e8ae8246decbf847da832d6f}} 
+\index{onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}!Custom\+Registry@{Custom\+Registry}}
+\index{Custom\+Registry@{Custom\+Registry}!onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}}
+\subsubsection{\texorpdfstring{Custom\+Registry()}{CustomRegistry()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Custom\+Registry\+::\+Custom\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CustomRegistry_aaf13ddea9c56607927b6a2e00623a1df}\label{classonnxruntime_1_1CustomRegistry_aaf13ddea9c56607927b6a2e00623a1df}} 
+\index{onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}!````~Custom\+Registry@{$\sim$\+Custom\+Registry}}
+\index{````~Custom\+Registry@{$\sim$\+Custom\+Registry}!onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}}
+\subsubsection{\texorpdfstring{$\sim$\+Custom\+Registry()}{~CustomRegistry()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Custom\+Registry\+::$\sim$\+Custom\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1CustomRegistry_a577dc63a5dc382790c62341054fc39e4}\label{classonnxruntime_1_1CustomRegistry_a577dc63a5dc382790c62341054fc39e4}} 
+\index{onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}!Register\+Custom\+Kernel@{Register\+Custom\+Kernel}}
+\index{Register\+Custom\+Kernel@{Register\+Custom\+Kernel}!onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}}
+\subsubsection{\texorpdfstring{Register\+Custom\+Kernel()}{RegisterCustomKernel()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Custom\+Registry\+::\+Register\+Custom\+Kernel (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \&}]{kernel\+\_\+def\+\_\+builder,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a2e23731e78afbe4e5e15a18493162335}{Kernel\+Create\+Fn}} \&}]{kernel\+\_\+creator }\end{DoxyParamCaption})}
+
+Register a kernel definition together with kernel factory method to this session. \mbox{\hyperlink{classonnxruntime_1_1If}{If}} any conflict happened between registered kernel def and built-\/in kernel def, registered kernel will have higher priority. Call this before invoking Initialize(). \begin{DoxyReturn}{Returns}
+OK if success. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1CustomRegistry_ab931a32b12dd5193f5354f1f89b6e10f}\label{classonnxruntime_1_1CustomRegistry_ab931a32b12dd5193f5354f1f89b6e10f}} 
+\index{onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}!Register\+Custom\+Kernel@{Register\+Custom\+Kernel}}
+\index{Register\+Custom\+Kernel@{Register\+Custom\+Kernel}!onnxruntime\+::\+Custom\+Registry@{onnxruntime\+::\+Custom\+Registry}}
+\subsubsection{\texorpdfstring{Register\+Custom\+Kernel()}{RegisterCustomKernel()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Custom\+Registry\+::\+Register\+Custom\+Kernel (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} \&}]{create\+\_\+info }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{customregistry_8h}{customregistry.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{customregistry_8cc}{customregistry.\+cc}}\end{DoxyCompactItemize}

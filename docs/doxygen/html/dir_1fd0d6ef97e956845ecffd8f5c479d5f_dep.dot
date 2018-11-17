@@ -1,0 +1,9 @@
+digraph "onnxruntime/include/onnxruntime/core/common/logging" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_e41ba2a921c9eb25ec612c54e1511419 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="common" fontname="Helvetica", fontsize="10", URL="dir_e41ba2a921c9eb25ec612c54e1511419.html"]
+  dir_1fd0d6ef97e956845ecffd8f5c479d5f [shape=box, label="logging", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_1fd0d6ef97e956845ecffd8f5c479d5f.html"];
+  }
+}

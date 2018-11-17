@@ -1,0 +1,57 @@
+\hypertarget{classonnxruntime_1_1AveragePool}{}\section{onnxruntime\+:\+:Average\+Pool Class Reference}
+\label{classonnxruntime_1_1AveragePool}\index{onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}}
+
+
+{\ttfamily \#include $<$pool\+\_\+base.\+h$>$}
+
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static float \mbox{\hyperlink{classonnxruntime_1_1AveragePool_aa9b9e114567851c45c2b4c61edb08f99}{Initialize}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1AveragePool_a3c9ac26608524a9cb59485d946f02cdf}{Process}} (const T \&x\+\_\+data, T \&y\+\_\+data, const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&)
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1AveragePool_ae89947ca117914131283a851f025b932}{Finalize}} (const int64\+\_\+t size, T \&y\+\_\+data, const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} \mbox{\hyperlink{classonnxruntime_1_1AveragePool_a48aefe1c9e248a55a958e87f06588089}{type}} = \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060a38dcd3a65185af31f965caa845edfb0f}{Pool\+Type\+::k\+Average\+Pool}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1AveragePool_ae89947ca117914131283a851f025b932}\label{classonnxruntime_1_1AveragePool_ae89947ca117914131283a851f025b932}} 
+\index{onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}!Finalize@{Finalize}}
+\index{Finalize@{Finalize}!onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}}
+\subsubsection{\texorpdfstring{Finalize()}{Finalize()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Average\+Pool\+::\+Finalize (\begin{DoxyParamCaption}\item[{const int64\+\_\+t}]{size,  }\item[{T \&}]{y\+\_\+data,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1AveragePool_aa9b9e114567851c45c2b4c61edb08f99}\label{classonnxruntime_1_1AveragePool_aa9b9e114567851c45c2b4c61edb08f99}} 
+\index{onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}!Initialize@{Initialize}}
+\index{Initialize@{Initialize}!onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}}
+\subsubsection{\texorpdfstring{Initialize()}{Initialize()}}
+{\footnotesize\ttfamily static float onnxruntime\+::\+Average\+Pool\+::\+Initialize (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1AveragePool_a3c9ac26608524a9cb59485d946f02cdf}\label{classonnxruntime_1_1AveragePool_a3c9ac26608524a9cb59485d946f02cdf}} 
+\index{onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}!Process@{Process}}
+\index{Process@{Process}!onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}}
+\subsubsection{\texorpdfstring{Process()}{Process()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Average\+Pool\+::\+Process (\begin{DoxyParamCaption}\item[{const T \&}]{x\+\_\+data,  }\item[{T \&}]{y\+\_\+data,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1AveragePool_a48aefe1c9e248a55a958e87f06588089}\label{classonnxruntime_1_1AveragePool_a48aefe1c9e248a55a958e87f06588089}} 
+\index{onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}!type@{type}}
+\index{type@{type}!onnxruntime\+::\+Average\+Pool@{onnxruntime\+::\+Average\+Pool}}
+\subsubsection{\texorpdfstring{type}{type}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} onnxruntime\+::\+Average\+Pool\+::type = \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060a38dcd3a65185af31f965caa845edfb0f}{Pool\+Type\+::k\+Average\+Pool}}\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{pool__base_8h}{pool\+\_\+base.\+h}}\end{DoxyCompactItemize}

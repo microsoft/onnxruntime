@@ -1,0 +1,152 @@
+\hypertarget{classonnxruntime_1_1common_1_1Status}{}\section{onnxruntime\+:\+:common\+:\+:Status Class Reference}
+\label{classonnxruntime_1_1common_1_1Status}\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+
+
+{\ttfamily \#include $<$status.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_aecf53098eda21808805fadf3b799aeac}{Status}} () noexcept=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_adc2c0cc84bd26eed82c8d480db39d94a}{Status}} (\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}} category, int code, const std\+::string \&msg)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_ae8c45d61f46c762f7a5f02ea48680067}{Status}} (\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}} category, int code)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a148a8ac761ac3c6c928043369f3296a7}{Status}} (const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \& \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_ad8ab9084004683c699cdad35a5b6b37f}{operator=}} (const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a59682213a9875c87211e1456c7e3ac2f}{Status}} (\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&\&other)=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \& \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a35d7983d0a17c31f65ecfe9784bd4f29}{operator=}} (\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&\&other)=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_adb22aef9f5c8fb1ce653e6b73e10c4a3}{$\sim$\+Status}} ()=default
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a33571ea319ac8fa8360c4da5bfa4ac29}{Is\+OK}} () const noexcept
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_aafbde9279ae3e29b86434df2149763fc}{Code}} () const noexcept
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a10ca39b7d5e923520d120e03f66883e0}{Category}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a3d81c961641be49f8496aa2d67876443}{Error\+Message}} () const noexcept
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a30deaaae9d10c455b820c1ad990363d8}{To\+String}} () const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_a9807e59de6004cdb14f604c8dff972b6}{operator==}} (const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&other) const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_ab56ff2107a2a584e96c4ca789c6091fb}{operator!=}} (const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&other) const
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \& \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status_aa38cc1876df38fa258f7ce916cc8cdb7}{OK}} () noexcept
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_aecf53098eda21808805fadf3b799aeac}\label{classonnxruntime_1_1common_1_1Status_aecf53098eda21808805fadf3b799aeac}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Status@{Status}}
+\index{Status@{Status}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Status()}{Status()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily onnxruntime\+::common\+::\+Status\+::\+Status (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_adc2c0cc84bd26eed82c8d480db39d94a}\label{classonnxruntime_1_1common_1_1Status_adc2c0cc84bd26eed82c8d480db39d94a}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Status@{Status}}
+\index{Status@{Status}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Status()}{Status()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily onnxruntime\+::common\+::\+Status\+::\+Status (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}}}]{category,  }\item[{int}]{code,  }\item[{const std\+::string \&}]{msg }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_ae8c45d61f46c762f7a5f02ea48680067}\label{classonnxruntime_1_1common_1_1Status_ae8c45d61f46c762f7a5f02ea48680067}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Status@{Status}}
+\index{Status@{Status}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Status()}{Status()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily onnxruntime\+::common\+::\+Status\+::\+Status (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}}}]{category,  }\item[{int}]{code }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a148a8ac761ac3c6c928043369f3296a7}\label{classonnxruntime_1_1common_1_1Status_a148a8ac761ac3c6c928043369f3296a7}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Status@{Status}}
+\index{Status@{Status}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Status()}{Status()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily onnxruntime\+::common\+::\+Status\+::\+Status (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a59682213a9875c87211e1456c7e3ac2f}\label{classonnxruntime_1_1common_1_1Status_a59682213a9875c87211e1456c7e3ac2f}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Status@{Status}}
+\index{Status@{Status}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Status()}{Status()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily onnxruntime\+::common\+::\+Status\+::\+Status (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&\&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_adb22aef9f5c8fb1ce653e6b73e10c4a3}\label{classonnxruntime_1_1common_1_1Status_adb22aef9f5c8fb1ce653e6b73e10c4a3}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!````~Status@{$\sim$\+Status}}
+\index{````~Status@{$\sim$\+Status}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{$\sim$\+Status()}{~Status()}}
+{\footnotesize\ttfamily onnxruntime\+::common\+::\+Status\+::$\sim$\+Status (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a10ca39b7d5e923520d120e03f66883e0}\label{classonnxruntime_1_1common_1_1Status_a10ca39b7d5e923520d120e03f66883e0}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Category@{Category}}
+\index{Category@{Category}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Category()}{Category()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}} onnxruntime\+::common\+::\+Status\+::\+Category (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_aafbde9279ae3e29b86434df2149763fc}\label{classonnxruntime_1_1common_1_1Status_aafbde9279ae3e29b86434df2149763fc}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Code@{Code}}
+\index{Code@{Code}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Code()}{Code()}}
+{\footnotesize\ttfamily int onnxruntime\+::common\+::\+Status\+::\+Code (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a3d81c961641be49f8496aa2d67876443}\label{classonnxruntime_1_1common_1_1Status_a3d81c961641be49f8496aa2d67876443}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Error\+Message@{Error\+Message}}
+\index{Error\+Message@{Error\+Message}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Error\+Message()}{ErrorMessage()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::common\+::\+Status\+::\+Error\+Message (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a33571ea319ac8fa8360c4da5bfa4ac29}\label{classonnxruntime_1_1common_1_1Status_a33571ea319ac8fa8360c4da5bfa4ac29}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!Is\+OK@{Is\+OK}}
+\index{Is\+OK@{Is\+OK}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{Is\+O\+K()}{IsOK()}}
+{\footnotesize\ttfamily bool onnxruntime\+::common\+::\+Status\+::\+Is\+OK (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_aa38cc1876df38fa258f7ce916cc8cdb7}\label{classonnxruntime_1_1common_1_1Status_aa38cc1876df38fa258f7ce916cc8cdb7}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!OK@{OK}}
+\index{OK@{OK}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{O\+K()}{OK()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \& onnxruntime\+::common\+::\+Status\+::\+OK (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_ab56ff2107a2a584e96c4ca789c6091fb}\label{classonnxruntime_1_1common_1_1Status_ab56ff2107a2a584e96c4ca789c6091fb}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!operator"!=@{operator"!=}}
+\index{operator"!=@{operator"!=}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{operator"!=()}{operator!=()}}
+{\footnotesize\ttfamily bool onnxruntime\+::common\+::\+Status\+::operator!= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_ad8ab9084004683c699cdad35a5b6b37f}\label{classonnxruntime_1_1common_1_1Status_ad8ab9084004683c699cdad35a5b6b37f}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!operator=@{operator=}}
+\index{operator=@{operator=}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{operator=()}{operator=()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}}\& onnxruntime\+::common\+::\+Status\+::operator= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a35d7983d0a17c31f65ecfe9784bd4f29}\label{classonnxruntime_1_1common_1_1Status_a35d7983d0a17c31f65ecfe9784bd4f29}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!operator=@{operator=}}
+\index{operator=@{operator=}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{operator=()}{operator=()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}}\& onnxruntime\+::common\+::\+Status\+::operator= (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&\&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a9807e59de6004cdb14f604c8dff972b6}\label{classonnxruntime_1_1common_1_1Status_a9807e59de6004cdb14f604c8dff972b6}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!operator==@{operator==}}
+\index{operator==@{operator==}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{operator==()}{operator==()}}
+{\footnotesize\ttfamily bool onnxruntime\+::common\+::\+Status\+::operator== (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1common_1_1Status_a30deaaae9d10c455b820c1ad990363d8}\label{classonnxruntime_1_1common_1_1Status_a30deaaae9d10c455b820c1ad990363d8}} 
+\index{onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}!To\+String@{To\+String}}
+\index{To\+String@{To\+String}!onnxruntime\+::common\+::\+Status@{onnxruntime\+::common\+::\+Status}}
+\subsubsection{\texorpdfstring{To\+String()}{ToString()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::common\+::\+Status\+::\+To\+String (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/\mbox{\hyperlink{status_8h}{status.\+h}}\item 
+onnxruntime/onnxruntime/core/common/\mbox{\hyperlink{status_8cc}{status.\+cc}}\end{DoxyCompactItemize}

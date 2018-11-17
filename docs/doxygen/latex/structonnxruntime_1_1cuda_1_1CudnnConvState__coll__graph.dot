@@ -1,0 +1,15 @@
+digraph "onnxruntime::cuda::CudnnConvState&lt; AlgoType &gt;"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  rankdir="LR";
+  Node1 [label="onnxruntime::cuda::\lCudnnConvState\< AlgoType \>",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node2 -> Node1 [dir="back",color="darkorchid3",fontsize="10",style="dashed",label=" b_tensor\ny_tensor\nx_tensor" ];
+  Node2 [label="onnxruntime::cuda::\lCudnnTensor",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1cuda_1_1CudnnTensor.html"];
+  Node3 -> Node1 [dir="back",color="darkorchid3",fontsize="10",style="dashed",label=" conv_desc" ];
+  Node3 [label="onnxruntime::cuda::\lCudnnConvolutionDescriptor",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1cuda_1_1CudnnConvolutionDescriptor.html"];
+  Node4 -> Node1 [dir="back",color="darkorchid3",fontsize="10",style="dashed",label=" filter_desc" ];
+  Node4 [label="onnxruntime::cuda::\lCudnnFilterDescriptor",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1cuda_1_1CudnnFilterDescriptor.html"];
+  Node5 -> Node1 [dir="back",color="darkorchid3",fontsize="10",style="dashed",label=" algo" ];
+  Node5 [label="AlgoType",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+}

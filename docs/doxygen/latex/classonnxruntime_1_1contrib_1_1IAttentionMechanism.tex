@@ -1,0 +1,111 @@
+\hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{}\section{onnxruntime\+:\+:contrib\+:\+:I\+Attention\+Mechanism$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism}\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism$<$ T $>$@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism$<$ T $>$}}
+
+
+{\ttfamily \#include $<$attention\+\_\+mechanism.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:contrib\+:\+:I\+Attention\+Mechanism$<$ T $>$\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a21a0bea988fa61f2ffeabd4894109685}{$\sim$\+I\+Attention\+Mechanism}} ()=default
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a9b56c5b71af342077b483c762fc2e724}{Prepare\+Memory}} (const gsl\+::span$<$ const T $>$ \&memory, const gsl\+::span$<$ const int $>$ \&memory\+\_\+sequence\+\_\+lengths)=0
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a06c96353dea91e2e81d22f34a96da713}{Compute}} (const gsl\+::span$<$ const T $>$ \&query, const gsl\+::span$<$ const T $>$ \&prev\+\_\+alignment, const gsl\+::span$<$ T $>$ \&output, const gsl\+::span$<$ T $>$ \&alignment) const =0
+\item 
+virtual const gsl\+::span$<$ const T $>$ \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a74f8db1c6302b52dfea595c230ce6a69}{Values}} () const =0
+\item 
+virtual const gsl\+::span$<$ const T $>$ \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a87c46bfbbc8debe139ed12e241393381}{Keys}} () const =0
+\item 
+virtual int \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_ab39e568cfd98ecbc8403ae4291ff3ab2}{Get\+Max\+Memory\+Steps}} () const =0
+\item 
+virtual bool \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a4251e6c13e13e5bc1d56fcb9687799b2}{Need\+Prev\+Alignment}} () const =0
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a21a0bea988fa61f2ffeabd4894109685}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a21a0bea988fa61f2ffeabd4894109685}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!````~I\+Attention\+Mechanism@{$\sim$\+I\+Attention\+Mechanism}}
+\index{````~I\+Attention\+Mechanism@{$\sim$\+I\+Attention\+Mechanism}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{$\sim$\+I\+Attention\+Mechanism()}{~IAttentionMechanism()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::$\sim$\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{I\+Attention\+Mechanism}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a06c96353dea91e2e81d22f34a96da713}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a06c96353dea91e2e81d22f34a96da713}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{const gsl\+::span$<$ const T $>$ \&}]{query,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{prev\+\_\+alignment,  }\item[{const gsl\+::span$<$ T $>$ \&}]{output,  }\item[{const gsl\+::span$<$ T $>$ \&}]{alignment }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1BahdanauAttention_a6cfed160f597d36d06d3519513ee9295}{onnxruntime\+::contrib\+::\+Bahdanau\+Attention$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_ab39e568cfd98ecbc8403ae4291ff3ab2}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_ab39e568cfd98ecbc8403ae4291ff3ab2}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!Get\+Max\+Memory\+Steps@{Get\+Max\+Memory\+Steps}}
+\index{Get\+Max\+Memory\+Steps@{Get\+Max\+Memory\+Steps}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{Get\+Max\+Memory\+Steps()}{GetMaxMemorySteps()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual int \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::Get\+Max\+Memory\+Steps (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1BahdanauAttention_a97cf203e5f792cd85f1213c744ed63e7}{onnxruntime\+::contrib\+::\+Bahdanau\+Attention$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a87c46bfbbc8debe139ed12e241393381}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a87c46bfbbc8debe139ed12e241393381}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!Keys@{Keys}}
+\index{Keys@{Keys}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{Keys()}{Keys()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual const gsl\+::span$<$const T$>$ \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::Keys (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1BahdanauAttention_afc0509bb32e8e067ebcb7529d7a9c248}{onnxruntime\+::contrib\+::\+Bahdanau\+Attention$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a4251e6c13e13e5bc1d56fcb9687799b2}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a4251e6c13e13e5bc1d56fcb9687799b2}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!Need\+Prev\+Alignment@{Need\+Prev\+Alignment}}
+\index{Need\+Prev\+Alignment@{Need\+Prev\+Alignment}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{Need\+Prev\+Alignment()}{NeedPrevAlignment()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual bool \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::Need\+Prev\+Alignment (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1BahdanauAttention_a1c21100a19fdbf8596cfffbe3db84661}{onnxruntime\+::contrib\+::\+Bahdanau\+Attention$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a9b56c5b71af342077b483c762fc2e724}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a9b56c5b71af342077b483c762fc2e724}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!Prepare\+Memory@{Prepare\+Memory}}
+\index{Prepare\+Memory@{Prepare\+Memory}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{Prepare\+Memory()}{PrepareMemory()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::Prepare\+Memory (\begin{DoxyParamCaption}\item[{const gsl\+::span$<$ const T $>$ \&}]{memory,  }\item[{const gsl\+::span$<$ const int $>$ \&}]{memory\+\_\+sequence\+\_\+lengths }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1BahdanauAttention_a085f7b9b141b95925abab3a5fffbb31f}{onnxruntime\+::contrib\+::\+Bahdanau\+Attention$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a74f8db1c6302b52dfea595c230ce6a69}\label{classonnxruntime_1_1contrib_1_1IAttentionMechanism_a74f8db1c6302b52dfea595c230ce6a69}} 
+\index{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}!Values@{Values}}
+\index{Values@{Values}!onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism@{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}
+\subsubsection{\texorpdfstring{Values()}{Values()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual const gsl\+::span$<$const T$>$ \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{onnxruntime\+::contrib\+::\+I\+Attention\+Mechanism}}$<$ T $>$\+::Values (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1BahdanauAttention_af6a80756c3478056a61d6513e586ea8b}{onnxruntime\+::contrib\+::\+Bahdanau\+Attention$<$ T $>$}}.
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/\mbox{\hyperlink{attention__mechanism_8h}{attention\+\_\+mechanism.\+h}}\end{DoxyCompactItemize}

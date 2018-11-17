@@ -1,0 +1,57 @@
+\hypertarget{classonnxruntime_1_1utils_1_1TensorUtils}{}\section{onnxruntime\+:\+:utils\+:\+:Tensor\+Utils Class Reference}
+\label{classonnxruntime_1_1utils_1_1TensorUtils}\index{onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}}
+
+
+{\ttfamily \#include $<$tensorutils.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1utils_1_1TensorUtils_a86c0b1961239a5198acd3955ddf83869}{Unpack\+Tensor}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor, std\+::string $\ast$p\+\_\+data, int64\+\_\+t expected\+\_\+size)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1utils_1_1TensorUtils_aa9ccd0bd8be029bc52c4778ecb2e533c}{Unpack\+Tensor}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor, bool $\ast$p\+\_\+data, int64\+\_\+t expected\+\_\+size)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1utils_1_1TensorUtils_a3466d3aa84eca1738527b3d2c66ab7ae}{Unpack\+Tensor}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor, \mbox{\hyperlink{uniononnxruntime_1_1MLFloat16}{M\+L\+Float16}} $\ast$p\+\_\+data, int64\+\_\+t expected\+\_\+size)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1utils_1_1TensorUtils_a2fb568cfbc282c4732a08059bea19a6f}{Unpack\+Tensor}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor, T $\ast$p\+\_\+data, int64\+\_\+t expected\+\_\+size)
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1utils_1_1TensorUtils_a2fb568cfbc282c4732a08059bea19a6f}\label{classonnxruntime_1_1utils_1_1TensorUtils_a2fb568cfbc282c4732a08059bea19a6f}} 
+\index{onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}!Unpack\+Tensor@{Unpack\+Tensor}}
+\index{Unpack\+Tensor@{Unpack\+Tensor}!onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}}
+\subsubsection{\texorpdfstring{Unpack\+Tensor()}{UnpackTensor()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::utils\+::\+Tensor\+Utils\+::\+Unpack\+Tensor (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor,  }\item[{T $\ast$}]{p\+\_\+data,  }\item[{int64\+\_\+t}]{expected\+\_\+size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1utils_1_1TensorUtils_a86c0b1961239a5198acd3955ddf83869}\label{classonnxruntime_1_1utils_1_1TensorUtils_a86c0b1961239a5198acd3955ddf83869}} 
+\index{onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}!Unpack\+Tensor@{Unpack\+Tensor}}
+\index{Unpack\+Tensor@{Unpack\+Tensor}!onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}}
+\subsubsection{\texorpdfstring{Unpack\+Tensor()}{UnpackTensor()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::utils\+::\+Tensor\+Utils\+::\+Unpack\+Tensor (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor,  }\item[{std\+::string $\ast$}]{p\+\_\+data,  }\item[{int64\+\_\+t}]{expected\+\_\+size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1utils_1_1TensorUtils_aa9ccd0bd8be029bc52c4778ecb2e533c}\label{classonnxruntime_1_1utils_1_1TensorUtils_aa9ccd0bd8be029bc52c4778ecb2e533c}} 
+\index{onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}!Unpack\+Tensor@{Unpack\+Tensor}}
+\index{Unpack\+Tensor@{Unpack\+Tensor}!onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}}
+\subsubsection{\texorpdfstring{Unpack\+Tensor()}{UnpackTensor()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::utils\+::\+Tensor\+Utils\+::\+Unpack\+Tensor (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor,  }\item[{bool $\ast$}]{p\+\_\+data,  }\item[{int64\+\_\+t}]{expected\+\_\+size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1utils_1_1TensorUtils_a3466d3aa84eca1738527b3d2c66ab7ae}\label{classonnxruntime_1_1utils_1_1TensorUtils_a3466d3aa84eca1738527b3d2c66ab7ae}} 
+\index{onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}!Unpack\+Tensor@{Unpack\+Tensor}}
+\index{Unpack\+Tensor@{Unpack\+Tensor}!onnxruntime\+::utils\+::\+Tensor\+Utils@{onnxruntime\+::utils\+::\+Tensor\+Utils}}
+\subsubsection{\texorpdfstring{Unpack\+Tensor()}{UnpackTensor()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::utils\+::\+Tensor\+Utils\+::\+Unpack\+Tensor (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor,  }\item[{\mbox{\hyperlink{uniononnxruntime_1_1MLFloat16}{M\+L\+Float16}} $\ast$}]{p\+\_\+data,  }\item[{int64\+\_\+t}]{expected\+\_\+size }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{tensorutils_8h}{tensorutils.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{tensorutils_8cc}{tensorutils.\+cc}}\end{DoxyCompactItemize}

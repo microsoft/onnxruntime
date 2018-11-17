@@ -1,0 +1,69 @@
+\hypertarget{tensorutils_8cc}{}\section{onnxruntime/onnxruntime/core/framework/tensorutils.cc File Reference}
+\label{tensorutils_8cc}\index{onnxruntime/onnxruntime/core/framework/tensorutils.\+cc@{onnxruntime/onnxruntime/core/framework/tensorutils.\+cc}}
+{\ttfamily \#include \char`\"{}core/framework/tensorutils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/allocator.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/data\+\_\+types.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$algorithm$>$}\newline
+{\ttfamily \#include $<$limits$>$}\newline
+{\ttfamily \#include \char`\"{}core/graph/onnx\+\_\+protobuf.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}gsl/pointers\char`\"{}}\newline
+Include dependency graph for tensorutils.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1utils}{onnxruntime\+::utils}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{tensorutils_8cc_a631753452a4db6913ffb1bba000b9801}{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}}(T,  Type,  field\+\_\+name,  field\+\_\+size)
+\item 
+\#define \mbox{\hyperlink{tensorutils_8cc_aae1aeb6a3bea9168ce87b8c1c31c23b6}{C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE}}(X,  Y)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{tensorutils_8cc_a59e046638d6b7760a2f192f6f85d0cb0}{G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS}} (type .\+1) inline bool Is\+Little\+Endian\+Order() noexcept
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1utils_ad84e1a43162347e3dc2540869adfc10b}{onnxruntime\+::utils\+::\+D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}} (double, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type\+\_\+\+D\+O\+U\+B\+LE, double\+\_\+data, double\+\_\+data\+\_\+size)
+\item 
+{\footnotesize template$<$size\+\_\+t alignment$>$ }\\common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a2d84b5cf8a44b5c9ac8acdc0fd605544}{onnxruntime\+::utils\+::\+Get\+Size\+In\+Bytes\+From\+Tensor\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$out)
+\item 
+template common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a1fd4746352c986ccbda401da7459ba60}{onnxruntime\+::utils\+::\+Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$out)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{tensorutils_8cc_aae1aeb6a3bea9168ce87b8c1c31c23b6}\label{tensorutils_8cc_aae1aeb6a3bea9168ce87b8c1c31c23b6}} 
+\index{tensorutils.\+cc@{tensorutils.\+cc}!C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE@{C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE}}
+\index{C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE@{C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE}!tensorutils.\+cc@{tensorutils.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE}{CASE\_PROTO\_TRACE}}
+{\footnotesize\ttfamily \#define C\+A\+S\+E\+\_\+\+P\+R\+O\+T\+O\+\_\+\+T\+R\+A\+CE(\begin{DoxyParamCaption}\item[{}]{X,  }\item[{}]{Y }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{case} ONNX\_NAMESPACE::TensorProto\_DataType::TensorProto\_DataType\_##X:                    \(\backslash\)
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, \textcolor{keyword}{sizeof}(Y), out)) \{ \(\backslash\)
+      return common::Status(\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{common::ONNXRUNTIME}}, \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{common::FAIL}}, \textcolor{stringliteral}{"Invalid
+       TensorProto"});    \(\backslash\)
+    \}                                                                                     \(\backslash\)
+    break;
+\end{DoxyCode}
+\mbox{\Hypertarget{tensorutils_8cc_a631753452a4db6913ffb1bba000b9801}\label{tensorutils_8cc_a631753452a4db6913ffb1bba000b9801}} 
+\index{tensorutils.\+cc@{tensorutils.\+cc}!D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR@{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}}
+\index{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR@{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}!tensorutils.\+cc@{tensorutils.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}{DEFINE\_UNPACK\_TENSOR}}
+{\footnotesize\ttfamily \#define D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{Type,  }\item[{}]{field\+\_\+name,  }\item[{}]{field\+\_\+size }\end{DoxyParamCaption})}
+
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{tensorutils_8cc_a59e046638d6b7760a2f192f6f85d0cb0}\label{tensorutils_8cc_a59e046638d6b7760a2f192f6f85d0cb0}} 
+\index{tensorutils.\+cc@{tensorutils.\+cc}!G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS@{G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS}}
+\index{G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS@{G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS}!tensorutils.\+cc@{tensorutils.\+cc}}
+\subsubsection{\texorpdfstring{G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+S\+S()}{GSL\_SUPPRESS()}}
+{\footnotesize\ttfamily G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS (\begin{DoxyParamCaption}\item[{type .}]{1 }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+

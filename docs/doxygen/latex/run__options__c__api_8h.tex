@@ -1,0 +1,78 @@
+\hypertarget{run__options__c__api_8h}{}\section{onnxruntime/include/onnxruntime/core/framework/run\+\_\+options\+\_\+c\+\_\+api.h File Reference}
+\label{run__options__c__api_8h}\index{onnxruntime/include/onnxruntime/core/framework/run\+\_\+options\+\_\+c\+\_\+api.\+h@{onnxruntime/include/onnxruntime/core/framework/run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+{\ttfamily \#include \char`\"{}core/framework/error\+\_\+code.\+h\char`\"{}}\newline
+Include dependency graph for run\+\_\+options\+\_\+c\+\_\+api.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef struct \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} \mbox{\hyperlink{run__options__c__api_8h_a2cd38e5cd5b79aff955e30b28eb174f6}{O\+N\+N\+X\+Runtime\+Run\+Options}}
+\item 
+typedef \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$ \mbox{\hyperlink{run__options__c__api_8h_a618e4a636ff10f92b96a54e3d7e70c09}{O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{run__options__c__api_8h_adfa2dbcf9de20d6a20e897cee31e374f}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (\mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$, O\+N\+N\+X\+Runtime\+Create\+Run\+Options)
+\item 
+\mbox{\hyperlink{run__options__c__api_8h_a4c80d4be63e5b11b40350320c0bde958}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}} (O\+N\+N\+X\+Runtime\+Run\+Options\+Set\+Run\+Log\+Verbosity\+Level, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$, unsigned int)
+\item 
+\mbox{\hyperlink{run__options__c__api_8h_aa70342a1ee126b04cd357e9262096716}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}} (O\+N\+N\+X\+Runtime\+Run\+Options\+Set\+Run\+Tag, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$run\+\_\+tag)
+\item 
+\mbox{\hyperlink{run__options__c__api_8h_adf42d08631f679340f85d9715b224707}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (unsigned int, O\+N\+N\+X\+Runtime\+Run\+Options\+Get\+Run\+Log\+Verbosity\+Level, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$)
+\item 
+\mbox{\hyperlink{run__options__c__api_8h_a1b2cd9ae2d621be1bb6e88d93ae57994}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (const char $\ast$, O\+N\+N\+X\+Runtime\+Run\+Options\+Get\+Run\+Tag, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$)
+\end{DoxyCompactItemize}
+
+
+\subsection{Typedef Documentation}
+\mbox{\Hypertarget{run__options__c__api_8h_a2cd38e5cd5b79aff955e30b28eb174f6}\label{run__options__c__api_8h_a2cd38e5cd5b79aff955e30b28eb174f6}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+Runtime\+Run\+Options@{O\+N\+N\+X\+Runtime\+Run\+Options}}
+\index{O\+N\+N\+X\+Runtime\+Run\+Options@{O\+N\+N\+X\+Runtime\+Run\+Options}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Run\+Options}{ONNXRuntimeRunOptions}}
+{\footnotesize\ttfamily typedef struct \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}}}
+
+\mbox{\Hypertarget{run__options__c__api_8h_a618e4a636ff10f92b96a54e3d7e70c09}\label{run__options__c__api_8h_a618e4a636ff10f92b96a54e3d7e70c09}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr@{O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr}}
+\index{O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr@{O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr}{ONNXRuntimeRunOptionsPtr}}
+{\footnotesize\ttfamily typedef \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}}$\ast$ \mbox{\hyperlink{run__options__c__api_8h_a618e4a636ff10f92b96a54e3d7e70c09}{O\+N\+N\+X\+Runtime\+Run\+Options\+Ptr}}}
+
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{run__options__c__api_8h_adfa2dbcf9de20d6a20e897cee31e374f}\label{run__options__c__api_8h_adfa2dbcf9de20d6a20e897cee31e374f}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$}]{,  }\item[{O\+N\+N\+X\+Runtime\+Create\+Run\+Options}]{ }\end{DoxyParamCaption})}
+
+\begin{DoxyReturn}{Returns}
+A pointer of the newly created object. The pointer should be freed by O\+N\+N\+X\+Runtime\+Release\+Object after use 
+\end{DoxyReturn}
+\mbox{\Hypertarget{run__options__c__api_8h_adf42d08631f679340f85d9715b224707}\label{run__options__c__api_8h_adf42d08631f679340f85d9715b224707}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{unsigned}]{int,  }\item[{O\+N\+N\+X\+Runtime\+Run\+Options\+Get\+Run\+Log\+Verbosity\+Level}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{run__options__c__api_8h_a1b2cd9ae2d621be1bb6e88d93ae57994}\label{run__options__c__api_8h_a1b2cd9ae2d621be1bb6e88d93ae57994}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{const char $\ast$}]{,  }\item[{O\+N\+N\+X\+Runtime\+Run\+Options\+Get\+Run\+Tag}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{run__options__c__api_8h_a4c80d4be63e5b11b40350320c0bde958}\label{run__options__c__api_8h_a4c80d4be63e5b11b40350320c0bde958}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S()}{ONNXRUNTIME\_API\_STATUS()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+Runtime\+Run\+Options\+Set\+Run\+Log\+Verbosity\+Level}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$}]{,  }\item[{unsigned}]{int }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{run__options__c__api_8h_aa70342a1ee126b04cd357e9262096716}\label{run__options__c__api_8h_aa70342a1ee126b04cd357e9262096716}} 
+\index{run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}!run\+\_\+options\+\_\+c\+\_\+api.\+h@{run\+\_\+options\+\_\+c\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S()}{ONNXRUNTIME\_API\_STATUS()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+Runtime\+Run\+Options\+Set\+Run\+Tag}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeRunOptions}{O\+N\+N\+X\+Runtime\+Run\+Options}} $\ast$}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$}]{run\+\_\+tag }\end{DoxyParamCaption})}
+

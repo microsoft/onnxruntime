@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['k',['K',['../structMLAS__CONV__PARAMETERS.html#a7bc31b6b51f84372e4e244e542c749e3',1,'MLAS_CONV_PARAMETERS']]],
+  ['kbrainsliceexecutionprovider',['kBrainSliceExecutionProvider',['../namespaceonnxruntime.html#a9ece12f53da048b414061bbdadd3b49a',1,'onnxruntime']]],
+  ['kci',['kci',['../structonnxruntime_1_1SessionState_1_1NodeInfo.html#ada3498a7678b3e295febb45d84dbc570',1,'onnxruntime::SessionState::NodeInfo']]],
+  ['kconstant',['kConstant',['../namespaceonnxruntime.html#aa7d287957860bcc4077a9a4a3c9f8ec1',1,'onnxruntime']]],
+  ['kconstantvalue',['kConstantValue',['../namespaceonnxruntime.html#a5e358a273936ef3f84e3043a26381764',1,'onnxruntime']]],
+  ['kcpuexecutionprovider',['kCpuExecutionProvider',['../namespaceonnxruntime.html#a394a3c7e50622de1f203a96df592060d',1,'onnxruntime']]],
+  ['kcudaexecutionprovider',['kCudaExecutionProvider',['../namespaceonnxruntime.html#a73ebc64887ddd1968e3cef47ffefe35b',1,'onnxruntime']]],
+  ['keepdims_5f',['keepdims_',['../classonnxruntime_1_1ReduceKernelBase.html#aa8eea3f720a6238356a38e487a0365af',1,'onnxruntime::ReduceKernelBase']]],
+  ['kernel',['kernel',['../mkldnn_2nn_2pool_8cc.html#a1fd14bdce0b9db48a6bf8c6ce1320490',1,'pool.cc']]],
+  ['kernel_5fcreate_5ffunc',['kernel_create_func',['../structonnxruntime_1_1KernelCreateInfo.html#a6699cb37c649a8869712fdba8357f76a',1,'onnxruntime::KernelCreateInfo']]],
+  ['kernel_5fdef',['kernel_def',['../structonnxruntime_1_1KernelCreateInfo.html#aa55b48d00c17feb66006a37b8deeb38d',1,'onnxruntime::KernelCreateInfo']]],
+  ['kernel_5fshape',['kernel_shape',['../structonnxruntime_1_1ConvTransposeBase_1_1Prepare.html#a6690523708253655b89842ab012d7adb',1,'onnxruntime::ConvTransposeBase::Prepare']]],
+  ['kernel_5fshape_5f',['kernel_shape_',['../classonnxruntime_1_1PoolBase.html#ae5614fd2b239e5d9ce3701d4ec895eaa',1,'onnxruntime::PoolBase']]],
+  ['kernel_5fshape_5fspecified_5f',['kernel_shape_specified_',['../classonnxruntime_1_1ConvBase.html#a977ea0ff754348337686c30a3e3476de',1,'onnxruntime::ConvBase']]],
+  ['kernels_5flist',['kernels_list',['../structKernelsContainer.html#a45027a89552a89b0e804b773db09ee8b',1,'KernelsContainer']]],
+  ['kernelshape',['KernelShape',['../structMLAS__CONV__PARAMETERS.html#a390abf6662f61c4ba5e884b98542e8f0',1,'MLAS_CONV_PARAMETERS']]],
+  ['kfunctionop',['kFunctionOp',['../namespaceonnxruntime.html#ac27a6257ba083f2c30a496483f22a199',1,'onnxruntime']]],
+  ['kmkldnnexecutionprovider',['kMklDnnExecutionProvider',['../namespaceonnxruntime.html#abd1901c951bcb5845eeeaff9dd75ce97',1,'onnxruntime']]],
+  ['kmldomain',['kMLDomain',['../namespaceonnxruntime.html#a76df7dd63759039fc62486d6691e70e5',1,'onnxruntime']]],
+  ['kmsdomain',['kMSDomain',['../namespaceonnxruntime.html#a1e63b08774e23395d961e8e35fb62db1',1,'onnxruntime']]],
+  ['knoop',['kNoOp',['../namespaceonnxruntime.html#ab4607320256ed5d4cbe7b3049e971f05',1,'onnxruntime']]],
+  ['knoversion',['kNoVersion',['../classonnxruntime_1_1Model.html#a092dabe5ac2981fde3b0ad0875f1c0c3',1,'onnxruntime::Model']]],
+  ['knupharexecutionprovider',['kNupharExecutionProvider',['../namespaceonnxruntime.html#a1d1ae47414d655ea396acf0c7c28ba4f',1,'onnxruntime']]],
+  ['konnxdomain',['kOnnxDomain',['../namespaceonnxruntime.html#ac0e7c0c106a2c9e9594560a3ab289fa0',1,'onnxruntime']]],
+  ['konnxdomainalias',['kOnnxDomainAlias',['../namespaceonnxruntime.html#a77f9a21cd6f5bfabb3d0b6e40341f39c',1,'onnxruntime']]]
+];

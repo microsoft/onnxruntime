@@ -1,0 +1,69 @@
+\hypertarget{classonnxruntime_1_1Conv}{}\section{onnxruntime\+:\+:Conv$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1Conv}\index{onnxruntime\+::\+Conv$<$ T $>$@{onnxruntime\+::\+Conv$<$ T $>$}}
+
+
+{\ttfamily \#include $<$conv.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Conv$<$ T $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Conv$<$ T $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Conv_a55a21a4e796836f685b0e680e713e26d}{Conv}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Conv_adb9e3e9c31f9c69cc510b7fb64a56f2e}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const override
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Conv_a6bce691672e1fff9c2806ecb325b15b6}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Conv_a55a21a4e796836f685b0e680e713e26d}\label{classonnxruntime_1_1Conv_a55a21a4e796836f685b0e680e713e26d}} 
+\index{onnxruntime\+::\+Conv@{onnxruntime\+::\+Conv}!Conv@{Conv}}
+\index{Conv@{Conv}!onnxruntime\+::\+Conv@{onnxruntime\+::\+Conv}}
+\subsubsection{\texorpdfstring{Conv()}{Conv()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1Conv}{onnxruntime\+::\+Conv}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1Conv}{Conv}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Conv_adb9e3e9c31f9c69cc510b7fb64a56f2e}\label{classonnxruntime_1_1Conv_adb9e3e9c31f9c69cc510b7fb64a56f2e}} 
+\index{onnxruntime\+::\+Conv@{onnxruntime\+::\+Conv}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Conv@{onnxruntime\+::\+Conv}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Conv}{onnxruntime\+::\+Conv}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+Reimplemented in \mbox{\hyperlink{classonnxruntime_1_1mkl__dnn_1_1Conv_a8db02bc5e1f3cd5ac0935c7ff52dc935}{onnxruntime\+::mkl\+\_\+dnn\+::\+Conv$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1Conv_a6bce691672e1fff9c2806ecb325b15b6}\label{classonnxruntime_1_1Conv_a6bce691672e1fff9c2806ecb325b15b6}} 
+\index{onnxruntime\+::\+Conv@{onnxruntime\+::\+Conv}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Conv@{onnxruntime\+::\+Conv}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Conv}{onnxruntime\+::\+Conv}}$<$ float $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{cpu_2nn_2conv_8h}{conv.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{conv__impl_8h}{conv\+\_\+impl.\+h}}\end{DoxyCompactItemize}

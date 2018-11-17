@@ -1,0 +1,156 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{}\section{onnxruntime\+:\+:cuda\+:\+:Cuda\+Kernel\+:\+:Cuda\+Async\+Buffer$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer$<$ T $>$@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer$<$ T $>$}}
+
+
+{\ttfamily \#include $<$cuda\+\_\+common.\+h$>$}
+
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Cuda\+Kernel\+:\+:Cuda\+Async\+Buffer$<$ T $>$\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a47503e3ac7f13180576bc5162c4a0144}{Cuda\+Async\+Buffer}} (const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$op\+\_\+kernel)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ad7b7280f0e7bfe036eb42b3942c5ca68}{Cuda\+Async\+Buffer}} (const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$op\+\_\+kernel, int device\+\_\+id, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a52c7fbaddb4d9b8cf99d08031e201139}{count}})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_aa7565b3bb125a043c51b11571c667133}{Cuda\+Async\+Buffer}} (const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$op\+\_\+kernel, int device\+\_\+id, const T \&value)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a97550222aa391beebc4b990dc543b7d6}{Cuda\+Async\+Buffer}} (const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$op\+\_\+kernel, int device\+\_\+id, const std\+::vector$<$ T $>$ \&vec)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a1987dd49b4f3fc47fe8c780ce232654d}{Alloc\+Cpu\+Ptr}} (int id, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a52c7fbaddb4d9b8cf99d08031e201139}{count}})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ab0d0133fc7d6d9ca6cdd01b7ea7db54d}{Copy\+To\+Gpu}} ()
+\item 
+T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a5d0e11c43d1ab7929d7b2f32bc24871c}{Cpu\+Ptr}} () const
+\item 
+gsl\+::span$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a1719d3e411ca256e4b57898795ef58ca}{Cpu\+Span}} () const
+\item 
+T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ae71102ba0407d6ec8f718625292cf66c}{Gpu\+Ptr}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a52c7fbaddb4d9b8cf99d08031e201139}{count}} () const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a94d646cb39fe7b7585e0dc84eb8d249c}{gpu\+\_\+copy\+\_\+}}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a03b71ae647ad6715ce39706a5fe412c2}{cpu\+\_\+pinned\+\_\+copy\+\_\+}}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a3f4bf80262e6dbf7e993948d5e899aa0}{count\+\_\+}}
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_af1dd8b6408d512cc9ec0c5173647acad}{op\+\_\+kernel\+\_\+}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a47503e3ac7f13180576bc5162c4a0144}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a47503e3ac7f13180576bc5162c4a0144}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}}
+\index{Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Cuda\+Async\+Buffer()}{CudaAsyncBuffer()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Async\+Buffer}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$}]{op\+\_\+kernel }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ad7b7280f0e7bfe036eb42b3942c5ca68}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ad7b7280f0e7bfe036eb42b3942c5ca68}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}}
+\index{Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Cuda\+Async\+Buffer()}{CudaAsyncBuffer()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Async\+Buffer}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$}]{op\+\_\+kernel,  }\item[{int}]{device\+\_\+id,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_aa7565b3bb125a043c51b11571c667133}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_aa7565b3bb125a043c51b11571c667133}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}}
+\index{Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Cuda\+Async\+Buffer()}{CudaAsyncBuffer()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Async\+Buffer}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$}]{op\+\_\+kernel,  }\item[{int}]{device\+\_\+id,  }\item[{const T \&}]{value }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a97550222aa391beebc4b990dc543b7d6}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a97550222aa391beebc4b990dc543b7d6}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}}
+\index{Cuda\+Async\+Buffer@{Cuda\+Async\+Buffer}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Cuda\+Async\+Buffer()}{CudaAsyncBuffer()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Async\+Buffer}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$}]{op\+\_\+kernel,  }\item[{int}]{device\+\_\+id,  }\item[{const std\+::vector$<$ T $>$ \&}]{vec }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a1987dd49b4f3fc47fe8c780ce232654d}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a1987dd49b4f3fc47fe8c780ce232654d}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Alloc\+Cpu\+Ptr@{Alloc\+Cpu\+Ptr}}
+\index{Alloc\+Cpu\+Ptr@{Alloc\+Cpu\+Ptr}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Alloc\+Cpu\+Ptr()}{AllocCpuPtr()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::Alloc\+Cpu\+Ptr (\begin{DoxyParamCaption}\item[{int}]{id,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ab0d0133fc7d6d9ca6cdd01b7ea7db54d}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ab0d0133fc7d6d9ca6cdd01b7ea7db54d}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Copy\+To\+Gpu@{Copy\+To\+Gpu}}
+\index{Copy\+To\+Gpu@{Copy\+To\+Gpu}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Copy\+To\+Gpu()}{CopyToGpu()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::Copy\+To\+Gpu (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a52c7fbaddb4d9b8cf99d08031e201139}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a52c7fbaddb4d9b8cf99d08031e201139}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!count@{count}}
+\index{count@{count}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{count()}{count()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a5d0e11c43d1ab7929d7b2f32bc24871c}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a5d0e11c43d1ab7929d7b2f32bc24871c}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Cpu\+Ptr@{Cpu\+Ptr}}
+\index{Cpu\+Ptr@{Cpu\+Ptr}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Cpu\+Ptr()}{CpuPtr()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+T$\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::Cpu\+Ptr (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a1719d3e411ca256e4b57898795ef58ca}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a1719d3e411ca256e4b57898795ef58ca}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Cpu\+Span@{Cpu\+Span}}
+\index{Cpu\+Span@{Cpu\+Span}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Cpu\+Span()}{CpuSpan()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+gsl\+::span$<$T$>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::Cpu\+Span (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ae71102ba0407d6ec8f718625292cf66c}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_ae71102ba0407d6ec8f718625292cf66c}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!Gpu\+Ptr@{Gpu\+Ptr}}
+\index{Gpu\+Ptr@{Gpu\+Ptr}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{Gpu\+Ptr()}{GpuPtr()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+T$\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::Gpu\+Ptr (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a3f4bf80262e6dbf7e993948d5e899aa0}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a3f4bf80262e6dbf7e993948d5e899aa0}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!count\+\_\+@{count\+\_\+}}
+\index{count\+\_\+@{count\+\_\+}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{count\+\_\+}{count\_}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::count\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a03b71ae647ad6715ce39706a5fe412c2}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a03b71ae647ad6715ce39706a5fe412c2}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!cpu\+\_\+pinned\+\_\+copy\+\_\+@{cpu\+\_\+pinned\+\_\+copy\+\_\+}}
+\index{cpu\+\_\+pinned\+\_\+copy\+\_\+@{cpu\+\_\+pinned\+\_\+copy\+\_\+}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{cpu\+\_\+pinned\+\_\+copy\+\_\+}{cpu\_pinned\_copy\_}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$T$>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::cpu\+\_\+pinned\+\_\+copy\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a94d646cb39fe7b7585e0dc84eb8d249c}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_a94d646cb39fe7b7585e0dc84eb8d249c}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!gpu\+\_\+copy\+\_\+@{gpu\+\_\+copy\+\_\+}}
+\index{gpu\+\_\+copy\+\_\+@{gpu\+\_\+copy\+\_\+}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{gpu\+\_\+copy\+\_\+}{gpu\_copy\_}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$T$>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::gpu\+\_\+copy\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_af1dd8b6408d512cc9ec0c5173647acad}\label{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer_af1dd8b6408d512cc9ec0c5173647acad}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}!op\+\_\+kernel\+\_\+@{op\+\_\+kernel\+\_\+}}
+\index{op\+\_\+kernel\+\_\+@{op\+\_\+kernel\+\_\+}!onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer@{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}
+\subsubsection{\texorpdfstring{op\+\_\+kernel\+\_\+}{op\_kernel\_}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}}$\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ T $>$\+::op\+\_\+kernel\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cuda__common_8h}{cuda\+\_\+common.\+h}}\end{DoxyCompactItemize}

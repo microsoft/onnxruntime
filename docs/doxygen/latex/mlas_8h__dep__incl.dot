@@ -1,0 +1,24 @@
+digraph "onnxruntime/onnxruntime/core/mlas/inc/mlas.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node3 [label="onnxruntime/onnxruntime\l/core/mlas/inc/mlas.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node3 -> Node4 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node4 [label="onnxruntime/onnxruntime\l/core/mlas/lib/mlasi.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mlasi_8h.html"];
+  Node4 -> Node5 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node5 [label="onnxruntime/onnxruntime\l/core/mlas/lib/arm/sgemmc.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$sgemmc_8cpp.html"];
+  Node4 -> Node6 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node6 [label="onnxruntime/onnxruntime\l/core/mlas/lib/bias.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$bias_8cpp.html"];
+  Node4 -> Node7 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node7 [label="onnxruntime/onnxruntime\l/core/mlas/lib/convolve.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$convolve_8cpp.html"];
+  Node4 -> Node8 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node8 [label="onnxruntime/onnxruntime\l/core/mlas/lib/platform.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$platform_8cpp.html"];
+  Node4 -> Node9 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node9 [label="onnxruntime/onnxruntime\l/core/mlas/lib/pooling.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$pooling_8cpp.html"];
+  Node4 -> Node10 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node10 [label="onnxruntime/onnxruntime\l/core/mlas/lib/sgemm.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$sgemm_8cpp.html"];
+  Node3 -> Node11 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node11 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/conv_impl.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$conv__impl_8h.html"];
+  Node11 -> Node12 [dir="back",color="midnightblue",fontsize="10",style="solid"];
+  Node12 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/conv.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2conv_8cc.html"];
+}

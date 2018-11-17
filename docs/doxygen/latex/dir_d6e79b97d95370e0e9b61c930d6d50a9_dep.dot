@@ -1,0 +1,13 @@
+digraph "onnxruntime/include/onnxruntime" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_f44f875884e6b767c5658db22ccaab42 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="include" fontname="Helvetica", fontsize="10", URL="dir_f44f875884e6b767c5658db22ccaab42.html"]
+  subgraph clusterdir_d6e79b97d95370e0e9b61c930d6d50a9 {
+    graph [ bgcolor="#eeeeff", pencolor="black", label="" URL="dir_d6e79b97d95370e0e9b61c930d6d50a9.html"];
+    dir_d6e79b97d95370e0e9b61c930d6d50a9 [shape=plaintext label="onnxruntime"];
+    dir_48a215034096b7d38d25d28d3b6122be [shape=box label="core" color="red" fillcolor="white" style="filled" URL="dir_48a215034096b7d38d25d28d3b6122be.html"];
+  }
+  }
+}

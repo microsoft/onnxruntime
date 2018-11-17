@@ -1,0 +1,276 @@
+\hypertarget{op__kernel_8h}{}\section{onnxruntime/include/onnxruntime/core/framework/op\+\_\+kernel.h File Reference}
+\label{op__kernel_8h}\index{onnxruntime/include/onnxruntime/core/framework/op\+\_\+kernel.\+h@{onnxruntime/include/onnxruntime/core/framework/op\+\_\+kernel.\+h}}
+{\ttfamily \#include $<$functional$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/exceptions.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/execution\+\_\+provider.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/kernel\+\_\+def\+\_\+builder.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/ml\+\_\+value.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel\+\_\+info.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+node\+\_\+proto\+\_\+helper.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensor.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/constants.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}gsl/span\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}onnx/defs/schema.\+h\char`\"{}}\newline
+Include dependency graph for op\+\_\+kernel.\+h\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{onnxruntime\+::\+Op\+Kernel}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{onnxruntime\+::\+Op\+Kernel\+Context}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{onnxruntime\+::\+Kernel\+Create\+Info}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1contrib}{onnxruntime\+::contrib}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a0e72c2f9f7b5c026d76c3934ddc68b87}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}(provider,  domain,  ver,  name)~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#ver
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_ad0de06fd2d373b70ded16ffc203491b7}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}}(name,  ver,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, ver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_ae9d33d53a4cc562017646a73c264cfcf}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}(name,  ver,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, ver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name,  domain,  ver,  provider,  builder, ...)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a2c5ecf239a3d31e31619031cbe4b4ad1}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}(provider,  domain,  startver,  endver,  name)~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#startver\#\#\+\_\+\#\#endver
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_aa4594d54b060634dd48de4ac68a2434d}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}(name,  startver,  endver,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, startver, endver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_abd7104b789c8a982132f216b9e77019f}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}(name,  startver,  endver,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, startver, endver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name,  domain,  startver,  endver,  provider,  builder, ...)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_afeac03f7faaca6843d9a5a9182635790}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}(provider,  domain,  ver,  type,  name)~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#ver\#\#\+\_\+\#\#type
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}(name,  ver,  type,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, ver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}(name,  ver,  type,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, ver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a20efee9fd1f86ebbc5b95c9d2f1aeea7}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}}(name,  ver,  type,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+S\+Domain, ver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name,  domain,  ver,  type,  provider,  builder, ...)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a0babfdf57a7cbe872b58adcba8d90c96}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}(provider,  domain,  startver,  endver,  type,  name)~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#startver\#\#\+\_\+\#\#endver\#\#\+\_\+\#\#type
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a372ebaea3d1dfd7cc9f7ba6519abb2fb}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}(name,  startver,  endver,  type,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, startver, endver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a72f7b6af1b8b044df0c5d33354a24644}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}(name,  startver,  endver,  type,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, startver, endver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_a8bbc8e2bff81f6d3ff3cac93d2f60727}{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}}(name,  startver,  endver,  type,  builder, ...)~\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+S\+Domain, startver, endver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name,  domain,  startver,  endver,  type,  provider,  builder, ...)
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a2e23731e78afbe4e5e15a18493162335}{onnxruntime\+::\+Kernel\+Create\+Fn}} = std\+::function$<$ Op\+Kernel $\ast$(const Op\+Kernel\+Info \&info)$>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a7f8ff42cd4a103e3be4c6f4227448d28}{onnxruntime\+::\+Kernel\+Create\+Map}} = std\+::multimap$<$ std\+::string, Kernel\+Create\+Info $>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\Kernel\+Create\+Info \mbox{\hyperlink{namespaceonnxruntime_ac7d6fcc4957abf36800a00b296827813}{onnxruntime\+::\+Build\+Kernel}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\Kernel\+Create\+Info \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a69e87ba61c7aba52d53e7f222e453fe9}{onnxruntime\+::ml\+::\+Build\+Kernel}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\Kernel\+Create\+Info \mbox{\hyperlink{namespaceonnxruntime_1_1contrib_a9d0f26b3ab6255e75af689b5f7918861}{onnxruntime\+::contrib\+::\+Build\+Kernel}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{op__kernel_8h_ad0de06fd2d373b70ded16ffc203491b7}\label{op__kernel_8h_ad0de06fd2d373b70ded16ffc203491b7}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, ver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_ae9d33d53a4cc562017646a73c264cfcf}\label{op__kernel_8h_ae9d33d53a4cc562017646a73c264cfcf}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_ML\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, ver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}\label{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_TYPED\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{type,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, ver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}\label{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_TYPED\_ML\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{type,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, ver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_a20efee9fd1f86ebbc5b95c9d2f1aeea7}\label{op__kernel_8h_a20efee9fd1f86ebbc5b95c9d2f1aeea7}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_TYPED\_MS\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{type,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+S\+Domain, ver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_aa4594d54b060634dd48de4ac68a2434d}\label{op__kernel_8h_aa4594d54b060634dd48de4ac68a2434d}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_VERSIONED\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, startver, endver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_abd7104b789c8a982132f216b9e77019f}\label{op__kernel_8h_abd7104b789c8a982132f216b9e77019f}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_VERSIONED\_ML\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, startver, endver, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_a372ebaea3d1dfd7cc9f7ba6519abb2fb}\label{op__kernel_8h_a372ebaea3d1dfd7cc9f7ba6519abb2fb}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_VERSIONED\_TYPED\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{type,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+Onnx\+Domain, startver, endver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_a72f7b6af1b8b044df0c5d33354a24644}\label{op__kernel_8h_a72f7b6af1b8b044df0c5d33354a24644}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_VERSIONED\_TYPED\_ML\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{type,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+L\+Domain, startver, endver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_a8bbc8e2bff81f6d3ff3cac93d2f60727}\label{op__kernel_8h_a8bbc8e2bff81f6d3ff3cac93d2f60727}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}}
+\index{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL@{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL}{ONNX\_CPU\_OPERATOR\_VERSIONED\_TYPED\_MS\_KERNEL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+M\+S\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{type,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}(name, k\+M\+S\+Domain, startver, endver, type, k\+Cpu\+Execution\+Provider, builder, \+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{op__kernel_8h_a0e72c2f9f7b5c026d76c3934ddc68b87}\label{op__kernel_8h_a0e72c2f9f7b5c026d76c3934ddc68b87}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}{ONNX\_OPERATOR\_KERNEL\_CLASS\_NAME}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME(\begin{DoxyParamCaption}\item[{}]{provider,  }\item[{}]{domain,  }\item[{}]{ver,  }\item[{}]{name }\end{DoxyParamCaption})~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#ver}
+
+\mbox{\Hypertarget{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}\label{op__kernel_8h_a5c37a47e000b70bda3c0b23e944b5f50}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}{ONNX\_OPERATOR\_KERNEL\_EX}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{domain,  }\item[{}]{ver,  }\item[{}]{provider,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{class }\mbox{\hyperlink{op__kernel_8h_a0e72c2f9f7b5c026d76c3934ddc68b87}{ONNX\_OPERATOR\_KERNEL\_CLASS\_NAME}}(provider, domain, ver, name);         
+              \(\backslash\)
+  template <>                                                                         \(\backslash\)
+  KernelCreateInfo                                                                    \(\backslash\)
+  BuildKernel<ONNX\_OPERATOR\_KERNEL\_CLASS\_NAME(provider, domain, ver, name)>() \{       \(\backslash\)
+    return KernelCreateInfo(                                                          \(\backslash\)
+        builder.SetName(#name)                                                        \(\backslash\)
+            .SetDomain(domain)                                                        \(\backslash\)
+            .SinceVersion(ver)                                                        \(\backslash\)
+            .Provider(provider)                                                       \(\backslash\)
+            .Build(),                                                                 \(\backslash\)
+        [](\textcolor{keyword}{const} OpKernelInfo& info) -> OpKernel* \{ \textcolor{keywordflow}{return} \textcolor{keyword}{new} \_\_VA\_ARGS\_\_(info); \}); \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{op__kernel_8h_afeac03f7faaca6843d9a5a9182635790}\label{op__kernel_8h_afeac03f7faaca6843d9a5a9182635790}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}{ONNX\_OPERATOR\_TYPED\_KERNEL\_CLASS\_NAME}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME(\begin{DoxyParamCaption}\item[{}]{provider,  }\item[{}]{domain,  }\item[{}]{ver,  }\item[{}]{type,  }\item[{}]{name }\end{DoxyParamCaption})~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#ver\#\#\+\_\+\#\#type}
+
+\mbox{\Hypertarget{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}\label{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{domain,  }\item[{}]{ver,  }\item[{}]{type,  }\item[{}]{provider,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{class }\mbox{\hyperlink{op__kernel_8h_afeac03f7faaca6843d9a5a9182635790}{ONNX\_OPERATOR\_TYPED\_KERNEL\_CLASS\_NAME}}(provider, domain, ver, 
+      type, name);           \(\backslash\)
+  template <>                                                                               \(\backslash\)
+  KernelCreateInfo                                                                          \(\backslash\)
+  BuildKernel<ONNX\_OPERATOR\_TYPED\_KERNEL\_CLASS\_NAME(provider, domain, ver, type, name)>() \{ \(\backslash\)
+    return KernelCreateInfo(                                                                \(\backslash\)
+        builder.SetName(#name)                                                              \(\backslash\)
+            .SetDomain(domain)                                                              \(\backslash\)
+            .SinceVersion(ver)                                                              \(\backslash\)
+            .Provider(provider)                                                             \(\backslash\)
+            .Build(),                                                                       \(\backslash\)
+        [](\textcolor{keyword}{const} OpKernelInfo& info) -> OpKernel* \{ \textcolor{keywordflow}{return} \textcolor{keyword}{new} \_\_VA\_ARGS\_\_(info); \});       \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{op__kernel_8h_a2c5ecf239a3d31e31619031cbe4b4ad1}\label{op__kernel_8h_a2c5ecf239a3d31e31619031cbe4b4ad1}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}{ONNX\_OPERATOR\_VERSIONED\_KERNEL\_CLASS\_NAME}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME(\begin{DoxyParamCaption}\item[{}]{provider,  }\item[{}]{domain,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{name }\end{DoxyParamCaption})~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#startver\#\#\+\_\+\#\#endver}
+
+\mbox{\Hypertarget{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}\label{op__kernel_8h_ab328886d850f9a28bdd89af1ac7c5661}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}{ONNX\_OPERATOR\_VERSIONED\_KERNEL\_EX}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{domain,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{provider,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{class }\mbox{\hyperlink{op__kernel_8h_a2c5ecf239a3d31e31619031cbe4b4ad1}{ONNX\_OPERATOR\_VERSIONED\_KERNEL\_CLASS\_NAME}}(provider, domain, 
+      startver, endver, name);           \(\backslash\)
+  template <>                                                                                          \(\backslash\)
+  KernelCreateInfo                                                                                     \(\backslash\)
+  BuildKernel<ONNX\_OPERATOR\_VERSIONED\_KERNEL\_CLASS\_NAME(provider, domain, startver, endver, name)>() \{ \(\backslash\)
+    return KernelCreateInfo(                                                                           \(\backslash\)
+        builder.SetName(#name)                                                                         \(\backslash\)
+            .SetDomain(domain)                                                                         \(\backslash\)
+            .SinceVersion(startver, endver)                                                            \(\backslash\)
+            .Provider(provider)                                                                        \(\backslash\)
+            .Build(),                                                                                  \(\backslash\)
+        [](\textcolor{keyword}{const} OpKernelInfo& info) -> OpKernel* \{ \textcolor{keywordflow}{return} \textcolor{keyword}{new} \_\_VA\_ARGS\_\_(info); \});                  \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{op__kernel_8h_a0babfdf57a7cbe872b58adcba8d90c96}\label{op__kernel_8h_a0babfdf57a7cbe872b58adcba8d90c96}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}{ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_CLASS\_NAME}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME(\begin{DoxyParamCaption}\item[{}]{provider,  }\item[{}]{domain,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{type,  }\item[{}]{name }\end{DoxyParamCaption})~provider\#\#\+\_\+\#\#name\#\#\+\_\+\#\#domain\#\#\+\_\+ver\#\#startver\#\#\+\_\+\#\#endver\#\#\+\_\+\#\#type}
+
+\mbox{\Hypertarget{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}\label{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}} 
+\index{op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}!O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}}
+\index{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX@{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}!op\+\_\+kernel.\+h@{op\+\_\+kernel.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}{ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_EX}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{domain,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{type,  }\item[{}]{provider,  }\item[{}]{builder,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{class }\mbox{\hyperlink{op__kernel_8h_a0babfdf57a7cbe872b58adcba8d90c96}{ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_CLASS\_NAME}}(
+      provider, domain, startver, endver, type, name);           \(\backslash\)
+  template <>                                                                                              
+              \(\backslash\)
+  KernelCreateInfo                                                                                         
+              \(\backslash\)
+  BuildKernel<ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_CLASS\_NAME(provider, domain, startver, endver, type,
+       name)>() \{ \(\backslash\)
+    return KernelCreateInfo(                                                                               
+              \(\backslash\)
+        builder.SetName(#name)                                                                             
+              \(\backslash\)
+            .SetDomain(domain)                                                                             
+              \(\backslash\)
+            .SinceVersion(startver, endver)                                                                
+              \(\backslash\)
+            .Provider(provider)                                                                            
+              \(\backslash\)
+            .Build(),                                                                                      
+              \(\backslash\)
+        [](\textcolor{keyword}{const} OpKernelInfo& info) -> OpKernel* \{ \textcolor{keywordflow}{return} \textcolor{keyword}{new} \_\_VA\_ARGS\_\_(info); \});                      
+              \(\backslash\)
+  \}
+\end{DoxyCode}

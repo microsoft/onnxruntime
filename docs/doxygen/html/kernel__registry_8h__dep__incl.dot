@@ -1,0 +1,40 @@
+digraph "onnxruntime/include/onnxruntime/core/framework/kernel_registry.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node67 [label="onnxruntime/include\l/onnxruntime/core/framework\l/kernel_registry.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node67 -> Node68 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node68 [label="onnxruntime/include\l/onnxruntime/core/framework\l/customregistry.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$customregistry_8h.html"];
+  Node68 -> Node69 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node69 [label="onnxruntime/onnxruntime\l/core/framework/customregistry.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$customregistry_8cc.html"];
+  Node68 -> Node70 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node70 [label="onnxruntime/onnxruntime\l/core/framework/kernel\l_registry_manager.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry__manager_8cc.html"];
+  Node68 -> Node71 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node71 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8h.html"];
+  Node71 -> Node72 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node72 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8cc.html"];
+  Node71 -> Node73 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node73 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+  Node68 -> Node73 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node67 -> Node74 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node74 [label="onnxruntime/onnxruntime\l/contrib_ops/contrib_ops.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$contrib__ops_8h.html"];
+  Node74 -> Node75 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node75 [label="onnxruntime/onnxruntime\l/contrib_ops/contrib_ops.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$contrib__ops_8cc.html"];
+  Node74 -> Node76 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node76 [label="onnxruntime/onnxruntime\l/core/framework/environment.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$environment_8cc.html"];
+  Node74 -> Node77 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node77 [label="onnxruntime/onnxruntime\l/core/providers/cpu/cpu\l_execution_provider.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu__execution__provider_8cc.html"];
+  Node67 -> Node78 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node78 [label="onnxruntime/onnxruntime\l/core/framework/execution\l_provider.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$execution__provider_8cc.html"];
+  Node67 -> Node79 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node79 [label="onnxruntime/onnxruntime\l/core/framework/graph\l_partitioner.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph__partitioner_8cc.html"];
+  Node67 -> Node80 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node80 [label="onnxruntime/onnxruntime\l/core/framework/kernel\l_registry.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$kernel__registry_8cc.html"];
+  Node67 -> Node70 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node67 -> Node77 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node67 -> Node81 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node81 [label="onnxruntime/onnxruntime\l/core/providers/cuda/cuda\l_execution_provider.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cuda__execution__provider_8cc.html"];
+  Node67 -> Node82 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node82 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/mkldnn_execution_provider.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn__execution__provider_8cc.html"];
+  Node67 -> Node73 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+}

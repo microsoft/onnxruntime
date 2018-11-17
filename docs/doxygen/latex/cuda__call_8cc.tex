@@ -1,0 +1,61 @@
+\hypertarget{cuda__call_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+call.cc File Reference}
+\label{cuda__call_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+call.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+call.\+cc}}
+{\ttfamily \#include \char`\"{}shared\+\_\+inc/cuda\+\_\+call.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$unistd.\+h$>$}\newline
+{\ttfamily \#include $<$string.\+h$>$}\newline
+Include dependency graph for cuda\+\_\+call.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda__call_8cc_abdf771ce7a0fb35477741f15850dc71c}{C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR}}(x)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename E\+R\+R\+T\+Y\+PE $>$ }\\const char $\ast$ \mbox{\hyperlink{namespaceonnxruntime_ae6993f12dfe6ecc41eec5de1f6ae065c}{onnxruntime\+::\+Cuda\+Err\+String}} (E\+R\+R\+T\+Y\+PE x)
+\item 
+{\footnotesize template$<$$>$ }\\const char $\ast$ \mbox{\hyperlink{namespaceonnxruntime_a377c61d3c112f58aec7ad916641d60da}{onnxruntime\+::\+Cuda\+Err\+String$<$ cuda\+Error\+\_\+t $>$}} (cuda\+Error\+\_\+t x)
+\item 
+{\footnotesize template$<$$>$ }\\const char $\ast$ \mbox{\hyperlink{namespaceonnxruntime_a7b3bb320a83720ab5d8015b4cebf9610}{onnxruntime\+::\+Cuda\+Err\+String$<$ cublas\+Status\+\_\+t $>$}} (cublas\+Status\+\_\+t e)
+\item 
+{\footnotesize template$<$$>$ }\\const char $\ast$ \mbox{\hyperlink{namespaceonnxruntime_a21b28bc1b46093e682521426685b0e8e}{onnxruntime\+::\+Cuda\+Err\+String$<$ curand\+Status $>$}} (curand\+Status)
+\item 
+{\footnotesize template$<$$>$ }\\const char $\ast$ \mbox{\hyperlink{namespaceonnxruntime_abcc83b08838acf12391ce9be5d68feb6}{onnxruntime\+::\+Cuda\+Err\+String$<$ cudnn\+Status\+\_\+t $>$}} (cudnn\+Status\+\_\+t e)
+\item 
+{\footnotesize template$<$typename E\+R\+R\+T\+Y\+PE , bool T\+H\+RW$>$ }\\bool \mbox{\hyperlink{namespaceonnxruntime_a4bcb94c50ee1b7834c90f0c6334986e0}{onnxruntime\+::\+Cuda\+Call}} (E\+R\+R\+T\+Y\+PE ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, E\+R\+R\+T\+Y\+PE success\+Code, const char $\ast$msg)
+\item 
+template bool \mbox{\hyperlink{namespaceonnxruntime_a8eacc603cd3a16dfe0340fdc2528ba47}{onnxruntime\+::\+Cuda\+Call$<$ cuda\+Error, false $>$}} (cuda\+Error ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, cuda\+Error success\+Code, const char $\ast$msg)
+\item 
+template bool \mbox{\hyperlink{namespaceonnxruntime_ade37b91b616bdb48e350f8956a282eca}{onnxruntime\+::\+Cuda\+Call$<$ cuda\+Error, true $>$}} (cuda\+Error ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, cuda\+Error success\+Code, const char $\ast$msg)
+\item 
+template bool \mbox{\hyperlink{namespaceonnxruntime_aba67f313705ae0ba915eb100d23641de}{onnxruntime\+::\+Cuda\+Call$<$ cublas\+Status\+\_\+t, false $>$}} (cublas\+Status\+\_\+t ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, cublas\+Status\+\_\+t success\+Code, const char $\ast$msg)
+\item 
+template bool \mbox{\hyperlink{namespaceonnxruntime_ab4e859887c685a6413e9ecb84a008845}{onnxruntime\+::\+Cuda\+Call$<$ cublas\+Status\+\_\+t, true $>$}} (cublas\+Status\+\_\+t ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, cublas\+Status\+\_\+t success\+Code, const char $\ast$msg)
+\item 
+template bool \mbox{\hyperlink{namespaceonnxruntime_a7fb3e122cad50ba529c2d28ea69db578}{onnxruntime\+::\+Cuda\+Call$<$ cudnn\+Status\+\_\+t, false $>$}} (cudnn\+Status\+\_\+t ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, cudnn\+Status\+\_\+t success\+Code, const char $\ast$msg)
+\item 
+template bool \mbox{\hyperlink{namespaceonnxruntime_a5381d1d884b2d527d1d9542d612d8e60}{onnxruntime\+::\+Cuda\+Call$<$ cudnn\+Status\+\_\+t, true $>$}} (cudnn\+Status\+\_\+t ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, cudnn\+Status\+\_\+t success\+Code, const char $\ast$msg)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda__call_8cc_abdf771ce7a0fb35477741f15850dc71c}\label{cuda__call_8cc_abdf771ce7a0fb35477741f15850dc71c}} 
+\index{cuda\+\_\+call.\+cc@{cuda\+\_\+call.\+cc}!C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR@{C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR}}
+\index{C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR@{C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR}!cuda\+\_\+call.\+cc@{cuda\+\_\+call.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR}{CASE\_ENUM\_TO\_STR}}
+{\footnotesize\ttfamily \#define C\+A\+S\+E\+\_\+\+E\+N\+U\+M\+\_\+\+T\+O\+\_\+\+S\+TR(\begin{DoxyParamCaption}\item[{}]{x }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{case} x:                   \(\backslash\)
+    return #x
+\end{DoxyCode}

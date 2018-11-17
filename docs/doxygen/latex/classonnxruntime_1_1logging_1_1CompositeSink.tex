@@ -1,0 +1,75 @@
+\hypertarget{classonnxruntime_1_1logging_1_1CompositeSink}{}\section{onnxruntime\+:\+:logging\+:\+:Composite\+Sink Class Reference}
+\label{classonnxruntime_1_1logging_1_1CompositeSink}\index{onnxruntime\+::logging\+::\+Composite\+Sink@{onnxruntime\+::logging\+::\+Composite\+Sink}}
+
+
+Class that abstracts multiple \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} instances being written to.  
+
+
+
+
+{\ttfamily \#include $<$composite\+\_\+sink.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:logging\+:\+:Composite\+Sink\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:logging\+:\+:Composite\+Sink\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink_a58da6e015bd64ab5ac42fa001066c0a0}{Composite\+Sink}} ()
+\begin{DoxyCompactList}\small\item\em Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink}{Composite\+Sink}} class. Use Add\+Sink to add sinks. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink}{Composite\+Sink}} \& \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink_ac3f7252d42270a2e837c6f7bb8ddd4af}{Add\+Sink}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} $>$ sink)
+\begin{DoxyCompactList}\small\item\em Adds a sink. Takes ownership of the sink (so pass unique\+\_\+ptr by value). \end{DoxyCompactList}\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Class that abstracts multiple \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} instances being written to. 
+
+\begin{DoxySeeAlso}{See also}
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}}
+
+
+\end{DoxySeeAlso}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1CompositeSink_a58da6e015bd64ab5ac42fa001066c0a0}\label{classonnxruntime_1_1logging_1_1CompositeSink_a58da6e015bd64ab5ac42fa001066c0a0}} 
+\index{onnxruntime\+::logging\+::\+Composite\+Sink@{onnxruntime\+::logging\+::\+Composite\+Sink}!Composite\+Sink@{Composite\+Sink}}
+\index{Composite\+Sink@{Composite\+Sink}!onnxruntime\+::logging\+::\+Composite\+Sink@{onnxruntime\+::logging\+::\+Composite\+Sink}}
+\subsubsection{\texorpdfstring{Composite\+Sink()}{CompositeSink()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+Composite\+Sink\+::\+Composite\+Sink (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink}{Composite\+Sink}} class. Use Add\+Sink to add sinks. 
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1CompositeSink_ac3f7252d42270a2e837c6f7bb8ddd4af}\label{classonnxruntime_1_1logging_1_1CompositeSink_ac3f7252d42270a2e837c6f7bb8ddd4af}} 
+\index{onnxruntime\+::logging\+::\+Composite\+Sink@{onnxruntime\+::logging\+::\+Composite\+Sink}!Add\+Sink@{Add\+Sink}}
+\index{Add\+Sink@{Add\+Sink}!onnxruntime\+::logging\+::\+Composite\+Sink@{onnxruntime\+::logging\+::\+Composite\+Sink}}
+\subsubsection{\texorpdfstring{Add\+Sink()}{AddSink()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink}{Composite\+Sink}}\& onnxruntime\+::logging\+::\+Composite\+Sink\+::\+Add\+Sink (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} $>$}]{sink }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Adds a sink. Takes ownership of the sink (so pass unique\+\_\+ptr by value). 
+
+
+\begin{DoxyParams}{Parameters}
+{\em sink} & The sink.\\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+This instance to allow chaining.
+\end{DoxyReturn}
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/common/logging/sinks/\mbox{\hyperlink{composite__sink_8h}{composite\+\_\+sink.\+h}}\end{DoxyCompactItemize}

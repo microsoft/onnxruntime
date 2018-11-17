@@ -1,0 +1,184 @@
+\hypertarget{classonnxruntime_1_1Tensor}{}\section{onnxruntime\+:\+:Tensor Class Reference}
+\label{classonnxruntime_1_1Tensor}\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+
+
+{\ttfamily \#include $<$tensor.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor_aa4a6341d3df270e20756ad36b2e4dd32}{Tensor}} (\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} p\+\_\+type, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&shape, \mbox{\hyperlink{namespaceonnxruntime_a1077ff17fe9e6d571cea3082b9e3a22b}{Buffer\+Naked\+Ptr}} p\+\_\+data, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&alloc, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} deleter=nullptr, int64\+\_\+t offset=0)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor_af1c76fd7465e7d8297c8a285dd4e9cc2}{$\sim$\+Tensor}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor_ad812cddaf6bb36cbe9259940acc26567}{Tensor}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&src)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \& \mbox{\hyperlink{classonnxruntime_1_1Tensor_afcd8a954ac21fb11ceb3652883493511}{Shallow\+Copy}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&other)
+\begin{DoxyCompactList}\small\item\em requires other.\+buffer\+\_\+deleter\+\_\+ == nullptr \end{DoxyCompactList}\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor_a7ba43380aa69742136752e11b38c927a}{Tensor}} (\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&\&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \& \mbox{\hyperlink{classonnxruntime_1_1Tensor_a2492423abd572294c6b1df2faaa2fd7b}{operator=}} (\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&\&other)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1Tensor_a1e4c9fc0c4ad68ca450e2e7d4aec0c43}{Data\+Type}} () const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \& \mbox{\hyperlink{classonnxruntime_1_1Tensor_a35f659dde537304b2492b7c0bec8a7b4}{Shape}} () const noexcept
+\item 
+const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1Tensor_a6135bef01259279436c85e7c698bad8b}{Location}} () const
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_ac0094e931dedd1e48956a28349f964a1}{Mutable\+Data}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\gsl\+::span$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_aefab328a8a7d23384d505dd52f5483a0}{Mutable\+Data\+As\+Span}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_a76c100a2c7ae207975364f569fe69edb}{Data}} () const
+\item 
+{\footnotesize template$<$typename T $>$ }\\gsl\+::span$<$ const T $>$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_a503b297f9a6945f66c957f9fe9bc60b8}{Data\+As\+Span}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_afa53b6e1fd63969007a84e5026073efe}{Mutable\+Data\+Raw}} (\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} type)
+\item 
+const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_a347043b45cb4624679996650de575303}{Data\+Raw}} (\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} type) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_a64e52a47859e86aef3fa540f26ebee22}{Mutable\+Data\+Raw}} () noexcept
+\item 
+const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Tensor_a13d387f046da54820c6014e9e73b0da6}{Data\+Raw}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Tensor_a4088f3950586c511377f1904b2e44a3f}{Reshape}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&new\+\_\+shape)
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1Tensor_aad4466a12c085d4f49bfa099c02a13c3}{Size}} () const noexcept
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_aa4a6341d3df270e20756ad36b2e4dd32}\label{classonnxruntime_1_1Tensor_aa4a6341d3df270e20756ad36b2e4dd32}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Tensor@{Tensor}}
+\index{Tensor@{Tensor}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Tensor()}{Tensor()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+::\+Tensor (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{p\+\_\+type,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{shape,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a1077ff17fe9e6d571cea3082b9e3a22b}{Buffer\+Naked\+Ptr}}}]{p\+\_\+data,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{alloc,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{deleter = {\ttfamily nullptr},  }\item[{int64\+\_\+t}]{offset = {\ttfamily 0} }\end{DoxyParamCaption})}
+
+Create tensor with given type, shape, pre-\/allocate memory and allocator info. \mbox{\Hypertarget{classonnxruntime_1_1Tensor_af1c76fd7465e7d8297c8a285dd4e9cc2}\label{classonnxruntime_1_1Tensor_af1c76fd7465e7d8297c8a285dd4e9cc2}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!````~Tensor@{$\sim$\+Tensor}}
+\index{````~Tensor@{$\sim$\+Tensor}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{$\sim$\+Tensor()}{~Tensor()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+::$\sim$\+Tensor (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_ad812cddaf6bb36cbe9259940acc26567}\label{classonnxruntime_1_1Tensor_ad812cddaf6bb36cbe9259940acc26567}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Tensor@{Tensor}}
+\index{Tensor@{Tensor}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Tensor()}{Tensor()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+::\+Tensor (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{src }\end{DoxyParamCaption})}
+
+Copy constructor and assign op will just pass the shape and memory reference to another tensor. \mbox{\hyperlink{classonnxruntime_1_1Not}{Not}} deep clone/copy. \mbox{\Hypertarget{classonnxruntime_1_1Tensor_a7ba43380aa69742136752e11b38c927a}\label{classonnxruntime_1_1Tensor_a7ba43380aa69742136752e11b38c927a}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Tensor@{Tensor}}
+\index{Tensor@{Tensor}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Tensor()}{Tensor()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+::\+Tensor (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&\&}]{other }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a76c100a2c7ae207975364f569fe69edb}\label{classonnxruntime_1_1Tensor_a76c100a2c7ae207975364f569fe69edb}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Data@{Data}}
+\index{Data@{Data}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Data()}{Data()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::\+Tensor\+::\+Data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a503b297f9a6945f66c957f9fe9bc60b8}\label{classonnxruntime_1_1Tensor_a503b297f9a6945f66c957f9fe9bc60b8}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Data\+As\+Span@{Data\+As\+Span}}
+\index{Data\+As\+Span@{Data\+As\+Span}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Data\+As\+Span()}{DataAsSpan()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+gsl\+::span$<$const T$>$ onnxruntime\+::\+Tensor\+::\+Data\+As\+Span (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a347043b45cb4624679996650de575303}\label{classonnxruntime_1_1Tensor_a347043b45cb4624679996650de575303}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Data\+Raw@{Data\+Raw}}
+\index{Data\+Raw@{Data\+Raw}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Data\+Raw()}{DataRaw()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Tensor\+::\+Data\+Raw (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{type }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a13d387f046da54820c6014e9e73b0da6}\label{classonnxruntime_1_1Tensor_a13d387f046da54820c6014e9e73b0da6}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Data\+Raw@{Data\+Raw}}
+\index{Data\+Raw@{Data\+Raw}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Data\+Raw()}{DataRaw()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Tensor\+::\+Data\+Raw (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a1e4c9fc0c4ad68ca450e2e7d4aec0c43}\label{classonnxruntime_1_1Tensor_a1e4c9fc0c4ad68ca450e2e7d4aec0c43}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Data\+Type@{Data\+Type}}
+\index{Data\+Type@{Data\+Type}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Data\+Type()}{DataType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} onnxruntime\+::\+Tensor\+::\+Data\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Returns the data type. \mbox{\Hypertarget{classonnxruntime_1_1Tensor_a6135bef01259279436c85e7c698bad8b}\label{classonnxruntime_1_1Tensor_a6135bef01259279436c85e7c698bad8b}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Location@{Location}}
+\index{Location@{Location}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Location()}{Location()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}\& onnxruntime\+::\+Tensor\+::\+Location (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Returns the location of the tensor\textquotesingle{}s memory \mbox{\Hypertarget{classonnxruntime_1_1Tensor_ac0094e931dedd1e48956a28349f964a1}\label{classonnxruntime_1_1Tensor_ac0094e931dedd1e48956a28349f964a1}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Mutable\+Data@{Mutable\+Data}}
+\index{Mutable\+Data@{Mutable\+Data}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Mutable\+Data()}{MutableData()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ onnxruntime\+::\+Tensor\+::\+Mutable\+Data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+May return nullptr if tensor size is zero \mbox{\Hypertarget{classonnxruntime_1_1Tensor_aefab328a8a7d23384d505dd52f5483a0}\label{classonnxruntime_1_1Tensor_aefab328a8a7d23384d505dd52f5483a0}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Mutable\+Data\+As\+Span@{Mutable\+Data\+As\+Span}}
+\index{Mutable\+Data\+As\+Span@{Mutable\+Data\+As\+Span}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Mutable\+Data\+As\+Span()}{MutableDataAsSpan()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+gsl\+::span$<$T$>$ onnxruntime\+::\+Tensor\+::\+Mutable\+Data\+As\+Span (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+May return nullptr if tensor size is zero \mbox{\Hypertarget{classonnxruntime_1_1Tensor_afa53b6e1fd63969007a84e5026073efe}\label{classonnxruntime_1_1Tensor_afa53b6e1fd63969007a84e5026073efe}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Mutable\+Data\+Raw@{Mutable\+Data\+Raw}}
+\index{Mutable\+Data\+Raw@{Mutable\+Data\+Raw}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Mutable\+Data\+Raw()}{MutableDataRaw()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Tensor\+::\+Mutable\+Data\+Raw (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{type }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a64e52a47859e86aef3fa540f26ebee22}\label{classonnxruntime_1_1Tensor_a64e52a47859e86aef3fa540f26ebee22}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Mutable\+Data\+Raw@{Mutable\+Data\+Raw}}
+\index{Mutable\+Data\+Raw@{Mutable\+Data\+Raw}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Mutable\+Data\+Raw()}{MutableDataRaw()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Tensor\+::\+Mutable\+Data\+Raw (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a2492423abd572294c6b1df2faaa2fd7b}\label{classonnxruntime_1_1Tensor_a2492423abd572294c6b1df2faaa2fd7b}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!operator=@{operator=}}
+\index{operator=@{operator=}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{operator=()}{operator=()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \& onnxruntime\+::\+Tensor\+::operator= (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&\&}]{other }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a4088f3950586c511377f1904b2e44a3f}\label{classonnxruntime_1_1Tensor_a4088f3950586c511377f1904b2e44a3f}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Reshape@{Reshape}}
+\index{Reshape@{Reshape}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Reshape()}{Reshape()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Tensor\+::\+Reshape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{new\+\_\+shape }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Resizes the tensor without touching underlying storage. This requires the total size of the tensor to remains constant. \begin{DoxyWarning}{Warning}
+this function is N\+OT thread-\/safe. 
+\end{DoxyWarning}
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_afcd8a954ac21fb11ceb3652883493511}\label{classonnxruntime_1_1Tensor_afcd8a954ac21fb11ceb3652883493511}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Shallow\+Copy@{Shallow\+Copy}}
+\index{Shallow\+Copy@{Shallow\+Copy}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Shallow\+Copy()}{ShallowCopy()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \& onnxruntime\+::\+Tensor\+::\+Shallow\+Copy (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{other }\end{DoxyParamCaption})}
+
+
+
+requires other.\+buffer\+\_\+deleter\+\_\+ == nullptr 
+
+\mbox{\Hypertarget{classonnxruntime_1_1Tensor_a35f659dde537304b2492b7c0bec8a7b4}\label{classonnxruntime_1_1Tensor_a35f659dde537304b2492b7c0bec8a7b4}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Shape@{Shape}}
+\index{Shape@{Shape}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Shape()}{Shape()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}}\& onnxruntime\+::\+Tensor\+::\+Shape (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+Returns the shape of the tensor. \mbox{\Hypertarget{classonnxruntime_1_1Tensor_aad4466a12c085d4f49bfa099c02a13c3}\label{classonnxruntime_1_1Tensor_aad4466a12c085d4f49bfa099c02a13c3}} 
+\index{onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}!Size@{Size}}
+\index{Size@{Size}!onnxruntime\+::\+Tensor@{onnxruntime\+::\+Tensor}}
+\subsubsection{\texorpdfstring{Size()}{Size()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Tensor\+::\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{tensor_8h}{tensor.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{tensor_8cc}{tensor.\+cc}}\end{DoxyCompactItemize}

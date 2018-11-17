@@ -1,0 +1,64 @@
+\hypertarget{classonnxruntime_1_1InstanceNorm}{}\section{onnxruntime\+:\+:Instance\+Norm$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1InstanceNorm}\index{onnxruntime\+::\+Instance\+Norm$<$ T $>$@{onnxruntime\+::\+Instance\+Norm$<$ T $>$}}
+
+
+{\ttfamily \#include $<$instance\+\_\+norm.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Instance\+Norm$<$ T $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Instance\+Norm$<$ T $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1InstanceNorm_afc4da4e9b0bce97ab4f6527d8297a1e4}{Instance\+Norm}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&op\+\_\+kernel\+\_\+info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InstanceNorm_a2e2125780530aa940c2b9271df4ed19d}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$p\+\_\+op\+\_\+kernel\+\_\+context) const override
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InstanceNorm_a218e0c164329c615361772b37086f8ad}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$p\+\_\+op\+\_\+kernel\+\_\+context) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InstanceNorm_afc4da4e9b0bce97ab4f6527d8297a1e4}\label{classonnxruntime_1_1InstanceNorm_afc4da4e9b0bce97ab4f6527d8297a1e4}} 
+\index{onnxruntime\+::\+Instance\+Norm@{onnxruntime\+::\+Instance\+Norm}!Instance\+Norm@{Instance\+Norm}}
+\index{Instance\+Norm@{Instance\+Norm}!onnxruntime\+::\+Instance\+Norm@{onnxruntime\+::\+Instance\+Norm}}
+\subsubsection{\texorpdfstring{Instance\+Norm()}{InstanceNorm()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1InstanceNorm}{onnxruntime\+::\+Instance\+Norm}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1InstanceNorm}{Instance\+Norm}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{op\+\_\+kernel\+\_\+info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InstanceNorm_a2e2125780530aa940c2b9271df4ed19d}\label{classonnxruntime_1_1InstanceNorm_a2e2125780530aa940c2b9271df4ed19d}} 
+\index{onnxruntime\+::\+Instance\+Norm@{onnxruntime\+::\+Instance\+Norm}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Instance\+Norm@{onnxruntime\+::\+Instance\+Norm}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InstanceNorm}{onnxruntime\+::\+Instance\+Norm}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{p\+\_\+op\+\_\+kernel\+\_\+context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1InstanceNorm_a218e0c164329c615361772b37086f8ad}\label{classonnxruntime_1_1InstanceNorm_a218e0c164329c615361772b37086f8ad}} 
+\index{onnxruntime\+::\+Instance\+Norm@{onnxruntime\+::\+Instance\+Norm}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Instance\+Norm@{onnxruntime\+::\+Instance\+Norm}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1InstanceNorm}{onnxruntime\+::\+Instance\+Norm}}$<$ float $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{p\+\_\+op\+\_\+kernel\+\_\+context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{cpu_2nn_2instance__norm_8h}{instance\+\_\+norm.\+h}}\end{DoxyCompactItemize}

@@ -1,0 +1,45 @@
+\hypertarget{classonnxruntime_1_1SessionStateInitializer}{}\section{onnxruntime\+:\+:Session\+State\+Initializer Class Reference}
+\label{classonnxruntime_1_1SessionStateInitializer}\index{onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}}
+
+
+{\ttfamily \#include $<$session\+\_\+state\+\_\+initializer.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SessionStateInitializer_abc08054b3b6ad95966c05cefc036f63a}{Session\+State\+Initializer}} (\mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&graph, \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state, const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \&providers, \mbox{\hyperlink{classonnxruntime_1_1KernelRegistryManager}{Kernel\+Registry\+Manager}} \&kernel\+\_\+registry\+\_\+manager, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1SessionStateInitializer_a754eb7134790957b684b9131c010f3f7}{Create\+Plan}} (const \mbox{\hyperlink{classonnxruntime_1_1GraphTransformerManager}{onnxruntime\+::\+Graph\+Transformer\+Manager}} \&graph\+\_\+transformation\+\_\+manager, const \mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer}{Insert\+Cast\+Transformer}} \&insert\+\_\+cast\+\_\+transformer, bool enable\+\_\+sequential\+\_\+execution)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1SessionStateInitializer_a98d629f31578b01f30aa3a176eadd52c}{Initialize\+And\+Save}} (bool enable\+\_\+memory\+\_\+pattern, std\+::map$<$ \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}, \mbox{\hyperlink{namespaceonnxruntime_acd830c816d6e0699b671f8ba79bb48f9}{Buffer\+Unique\+Ptr}} $>$ \&weights\+\_\+buffers)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionStateInitializer_abc08054b3b6ad95966c05cefc036f63a}\label{classonnxruntime_1_1SessionStateInitializer_abc08054b3b6ad95966c05cefc036f63a}} 
+\index{onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}!Session\+State\+Initializer@{Session\+State\+Initializer}}
+\index{Session\+State\+Initializer@{Session\+State\+Initializer}!onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}}
+\subsubsection{\texorpdfstring{Session\+State\+Initializer()}{SessionStateInitializer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Session\+State\+Initializer\+::\+Session\+State\+Initializer (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&}]{graph,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \&}]{providers,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1KernelRegistryManager}{Kernel\+Registry\+Manager}} \&}]{kernel\+\_\+registry\+\_\+manager,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionStateInitializer_a754eb7134790957b684b9131c010f3f7}\label{classonnxruntime_1_1SessionStateInitializer_a754eb7134790957b684b9131c010f3f7}} 
+\index{onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}!Create\+Plan@{Create\+Plan}}
+\index{Create\+Plan@{Create\+Plan}!onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}}
+\subsubsection{\texorpdfstring{Create\+Plan()}{CreatePlan()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Session\+State\+Initializer\+::\+Create\+Plan (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1GraphTransformerManager}{onnxruntime\+::\+Graph\+Transformer\+Manager}} \&}]{graph\+\_\+transformation\+\_\+manager,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1InsertCastTransformer}{Insert\+Cast\+Transformer}} \&}]{insert\+\_\+cast\+\_\+transformer,  }\item[{bool}]{enable\+\_\+sequential\+\_\+execution }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionStateInitializer_a98d629f31578b01f30aa3a176eadd52c}\label{classonnxruntime_1_1SessionStateInitializer_a98d629f31578b01f30aa3a176eadd52c}} 
+\index{onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}!Initialize\+And\+Save@{Initialize\+And\+Save}}
+\index{Initialize\+And\+Save@{Initialize\+And\+Save}!onnxruntime\+::\+Session\+State\+Initializer@{onnxruntime\+::\+Session\+State\+Initializer}}
+\subsubsection{\texorpdfstring{Initialize\+And\+Save()}{InitializeAndSave()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Session\+State\+Initializer\+::\+Initialize\+And\+Save (\begin{DoxyParamCaption}\item[{bool}]{enable\+\_\+memory\+\_\+pattern,  }\item[{std\+::map$<$ \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}, \mbox{\hyperlink{namespaceonnxruntime_acd830c816d6e0699b671f8ba79bb48f9}{Buffer\+Unique\+Ptr}} $>$ \&}]{weights\+\_\+buffers }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{session__state__initializer_8h}{session\+\_\+state\+\_\+initializer.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{session__state__initializer_8cc}{session\+\_\+state\+\_\+initializer.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,214 @@
+\hypertarget{classonnxruntime_1_1TensorShape}{}\section{onnxruntime\+:\+:Tensor\+Shape Class Reference}
+\label{classonnxruntime_1_1TensorShape}\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+
+
+{\ttfamily \#include $<$tensor\+\_\+shape.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Tensor\+Shape\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Tensor\+Shape\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape_a6ef240d824ddcd9e45c720fe70b84d3c}{Tensor\+Shape}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape_a0e4795044253526b2c86a00d2d123c16}{Tensor\+Shape}} (const int64\+\_\+t $\ast$dimension\+\_\+sizes, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimension\+\_\+count)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape_adda04711ceba341a94da2438c82b71c4}{Tensor\+Shape}} (const std\+::vector$<$ int64\+\_\+t $>$ \&dims)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape_a2c8f0b8703f40eff16e086b43138d8aa}{Tensor\+Shape}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&)=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape_a4ae80dbb6c8da7a2cb796d25c0e5bf4d}{Tensor\+Shape}} (const std\+::vector$<$ int64\+\_\+t $>$ \&dims, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} start, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} end)
+\item 
+const int64\+\_\+t \& \mbox{\hyperlink{classonnxruntime_1_1TensorShape_ad1bec011064e3c4bcc139327decfd537}{operator\mbox{[}$\,$\mbox{]}}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} idx) const
+\item 
+int64\+\_\+t \& \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a49b51462f8cd8942887641a01fbe300b}{operator\mbox{[}$\,$\mbox{]}}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} idx)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1TensorShape_ad88c9c2b880bbcf1fc1116993f4dee36}{operator==}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&other) const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a5adff36f4e3efc2e2b337a2e78210256}{operator!=}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&other) const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1TensorShape_af9e40196654d3d161544789f61415c53}{Num\+Dimensions}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a43fc07106b872f36ed139e0a20b94818}{Copy\+Dims}} (int64\+\_\+t $\ast$dims, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num\+\_\+dims) const
+\item 
+const std\+::vector$<$ int64\+\_\+t $>$ \& \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a37834c200e4b93c78a836db93d9aaa5a}{Get\+Dims}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a01f6e6fbc270702141c4c45573667cd5}{Size}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1TensorShape_af322918934d44918346fe19526f52897}{Size\+To\+Dimension}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimension) const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a4a084e4fe8348af11cf8cf1d22c4800d}{Size\+From\+Dimension}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimension) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a996be17420fdb94cd5de15301a50d9be}{Slice}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimstart, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimend) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \mbox{\hyperlink{classonnxruntime_1_1TensorShape_aa4a71819ef5121d26e404e2efd022623}{Slice}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimstart) const
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a3e0292984f1378d4b6c8bf58550da147}{To\+String}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a85c717aa5d4607765c55a461a5b6f754}{Size\+Helper}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} start, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} end) const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1TensorShape_a5c57c44b3f248614e3066a70e5d1a701}{Is\+Scalar}} () const
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \& \mbox{\hyperlink{classonnxruntime_1_1TensorShape_ac7df37b3db58eb9e1847986b89fd2c6f}{Reinterpret\+Base\+Type}} (const std\+::vector$<$ int64\+\_\+t $>$ \&dimensions)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a6ef240d824ddcd9e45c720fe70b84d3c}\label{classonnxruntime_1_1TensorShape_a6ef240d824ddcd9e45c720fe70b84d3c}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Tensor\+Shape@{Tensor\+Shape}}
+\index{Tensor\+Shape@{Tensor\+Shape}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Tensor\+Shape()}{TensorShape()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+Shape\+::\+Tensor\+Shape (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a0e4795044253526b2c86a00d2d123c16}\label{classonnxruntime_1_1TensorShape_a0e4795044253526b2c86a00d2d123c16}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Tensor\+Shape@{Tensor\+Shape}}
+\index{Tensor\+Shape@{Tensor\+Shape}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Tensor\+Shape()}{TensorShape()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+Shape\+::\+Tensor\+Shape (\begin{DoxyParamCaption}\item[{const int64\+\_\+t $\ast$}]{dimension\+\_\+sizes,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimension\+\_\+count }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_adda04711ceba341a94da2438c82b71c4}\label{classonnxruntime_1_1TensorShape_adda04711ceba341a94da2438c82b71c4}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Tensor\+Shape@{Tensor\+Shape}}
+\index{Tensor\+Shape@{Tensor\+Shape}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Tensor\+Shape()}{TensorShape()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+Shape\+::\+Tensor\+Shape (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{dims }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a2c8f0b8703f40eff16e086b43138d8aa}\label{classonnxruntime_1_1TensorShape_a2c8f0b8703f40eff16e086b43138d8aa}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Tensor\+Shape@{Tensor\+Shape}}
+\index{Tensor\+Shape@{Tensor\+Shape}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Tensor\+Shape()}{TensorShape()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+Shape\+::\+Tensor\+Shape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a4ae80dbb6c8da7a2cb796d25c0e5bf4d}\label{classonnxruntime_1_1TensorShape_a4ae80dbb6c8da7a2cb796d25c0e5bf4d}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Tensor\+Shape@{Tensor\+Shape}}
+\index{Tensor\+Shape@{Tensor\+Shape}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Tensor\+Shape()}{TensorShape()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Tensor\+Shape\+::\+Tensor\+Shape (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{dims,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{start,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{end }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a43fc07106b872f36ed139e0a20b94818}\label{classonnxruntime_1_1TensorShape_a43fc07106b872f36ed139e0a20b94818}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Copy\+Dims@{Copy\+Dims}}
+\index{Copy\+Dims@{Copy\+Dims}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Copy\+Dims()}{CopyDims()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Tensor\+Shape\+::\+Copy\+Dims (\begin{DoxyParamCaption}\item[{int64\+\_\+t $\ast$}]{dims,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{num\+\_\+dims }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Copy dims into an array with given size \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a37834c200e4b93c78a836db93d9aaa5a}\label{classonnxruntime_1_1TensorShape_a37834c200e4b93c78a836db93d9aaa5a}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Get\+Dims@{Get\+Dims}}
+\index{Get\+Dims@{Get\+Dims}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Get\+Dims()}{GetDims()}}
+{\footnotesize\ttfamily const std\+::vector$<$int64\+\_\+t$>$\& onnxruntime\+::\+Tensor\+Shape\+::\+Get\+Dims (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Return underlying vector representation. \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a5c57c44b3f248614e3066a70e5d1a701}\label{classonnxruntime_1_1TensorShape_a5c57c44b3f248614e3066a70e5d1a701}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Is\+Scalar@{Is\+Scalar}}
+\index{Is\+Scalar@{Is\+Scalar}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Is\+Scalar()}{IsScalar()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Tensor\+Shape\+::\+Is\+Scalar (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+empty shape or 1D shape (1) is regarded as scalar tensor \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_af9e40196654d3d161544789f61415c53}\label{classonnxruntime_1_1TensorShape_af9e40196654d3d161544789f61415c53}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Num\+Dimensions@{Num\+Dimensions}}
+\index{Num\+Dimensions@{Num\+Dimensions}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Num\+Dimensions()}{NumDimensions()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Tensor\+Shape\+::\+Num\+Dimensions (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a5adff36f4e3efc2e2b337a2e78210256}\label{classonnxruntime_1_1TensorShape_a5adff36f4e3efc2e2b337a2e78210256}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!operator"!=@{operator"!=}}
+\index{operator"!=@{operator"!=}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{operator"!=()}{operator!=()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Tensor\+Shape\+::operator!= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_ad88c9c2b880bbcf1fc1116993f4dee36}\label{classonnxruntime_1_1TensorShape_ad88c9c2b880bbcf1fc1116993f4dee36}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!operator==@{operator==}}
+\index{operator==@{operator==}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{operator==()}{operator==()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Tensor\+Shape\+::operator== (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_ad1bec011064e3c4bcc139327decfd537}\label{classonnxruntime_1_1TensorShape_ad1bec011064e3c4bcc139327decfd537}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!operator\mbox{[}\mbox{]}@{operator[]}}
+\index{operator\mbox{[}\mbox{]}@{operator[]}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{operator[]()}{operator[]()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily const int64\+\_\+t\& onnxruntime\+::\+Tensor\+Shape\+::operator\mbox{[}$\,$\mbox{]} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{idx }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Return the dimension specified by $<$idx$>$. \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a49b51462f8cd8942887641a01fbe300b}\label{classonnxruntime_1_1TensorShape_a49b51462f8cd8942887641a01fbe300b}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!operator\mbox{[}\mbox{]}@{operator[]}}
+\index{operator\mbox{[}\mbox{]}@{operator[]}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{operator[]()}{operator[]()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily int64\+\_\+t\& onnxruntime\+::\+Tensor\+Shape\+::operator\mbox{[}$\,$\mbox{]} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{idx }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_ac7df37b3db58eb9e1847986b89fd2c6f}\label{classonnxruntime_1_1TensorShape_ac7df37b3db58eb9e1847986b89fd2c6f}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Reinterpret\+Base\+Type@{Reinterpret\+Base\+Type}}
+\index{Reinterpret\+Base\+Type@{Reinterpret\+Base\+Type}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Reinterpret\+Base\+Type()}{ReinterpretBaseType()}}
+{\footnotesize\ttfamily static const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}}\& onnxruntime\+::\+Tensor\+Shape\+::\+Reinterpret\+Base\+Type (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{dimensions }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a01f6e6fbc270702141c4c45573667cd5}\label{classonnxruntime_1_1TensorShape_a01f6e6fbc270702141c4c45573667cd5}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Size@{Size}}
+\index{Size@{Size}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Size()}{Size()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Tensor\+Shape\+::\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+Return the total number of elements. Returns 1 for an empty (rank 0) \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}}.
+
+May return -\/1
+
+Return the total number of elements. Returns 1 for an empty (rank 0) \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}}. \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a4a084e4fe8348af11cf8cf1d22c4800d}\label{classonnxruntime_1_1TensorShape_a4a084e4fe8348af11cf8cf1d22c4800d}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Size\+From\+Dimension@{Size\+From\+Dimension}}
+\index{Size\+From\+Dimension@{Size\+From\+Dimension}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Size\+From\+Dimension()}{SizeFromDimension()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Tensor\+Shape\+::\+Size\+From\+Dimension (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimension }\end{DoxyParamCaption}) const}
+
+Return the total number of elements from the specified dimension to the end of the tensor shape. 
+\begin{DoxyParams}{Parameters}
+{\em dimension} & Return size up to this dimension. 0 $<$= dimension $<$ this.\+Size(). \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a85c717aa5d4607765c55a461a5b6f754}\label{classonnxruntime_1_1TensorShape_a85c717aa5d4607765c55a461a5b6f754}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Size\+Helper@{Size\+Helper}}
+\index{Size\+Helper@{Size\+Helper}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Size\+Helper()}{SizeHelper()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Tensor\+Shape\+::\+Size\+Helper (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{start,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{end }\end{DoxyParamCaption}) const}
+
+Calculate size between start and end. Assumes start and end are between 0 and dimensions.\+size(), inclusive, and that start $<$ end. \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_af322918934d44918346fe19526f52897}\label{classonnxruntime_1_1TensorShape_af322918934d44918346fe19526f52897}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Size\+To\+Dimension@{Size\+To\+Dimension}}
+\index{Size\+To\+Dimension@{Size\+To\+Dimension}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Size\+To\+Dimension()}{SizeToDimension()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Tensor\+Shape\+::\+Size\+To\+Dimension (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimension }\end{DoxyParamCaption}) const}
+
+Return the total number of elements up to the specified dimension. 
+\begin{DoxyParams}{Parameters}
+{\em dimension} & Return size up to this dimension. Value must be $>$= 0 and $<$ this.\+Size(). \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a996be17420fdb94cd5de15301a50d9be}\label{classonnxruntime_1_1TensorShape_a996be17420fdb94cd5de15301a50d9be}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Slice@{Slice}}
+\index{Slice@{Slice}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Slice()}{Slice()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} onnxruntime\+::\+Tensor\+Shape\+::\+Slice (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimstart,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimend }\end{DoxyParamCaption}) const}
+
+Return a new \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} of the dimensions from dimstart to dimend. \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_aa4a71819ef5121d26e404e2efd022623}\label{classonnxruntime_1_1TensorShape_aa4a71819ef5121d26e404e2efd022623}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!Slice@{Slice}}
+\index{Slice@{Slice}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{Slice()}{Slice()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} onnxruntime\+::\+Tensor\+Shape\+::\+Slice (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimstart }\end{DoxyParamCaption}) const}
+
+Return a new \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} of the dimensions from dimstart to end. \mbox{\Hypertarget{classonnxruntime_1_1TensorShape_a3e0292984f1378d4b6c8bf58550da147}\label{classonnxruntime_1_1TensorShape_a3e0292984f1378d4b6c8bf58550da147}} 
+\index{onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}!To\+String@{To\+String}}
+\index{To\+String@{To\+String}!onnxruntime\+::\+Tensor\+Shape@{onnxruntime\+::\+Tensor\+Shape}}
+\subsubsection{\texorpdfstring{To\+String()}{ToString()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Tensor\+Shape\+::\+To\+String (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+output dimensions nicely formatted 
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{tensor__shape_8h}{tensor\+\_\+shape.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{tensor__shape_8cc}{tensor\+\_\+shape.\+cc}}\end{DoxyCompactItemize}

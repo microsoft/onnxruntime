@@ -1,0 +1,173 @@
+\hypertarget{classonnxruntime_1_1NonTensorTypeBase}{}\section{onnxruntime\+:\+:Non\+Tensor\+Type\+Base Class Reference}
+\label{classonnxruntime_1_1NonTensorTypeBase}\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+
+
+Base type for all non-\/tensors, maps, sequences and opaques.  
+
+
+
+
+{\ttfamily \#include $<$data\+\_\+types.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Non\+Tensor\+Type\+Base\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Non\+Tensor\+Type\+Base\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1NonTensorTypeBase_1_1Impl}{Impl}}
+\begin{DoxyCompactList}\small\item\em No\+Tensor\+Type\+Base. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_ab81811ddad81a55603074f90c4297d56}{Size}} () const override=0
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}} \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a09fc84f1ff38aa3bc4752a7560fcf902}{Get\+Delete\+Func}} () const override=0
+\item 
+virtual \mbox{\hyperlink{namespaceonnxruntime_a4e4e007092b50ccad0f64e24d7ac3c1e}{Create\+Func}} \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a770380dc6cea2aeaa02ab04c401f3018}{Get\+Create\+Func}} () const =0
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a374c7577231883af5e7534c948587bf8}{Get\+Type\+Proto}} () const override
+\begin{DoxyCompactList}\small\item\em Retrieves an instance of Type\+Proto for a given M\+L\+Data\+Type. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a2066682e7223c4d4a80943d79bc3768c}{Non\+Tensor\+Type\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{Non\+Tensor\+Type\+Base}} \&)=delete
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{Non\+Tensor\+Type\+Base}} \& \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_ada34723664c7b478752b1a562eaa86d2}{operator=}} (const \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{Non\+Tensor\+Type\+Base}} \&)=delete
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_ae529169eed1b9da39cde72c7178a9282}{Non\+Tensor\+Type\+Base}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_ae6204b8eea0363f0a607bd1cdbe01eaf}{$\sim$\+Non\+Tensor\+Type\+Base}} ()
+\item 
+O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \& \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a1c22ddb6e8058d0cc4aa1d2b4be22f22}{mutable\+\_\+type\+\_\+proto}} ()
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a1a6bfbb79b25f000e83106d79dd04c83}{Is\+Map\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&type\+\_\+proto) const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a51332c7112f44e9ba69c93c6ee0c222e}{Is\+Sequence\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&type\+\_\+proto) const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase_a70bd68569e639137686e8d8de0ec342d}{Is\+Opaque\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&type\+\_\+proto) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Detailed Description}
+Base type for all non-\/tensors, maps, sequences and opaques. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a2066682e7223c4d4a80943d79bc3768c}\label{classonnxruntime_1_1NonTensorTypeBase_a2066682e7223c4d4a80943d79bc3768c}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Non\+Tensor\+Type\+Base@{Non\+Tensor\+Type\+Base}}
+\index{Non\+Tensor\+Type\+Base@{Non\+Tensor\+Type\+Base}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Non\+Tensor\+Type\+Base()}{NonTensorTypeBase()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Non\+Tensor\+Type\+Base (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{Non\+Tensor\+Type\+Base}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [delete]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_ae529169eed1b9da39cde72c7178a9282}\label{classonnxruntime_1_1NonTensorTypeBase_ae529169eed1b9da39cde72c7178a9282}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Non\+Tensor\+Type\+Base@{Non\+Tensor\+Type\+Base}}
+\index{Non\+Tensor\+Type\+Base@{Non\+Tensor\+Type\+Base}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Non\+Tensor\+Type\+Base()}{NonTensorTypeBase()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Non\+Tensor\+Type\+Base (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_ae6204b8eea0363f0a607bd1cdbe01eaf}\label{classonnxruntime_1_1NonTensorTypeBase_ae6204b8eea0363f0a607bd1cdbe01eaf}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!````~Non\+Tensor\+Type\+Base@{$\sim$\+Non\+Tensor\+Type\+Base}}
+\index{````~Non\+Tensor\+Type\+Base@{$\sim$\+Non\+Tensor\+Type\+Base}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{$\sim$\+Non\+Tensor\+Type\+Base()}{~NonTensorTypeBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::$\sim$\+Non\+Tensor\+Type\+Base (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a770380dc6cea2aeaa02ab04c401f3018}\label{classonnxruntime_1_1NonTensorTypeBase_a770380dc6cea2aeaa02ab04c401f3018}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Get\+Create\+Func@{Get\+Create\+Func}}
+\index{Get\+Create\+Func@{Get\+Create\+Func}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Get\+Create\+Func()}{GetCreateFunc()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{namespaceonnxruntime_a4e4e007092b50ccad0f64e24d7ac3c1e}{Create\+Func}} onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Get\+Create\+Func (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1NonTensorType_aa42f5f4e125f8f0b385258cc6f27e9f8}{onnxruntime\+::\+Non\+Tensor\+Type$<$ T $>$}}, and \mbox{\hyperlink{classonnxruntime_1_1NonTensorType_aa42f5f4e125f8f0b385258cc6f27e9f8}{onnxruntime\+::\+Non\+Tensor\+Type$<$ C\+P\+P\+Type $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a09fc84f1ff38aa3bc4752a7560fcf902}\label{classonnxruntime_1_1NonTensorTypeBase_a09fc84f1ff38aa3bc4752a7560fcf902}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Get\+Delete\+Func@{Get\+Delete\+Func}}
+\index{Get\+Delete\+Func@{Get\+Delete\+Func}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Get\+Delete\+Func()}{GetDeleteFunc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{Delete\+Func}} onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Get\+Delete\+Func (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [pure virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_affe669c89722b1eb854f31d061a60e46}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1NonTensorType_a5220a1a535891fcb0079befd7391062f}{onnxruntime\+::\+Non\+Tensor\+Type$<$ T $>$}}, and \mbox{\hyperlink{classonnxruntime_1_1NonTensorType_a5220a1a535891fcb0079befd7391062f}{onnxruntime\+::\+Non\+Tensor\+Type$<$ C\+P\+P\+Type $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a374c7577231883af5e7534c948587bf8}\label{classonnxruntime_1_1NonTensorTypeBase_a374c7577231883af5e7534c948587bf8}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Get\+Type\+Proto@{Get\+Type\+Proto}}
+\index{Get\+Type\+Proto@{Get\+Type\+Proto}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Get\+Type\+Proto()}{GetTypeProto()}}
+{\footnotesize\ttfamily const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$ onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Get\+Type\+Proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Retrieves an instance of Type\+Proto for a given M\+L\+Data\+Type. 
+
+\begin{DoxyReturn}{Returns}
+optional Type\+Proto. Only O\+N\+NX types has type proto, non-\/\+O\+N\+NX types will return nullptr. 
+\end{DoxyReturn}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a9bea0ebb8f0d94ed5a1b541c160fa33a}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a1a6bfbb79b25f000e83106d79dd04c83}\label{classonnxruntime_1_1NonTensorTypeBase_a1a6bfbb79b25f000e83106d79dd04c83}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Is\+Map\+Compatible@{Is\+Map\+Compatible}}
+\index{Is\+Map\+Compatible@{Is\+Map\+Compatible}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Is\+Map\+Compatible()}{IsMapCompatible()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Is\+Map\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{type\+\_\+proto }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a70bd68569e639137686e8d8de0ec342d}\label{classonnxruntime_1_1NonTensorTypeBase_a70bd68569e639137686e8d8de0ec342d}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Is\+Opaque\+Compatible@{Is\+Opaque\+Compatible}}
+\index{Is\+Opaque\+Compatible@{Is\+Opaque\+Compatible}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Is\+Opaque\+Compatible()}{IsOpaqueCompatible()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Is\+Opaque\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{type\+\_\+proto }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a51332c7112f44e9ba69c93c6ee0c222e}\label{classonnxruntime_1_1NonTensorTypeBase_a51332c7112f44e9ba69c93c6ee0c222e}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Is\+Sequence\+Compatible@{Is\+Sequence\+Compatible}}
+\index{Is\+Sequence\+Compatible@{Is\+Sequence\+Compatible}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Is\+Sequence\+Compatible()}{IsSequenceCompatible()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Is\+Sequence\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{type\+\_\+proto }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_a1c22ddb6e8058d0cc4aa1d2b4be22f22}\label{classonnxruntime_1_1NonTensorTypeBase_a1c22ddb6e8058d0cc4aa1d2b4be22f22}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!mutable\+\_\+type\+\_\+proto@{mutable\+\_\+type\+\_\+proto}}
+\index{mutable\+\_\+type\+\_\+proto@{mutable\+\_\+type\+\_\+proto}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{mutable\+\_\+type\+\_\+proto()}{mutable\_type\_proto()}}
+{\footnotesize\ttfamily O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \& onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::mutable\+\_\+type\+\_\+proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_ada34723664c7b478752b1a562eaa86d2}\label{classonnxruntime_1_1NonTensorTypeBase_ada34723664c7b478752b1a562eaa86d2}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!operator=@{operator=}}
+\index{operator=@{operator=}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{operator=()}{operator=()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{Non\+Tensor\+Type\+Base}}\& onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::operator= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{Non\+Tensor\+Type\+Base}} \&}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [delete]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NonTensorTypeBase_ab81811ddad81a55603074f90c4297d56}\label{classonnxruntime_1_1NonTensorTypeBase_ab81811ddad81a55603074f90c4297d56}} 
+\index{onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}!Size@{Size}}
+\index{Size@{Size}!onnxruntime\+::\+Non\+Tensor\+Type\+Base@{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\subsubsection{\texorpdfstring{Size()}{Size()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Non\+Tensor\+Type\+Base\+::\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [pure virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a025f1d860799cd7bc187482742ce7baa}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1NonTensorType_a514c297618cdb975d4f98a5b47321086}{onnxruntime\+::\+Non\+Tensor\+Type$<$ T $>$}}, and \mbox{\hyperlink{classonnxruntime_1_1NonTensorType_a514c297618cdb975d4f98a5b47321086}{onnxruntime\+::\+Non\+Tensor\+Type$<$ C\+P\+P\+Type $>$}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{data__types_8h}{data\+\_\+types.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{data__types_8cc}{data\+\_\+types.\+cc}}\end{DoxyCompactItemize}

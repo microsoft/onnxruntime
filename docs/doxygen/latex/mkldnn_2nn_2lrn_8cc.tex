@@ -1,0 +1,106 @@
+\hypertarget{mkldnn_2nn_2lrn_8cc}{}\section{onnxruntime/onnxruntime/core/providers/mkldnn/nn/lrn.cc File Reference}
+\label{mkldnn_2nn_2lrn_8cc}\index{onnxruntime/onnxruntime/core/providers/mkldnn/nn/lrn.\+cc@{onnxruntime/onnxruntime/core/providers/mkldnn/nn/lrn.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/mkldnn/mkldnn\+\_\+common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/mkldnn/nn/lrn.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/mkldnn/mkldnn\+\_\+fwd.\+h\char`\"{}}\newline
+Include dependency graph for lrn.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn}{onnxruntime\+::mkl\+\_\+dnn}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a2bac6d02830a8898f4f7d0e40b5710f3}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}} (L\+RN, k\+Onnx\+Domain, 1, float, k\+Mkl\+Dnn\+Execution\+Provider, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), L\+RN$<$ float $>$)
+\end{DoxyCompactItemize}
+
+
+\subsection{Variable Documentation}
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_abe83297ecd31666a90e5478606d5deb1}\label{mkldnn_2nn_2lrn_8cc_abe83297ecd31666a90e5478606d5deb1}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!alpha\+\_\+@{alpha\+\_\+}}
+\index{alpha\+\_\+@{alpha\+\_\+}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{alpha\+\_\+}{alpha\_}}
+{\footnotesize\ttfamily float alpha\+\_\+}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a1c20a6698c62cad6311ed1ed6ba64d67}\label{mkldnn_2nn_2lrn_8cc_a1c20a6698c62cad6311ed1ed6ba64d67}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!beta\+\_\+@{beta\+\_\+}}
+\index{beta\+\_\+@{beta\+\_\+}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{beta\+\_\+}{beta\_}}
+{\footnotesize\ttfamily float beta\+\_\+}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a068c693ca824c649a83655056a31bebc}\label{mkldnn_2nn_2lrn_8cc_a068c693ca824c649a83655056a31bebc}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!bias\+\_\+@{bias\+\_\+}}
+\index{bias\+\_\+@{bias\+\_\+}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{bias\+\_\+}{bias\_}}
+{\footnotesize\ttfamily float bias\+\_\+}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a61bb6519fc5f8a75c313866dbb2fa74a}\label{mkldnn_2nn_2lrn_8cc_a61bb6519fc5f8a75c313866dbb2fa74a}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!dims\+\_\+@{dims\+\_\+}}
+\index{dims\+\_\+@{dims\+\_\+}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{dims\+\_\+}{dims\_}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::dims\& dims\+\_\+}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_ae463fb99d336659d042cff1652317662}\label{mkldnn_2nn_2lrn_8cc_ae463fb99d336659d042cff1652317662}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!dst\+\_\+mem@{dst\+\_\+mem}}
+\index{dst\+\_\+mem@{dst\+\_\+mem}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{dst\+\_\+mem}{dst\_mem}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory$>$ dst\+\_\+mem}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_acb90c3a44dea71ba3bda86d3a71d7e4b}\label{mkldnn_2nn_2lrn_8cc_acb90c3a44dea71ba3bda86d3a71d7e4b}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!fwd\+\_\+desc@{fwd\+\_\+desc}}
+\index{fwd\+\_\+desc@{fwd\+\_\+desc}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{fwd\+\_\+desc}{fwd\_desc}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::lrn\+\_\+forward\+::desc$>$ fwd\+\_\+desc}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a576e64ff770b3367f7edb43c63964535}\label{mkldnn_2nn_2lrn_8cc_a576e64ff770b3367f7edb43c63964535}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!fwd\+\_\+primitive\+\_\+desc@{fwd\+\_\+primitive\+\_\+desc}}
+\index{fwd\+\_\+primitive\+\_\+desc@{fwd\+\_\+primitive\+\_\+desc}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{fwd\+\_\+primitive\+\_\+desc}{fwd\_primitive\_desc}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::lrn\+\_\+forward\+::primitive\+\_\+desc$>$ fwd\+\_\+primitive\+\_\+desc}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a3b831cad3ff3f905235a733824b55cff}\label{mkldnn_2nn_2lrn_8cc_a3b831cad3ff3f905235a733824b55cff}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!lrn\+\_\+fwd@{lrn\+\_\+fwd}}
+\index{lrn\+\_\+fwd@{lrn\+\_\+fwd}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{lrn\+\_\+fwd}{lrn\_fwd}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::primitive$>$ lrn\+\_\+fwd}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a3a43d84cf8a2dbe5389e08fe73ee8c67}\label{mkldnn_2nn_2lrn_8cc_a3a43d84cf8a2dbe5389e08fe73ee8c67}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!net@{net}}
+\index{net@{net}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{net}{net}}
+{\footnotesize\ttfamily std\+::vector$<$mkldnn\+::primitive$>$ net}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a6947fa5d6ba628dd62d59ffbad8b8d80}\label{mkldnn_2nn_2lrn_8cc_a6947fa5d6ba628dd62d59ffbad8b8d80}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!size\+\_\+@{size\+\_\+}}
+\index{size\+\_\+@{size\+\_\+}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{size\+\_\+}{size\_}}
+{\footnotesize\ttfamily int size\+\_\+}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a3811e16df7a159ac958f9b6fa7df82ba}\label{mkldnn_2nn_2lrn_8cc_a3811e16df7a159ac958f9b6fa7df82ba}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!src\+\_\+fmt@{src\+\_\+fmt}}
+\index{src\+\_\+fmt@{src\+\_\+fmt}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+fmt}{src\_fmt}}
+{\footnotesize\ttfamily mkldnn\+::memory\+::format src\+\_\+fmt}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a6d4a0e5f31dfce120a5d153fb1cc879f}\label{mkldnn_2nn_2lrn_8cc_a6d4a0e5f31dfce120a5d153fb1cc879f}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!src\+\_\+md@{src\+\_\+md}}
+\index{src\+\_\+md@{src\+\_\+md}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+md}{src\_md}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory\+::desc$>$ src\+\_\+md}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_a18a015be745b85f05bac7696ea665585}\label{mkldnn_2nn_2lrn_8cc_a18a015be745b85f05bac7696ea665585}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!src\+\_\+mem@{src\+\_\+mem}}
+\index{src\+\_\+mem@{src\+\_\+mem}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{src\+\_\+mem}{src\_mem}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::memory$>$ src\+\_\+mem}
+
+\mbox{\Hypertarget{mkldnn_2nn_2lrn_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}\label{mkldnn_2nn_2lrn_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}} 
+\index{mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}!stream@{stream}}
+\index{stream@{stream}!mkldnn/nn/lrn.\+cc@{mkldnn/nn/lrn.\+cc}}
+\subsubsection{\texorpdfstring{stream}{stream}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$mkldnn\+::stream$>$ stream}
+

@@ -1,0 +1,30 @@
+\hypertarget{inference__session_8h}{}\section{onnxruntime/onnxruntime/core/session/inference\+\_\+session.h File Reference}
+\label{inference__session_8h}\index{onnxruntime/onnxruntime/core/session/inference\+\_\+session.\+h@{onnxruntime/onnxruntime/core/session/inference\+\_\+session.\+h}}
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include $<$unordered\+\_\+map$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/framework\+\_\+common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/basic\+\_\+types.\+h\char`\"{}}\newline
+Include dependency graph for inference\+\_\+session.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1SessionOptions}{onnxruntime\+::\+Session\+Options}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1ModelMetadata}{onnxruntime\+::\+Model\+Metadata}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{onnxruntime\+::\+Inference\+Session}}
+\begin{DoxyCompactList}\small\item\em This is the main class used to Run a model. Sample simple usage\+: \mbox{\hyperlink{structonnxruntime_1_1CPUExecutionProviderInfo}{C\+P\+U\+Execution\+Provider\+Info}} epi; Provider\+Option po\{\char`\"{}\+C\+P\+U\+Execution\+Provider\char`\"{}, epi\}; \mbox{\hyperlink{structonnxruntime_1_1SessionOptions}{Session\+Options}} so(vector$<$\+Provider\+Option$>$\{po\}); \mbox{\hyperlink{classonnxruntime_1_1InferenceSession}{Inference\+Session}} session\+\_\+object\{so\}; \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Load(\+M\+O\+D\+E\+L\+\_\+\+U\+R\+I); \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} status = session\+\_\+object.\+Initialize();. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceONNX__NAMESPACE}{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+CE}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1logging}{onnxruntime\+::logging}}
+\end{DoxyCompactItemize}

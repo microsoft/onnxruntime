@@ -1,0 +1,82 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1ReduceKernel}{}\section{onnxruntime\+:\+:cuda\+:\+:Reduce\+Kernel$<$ allow\+\_\+multi\+\_\+axes $>$ Class Template Reference}
+\label{classonnxruntime_1_1cuda_1_1ReduceKernel}\index{onnxruntime\+::cuda\+::\+Reduce\+Kernel$<$ allow\+\_\+multi\+\_\+axes $>$@{onnxruntime\+::cuda\+::\+Reduce\+Kernel$<$ allow\+\_\+multi\+\_\+axes $>$}}
+
+
+{\ttfamily \#include $<$reduction\+\_\+ops.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:cuda\+:\+:Reduce\+Kernel$<$ allow\+\_\+multi\+\_\+axes $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Reduce\+Kernel$<$ allow\+\_\+multi\+\_\+axes $>$\+:
+% FIG 1
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel_a0457438075f6fc836915d9642ddf69e3}{Reduce\+Kernel}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+{\footnotesize template$<$typename T , cudnn\+Reduce\+Tensor\+Indices\+\_\+t Reduce\+Tensor\+Indices = C\+U\+D\+N\+N\+\_\+\+R\+E\+D\+U\+C\+E\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+N\+O\+\_\+\+I\+N\+D\+I\+C\+ES$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel_aa4b114d4b21ef1c197d294c33f7c6121}{Compute\+Impl}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$ctx, cudnn\+Reduce\+Tensor\+Op\+\_\+t cudnn\+Reduce\+Op) const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel_a548d3c1acc9c6cb71db58cb83bdd7074}{calculate\+\_\+log\+\_\+}}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel_a69abc49b967b0436057b8ec592df23de}{calculate\+\_\+sqt\+\_\+}}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel_ae5c339a6fe3a74114dc1ca9b1baae9da}{log\+\_\+sum\+\_\+exp\+\_\+}}
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1ReduceKernel_a0457438075f6fc836915d9642ddf69e3}\label{classonnxruntime_1_1cuda_1_1ReduceKernel_a0457438075f6fc836915d9642ddf69e3}} 
+\index{onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}!Reduce\+Kernel@{Reduce\+Kernel}}
+\index{Reduce\+Kernel@{Reduce\+Kernel}!onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}
+\subsubsection{\texorpdfstring{Reduce\+Kernel()}{ReduceKernel()}}
+{\footnotesize\ttfamily template$<$bool allow\+\_\+multi\+\_\+axes$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel}{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}$<$ allow\+\_\+multi\+\_\+axes $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel}{Reduce\+Kernel}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1ReduceKernel_aa4b114d4b21ef1c197d294c33f7c6121}\label{classonnxruntime_1_1cuda_1_1ReduceKernel_aa4b114d4b21ef1c197d294c33f7c6121}} 
+\index{onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}!Compute\+Impl@{Compute\+Impl}}
+\index{Compute\+Impl@{Compute\+Impl}!onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}
+\subsubsection{\texorpdfstring{Compute\+Impl()}{ComputeImpl()}}
+{\footnotesize\ttfamily template$<$bool allow\+\_\+multi\+\_\+axes$>$ \\
+template$<$typename T , cudnn\+Reduce\+Tensor\+Indices\+\_\+t Reduce\+Tensor\+Indices$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel}{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}$<$ allow\+\_\+multi\+\_\+axes $>$\+::Compute\+Impl (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{ctx,  }\item[{cudnn\+Reduce\+Tensor\+Op\+\_\+t}]{cudnn\+Reduce\+Op }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1ReduceKernel_a548d3c1acc9c6cb71db58cb83bdd7074}\label{classonnxruntime_1_1cuda_1_1ReduceKernel_a548d3c1acc9c6cb71db58cb83bdd7074}} 
+\index{onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}!calculate\+\_\+log\+\_\+@{calculate\+\_\+log\+\_\+}}
+\index{calculate\+\_\+log\+\_\+@{calculate\+\_\+log\+\_\+}!onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}
+\subsubsection{\texorpdfstring{calculate\+\_\+log\+\_\+}{calculate\_log\_}}
+{\footnotesize\ttfamily template$<$bool allow\+\_\+multi\+\_\+axes$>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel}{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}$<$ allow\+\_\+multi\+\_\+axes $>$\+::calculate\+\_\+log\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1ReduceKernel_a69abc49b967b0436057b8ec592df23de}\label{classonnxruntime_1_1cuda_1_1ReduceKernel_a69abc49b967b0436057b8ec592df23de}} 
+\index{onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}!calculate\+\_\+sqt\+\_\+@{calculate\+\_\+sqt\+\_\+}}
+\index{calculate\+\_\+sqt\+\_\+@{calculate\+\_\+sqt\+\_\+}!onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}
+\subsubsection{\texorpdfstring{calculate\+\_\+sqt\+\_\+}{calculate\_sqt\_}}
+{\footnotesize\ttfamily template$<$bool allow\+\_\+multi\+\_\+axes$>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel}{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}$<$ allow\+\_\+multi\+\_\+axes $>$\+::calculate\+\_\+sqt\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1ReduceKernel_ae5c339a6fe3a74114dc1ca9b1baae9da}\label{classonnxruntime_1_1cuda_1_1ReduceKernel_ae5c339a6fe3a74114dc1ca9b1baae9da}} 
+\index{onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}!log\+\_\+sum\+\_\+exp\+\_\+@{log\+\_\+sum\+\_\+exp\+\_\+}}
+\index{log\+\_\+sum\+\_\+exp\+\_\+@{log\+\_\+sum\+\_\+exp\+\_\+}!onnxruntime\+::cuda\+::\+Reduce\+Kernel@{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}
+\subsubsection{\texorpdfstring{log\+\_\+sum\+\_\+exp\+\_\+}{log\_sum\_exp\_}}
+{\footnotesize\ttfamily template$<$bool allow\+\_\+multi\+\_\+axes$>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceKernel}{onnxruntime\+::cuda\+::\+Reduce\+Kernel}}$<$ allow\+\_\+multi\+\_\+axes $>$\+::log\+\_\+sum\+\_\+exp\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/reduction/\mbox{\hyperlink{cuda_2reduction_2reduction__ops_8h}{reduction\+\_\+ops.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cuda/reduction/\mbox{\hyperlink{cuda_2reduction_2reduction__ops_8cc}{reduction\+\_\+ops.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,67 @@
+\hypertarget{classonnxruntime_1_1logging_1_1OStreamSink}{}\section{onnxruntime\+:\+:logging\+:\+:O\+Stream\+Sink Class Reference}
+\label{classonnxruntime_1_1logging_1_1OStreamSink}\index{onnxruntime\+::logging\+::\+O\+Stream\+Sink@{onnxruntime\+::logging\+::\+O\+Stream\+Sink}}
+
+
+A std\+::ostream based \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}}  
+
+
+
+
+{\ttfamily \#include $<$ostream\+\_\+sink.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:logging\+:\+:O\+Stream\+Sink\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:logging\+:\+:O\+Stream\+Sink\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1OStreamSink_a456a79a87ca486aa94bc50421a3da1af}{Send\+Impl}} (const \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{Timestamp}} \&timestamp, const std\+::string \&logger\+\_\+id, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message) override
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1OStreamSink_a3c64f6806295288887efd79ccc4ec645}{O\+Stream\+Sink}} (std\+::ostream \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_ad0f65d11dab10450bd6d5c5e9847a34b}{stream}}, bool flush)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+A std\+::ostream based \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} 
+
+\begin{DoxySeeAlso}{See also}
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}}
+
+
+\end{DoxySeeAlso}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1OStreamSink_a3c64f6806295288887efd79ccc4ec645}\label{classonnxruntime_1_1logging_1_1OStreamSink_a3c64f6806295288887efd79ccc4ec645}} 
+\index{onnxruntime\+::logging\+::\+O\+Stream\+Sink@{onnxruntime\+::logging\+::\+O\+Stream\+Sink}!O\+Stream\+Sink@{O\+Stream\+Sink}}
+\index{O\+Stream\+Sink@{O\+Stream\+Sink}!onnxruntime\+::logging\+::\+O\+Stream\+Sink@{onnxruntime\+::logging\+::\+O\+Stream\+Sink}}
+\subsubsection{\texorpdfstring{O\+Stream\+Sink()}{OStreamSink()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+O\+Stream\+Sink\+::\+O\+Stream\+Sink (\begin{DoxyParamCaption}\item[{std\+::ostream \&}]{stream,  }\item[{bool}]{flush }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1OStreamSink_a456a79a87ca486aa94bc50421a3da1af}\label{classonnxruntime_1_1logging_1_1OStreamSink_a456a79a87ca486aa94bc50421a3da1af}} 
+\index{onnxruntime\+::logging\+::\+O\+Stream\+Sink@{onnxruntime\+::logging\+::\+O\+Stream\+Sink}!Send\+Impl@{Send\+Impl}}
+\index{Send\+Impl@{Send\+Impl}!onnxruntime\+::logging\+::\+O\+Stream\+Sink@{onnxruntime\+::logging\+::\+O\+Stream\+Sink}}
+\subsubsection{\texorpdfstring{Send\+Impl()}{SendImpl()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+O\+Stream\+Sink\+::\+Send\+Impl (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{Timestamp}} \&}]{timestamp,  }\item[{const std\+::string \&}]{logger\+\_\+id,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&}]{message }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{onnxruntime\+::logging\+::\+I\+Sink}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/common/logging/sinks/\mbox{\hyperlink{ostream__sink_8h}{ostream\+\_\+sink.\+h}}\item 
+onnxruntime/onnxruntime/core/common/logging/sinks/\mbox{\hyperlink{ostream__sink_8cc}{ostream\+\_\+sink.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,38 @@
+\hypertarget{schema__registry_8h}{}\section{onnxruntime/include/onnxruntime/core/graph/schema\+\_\+registry.h File Reference}
+\label{schema__registry_8h}\index{onnxruntime/include/onnxruntime/core/graph/schema\+\_\+registry.\+h@{onnxruntime/include/onnxruntime/core/graph/schema\+\_\+registry.\+h}}
+{\ttfamily \#include \char`\"{}core/graph/constants.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}onnx/defs/schema.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$mutex$>$}\newline
+{\ttfamily \#include $<$deque$>$}\newline
+{\ttfamily \#include \char`\"{}sstream\char`\"{}}\newline
+Include dependency graph for schema\+\_\+registry.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1SchemaRegistryVersion}{onnxruntime\+::\+Schema\+Registry\+Version}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1IOnnxRuntimeOpSchemaCollection}{onnxruntime\+::\+I\+Onnx\+Runtime\+Op\+Schema\+Collection}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry}{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1SchemaRegistryManager}{onnxruntime\+::\+Schema\+Registry\+Manager}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a2750a8e8f860d3ebdc37a35cd340b3d8}{onnxruntime\+::\+Op\+Name\+\_\+\+Domain\+\_\+\+Version\+\_\+\+Schema\+\_\+\+Map}} = std\+::unordered\+\_\+map$<$ std\+::string, std\+::unordered\+\_\+map$<$ std\+::string, std\+::map$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Operator\+Set\+Version, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $>$ $>$$>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ab773a024322804641f5eb4964e3471d6}{onnxruntime\+::\+Domain\+\_\+\+To\+\_\+\+Version\+\_\+\+Map}} = std\+::unordered\+\_\+map$<$ std\+::string, int $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a42522f79cdc7cf087dcf008b2cbcc66e}{onnxruntime\+::\+Domain\+\_\+\+To\+\_\+\+Version\+\_\+\+Range\+\_\+\+Map}} = std\+::unordered\+\_\+map$<$ std\+::string, Schema\+Registry\+Version $>$
+\end{DoxyCompactItemize}

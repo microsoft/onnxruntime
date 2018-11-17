@@ -1,0 +1,117 @@
+\hypertarget{classonnxruntime_1_1DummyArena}{}\section{onnxruntime\+:\+:Dummy\+Arena Class Reference}
+\label{classonnxruntime_1_1DummyArena}\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+
+
+{\ttfamily \#include $<$arena.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Dummy\+Arena\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Dummy\+Arena\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1DummyArena_adeb5cc41b1ce4bfc17f93467fc616558}{Dummy\+Arena}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator}{I\+Device\+Allocator}} $>$ resource\+\_\+allocator)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1DummyArena_a1c1da9245b5e19a708e86390ae5e1d35}{$\sim$\+Dummy\+Arena}} () override=default
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a44c2bb22792ce63e5d7bfa4b3e03d968}{Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a58196d32ed10a9d9aba3681457ec982d}{Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a8bfa97292cc0bac6cc6c18e913bdcb4c}{Reserve}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a8d52981f5c7d9c0b098c27405481bc0a}{Used}} () const override
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1DummyArena_ae4edcff60bded3201a9852c6bc935276}{Max}} () const override
+\item 
+const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1DummyArena_a7f85a06ef904b9fe007e76d18a8d68a9}{Info}} () const override
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_adeb5cc41b1ce4bfc17f93467fc616558}\label{classonnxruntime_1_1DummyArena_adeb5cc41b1ce4bfc17f93467fc616558}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Dummy\+Arena@{Dummy\+Arena}}
+\index{Dummy\+Arena@{Dummy\+Arena}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Dummy\+Arena()}{DummyArena()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Dummy\+Arena\+::\+Dummy\+Arena (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator}{I\+Device\+Allocator}} $>$}]{resource\+\_\+allocator }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_a1c1da9245b5e19a708e86390ae5e1d35}\label{classonnxruntime_1_1DummyArena_a1c1da9245b5e19a708e86390ae5e1d35}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!````~Dummy\+Arena@{$\sim$\+Dummy\+Arena}}
+\index{````~Dummy\+Arena@{$\sim$\+Dummy\+Arena}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{$\sim$\+Dummy\+Arena()}{~DummyArena()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Dummy\+Arena\+::$\sim$\+Dummy\+Arena (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_a44c2bb22792ce63e5d7bfa4b3e03d968}\label{classonnxruntime_1_1DummyArena_a44c2bb22792ce63e5d7bfa4b3e03d968}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Alloc@{Alloc}}
+\index{Alloc@{Alloc}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Alloc()}{Alloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Dummy\+Arena\+::\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a879507b0ec3b184d9bb60281191b8cd6}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_a58196d32ed10a9d9aba3681457ec982d}\label{classonnxruntime_1_1DummyArena_a58196d32ed10a9d9aba3681457ec982d}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Free@{Free}}
+\index{Free@{Free}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Free()}{Free()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Dummy\+Arena\+::\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a3341fde74c8461678359fb903fe78df3}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_a7f85a06ef904b9fe007e76d18a8d68a9}\label{classonnxruntime_1_1DummyArena_a7f85a06ef904b9fe007e76d18a8d68a9}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Info@{Info}}
+\index{Info@{Info}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Info()}{Info()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}\& onnxruntime\+::\+Dummy\+Arena\+::\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a4eb52bb1236cf59aec91161156286ba0}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_ae4edcff60bded3201a9852c6bc935276}\label{classonnxruntime_1_1DummyArena_ae4edcff60bded3201a9852c6bc935276}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Max@{Max}}
+\index{Max@{Max}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Max()}{Max()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Dummy\+Arena\+::\+Max (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a09710487a52f42135ee804b7d2e2ed71}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_a8bfa97292cc0bac6cc6c18e913bdcb4c}\label{classonnxruntime_1_1DummyArena_a8bfa97292cc0bac6cc6c18e913bdcb4c}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Reserve@{Reserve}}
+\index{Reserve@{Reserve}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Reserve()}{Reserve()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Dummy\+Arena\+::\+Reserve (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_ae39a9a84e17eb83bb779149fb212004a}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1DummyArena_a8d52981f5c7d9c0b098c27405481bc0a}\label{classonnxruntime_1_1DummyArena_a8d52981f5c7d9c0b098c27405481bc0a}} 
+\index{onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}!Used@{Used}}
+\index{Used@{Used}!onnxruntime\+::\+Dummy\+Arena@{onnxruntime\+::\+Dummy\+Arena}}
+\subsubsection{\texorpdfstring{Used()}{Used()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Dummy\+Arena\+::\+Used (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_aa6b6994640f86749998ffd0c5da4dd83}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{arena_8h}{arena.\+h}}\end{DoxyCompactItemize}

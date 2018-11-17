@@ -1,0 +1,169 @@
+\hypertarget{classonnxruntime_1_1Initializer}{}\section{onnxruntime\+:\+:Initializer Class Reference}
+\label{classonnxruntime_1_1Initializer}\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+
+
+{\ttfamily \#include $<$initializer.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer_ab587238ad1359aa4c3093570a7d284f6}{Initializer}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$tensor\+\_\+proto)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer_aca6b10021be97cf4d29a8e3282e5d285}{$\sim$\+Initializer}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Initializer_aae8fbd8bbac151face5adbabd79afff7}{To\+Proto}} (O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$tensor\+\_\+proto)
+\item 
+O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \mbox{\hyperlink{classonnxruntime_1_1Initializer_a3e36e069cce12f715923035dcaa7737b}{data\+\_\+type}} () const
+\item 
+O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_af1f5e14002473968646d2241348b8a62}{data\+\_\+type}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Initializer_abc96d698ae7eb8006c85bd42e2962a67}{data}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Initializer_add31348373037d1af2c7679c76628ff9}{data}} () const
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1Initializer_ada063dd6a826aee594a0449f75372f8e}{dims}} () const
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_ab2b877ef9dd53feb7e90397de14be12a}{dims}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1Initializer_a77022bec74ca93ec68e54c85e085c093}{size}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_ab26cacacf0f3b221fde86c176bbc97f1}{add}} (float value)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_af7ae55957c741495c4520f29ff2381ca}{add}} (const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_a20381c51daf3386b459ca6cbbd770fb5}{sub}} (const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_a5a782f94351a5873490294817ff9ee04}{mul}} (const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_a1f656b26f66cfe3519ab8c33835e97dd}{div}} (const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&other)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \& \mbox{\hyperlink{classonnxruntime_1_1Initializer_ab38c8378dfec6df57396dffe19ecdf79}{sqrt}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Initializer_aa0e2a74cecda48ca39fe9e757bcd5c5e}{scale\+\_\+by\+\_\+axis}} (const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&other, int axis)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static bool \mbox{\hyperlink{classonnxruntime_1_1Initializer_a23b182168184a54bfd33279aade5449c}{Is\+Supported\+Data\+Type}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$tensor\+\_\+proto)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_ab587238ad1359aa4c3093570a7d284f6}\label{classonnxruntime_1_1Initializer_ab587238ad1359aa4c3093570a7d284f6}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!Initializer@{Initializer}}
+\index{Initializer@{Initializer}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{Initializer()}{Initializer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Initializer\+::\+Initializer (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$}]{tensor\+\_\+proto }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_aca6b10021be97cf4d29a8e3282e5d285}\label{classonnxruntime_1_1Initializer_aca6b10021be97cf4d29a8e3282e5d285}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!````~Initializer@{$\sim$\+Initializer}}
+\index{````~Initializer@{$\sim$\+Initializer}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{$\sim$\+Initializer()}{~Initializer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Initializer\+::$\sim$\+Initializer (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_ab26cacacf0f3b221fde86c176bbc97f1}\label{classonnxruntime_1_1Initializer_ab26cacacf0f3b221fde86c176bbc97f1}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!add@{add}}
+\index{add@{add}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{add()}{add()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}}\& onnxruntime\+::\+Initializer\+::add (\begin{DoxyParamCaption}\item[{float}]{value }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_af7ae55957c741495c4520f29ff2381ca}\label{classonnxruntime_1_1Initializer_af7ae55957c741495c4520f29ff2381ca}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!add@{add}}
+\index{add@{add}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{add()}{add()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}}\& onnxruntime\+::\+Initializer\+::add (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_abc96d698ae7eb8006c85bd42e2962a67}\label{classonnxruntime_1_1Initializer_abc96d698ae7eb8006c85bd42e2962a67}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!data@{data}}
+\index{data@{data}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{data()}{data()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ onnxruntime\+::\+Initializer\+::data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_add31348373037d1af2c7679c76628ff9}\label{classonnxruntime_1_1Initializer_add31348373037d1af2c7679c76628ff9}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!data@{data}}
+\index{data@{data}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{data()}{data()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::\+Initializer\+::data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_a3e36e069cce12f715923035dcaa7737b}\label{classonnxruntime_1_1Initializer_a3e36e069cce12f715923035dcaa7737b}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!data\+\_\+type@{data\+\_\+type}}
+\index{data\+\_\+type@{data\+\_\+type}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{data\+\_\+type()}{data\_type()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type onnxruntime\+::\+Initializer\+::data\+\_\+type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_af1f5e14002473968646d2241348b8a62}\label{classonnxruntime_1_1Initializer_af1f5e14002473968646d2241348b8a62}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!data\+\_\+type@{data\+\_\+type}}
+\index{data\+\_\+type@{data\+\_\+type}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{data\+\_\+type()}{data\_type()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type\& onnxruntime\+::\+Initializer\+::data\+\_\+type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_ada063dd6a826aee594a0449f75372f8e}\label{classonnxruntime_1_1Initializer_ada063dd6a826aee594a0449f75372f8e}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!dims@{dims}}
+\index{dims@{dims}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{dims()}{dims()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Initializer\+::dims (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_ab2b877ef9dd53feb7e90397de14be12a}\label{classonnxruntime_1_1Initializer_ab2b877ef9dd53feb7e90397de14be12a}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!dims@{dims}}
+\index{dims@{dims}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{dims()}{dims()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$\& onnxruntime\+::\+Initializer\+::dims (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_a1f656b26f66cfe3519ab8c33835e97dd}\label{classonnxruntime_1_1Initializer_a1f656b26f66cfe3519ab8c33835e97dd}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!div@{div}}
+\index{div@{div}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{div()}{div()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}}\& onnxruntime\+::\+Initializer\+::div (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_a23b182168184a54bfd33279aade5449c}\label{classonnxruntime_1_1Initializer_a23b182168184a54bfd33279aade5449c}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!Is\+Supported\+Data\+Type@{Is\+Supported\+Data\+Type}}
+\index{Is\+Supported\+Data\+Type@{Is\+Supported\+Data\+Type}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{Is\+Supported\+Data\+Type()}{IsSupportedDataType()}}
+{\footnotesize\ttfamily static bool onnxruntime\+::\+Initializer\+::\+Is\+Supported\+Data\+Type (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$}]{tensor\+\_\+proto }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_a5a782f94351a5873490294817ff9ee04}\label{classonnxruntime_1_1Initializer_a5a782f94351a5873490294817ff9ee04}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!mul@{mul}}
+\index{mul@{mul}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{mul()}{mul()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}}\& onnxruntime\+::\+Initializer\+::mul (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_aa0e2a74cecda48ca39fe9e757bcd5c5e}\label{classonnxruntime_1_1Initializer_aa0e2a74cecda48ca39fe9e757bcd5c5e}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!scale\+\_\+by\+\_\+axis@{scale\+\_\+by\+\_\+axis}}
+\index{scale\+\_\+by\+\_\+axis@{scale\+\_\+by\+\_\+axis}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{scale\+\_\+by\+\_\+axis()}{scale\_by\_axis()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Initializer\+::scale\+\_\+by\+\_\+axis (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&}]{other,  }\item[{int}]{axis }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_a77022bec74ca93ec68e54c85e085c093}\label{classonnxruntime_1_1Initializer_a77022bec74ca93ec68e54c85e085c093}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!size@{size}}
+\index{size@{size}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{size()}{size()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Initializer\+::size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_ab38c8378dfec6df57396dffe19ecdf79}\label{classonnxruntime_1_1Initializer_ab38c8378dfec6df57396dffe19ecdf79}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!sqrt@{sqrt}}
+\index{sqrt@{sqrt}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{sqrt()}{sqrt()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}}\& onnxruntime\+::\+Initializer\+::sqrt (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_a20381c51daf3386b459ca6cbbd770fb5}\label{classonnxruntime_1_1Initializer_a20381c51daf3386b459ca6cbbd770fb5}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!sub@{sub}}
+\index{sub@{sub}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{sub()}{sub()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}}\& onnxruntime\+::\+Initializer\+::sub (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Initializer}{Initializer}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Initializer_aae8fbd8bbac151face5adbabd79afff7}\label{classonnxruntime_1_1Initializer_aae8fbd8bbac151face5adbabd79afff7}} 
+\index{onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}!To\+Proto@{To\+Proto}}
+\index{To\+Proto@{To\+Proto}!onnxruntime\+::\+Initializer@{onnxruntime\+::\+Initializer}}
+\subsubsection{\texorpdfstring{To\+Proto()}{ToProto()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Initializer\+::\+To\+Proto (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto $\ast$}]{tensor\+\_\+proto }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{initializer_8h}{initializer.\+h}}\end{DoxyCompactItemize}

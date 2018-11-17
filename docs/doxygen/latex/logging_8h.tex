@@ -1,0 +1,52 @@
+\hypertarget{logging_8h}{}\section{onnxruntime/include/onnxruntime/core/common/logging/logging.h File Reference}
+\label{logging_8h}\index{onnxruntime/include/onnxruntime/core/common/logging/logging.\+h@{onnxruntime/include/onnxruntime/core/common/logging/logging.\+h}}
+{\ttfamily \#include $<$atomic$>$}\newline
+{\ttfamily \#include $<$chrono$>$}\newline
+{\ttfamily \#include $<$climits$>$}\newline
+{\ttfamily \#include $<$map$>$}\newline
+{\ttfamily \#include $<$memory$>$}\newline
+{\ttfamily \#include $<$mutex$>$}\newline
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/capture.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/severity.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/macros.\+h\char`\"{}}\newline
+Include dependency graph for logging.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category}{onnxruntime\+::logging\+::\+Category}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\begin{DoxyCompactList}\small\item\em The logging manager. Owns the log sink and potentially provides a default \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance. Provides filtering based on a minimum Log\+Severity level, and of messages with Data\+Type\+::\+User if enabled. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{onnxruntime\+::logging\+::\+Logger}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1logging}{onnxruntime\+::logging}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{onnxruntime\+::logging\+::\+Timestamp}} = std\+::chrono\+::time\+\_\+point$<$ std\+::chrono\+::system\+\_\+clock $>$
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{onnxruntime\+::logging\+::\+Data\+Type}} \{ \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}{onnxruntime\+::logging\+::\+Data\+Type\+::\+S\+Y\+S\+T\+EM}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{onnxruntime\+::logging\+::\+Data\+Type\+::\+U\+S\+ER}} = 1
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+unsigned int \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a259f82c4ed0446ffb25aede9f830eeb9}{onnxruntime\+::logging\+::\+Get\+Thread\+Id}} ()
+\item 
+unsigned int \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a6958e73aa8c5b7142f5fd3eccf5039fb}{onnxruntime\+::logging\+::\+Get\+Process\+Id}} ()
+\end{DoxyCompactItemize}

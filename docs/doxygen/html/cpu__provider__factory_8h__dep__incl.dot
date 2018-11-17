@@ -1,0 +1,8 @@
+digraph "onnxruntime/include/onnxruntime/core/providers/cpu/cpu_provider_factory.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node13 [label="onnxruntime/include\l/onnxruntime/core/providers\l/cpu/cpu_provider_factory.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node13 -> Node14 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node14 [label="onnxruntime/onnxruntime\l/core/providers/cpu/cpu\l_provider_factory.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu__provider__factory_8cc.html"];
+}

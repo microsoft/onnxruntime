@@ -1,0 +1,31 @@
+\hypertarget{cpu_2tensor_2cast__op_8h}{}\section{onnxruntime/onnxruntime/core/providers/cpu/tensor/cast\+\_\+op.h File Reference}
+\label{cpu_2tensor_2cast__op_8h}\index{onnxruntime/onnxruntime/core/providers/cpu/tensor/cast\+\_\+op.\+h@{onnxruntime/onnxruntime/core/providers/cpu/tensor/cast\+\_\+op.\+h}}
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}Eigen/src/\+Core/arch/\+C\+U\+D\+A/\+Half.\+h\char`\"{}}\newline
+Include dependency graph for cast\+\_\+op.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Cast}{onnxruntime\+::\+Cast$<$ T $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename Src\+Type , typename Dst\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a35e6aa9711c7a7b1cf830f0326d88633}{onnxruntime\+::\+Cast\+Data}} (const Tensor $\ast$in, Tensor $\ast$out, const Tensor\+Shape \&shape)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a37b25654aa97c897817c6b3a7a791a84}{onnxruntime\+::\+Cast\+Data$<$ float, M\+L\+Float16 $>$}} (const Tensor $\ast$in, Tensor $\ast$out, const Tensor\+Shape \&shape)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a46ff819df781b20c7a03ac47e42d5ea0}{onnxruntime\+::\+Cast\+Data$<$ M\+L\+Float16, float $>$}} (const Tensor $\ast$in, Tensor $\ast$out, const Tensor\+Shape \&shape)
+\item 
+{\footnotesize template$<$typename Src\+Type , typename Dst\+Type $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_abecb7a5406c1156a89a5ca13615f338e}{onnxruntime\+::\+Cast\+Float16\+Data}} (const Tensor $\ast$in, Tensor $\ast$out, const Tensor\+Shape \&shape, const Allocator\+Ptr \&allocator)
+\end{DoxyCompactItemize}

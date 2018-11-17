@@ -1,0 +1,23 @@
+var searchData=
+[
+  ['onnxobject',['ONNXObject',['../onnx__object_8h.html#a3f08b2d7c1a2786c58078f13cf26af37',1,'onnx_object.h']]],
+  ['onnxopaquetypeinfo',['ONNXOpaqueTypeInfo',['../onnxruntime__c__api_8h.html#ac28dd1840fd5b4ce57fbe44dc8e5d7e4',1,'onnxruntime_c_api.h']]],
+  ['onnxruntimeallocator',['ONNXRuntimeAllocator',['../session_2allocator_8h.html#a9eb4a70849a17d41aca1955b07cdfaca',1,'allocator.h']]],
+  ['onnxruntimeallocatorinteface',['ONNXRuntimeAllocatorInteface',['../session_2allocator_8h.html#a443ed306e2234ddc61a922a2eb5c4689',1,'allocator.h']]],
+  ['onnxruntimeallocatortype',['ONNXRuntimeAllocatorType',['../allocator__info_8h.html#a9a2e1f76c0cdede275bbdf05d80b8ab9',1,'allocator_info.h']]],
+  ['onnxruntimeerrorcode',['ONNXRuntimeErrorCode',['../error__code_8h.html#a4ca5dd3b916decb68695c3732048d3c8',1,'error_code.h']]],
+  ['onnxruntimeloggingfunction',['ONNXRuntimeLoggingFunction',['../onnxruntime__c__api_8h.html#a34bca4a0e659ffc0e729444e5a5ed677',1,'onnxruntime_c_api.h']]],
+  ['onnxruntimelogginglevel',['ONNXRuntimeLoggingLevel',['../onnxruntime__c__api_8h.html#a1692c32d946e37eb6600c32b441d5adf',1,'onnxruntime_c_api.h']]],
+  ['onnxruntimememtype',['ONNXRuntimeMemType',['../allocator__info_8h.html#a8836287439ef116b5921bece40da90c2',1,'allocator_info.h']]],
+  ['onnxruntimeproviderfactoryinterface',['ONNXRuntimeProviderFactoryInterface',['../session__options__c__api_8h.html#a4195ed63c73593abeb1f217b425c29bc',1,'session_options_c_api.h']]],
+  ['onnxruntimeproviderfactoryptr',['ONNXRuntimeProviderFactoryPtr',['../session__options__c__api_8h.html#a351bab8a857e0f355c92af5c22b759bc',1,'session_options_c_api.h']]],
+  ['onnxruntimerunoptions',['ONNXRuntimeRunOptions',['../run__options__c__api_8h.html#a2cd38e5cd5b79aff955e30b28eb174f6',1,'run_options_c_api.h']]],
+  ['onnxruntimerunoptionsptr',['ONNXRuntimeRunOptionsPtr',['../run__options__c__api_8h.html#a618e4a636ff10f92b96a54e3d7e70c09',1,'run_options_c_api.h']]],
+  ['onnxruntimesessionoptions',['ONNXRuntimeSessionOptions',['../session__options__c__api_8h.html#aa4d4f980ea5109fd9114c7cef3bad9df',1,'session_options_c_api.h']]],
+  ['onnxruntimesessionoptionsptr',['ONNXRuntimeSessionOptionsPtr',['../session__options__c__api_8h.html#a6b0575cd5555d851aa8ecbfe3d931db4',1,'session_options_c_api.h']]],
+  ['onnxruntimetensorelementdatatype',['OnnxRuntimeTensorElementDataType',['../tensor__type__and__shape__c__api_8h.html#ae84ad83ea1889c440cd0b905b1f50907',1,'tensor_type_and_shape_c_api.h']]],
+  ['onnxruntimetype',['ONNXRuntimeType',['../onnxruntime__c__api_8h.html#ac8cde26a97dba37d567837cbb088becb',1,'onnxruntime_c_api.h']]],
+  ['onnxstatusptr',['ONNXStatusPtr',['../error__code_8h.html#aaabad62930bcf4bf7267c2f3de0413cb',1,'error_code.h']]],
+  ['opname_5fdomain_5fversion_5fschema_5fmap',['OpName_Domain_Version_Schema_Map',['../namespaceonnxruntime.html#a2750a8e8f860d3ebdc37a35cd340b3d8',1,'onnxruntime']]],
+  ['outputdeflist',['OutputDefList',['../namespaceonnxruntime.html#a4b3c292f33b95d038b5059f6103f287a',1,'onnxruntime']]]
+];

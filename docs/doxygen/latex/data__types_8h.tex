@@ -1,0 +1,222 @@
+\hypertarget{data__types_8h}{}\section{onnxruntime/include/onnxruntime/core/framework/data\+\_\+types.h File Reference}
+\label{data__types_8h}\index{onnxruntime/include/onnxruntime/core/framework/data\+\_\+types.\+h@{onnxruntime/include/onnxruntime/core/framework/data\+\_\+types.\+h}}
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include $<$stdint.\+h$>$}\newline
+{\ttfamily \#include $<$unordered\+\_\+map$>$}\newline
+{\ttfamily \#include $<$map$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/exceptions.\+h\char`\"{}}\newline
+Include dependency graph for data\+\_\+types.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+union \mbox{\hyperlink{uniononnxruntime_1_1MLFloat16}{onnxruntime\+::\+M\+L\+Float16}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl}{onnxruntime\+::\+Data\+Type\+Impl}}
+\begin{DoxyCompactList}\small\item\em Base class for M\+L\+Data\+Type. \end{DoxyCompactList}\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1TensorContainedTypeSetter}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Tensor\+Contained\+Type\+Setter$<$ Types $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1IsAnyOf}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Any\+Of$<$ T, Types $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1IsAnyOf_3_01T_00_01Tail_01_4}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Any\+Of$<$ T, Tail $>$}}
+\begin{DoxyCompactList}\small\item\em Two types remaining, end of the list. \end{DoxyCompactList}\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1IsAnyOf_3_01T_00_01H_00_01Tail_8_8_8_01_4}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Any\+Of$<$ T, H, Tail... $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1IsTensorContainedType}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Is\+Tensor\+Contained\+Type$<$ T $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1GetMLDataType}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Get\+M\+L\+Data\+Type$<$ T, Tensor\+Contained\+Type $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1GetMLDataType_3_01T_00_01true_01_4}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Get\+M\+L\+Data\+Type$<$ T, true $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1GetMLDataType_3_01T_00_01false_01_4}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Get\+M\+L\+Data\+Type$<$ T, false $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1SetMapTypes}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Set\+Map\+Types$<$ K, V $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1data__types__internal_1_1SetSequenceType}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Set\+Sequence\+Type$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1TensorTypeBase}{onnxruntime\+::\+Tensor\+Type\+Base}}
+\begin{DoxyCompactList}\small\item\em All tensors base. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1TensorType}{onnxruntime\+::\+Tensor\+Type$<$ elem\+T $>$}}
+\begin{DoxyCompactList}\small\item\em \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} type. This type does not have a C++ type associated with it at registration time except the element type. One of the types mentioned above at Is\+Tensor\+Contained\+Type$<$$>$ list is acceptable. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1NonTensorTypeBase}{onnxruntime\+::\+Non\+Tensor\+Type\+Base}}
+\begin{DoxyCompactList}\small\item\em Base type for all non-\/tensors, maps, sequences and opaques. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1NonTensorType}{onnxruntime\+::\+Non\+Tensor\+Type$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1MapType}{onnxruntime\+::\+Map\+Type$<$ C\+P\+P\+Type $>$}}
+\begin{DoxyCompactList}\small\item\em \mbox{\hyperlink{classonnxruntime_1_1MapType}{Map\+Type}}. Use this type to register mapping types. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1SequenceType}{onnxruntime\+::\+Sequence\+Type$<$ C\+P\+P\+Type $>$}}
+\begin{DoxyCompactList}\small\item\em \mbox{\hyperlink{classonnxruntime_1_1SequenceType}{Sequence\+Type}}. Use to register sequences. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{onnxruntime\+::\+Opaque\+Type$<$ T, D, N $>$}}
+\begin{DoxyCompactList}\small\item\em \mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{Opaque\+Type}}. \end{DoxyCompactList}\item 
+class \mbox{\hyperlink{classonnxruntime_1_1NonOnnxType}{onnxruntime\+::\+Non\+Onnx\+Type$<$ T $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceONNX__NAMESPACE}{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+CE}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal}{onnxruntime\+::data\+\_\+types\+\_\+internal}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{data__types_8h_a6f34fa080bef402b85d242ed57449f09}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}}(E\+L\+E\+M\+\_\+\+T\+Y\+PE)
+\item 
+\#define \mbox{\hyperlink{data__types_8h_a7325873df2dd93ccebd9eff83615ac1e}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}}(T\+Y\+PE)
+\item 
+\#define \mbox{\hyperlink{data__types_8h_aebfefabee001fd781d91fc64bda2ee0b}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}}(T\+Y\+PE)
+\item 
+\#define \mbox{\hyperlink{data__types_8h_a37d695621ff6ee71dfea8ed4c9e2807b}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}}(T\+Y\+PE)
+\item 
+\#define \mbox{\hyperlink{data__types_8h_a75bec65dd4ee85b6d1695b32bf9c1d61}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE}}(C\+P\+P\+Type,  Domain,  Name)
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ad08e9cd3839f6134e87cee3370f5d7b3}{onnxruntime\+::\+Map\+String\+To\+String}} = std\+::map$<$ std\+::string, std\+::string $>$
+\begin{DoxyCompactList}\small\item\em Predefined registered types. \end{DoxyCompactList}\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a8333bda111400cb767f9faa6f862f560}{onnxruntime\+::\+Map\+String\+To\+Int64}} = std\+::map$<$ std\+::string, int64\+\_\+t $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_af68ce46a8b6ce3aecf826a569e1e9b62}{onnxruntime\+::\+Map\+String\+To\+Float}} = std\+::map$<$ std\+::string, float $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a7d1b777d3fc91cfb2ac4e9649064d7fb}{onnxruntime\+::\+Map\+String\+To\+Double}} = std\+::map$<$ std\+::string, double $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_aacdd746e76cac47aeec1ee5fa1d01956}{onnxruntime\+::\+Map\+Int64\+To\+String}} = std\+::map$<$ int64\+\_\+t, std\+::string $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a3dab3548e5750ae69a56e308a4031ad0}{onnxruntime\+::\+Map\+Int64\+To\+Int64}} = std\+::map$<$ int64\+\_\+t, int64\+\_\+t $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ab3c488c9d67df3d8a91c90f9bb360e93}{onnxruntime\+::\+Map\+Int64\+To\+Float}} = std\+::map$<$ int64\+\_\+t, float $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a16918e983bd34c8bee7725fc39740cf1}{onnxruntime\+::\+Map\+Int64\+To\+Double}} = std\+::map$<$ int64\+\_\+t, double $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a5673dbc843633267038ba098bc783f6d}{onnxruntime\+::\+Vector\+String}} = std\+::vector$<$ std\+::string $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a1e83a297d78e79ab3df3afd3827ea78e}{onnxruntime\+::\+Vector\+Int64}} = std\+::vector$<$ int64\+\_\+t $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a00d910cce3d8439516f44da75eb583e8}{onnxruntime\+::\+Vector\+Float}} = std\+::vector$<$ float $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a99e5a794fb266de779627b0dd8136ea1}{onnxruntime\+::\+Vector\+Double}} = std\+::vector$<$ double $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ad81ea65e662ec287bc0dba29bdc641a0}{onnxruntime\+::\+Vector\+Map\+String\+To\+Float}} = std\+::vector$<$ Map\+String\+To\+Float $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ab31c3ad253dd12c1ed233e886fc5205b}{onnxruntime\+::\+Vector\+Map\+Int64\+To\+Float}} = std\+::vector$<$ Map\+Int64\+To\+Float $>$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{onnxruntime\+::\+M\+L\+Data\+Type}} = const Data\+Type\+Impl $\ast$
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a8dcea0e1aa8476e3d09d5a44a0ca4516}{onnxruntime\+::\+Delete\+Func}} = \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}($\ast$)(\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$)
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a4e4e007092b50ccad0f64e24d7ac3c1e}{onnxruntime\+::\+Create\+Func}} = std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$()$>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_a85d9f4ce255300d63e45549fc9c073ba}{onnxruntime\+::operator==}} (const M\+L\+Float16 \&left, const M\+L\+Float16 \&right)
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_a8dda757b485429e9c2674c863c5cd47a}{onnxruntime\+::operator!=}} (const M\+L\+Float16 \&left, const M\+L\+Float16 \&right)
+\item 
+std\+::ostream \& \mbox{\hyperlink{namespaceonnxruntime_a7e5dbb4b07ee5e49ad3dcdd97c926a5b}{onnxruntime\+::operator$<$$<$}} (std\+::ostream \&out, M\+L\+Data\+Type data\+\_\+type)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ac1fd254086666e3c4b5a446f675045c2}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Copy\+Mutable\+Map\+Value}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_ae8a105851088c4c54974143738dfd2d5}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Copy\+Mutable\+Seq\+Element}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1data__types__internal_a032f5531fe029539cd81b7bb954d3f47}{onnxruntime\+::data\+\_\+types\+\_\+internal\+::\+Assign\+Opaque\+Domain\+Name}} (const char $\ast$domain, const char $\ast$name, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&proto)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{data__types_8h_a7325873df2dd93ccebd9eff83615ac1e}\label{data__types_8h_a7325873df2dd93ccebd9eff83615ac1e}} 
+\index{data\+\_\+types.\+h@{data\+\_\+types.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}!data\+\_\+types.\+h@{data\+\_\+types.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP}{ONNXRUNTIME\_REGISTER\_MAP}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+M\+AP(\begin{DoxyParamCaption}\item[{}]{T\+Y\+PE }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                \(\backslash\)
+  MLDataType MapType<TYPE>::Type() \{         \(\backslash\)
+    static MapType<TYPE> map\_type;           \(\backslash\)
+    return &map\_type;                        \(\backslash\)
+  \}                                          \(\backslash\)
+  template <>                                \(\backslash\)
+  MLDataType DataTypeImpl::GetType<TYPE>() \{ \(\backslash\)
+    return MapType<TYPE>::Type();            \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{data__types_8h_a37d695621ff6ee71dfea8ed4c9e2807b}\label{data__types_8h_a37d695621ff6ee71dfea8ed4c9e2807b}} 
+\index{data\+\_\+types.\+h@{data\+\_\+types.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}!data\+\_\+types.\+h@{data\+\_\+types.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE}{ONNXRUNTIME\_REGISTER\_NON\_ONNX\_TYPE}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+N\+O\+N\+\_\+\+O\+N\+N\+X\+\_\+\+T\+Y\+PE(\begin{DoxyParamCaption}\item[{}]{T\+Y\+PE }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                    \(\backslash\)
+  MLDataType NonOnnxType<TYPE>::Type() \{         \(\backslash\)
+    static NonOnnxType<TYPE> non\_onnx\_type;      \(\backslash\)
+    return &non\_onnx\_type;                       \(\backslash\)
+  \}                                              \(\backslash\)
+  template <>                                    \(\backslash\)
+  MLDataType DataTypeImpl::GetType<TYPE>() \{     \(\backslash\)
+    return NonOnnxType<TYPE>::Type();            \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{data__types_8h_a75bec65dd4ee85b6d1695b32bf9c1d61}\label{data__types_8h_a75bec65dd4ee85b6d1695b32bf9c1d61}} 
+\index{data\+\_\+types.\+h@{data\+\_\+types.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE}!data\+\_\+types.\+h@{data\+\_\+types.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE}{ONNXRUNTIME\_REGISTER\_OPAQUE\_TYPE}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+O\+P\+A\+Q\+U\+E\+\_\+\+T\+Y\+PE(\begin{DoxyParamCaption}\item[{}]{C\+P\+P\+Type,  }\item[{}]{Domain,  }\item[{}]{Name }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                   \(\backslash\)
+  MLDataType OpaqueType<CPPType, Domain, Name>::Type() \{        \(\backslash\)
+    static OpaqueType<CPPType, Domain, Name> opaque\_type;       \(\backslash\)
+    return &opaque\_type;                                        \(\backslash\)
+  \}                                                             \(\backslash\)
+  template <>                                                   \(\backslash\)
+  MLDataType DataTypeImpl::GetType<CPPType>() \{                 \(\backslash\)
+    return OpaqueType<CPPType, Domain, Name>::Type();           \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{data__types_8h_aebfefabee001fd781d91fc64bda2ee0b}\label{data__types_8h_aebfefabee001fd781d91fc64bda2ee0b}} 
+\index{data\+\_\+types.\+h@{data\+\_\+types.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}!data\+\_\+types.\+h@{data\+\_\+types.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ}{ONNXRUNTIME\_REGISTER\_SEQ}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+S\+EQ(\begin{DoxyParamCaption}\item[{}]{T\+Y\+PE }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                \(\backslash\)
+  MLDataType SequenceType<TYPE>::Type() \{    \(\backslash\)
+    static SequenceType<TYPE> sequence\_type; \(\backslash\)
+    return &sequence\_type;                   \(\backslash\)
+  \}                                          \(\backslash\)
+  template <>                                \(\backslash\)
+  MLDataType DataTypeImpl::GetType<TYPE>() \{ \(\backslash\)
+    return SequenceType<TYPE>::Type();       \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{data__types_8h_a6f34fa080bef402b85d242ed57449f09}\label{data__types_8h_a6f34fa080bef402b85d242ed57449f09}} 
+\index{data\+\_\+types.\+h@{data\+\_\+types.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}!data\+\_\+types.\+h@{data\+\_\+types.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE}{ONNXRUNTIME\_REGISTER\_TENSOR\_TYPE}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+T\+E\+N\+S\+O\+R\+\_\+\+T\+Y\+PE(\begin{DoxyParamCaption}\item[{}]{E\+L\+E\+M\+\_\+\+T\+Y\+PE }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                           \(\backslash\)
+  MLDataType TensorType<ELEM\_TYPE>::Type() \{            \(\backslash\)
+    static TensorType<ELEM\_TYPE> tensor\_type;           \(\backslash\)
+    return &tensor\_type;                                \(\backslash\)
+  \}                                                     \(\backslash\)
+  template <>                                           \(\backslash\)
+  MLDataType DataTypeImpl::GetTensorType<ELEM\_TYPE>() \{ \(\backslash\)
+    return TensorType<ELEM\_TYPE>::Type();               \(\backslash\)
+  \}
+\end{DoxyCode}

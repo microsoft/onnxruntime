@@ -1,0 +1,80 @@
+\hypertarget{convolve_8cpp}{}\section{onnxruntime/onnxruntime/core/mlas/lib/convolve.cpp File Reference}
+\label{convolve_8cpp}\index{onnxruntime/onnxruntime/core/mlas/lib/convolve.\+cpp@{onnxruntime/onnxruntime/core/mlas/lib/convolve.\+cpp}}
+{\ttfamily \#include \char`\"{}mlasi.\+h\char`\"{}}\newline
+Include dependency graph for convolve.\+cpp\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structMLAS__CONV__WORK__BLOCK}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+CK}}
+\item 
+struct \mbox{\hyperlink{structMLAS__CONV__WORK__BLOCK_1_1SEGMENT}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+\_\+\+B\+L\+O\+C\+K\+::\+S\+E\+G\+M\+E\+NT}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{convolve_8cpp_a7ea99c6ca5a5a4bcce6a0092af2aefd4}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD}}~(\mbox{\hyperlink{mlasi_8h_aa28ee8dc9022be9a210bbf95f3351833}{M\+L\+A\+S\+\_\+\+S\+G\+E\+M\+M\+\_\+\+S\+T\+R\+I\+D\+EN}} $\ast$ \mbox{\hyperlink{mlasi_8h_ab53b4ce1656fff1cd0b0be02bdfedf5b}{M\+L\+A\+S\+\_\+\+S\+G\+E\+M\+M\+\_\+\+S\+T\+R\+I\+D\+EK}})
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{convolve_8cpp_a90c109282999b08dd71571d423cad487}{Mlas\+Conv\+Im2\+Col}} (const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, const float $\ast$Input, float $\ast$Column\+Buffer, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} k, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{mlasi_8h_af455945a6aa326660501159f48df0c15}{CountK}}, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} n, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{mlasi_8h_a7e64fe36b0b783a02bf6ffaecb47a52a}{CountN}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{convolve_8cpp_af81e941af96895b23e8d5cc4b66db40d}{Mlas\+Conv\+Vol2\+Col}} (const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, const float $\ast$Input, float $\ast$Column\+Buffer, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} k, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{mlasi_8h_af455945a6aa326660501159f48df0c15}{CountK}}, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} n, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{mlasi_8h_a7e64fe36b0b783a02bf6ffaecb47a52a}{CountN}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{convolve_8cpp_a77a7aaaf6907fcb9cc12cd96028a4350}{Mlas\+Conv\+Operation}} (const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, const float $\ast$Input, const float $\ast$Filter, const float $\ast$Bias, float $\ast$Column\+Buffer, float $\ast$Output, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Segment\+StartN, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Segment\+CountN)
+\item 
+bool \mbox{\hyperlink{convolve_8cpp_a8de57adb460703f787c2d1ec87363c74}{Mlas\+Conv\+Try\+Multithread}} (const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, const float $\ast$Input, const float $\ast$Filter, const float $\ast$Bias, float $\ast$Working\+Buffer, float $\ast$Output)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{convolve_8cpp_a2bff495651f683ee28eca46a18d78126}{Mlas\+Conv}} (const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, const float $\ast$Input, const float $\ast$Filter, const float $\ast$Bias, float $\ast$Working\+Buffer, float $\ast$Output)
+\item 
+bool \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} \mbox{\hyperlink{convolve_8cpp_a88ec0520d5c67b6534f4545d7fb6f201}{Mlas\+Conv\+Prepare}} (\mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$Parameters, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Dimensions, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Batch\+Count, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Group\+Count, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Input\+Channels, const int64\+\_\+t $\ast$Input\+Shape, const int64\+\_\+t $\ast$Kernel\+Shape, const int64\+\_\+t $\ast$Dilation\+Shape, const int64\+\_\+t $\ast$Padding, const int64\+\_\+t $\ast$Stride\+Shape, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} Filter\+Count, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$Working\+Buffer\+Size)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{convolve_8cpp_a7ea99c6ca5a5a4bcce6a0092af2aefd4}\label{convolve_8cpp_a7ea99c6ca5a5a4bcce6a0092af2aefd4}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD@{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD}}
+\index{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD@{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD}{MLAS\_CONV\_WORKING\_BUFFER\_SIZE\_PER\_THREAD}}
+{\footnotesize\ttfamily \#define M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+W\+O\+R\+K\+I\+N\+G\+\_\+\+B\+U\+F\+F\+E\+R\+\_\+\+S\+I\+Z\+E\+\_\+\+P\+E\+R\+\_\+\+T\+H\+R\+E\+AD~(\mbox{\hyperlink{mlasi_8h_aa28ee8dc9022be9a210bbf95f3351833}{M\+L\+A\+S\+\_\+\+S\+G\+E\+M\+M\+\_\+\+S\+T\+R\+I\+D\+EN}} $\ast$ \mbox{\hyperlink{mlasi_8h_ab53b4ce1656fff1cd0b0be02bdfedf5b}{M\+L\+A\+S\+\_\+\+S\+G\+E\+M\+M\+\_\+\+S\+T\+R\+I\+D\+EK}})}
+
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{convolve_8cpp_a2bff495651f683ee28eca46a18d78126}\label{convolve_8cpp_a2bff495651f683ee28eca46a18d78126}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!Mlas\+Conv@{Mlas\+Conv}}
+\index{Mlas\+Conv@{Mlas\+Conv}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Conv()}{MlasConv()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Conv (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{const float $\ast$}]{Filter,  }\item[{const float $\ast$}]{Bias,  }\item[{float $\ast$}]{Working\+Buffer,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{convolve_8cpp_a90c109282999b08dd71571d423cad487}\label{convolve_8cpp_a90c109282999b08dd71571d423cad487}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!Mlas\+Conv\+Im2\+Col@{Mlas\+Conv\+Im2\+Col}}
+\index{Mlas\+Conv\+Im2\+Col@{Mlas\+Conv\+Im2\+Col}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Conv\+Im2\+Col()}{MlasConvIm2Col()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Conv\+Im2\+Col (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Column\+Buffer,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{k,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{CountK,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{n,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{CountN }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{convolve_8cpp_a77a7aaaf6907fcb9cc12cd96028a4350}\label{convolve_8cpp_a77a7aaaf6907fcb9cc12cd96028a4350}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!Mlas\+Conv\+Operation@{Mlas\+Conv\+Operation}}
+\index{Mlas\+Conv\+Operation@{Mlas\+Conv\+Operation}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Conv\+Operation()}{MlasConvOperation()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Conv\+Operation (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{const float $\ast$}]{Filter,  }\item[{const float $\ast$}]{Bias,  }\item[{float $\ast$}]{Column\+Buffer,  }\item[{float $\ast$}]{Output,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Segment\+StartN,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Segment\+CountN }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{convolve_8cpp_a88ec0520d5c67b6534f4545d7fb6f201}\label{convolve_8cpp_a88ec0520d5c67b6534f4545d7fb6f201}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!Mlas\+Conv\+Prepare@{Mlas\+Conv\+Prepare}}
+\index{Mlas\+Conv\+Prepare@{Mlas\+Conv\+Prepare}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Conv\+Prepare()}{MlasConvPrepare()}}
+{\footnotesize\ttfamily bool \mbox{\hyperlink{mlas_8h_a2447f51fe5640fdad4a6fa679c1108cd}{M\+L\+A\+S\+C\+A\+LL}} Mlas\+Conv\+Prepare (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Dimensions,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Batch\+Count,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Group\+Count,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Input\+Channels,  }\item[{const int64\+\_\+t $\ast$}]{Input\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Kernel\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Dilation\+Shape,  }\item[{const int64\+\_\+t $\ast$}]{Padding,  }\item[{const int64\+\_\+t $\ast$}]{Stride\+Shape,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{Filter\+Count,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$}]{Working\+Buffer\+Size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{convolve_8cpp_a8de57adb460703f787c2d1ec87363c74}\label{convolve_8cpp_a8de57adb460703f787c2d1ec87363c74}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!Mlas\+Conv\+Try\+Multithread@{Mlas\+Conv\+Try\+Multithread}}
+\index{Mlas\+Conv\+Try\+Multithread@{Mlas\+Conv\+Try\+Multithread}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Conv\+Try\+Multithread()}{MlasConvTryMultithread()}}
+{\footnotesize\ttfamily bool Mlas\+Conv\+Try\+Multithread (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{const float $\ast$}]{Filter,  }\item[{const float $\ast$}]{Bias,  }\item[{float $\ast$}]{Working\+Buffer,  }\item[{float $\ast$}]{Output }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{convolve_8cpp_af81e941af96895b23e8d5cc4b66db40d}\label{convolve_8cpp_af81e941af96895b23e8d5cc4b66db40d}} 
+\index{convolve.\+cpp@{convolve.\+cpp}!Mlas\+Conv\+Vol2\+Col@{Mlas\+Conv\+Vol2\+Col}}
+\index{Mlas\+Conv\+Vol2\+Col@{Mlas\+Conv\+Vol2\+Col}!convolve.\+cpp@{convolve.\+cpp}}
+\subsubsection{\texorpdfstring{Mlas\+Conv\+Vol2\+Col()}{MlasConvVol2Col()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} Mlas\+Conv\+Vol2\+Col (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structMLAS__CONV__PARAMETERS}{M\+L\+A\+S\+\_\+\+C\+O\+N\+V\+\_\+\+P\+A\+R\+A\+M\+E\+T\+E\+RS}} $\ast$}]{Parameters,  }\item[{const float $\ast$}]{Input,  }\item[{float $\ast$}]{Column\+Buffer,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{k,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{CountK,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{n,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{CountN }\end{DoxyParamCaption})}
+

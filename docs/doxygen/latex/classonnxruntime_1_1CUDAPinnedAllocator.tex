@@ -1,0 +1,75 @@
+\hypertarget{classonnxruntime_1_1CUDAPinnedAllocator}{}\section{onnxruntime\+:\+:C\+U\+D\+A\+Pinned\+Allocator Class Reference}
+\label{classonnxruntime_1_1CUDAPinnedAllocator}\index{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}
+
+
+{\ttfamily \#include $<$cuda\+\_\+allocator.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:C\+U\+D\+A\+Pinned\+Allocator\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:C\+U\+D\+A\+Pinned\+Allocator\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_a22d04b010dc7782d37689ae50bab2535}{Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_a2d28c8305e862060b9e5337073cda109}{Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) override
+\item 
+virtual const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_af08d82e6f7b890059386326ac371950a}{Info}} () const override
+\item 
+virtual \mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1CUDAPinnedAllocator_ac484f5708f516cc19cc788404e173367}{Create\+Fence}} (const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$session\+\_\+state) override
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAPinnedAllocator_a22d04b010dc7782d37689ae50bab2535}\label{classonnxruntime_1_1CUDAPinnedAllocator_a22d04b010dc7782d37689ae50bab2535}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}!Alloc@{Alloc}}
+\index{Alloc@{Alloc}!onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}
+\subsubsection{\texorpdfstring{Alloc()}{Alloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator\+::\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_aa703af32705cabad8c9f69e60efcfb6b}{onnxruntime\+::\+I\+Device\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAPinnedAllocator_ac484f5708f516cc19cc788404e173367}\label{classonnxruntime_1_1CUDAPinnedAllocator_ac484f5708f516cc19cc788404e173367}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}!Create\+Fence@{Create\+Fence}}
+\index{Create\+Fence@{Create\+Fence}!onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}
+\subsubsection{\texorpdfstring{Create\+Fence()}{CreateFence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator\+::\+Create\+Fence (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+optional Create\+Fence interface, as provider like D\+ML has its own fence 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aac50b97886138b30cd0b7b3506fea459}{onnxruntime\+::\+I\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAPinnedAllocator_a2d28c8305e862060b9e5337073cda109}\label{classonnxruntime_1_1CUDAPinnedAllocator_a2d28c8305e862060b9e5337073cda109}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}!Free@{Free}}
+\index{Free@{Free}!onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}
+\subsubsection{\texorpdfstring{Free()}{Free()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator\+::\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_aeabef1862123ae6d9478199db974e32a}{onnxruntime\+::\+I\+Device\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAPinnedAllocator_af08d82e6f7b890059386326ac371950a}\label{classonnxruntime_1_1CUDAPinnedAllocator_af08d82e6f7b890059386326ac371950a}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}!Info@{Info}}
+\index{Info@{Info}!onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator@{onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator}}
+\subsubsection{\texorpdfstring{Info()}{Info()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& onnxruntime\+::\+C\+U\+D\+A\+Pinned\+Allocator\+::\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_a46b848cd863bcd50d1e63d48ad96c63c}{onnxruntime\+::\+I\+Device\+Allocator}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cuda__allocator_8h}{cuda\+\_\+allocator.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cuda__allocator_8cc}{cuda\+\_\+allocator.\+cc}}\end{DoxyCompactItemize}

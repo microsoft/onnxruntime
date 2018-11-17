@@ -1,0 +1,105 @@
+\hypertarget{classonnxruntime_1_1ConstPointerContainer}{}\section{onnxruntime\+:\+:Const\+Pointer\+Container$<$ Container $>$ Class Template Reference}
+\label{classonnxruntime_1_1ConstPointerContainer}\index{onnxruntime\+::\+Const\+Pointer\+Container$<$ Container $>$@{onnxruntime\+::\+Const\+Pointer\+Container$<$ Container $>$}}
+
+
+{\ttfamily \#include $<$const\+\_\+pointer\+\_\+container.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}}
+\end{DoxyCompactItemize}
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}} = typename std\+::remove\+\_\+pointer$<$ typename Container\+::value\+\_\+type $>$\+::type
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_aa3a7b16295f4fc28a0c8ff0f6496d8bc}{Const\+Pointer\+Container}} (const Container \&data) noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ad00280a4451d2940c2a92b57a911c8b6}{size}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_a4258aee4f1929a1719b6a8f161ce44d5}{begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_add25e6d3a73482c2308f787aa68ba619}{end}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_a2727aacb6accf597f5c16d7ae922ba2f}{operator\mbox{[}$\,$\mbox{]}}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_a8e9d402cb3a0b535da9a5864527d8bd9}{at}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+\subsubsection*{template$<$typename Container$>$\newline
+class onnxruntime\+::\+Const\+Pointer\+Container$<$ Container $>$}
+
+Container has T$\ast$ entries. e.\+g. std\+::vector$<$\+T$\ast$$>$, and this class provides const access to those via iterators and direct access, as the standard behavior only makes the pointer constant, and not what is pointed too. i.\+e. you get a const pointer to T not a pointer to const T without this wrapper. See \href{https://stackoverflow.com/questions/8017036/understanding-const-iterator-with-pointers}{\tt https\+://stackoverflow.\+com/questions/8017036/understanding-\/const-\/iterator-\/with-\/pointers} 
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}\label{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!T@{T}}
+\index{T@{T}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{T}{T}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}} =  typename std\+::remove\+\_\+pointer$<$typename Container\+::value\+\_\+type$>$\+::type}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_aa3a7b16295f4fc28a0c8ff0f6496d8bc}\label{classonnxruntime_1_1ConstPointerContainer_aa3a7b16295f4fc28a0c8ff0f6496d8bc}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!Const\+Pointer\+Container@{Const\+Pointer\+Container}}
+\index{Const\+Pointer\+Container@{Const\+Pointer\+Container}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{Const\+Pointer\+Container()}{ConstPointerContainer()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}} (\begin{DoxyParamCaption}\item[{const Container \&}]{data }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}, {\ttfamily [noexcept]}}
+
+Construct wrapper class that will provide const access to the pointers in a container of non-\/const pointers. 
+\begin{DoxyParams}{Parameters}
+{\em data} & Container with non-\/const pointers. e.\+g. std\+::vector$<$\+T$\ast$$>$ \\
+\hline
+\end{DoxyParams}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_a8e9d402cb3a0b535da9a5864527d8bd9}\label{classonnxruntime_1_1ConstPointerContainer_a8e9d402cb3a0b535da9a5864527d8bd9}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!at@{at}}
+\index{at@{at}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{at()}{at()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}}$\ast$ \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::at (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_a4258aee4f1929a1719b6a8f161ce44d5}\label{classonnxruntime_1_1ConstPointerContainer_a4258aee4f1929a1719b6a8f161ce44d5}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!begin@{begin}}
+\index{begin@{begin}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{begin()}{begin()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_add25e6d3a73482c2308f787aa68ba619}\label{classonnxruntime_1_1ConstPointerContainer_add25e6d3a73482c2308f787aa68ba619}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!end@{end}}
+\index{end@{end}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{end()}{end()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::end (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_a2727aacb6accf597f5c16d7ae922ba2f}\label{classonnxruntime_1_1ConstPointerContainer_a2727aacb6accf597f5c16d7ae922ba2f}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!operator\mbox{[}\mbox{]}@{operator[]}}
+\index{operator\mbox{[}\mbox{]}@{operator[]}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{operator[]()}{operator[]()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}}$\ast$ \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::operator\mbox{[}$\,$\mbox{]} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_ad00280a4451d2940c2a92b57a911c8b6}\label{classonnxruntime_1_1ConstPointerContainer_ad00280a4451d2940c2a92b57a911c8b6}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}!size@{size}}
+\index{size@{size}!onnxruntime\+::\+Const\+Pointer\+Container@{onnxruntime\+::\+Const\+Pointer\+Container}}
+\subsubsection{\texorpdfstring{size()}{size()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/\mbox{\hyperlink{const__pointer__container_8h}{const\+\_\+pointer\+\_\+container.\+h}}\end{DoxyCompactItemize}

@@ -1,0 +1,106 @@
+\hypertarget{activations__impl_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/activation/activations\+\_\+impl.h File Reference}
+\label{activations__impl_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/activation/activations\+\_\+impl.\+h@{onnxruntime/onnxruntime/core/providers/cuda/activation/activations\+\_\+impl.\+h}}
+This graph shows which files directly or indirectly include this file\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CtxAlpha}{onnxruntime\+::cuda\+::\+Ctx\+Alpha}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CtxAlphaBeta}{onnxruntime\+::cuda\+::\+Ctx\+Alpha\+Beta}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CtxAlphaGamma}{onnxruntime\+::cuda\+::\+Ctx\+Alpha\+Gamma}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CtxNull}{onnxruntime\+::cuda\+::\+Ctx\+Null}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{activations__impl_8h_aefe7bc81c71efa00bb7f8788c5be4834}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS}}()
+\item 
+\#define \mbox{\hyperlink{activations__impl_8h_a51f8fe6334a0ad63141841e702bdf6e9}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name)
+\item 
+\#define \mbox{\hyperlink{activations__impl_8h_ad4adfc236aa403241c46b0cdc43e40f3}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME}}(name)~\mbox{\hyperlink{activations__impl_8h_a51f8fe6334a0ad63141841e702bdf6e9}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name);
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef Ctx\+Alpha\+Beta \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_acc48ed8e0689632975871e22ba2ccecb}{onnxruntime\+::cuda\+::\+Ctx\+Affine}}
+\item 
+typedef Ctx\+Alpha \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_ae2fa0c4b4998fa05e5ee7a68cd026f8d}{onnxruntime\+::cuda\+::\+Ctx\+Elu}}
+\item 
+typedef Ctx\+Alpha\+Beta \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a15d037982d6d4f82d1123e1c5e7df12a}{onnxruntime\+::cuda\+::\+Ctx\+Hard\+Sigmoid}}
+\item 
+typedef Ctx\+Alpha \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_abbe16d20bc72d57b90729fd16b026cf2}{onnxruntime\+::cuda\+::\+Ctx\+Leaky\+Relu}}
+\item 
+typedef Ctx\+Alpha\+Beta \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_abc5ef574504b4d7e402dd869c1a002b5}{onnxruntime\+::cuda\+::\+Ctx\+Parametric\+Softplus}}
+\item 
+typedef Ctx\+Null \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a705a53af67793b95d33f5dfd89a06e7a}{onnxruntime\+::cuda\+::\+Ctx\+Relu}}
+\item 
+typedef Ctx\+Alpha\+Beta \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_ad90c16faed76c8817eace65fa0606cbc}{onnxruntime\+::cuda\+::\+Ctx\+Scaled\+Tanh}}
+\item 
+typedef Ctx\+Alpha\+Gamma \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a8bcf7930a730bb8c13757ea4ae88a908}{onnxruntime\+::cuda\+::\+Ctx\+Selu}}
+\item 
+typedef Ctx\+Null \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a97e846831dd049bddcfc8b171dcedfb7}{onnxruntime\+::cuda\+::\+Ctx\+Sigmoid}}
+\item 
+typedef Ctx\+Null \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a2f8ccdcbc49c32aaa4a99b59d34a1ef0}{onnxruntime\+::cuda\+::\+Ctx\+Softplus}}
+\item 
+typedef Ctx\+Null \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a2f21b69ccccd6ed21f811168c0128f04}{onnxruntime\+::cuda\+::\+Ctx\+Softsign}}
+\item 
+typedef Ctx\+Null \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a04d57cf277e10eb120f22d7792eec766}{onnxruntime\+::cuda\+::\+Ctx\+Tanh}}
+\item 
+typedef Ctx\+Alpha \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a5a031261a1b4d011e11b6d8771952bd0}{onnxruntime\+::cuda\+::\+Ctx\+Thresholded\+Relu}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{activations__impl_8h_a51f8fe6334a0ad63141841e702bdf6e9}\label{activations__impl_8h_a51f8fe6334a0ad63141841e702bdf6e9}} 
+\index{activations\+\_\+impl.\+h@{activations\+\_\+impl.\+h}!U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}
+\index{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}!activations\+\_\+impl.\+h@{activations\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}{UNARY\_ACTIVATION\_IMPL\_DECLARATION}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{name }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <\textcolor{keyword}{typename} T>                         \(\backslash\)
+  void Impl\_##name(                             \(\backslash\)
+      \textcolor{keyword}{const} T* input\_data,                      \(\backslash\)
+      T* output\_data,                           \(\backslash\)
+      \textcolor{keyword}{const} Ctx##name* func\_ctx,                \(\backslash\)
+      \textcolor{keywordtype}{size\_t} count)
+\end{DoxyCode}
+\mbox{\Hypertarget{activations__impl_8h_ad4adfc236aa403241c46b0cdc43e40f3}\label{activations__impl_8h_ad4adfc236aa403241c46b0cdc43e40f3}} 
+\index{activations\+\_\+impl.\+h@{activations\+\_\+impl.\+h}!U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME}}
+\index{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME}!activations\+\_\+impl.\+h@{activations\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME}{UNARY\_ACTIVATION\_OP\_NAME}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+P\+\_\+\+N\+A\+ME(\begin{DoxyParamCaption}\item[{}]{name }\end{DoxyParamCaption})~\mbox{\hyperlink{activations__impl_8h_a51f8fe6334a0ad63141841e702bdf6e9}{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name);}
+
+\mbox{\Hypertarget{activations__impl_8h_aefe7bc81c71efa00bb7f8788c5be4834}\label{activations__impl_8h_aefe7bc81c71efa00bb7f8788c5be4834}} 
+\index{activations\+\_\+impl.\+h@{activations\+\_\+impl.\+h}!U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS}}
+\index{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS@{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS}!activations\+\_\+impl.\+h@{activations\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS}{UNARY\_ACTIVATION\_OPS}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+A\+C\+T\+I\+V\+A\+T\+I\+O\+N\+\_\+\+O\+PS(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{activations__impl_8h_ad4adfc236aa403241c46b0cdc43e40f3}{UNARY\_ACTIVATION\_OP\_NAME}}(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_acee1bdb20af93bee27f5abad6459b3b6}{Affine}})             \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a8ee9d7ee665498c10ffcc34b97e3aa4e}{Elu}})                \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_afe98724eebce57469762e7bbbc4312ae}{HardSigmoid}})        \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9f41ca5475b0bbf5ee96bcbce50dd4e5}{LeakyRelu}})          \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(ParametricSoftplus) \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a7339c2c8e1979ae1963c881aeb76ac1f}{Relu}})               \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a0bdc679e113bdd5ababfbf3875c713da}{ScaledTanh}})         \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(Selu)               \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a56295ec3957f0ec0aa90b43ee8faaaae}{Sigmoid}})            \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aaa951c5057c58b7aede3ebb4b2e78866}{Softplus}})           \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}{Softsign}})           \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a85c6f09d8c78bdc30e1edf2cec3a1eae}{Tanh}})               \(\backslash\)
+  UNARY\_ACTIVATION\_OP\_NAME(\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a14c14ab8f759d0122eede02498ddb8ef}{ThresholdedRelu}})
+\end{DoxyCode}

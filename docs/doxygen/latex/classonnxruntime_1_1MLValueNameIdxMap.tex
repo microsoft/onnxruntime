@@ -1,0 +1,90 @@
+\hypertarget{classonnxruntime_1_1MLValueNameIdxMap}{}\section{onnxruntime\+:\+:M\+L\+Value\+Name\+Idx\+Map Class Reference}
+\label{classonnxruntime_1_1MLValueNameIdxMap}\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+
+
+{\ttfamily \#include $<$mlvalue\+\_\+name\+\_\+idx\+\_\+map.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}} = typename std\+::unordered\+\_\+map$<$ std\+::string, int $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_ad8f0d5fc4bf905b7d529e77edcbbbaad}{M\+L\+Value\+Name\+Idx\+Map}} ()=default
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_ae4e71c6686ccce9d8a518924fb3d2dfb}{Add}} (const std\+::string \&name)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a9f6ce23655823acce1d71a987c5e5e9a}{Get\+Idx}} (const std\+::string \&name, int \&idx) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a328bff93d67f36db0019362bcccff58f}{Size}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a8789325a741d5cc81f0fee4604cac188}{Max\+Idx}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a2531ac97532354ad6510cc32c5e59afd}{begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a9dbab9c6f1658713605bebbbda532cff}{end}} () const noexcept
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}\label{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!const\+\_\+iterator@{const\+\_\+iterator}}
+\index{const\+\_\+iterator@{const\+\_\+iterator}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{const\+\_\+iterator}{const\_iterator}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::const\+\_\+iterator}} =  typename std\+::unordered\+\_\+map$<$std\+::string, int$>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}}}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_ad8f0d5fc4bf905b7d529e77edcbbbaad}\label{classonnxruntime_1_1MLValueNameIdxMap_ad8f0d5fc4bf905b7d529e77edcbbbaad}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!M\+L\+Value\+Name\+Idx\+Map@{M\+L\+Value\+Name\+Idx\+Map}}
+\index{M\+L\+Value\+Name\+Idx\+Map@{M\+L\+Value\+Name\+Idx\+Map}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{M\+L\+Value\+Name\+Idx\+Map()}{MLValueNameIdxMap()}}
+{\footnotesize\ttfamily onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::\+M\+L\+Value\+Name\+Idx\+Map (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_ae4e71c6686ccce9d8a518924fb3d2dfb}\label{classonnxruntime_1_1MLValueNameIdxMap_ae4e71c6686ccce9d8a518924fb3d2dfb}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!Add@{Add}}
+\index{Add@{Add}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{Add()}{Add()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::\+Add (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_a2531ac97532354ad6510cc32c5e59afd}\label{classonnxruntime_1_1MLValueNameIdxMap_a2531ac97532354ad6510cc32c5e59afd}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!begin@{begin}}
+\index{begin@{begin}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{begin()}{begin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}} onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_a9dbab9c6f1658713605bebbbda532cff}\label{classonnxruntime_1_1MLValueNameIdxMap_a9dbab9c6f1658713605bebbbda532cff}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!end@{end}}
+\index{end@{end}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{end()}{end()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValueNameIdxMap_a1958c1e7ae1abe65e658008c626f99cf}{const\+\_\+iterator}} onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::end (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_a9f6ce23655823acce1d71a987c5e5e9a}\label{classonnxruntime_1_1MLValueNameIdxMap_a9f6ce23655823acce1d71a987c5e5e9a}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!Get\+Idx@{Get\+Idx}}
+\index{Get\+Idx@{Get\+Idx}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{Get\+Idx()}{GetIdx()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::\+Get\+Idx (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{int \&}]{idx }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_a8789325a741d5cc81f0fee4604cac188}\label{classonnxruntime_1_1MLValueNameIdxMap_a8789325a741d5cc81f0fee4604cac188}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!Max\+Idx@{Max\+Idx}}
+\index{Max\+Idx@{Max\+Idx}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{Max\+Idx()}{MaxIdx()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::\+Max\+Idx (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueNameIdxMap_a328bff93d67f36db0019362bcccff58f}\label{classonnxruntime_1_1MLValueNameIdxMap_a328bff93d67f36db0019362bcccff58f}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}!Size@{Size}}
+\index{Size@{Size}!onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map@{onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map}}
+\subsubsection{\texorpdfstring{Size()}{Size()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+M\+L\+Value\+Name\+Idx\+Map\+::\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mlvalue__name__idx__map_8h}{mlvalue\+\_\+name\+\_\+idx\+\_\+map.\+h}}\end{DoxyCompactItemize}

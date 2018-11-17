@@ -1,0 +1,376 @@
+\hypertarget{classonnxruntime_1_1Node}{}\section{onnxruntime\+:\+:Node Class Reference}
+\label{classonnxruntime_1_1Node}\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+
+
+{\ttfamily \#include $<$graph\+\_\+base.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1Definitions}{Definitions}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1Node_1_1IndexCompare}{Index\+Compare}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Node_1_1Relationships}{Relationships}}
+\end{DoxyCompactItemize}
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a}{Type}} \{ \mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aa07ee3427562e4f1a5c9f2bfb17fd9eee}{Type\+::\+Primitive}} = 0, 
+\mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aaf617f46b788e11a564cb16c9f5d59fea}{Type\+::\+Fused}} = 1
+ \}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}{Edge\+Set}} = std\+::set$<$ \mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}} $\ast$, \mbox{\hyperlink{structonnxruntime_1_1Node_1_1IndexCompare}{Index\+Compare}} $>$
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} = Edge\+Set\+::const\+\_\+iterator
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_a7405651a8e96dce16cbe6ac0eabba429}{$\sim$\+Node}} ()=default
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} \mbox{\hyperlink{classonnxruntime_1_1Node_afe7de845bf52c5fcad7f3eee224fa5b8}{Index}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Node_a430a9314c1b32353ab93044cf1a7f44e}{Name}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Node_adcc65a5e872db0609eaeafc89cc40437}{Op\+Type}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Node_a69a06f1a30552a32d6519f056ab02d71}{Domain}} () const noexcept
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Node_a77ae53ae1225db48b0144f854332acb5}{Op}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a}{Node\+::\+Type}} \mbox{\hyperlink{classonnxruntime_1_1Node_ac0a39d8bf044f8cfa0e5a50ad5c6e135}{Node\+Type}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Function}{Function}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Node_a1fde89964ac5029160b59aea532086a8}{Get\+Function\+Body}} () const noexcept
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Node_a9aebff1cb689800a30910cf2fe74df32}{Description}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}}$<$ std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ $>$ \mbox{\hyperlink{classonnxruntime_1_1Node_a8f6a801fc3cdc6efdb09f31a242e3f45}{Input\+Defs}} () const noexcept
+\item 
+const std\+::vector$<$ int $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Node_a029f57f45c28c271b0a4f3edd6824f81}{Input\+Arg\+Count}} () const noexcept
+\item 
+const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Node_abc00c5bc378c029ab07000675cda877d}{Implicit\+Input\+Defs}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}}$<$ std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ $>$ \mbox{\hyperlink{classonnxruntime_1_1Node_ab24f8d81f72e751a66a125b6af5d97f7}{Output\+Defs}} () const noexcept
+\item 
+std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Node_a93bf7c4122525a6d6c221f059b0d4eea}{Mutable\+Input\+Defs}} () noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_aba20d41c500d0548e7559006eb43fca0}{Input\+Nodes\+Begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_a947a3c8e5737bfada9fc1749cbb968c7}{Input\+Nodes\+End}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_aac357428a320fca4f9d52e05e2dd44fe}{Output\+Nodes\+Begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_a60e3a6caa17f877df67ab51f9aa973d8}{Output\+Nodes\+End}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_ab7e6afa5d6224178d1b43465b63cccb2}{Input\+Edges\+Begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_a0093d2a46230063ae22d83278e3da9bf}{Input\+Edges\+End}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_a45938369e281e8ad422fb22a0f19d5f1}{Output\+Edges\+Begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1Node_afcbfde06c0db5ae3a174676e5c5dfa6d}{Output\+Edges\+End}} () const noexcept
+\item 
+const std\+::set$<$ std\+::string $>$ \& \mbox{\hyperlink{classonnxruntime_1_1Node_a0474e6c8bbef04b6de22f439378884d2}{Control\+Inputs}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1Node_a2e3c899f2819a7ffa126e3b62abab3f4}{Get\+Input\+Edges\+Count}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_a247115035e61ce00df1fa7389d11e6eb}{Add\+Attribute}} (const std\+::string \&attr\+\_\+name, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto \&value)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1Node_aef841ccf82587a2eb4170aa52917e27b}{Clear\+Attribute}} (const std\+::string \&attr\+\_\+name)
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_a7fa616c461850e300cfa552afd46eed4}{Node\+Attributes}} \& \mbox{\hyperlink{classonnxruntime_1_1Node_aa90b8e7a87ff750bf9c6fcc652a654d8}{Get\+Attributes}} () const noexcept
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{Provider\+Type}} \mbox{\hyperlink{classonnxruntime_1_1Node_aea516a6bafb57be8a8497b2f45c307e5}{Get\+Execution\+Provider\+Type}} () const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_ab323d8e3bd4d5595730bcd6eb9fab760}{Set\+Execution\+Provider\+Type}} (\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{Provider\+Type}} execution\+\_\+provider\+\_\+type)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_ab7674297b124b064d0bee3fc56d1e29c}{To\+Proto}} (O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Node\+Proto \&proto) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_aa5b858528fbdf2d3e4f3d4bda024c820}{For\+Each\+Def}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$, bool is\+\_\+input)$>$ func) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_a18c5aa182e07cf09b8ab8d9deb014a8c}{For\+Each\+Input\+Def}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$)$>$ func) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_a28fd0150c29bb6c31b863ea8fd8f456b}{For\+Each\+Output\+Def}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$)$>$ func) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Node_aa31e823c0e4219de6709f17742ac07de}{Replace\+Defs}} (const std\+::map$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$, \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$$>$ \&replacements)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Node_a98a99b6bf75b766f90f0b0ec26597aaa}{For\+Each\+With\+Index}} (const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}}$<$ std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$$>$ \&node\+Arg\+Vec, std\+::function$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&arg, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index)$>$ func)
+\end{DoxyCompactItemize}
+\subsection*{Friends}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Node_afab89afd724f1b07b1aaad6bdc61c47a}{Graph}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}\label{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Edge\+Const\+Iterator@{Edge\+Const\+Iterator}}
+\index{Edge\+Const\+Iterator@{Edge\+Const\+Iterator}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Edge\+Const\+Iterator}{EdgeConstIterator}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{onnxruntime\+::\+Node\+::\+Edge\+Const\+Iterator}} =  Edge\+Set\+::const\+\_\+iterator}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}\label{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Edge\+Set@{Edge\+Set}}
+\index{Edge\+Set@{Edge\+Set}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Edge\+Set}{EdgeSet}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1Node_a21f67a4ba50eb4c6dea0c37982b48da8}{onnxruntime\+::\+Node\+::\+Edge\+Set}} =  std\+::set$<$\mbox{\hyperlink{classonnxruntime_1_1Node_1_1EdgeEnd}{Edge\+End}}$\ast$, \mbox{\hyperlink{structonnxruntime_1_1Node_1_1IndexCompare}{Index\+Compare}}$>$}
+
+
+
+\subsection{Member Enumeration Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a}\label{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Type}{Type}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a}{onnxruntime\+::\+Node\+::\+Type}}\hspace{0.3cm}{\ttfamily [strong]}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Primitive@{Primitive}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Primitive@{Primitive}}}\mbox{\Hypertarget{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aa07ee3427562e4f1a5c9f2bfb17fd9eee}\label{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aa07ee3427562e4f1a5c9f2bfb17fd9eee}} 
+Primitive&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Fused@{Fused}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Fused@{Fused}}}\mbox{\Hypertarget{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aaf617f46b788e11a564cb16c9f5d59fea}\label{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6aaf617f46b788e11a564cb16c9f5d59fea}} 
+Fused&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a7405651a8e96dce16cbe6ac0eabba429}\label{classonnxruntime_1_1Node_a7405651a8e96dce16cbe6ac0eabba429}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!````~Node@{$\sim$\+Node}}
+\index{````~Node@{$\sim$\+Node}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{$\sim$\+Node()}{~Node()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Node\+::$\sim$\+Node (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a247115035e61ce00df1fa7389d11e6eb}\label{classonnxruntime_1_1Node_a247115035e61ce00df1fa7389d11e6eb}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Add\+Attribute@{Add\+Attribute}}
+\index{Add\+Attribute@{Add\+Attribute}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Add\+Attribute()}{AddAttribute()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+Add\+Attribute (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{attr\+\_\+name,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto \&}]{value }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aef841ccf82587a2eb4170aa52917e27b}\label{classonnxruntime_1_1Node_aef841ccf82587a2eb4170aa52917e27b}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Clear\+Attribute@{Clear\+Attribute}}
+\index{Clear\+Attribute@{Clear\+Attribute}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Clear\+Attribute()}{ClearAttribute()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Node\+::\+Clear\+Attribute (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{attr\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a0474e6c8bbef04b6de22f439378884d2}\label{classonnxruntime_1_1Node_a0474e6c8bbef04b6de22f439378884d2}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Control\+Inputs@{Control\+Inputs}}
+\index{Control\+Inputs@{Control\+Inputs}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Control\+Inputs()}{ControlInputs()}}
+{\footnotesize\ttfamily const std\+::set$<$std\+::string$>$\& onnxruntime\+::\+Node\+::\+Control\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a9aebff1cb689800a30910cf2fe74df32}\label{classonnxruntime_1_1Node_a9aebff1cb689800a30910cf2fe74df32}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Description@{Description}}
+\index{Description@{Description}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Description()}{Description()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Node\+::\+Description (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a69a06f1a30552a32d6519f056ab02d71}\label{classonnxruntime_1_1Node_a69a06f1a30552a32d6519f056ab02d71}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Domain@{Domain}}
+\index{Domain@{Domain}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Domain()}{Domain()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Node\+::\+Domain (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aa5b858528fbdf2d3e4f3d4bda024c820}\label{classonnxruntime_1_1Node_aa5b858528fbdf2d3e4f3d4bda024c820}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!For\+Each\+Def@{For\+Each\+Def}}
+\index{For\+Each\+Def@{For\+Each\+Def}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{For\+Each\+Def()}{ForEachDef()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+For\+Each\+Def (\begin{DoxyParamCaption}\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$, bool is\+\_\+input)$>$}]{func }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a18c5aa182e07cf09b8ab8d9deb014a8c}\label{classonnxruntime_1_1Node_a18c5aa182e07cf09b8ab8d9deb014a8c}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!For\+Each\+Input\+Def@{For\+Each\+Input\+Def}}
+\index{For\+Each\+Input\+Def@{For\+Each\+Input\+Def}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{For\+Each\+Input\+Def()}{ForEachInputDef()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+For\+Each\+Input\+Def (\begin{DoxyParamCaption}\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$)$>$}]{func }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a28fd0150c29bb6c31b863ea8fd8f456b}\label{classonnxruntime_1_1Node_a28fd0150c29bb6c31b863ea8fd8f456b}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!For\+Each\+Output\+Def@{For\+Each\+Output\+Def}}
+\index{For\+Each\+Output\+Def@{For\+Each\+Output\+Def}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{For\+Each\+Output\+Def()}{ForEachOutputDef()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+For\+Each\+Output\+Def (\begin{DoxyParamCaption}\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$)$>$}]{func }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a98a99b6bf75b766f90f0b0ec26597aaa}\label{classonnxruntime_1_1Node_a98a99b6bf75b766f90f0b0ec26597aaa}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!For\+Each\+With\+Index@{For\+Each\+With\+Index}}
+\index{For\+Each\+With\+Index@{For\+Each\+With\+Index}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{For\+Each\+With\+Index()}{ForEachWithIndex()}}
+{\footnotesize\ttfamily static \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Node\+::\+For\+Each\+With\+Index (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}}$<$ std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$$>$ \&}]{node\+Arg\+Vec,  }\item[{std\+::function$<$ \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}}(const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&arg, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index)$>$}]{func }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aa90b8e7a87ff750bf9c6fcc652a654d8}\label{classonnxruntime_1_1Node_aa90b8e7a87ff750bf9c6fcc652a654d8}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Get\+Attributes@{Get\+Attributes}}
+\index{Get\+Attributes@{Get\+Attributes}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Get\+Attributes()}{GetAttributes()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_a7fa616c461850e300cfa552afd46eed4}{Node\+Attributes}} \& onnxruntime\+::\+Node\+::\+Get\+Attributes (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aea516a6bafb57be8a8497b2f45c307e5}\label{classonnxruntime_1_1Node_aea516a6bafb57be8a8497b2f45c307e5}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Get\+Execution\+Provider\+Type@{Get\+Execution\+Provider\+Type}}
+\index{Get\+Execution\+Provider\+Type@{Get\+Execution\+Provider\+Type}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Get\+Execution\+Provider\+Type()}{GetExecutionProviderType()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Node\+::\+Get\+Execution\+Provider\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a1fde89964ac5029160b59aea532086a8}\label{classonnxruntime_1_1Node_a1fde89964ac5029160b59aea532086a8}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Get\+Function\+Body@{Get\+Function\+Body}}
+\index{Get\+Function\+Body@{Get\+Function\+Body}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Get\+Function\+Body()}{GetFunctionBody()}}
+{\footnotesize\ttfamily const \+::\mbox{\hyperlink{classonnxruntime_1_1Function}{onnxruntime\+::\+Function}} $\ast$ onnxruntime\+::\+Node\+::\+Get\+Function\+Body (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a2e3c899f2819a7ffa126e3b62abab3f4}\label{classonnxruntime_1_1Node_a2e3c899f2819a7ffa126e3b62abab3f4}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Get\+Input\+Edges\+Count@{Get\+Input\+Edges\+Count}}
+\index{Get\+Input\+Edges\+Count@{Get\+Input\+Edges\+Count}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Get\+Input\+Edges\+Count()}{GetInputEdgesCount()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Node\+::\+Get\+Input\+Edges\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_abc00c5bc378c029ab07000675cda877d}\label{classonnxruntime_1_1Node_abc00c5bc378c029ab07000675cda877d}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Implicit\+Input\+Defs@{Implicit\+Input\+Defs}}
+\index{Implicit\+Input\+Defs@{Implicit\+Input\+Defs}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Implicit\+Input\+Defs()}{ImplicitInputDefs()}}
+{\footnotesize\ttfamily const std\+::vector$<$const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$\& onnxruntime\+::\+Node\+::\+Implicit\+Input\+Defs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_afe7de845bf52c5fcad7f3eee224fa5b8}\label{classonnxruntime_1_1Node_afe7de845bf52c5fcad7f3eee224fa5b8}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Index@{Index}}
+\index{Index@{Index}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Index()}{Index()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} onnxruntime\+::\+Node\+::\+Index (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a029f57f45c28c271b0a4f3edd6824f81}\label{classonnxruntime_1_1Node_a029f57f45c28c271b0a4f3edd6824f81}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Input\+Arg\+Count@{Input\+Arg\+Count}}
+\index{Input\+Arg\+Count@{Input\+Arg\+Count}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Input\+Arg\+Count()}{InputArgCount()}}
+{\footnotesize\ttfamily const std\+::vector$<$int$>$\& onnxruntime\+::\+Node\+::\+Input\+Arg\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a8f6a801fc3cdc6efdb09f31a242e3f45}\label{classonnxruntime_1_1Node_a8f6a801fc3cdc6efdb09f31a242e3f45}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Input\+Defs@{Input\+Defs}}
+\index{Input\+Defs@{Input\+Defs}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Input\+Defs()}{InputDefs()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}}$<$std\+::vector$<$\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$ $>$ onnxruntime\+::\+Node\+::\+Input\+Defs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_ab7e6afa5d6224178d1b43465b63cccb2}\label{classonnxruntime_1_1Node_ab7e6afa5d6224178d1b43465b63cccb2}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Input\+Edges\+Begin@{Input\+Edges\+Begin}}
+\index{Input\+Edges\+Begin@{Input\+Edges\+Begin}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Input\+Edges\+Begin()}{InputEdgesBegin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Input\+Edges\+Begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a0093d2a46230063ae22d83278e3da9bf}\label{classonnxruntime_1_1Node_a0093d2a46230063ae22d83278e3da9bf}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Input\+Edges\+End@{Input\+Edges\+End}}
+\index{Input\+Edges\+End@{Input\+Edges\+End}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Input\+Edges\+End()}{InputEdgesEnd()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Input\+Edges\+End (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aba20d41c500d0548e7559006eb43fca0}\label{classonnxruntime_1_1Node_aba20d41c500d0548e7559006eb43fca0}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Input\+Nodes\+Begin@{Input\+Nodes\+Begin}}
+\index{Input\+Nodes\+Begin@{Input\+Nodes\+Begin}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Input\+Nodes\+Begin()}{InputNodesBegin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Input\+Nodes\+Begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a947a3c8e5737bfada9fc1749cbb968c7}\label{classonnxruntime_1_1Node_a947a3c8e5737bfada9fc1749cbb968c7}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Input\+Nodes\+End@{Input\+Nodes\+End}}
+\index{Input\+Nodes\+End@{Input\+Nodes\+End}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Input\+Nodes\+End()}{InputNodesEnd()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Input\+Nodes\+End (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a93bf7c4122525a6d6c221f059b0d4eea}\label{classonnxruntime_1_1Node_a93bf7c4122525a6d6c221f059b0d4eea}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Mutable\+Input\+Defs@{Mutable\+Input\+Defs}}
+\index{Mutable\+Input\+Defs@{Mutable\+Input\+Defs}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Mutable\+Input\+Defs()}{MutableInputDefs()}}
+{\footnotesize\ttfamily std\+::vector$<$\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$\& onnxruntime\+::\+Node\+::\+Mutable\+Input\+Defs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a430a9314c1b32353ab93044cf1a7f44e}\label{classonnxruntime_1_1Node_a430a9314c1b32353ab93044cf1a7f44e}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Name@{Name}}
+\index{Name@{Name}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Name()}{Name()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Node\+::\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_ac0a39d8bf044f8cfa0e5a50ad5c6e135}\label{classonnxruntime_1_1Node_ac0a39d8bf044f8cfa0e5a50ad5c6e135}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Node\+Type@{Node\+Type}}
+\index{Node\+Type@{Node\+Type}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Node\+Type()}{NodeType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_a2d9625711aecc66f9b9373d61f794f6a}{Node\+::\+Type}} onnxruntime\+::\+Node\+::\+Node\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a77ae53ae1225db48b0144f854332acb5}\label{classonnxruntime_1_1Node_a77ae53ae1225db48b0144f854332acb5}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Op@{Op}}
+\index{Op@{Op}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Op()}{Op()}}
+{\footnotesize\ttfamily const Op\+Schema $\ast$ onnxruntime\+::\+Node\+::\+Op (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_adcc65a5e872db0609eaeafc89cc40437}\label{classonnxruntime_1_1Node_adcc65a5e872db0609eaeafc89cc40437}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Op\+Type@{Op\+Type}}
+\index{Op\+Type@{Op\+Type}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Op\+Type()}{OpType()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Node\+::\+Op\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_ab24f8d81f72e751a66a125b6af5d97f7}\label{classonnxruntime_1_1Node_ab24f8d81f72e751a66a125b6af5d97f7}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Output\+Defs@{Output\+Defs}}
+\index{Output\+Defs@{Output\+Defs}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Output\+Defs()}{OutputDefs()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{Const\+Pointer\+Container}}$<$std\+::vector$<$\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}}$\ast$$>$ $>$ onnxruntime\+::\+Node\+::\+Output\+Defs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a45938369e281e8ad422fb22a0f19d5f1}\label{classonnxruntime_1_1Node_a45938369e281e8ad422fb22a0f19d5f1}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Output\+Edges\+Begin@{Output\+Edges\+Begin}}
+\index{Output\+Edges\+Begin@{Output\+Edges\+Begin}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Output\+Edges\+Begin()}{OutputEdgesBegin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Output\+Edges\+Begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_afcbfde06c0db5ae3a174676e5c5dfa6d}\label{classonnxruntime_1_1Node_afcbfde06c0db5ae3a174676e5c5dfa6d}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Output\+Edges\+End@{Output\+Edges\+End}}
+\index{Output\+Edges\+End@{Output\+Edges\+End}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Output\+Edges\+End()}{OutputEdgesEnd()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_ae0df52e26b0237505b6a0cbc25106d9d}{Edge\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Output\+Edges\+End (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aac357428a320fca4f9d52e05e2dd44fe}\label{classonnxruntime_1_1Node_aac357428a320fca4f9d52e05e2dd44fe}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Output\+Nodes\+Begin@{Output\+Nodes\+Begin}}
+\index{Output\+Nodes\+Begin@{Output\+Nodes\+Begin}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Output\+Nodes\+Begin()}{OutputNodesBegin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Output\+Nodes\+Begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_a60e3a6caa17f877df67ab51f9aa973d8}\label{classonnxruntime_1_1Node_a60e3a6caa17f877df67ab51f9aa973d8}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Output\+Nodes\+End@{Output\+Nodes\+End}}
+\index{Output\+Nodes\+End@{Output\+Nodes\+End}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Output\+Nodes\+End()}{OutputNodesEnd()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node_1_1NodeConstIterator}{Node\+Const\+Iterator}} onnxruntime\+::\+Node\+::\+Output\+Nodes\+End (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_aa31e823c0e4219de6709f17742ac07de}\label{classonnxruntime_1_1Node_aa31e823c0e4219de6709f17742ac07de}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Replace\+Defs@{Replace\+Defs}}
+\index{Replace\+Defs@{Replace\+Defs}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Replace\+Defs()}{ReplaceDefs()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+Replace\+Defs (\begin{DoxyParamCaption}\item[{const std\+::map$<$ const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$, \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} $\ast$$>$ \&}]{replacements }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_ab323d8e3bd4d5595730bcd6eb9fab760}\label{classonnxruntime_1_1Node_ab323d8e3bd4d5595730bcd6eb9fab760}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Set\+Execution\+Provider\+Type@{Set\+Execution\+Provider\+Type}}
+\index{Set\+Execution\+Provider\+Type@{Set\+Execution\+Provider\+Type}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Set\+Execution\+Provider\+Type()}{SetExecutionProviderType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+Set\+Execution\+Provider\+Type (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{execution\+\_\+provider\+\_\+type }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Node_ab7674297b124b064d0bee3fc56d1e29c}\label{classonnxruntime_1_1Node_ab7674297b124b064d0bee3fc56d1e29c}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!To\+Proto@{To\+Proto}}
+\index{To\+Proto@{To\+Proto}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{To\+Proto()}{ToProto()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+::\+To\+Proto (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Node\+Proto \&}]{proto }\end{DoxyParamCaption}) const}
+
+
+
+\subsection{Friends And Related Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Node_afab89afd724f1b07b1aaad6bdc61c47a}\label{classonnxruntime_1_1Node_afab89afd724f1b07b1aaad6bdc61c47a}} 
+\index{onnxruntime\+::\+Node@{onnxruntime\+::\+Node}!Graph@{Graph}}
+\index{Graph@{Graph}!onnxruntime\+::\+Node@{onnxruntime\+::\+Node}}
+\subsubsection{\texorpdfstring{Graph}{Graph}}
+{\footnotesize\ttfamily friend class \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}}\hspace{0.3cm}{\ttfamily [friend]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph__base_8h}{graph\+\_\+base.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{graph_8cc}{graph.\+cc}}\end{DoxyCompactItemize}

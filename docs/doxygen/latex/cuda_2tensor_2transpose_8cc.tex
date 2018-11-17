@@ -1,0 +1,53 @@
+\hypertarget{cuda_2tensor_2transpose_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/tensor/transpose.cc File Reference}
+\label{cuda_2tensor_2transpose_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/tensor/transpose.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/tensor/transpose.\+cc}}
+{\ttfamily \#include \char`\"{}transpose.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}transpose\+\_\+impl.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/utils.\+h\char`\"{}}\newline
+Include dependency graph for transpose.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda_2tensor_2transpose_8cc_aba63258eca322e11a3cdfe971812428a}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}(T)
+\item 
+\#define \mbox{\hyperlink{cuda_2tensor_2transpose_8cc_a3738f205973584f97b53d888ceda1aec}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE}}(T)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda_2tensor_2transpose_8cc_aba63258eca322e11a3cdfe971812428a}\label{cuda_2tensor_2transpose_8cc_aba63258eca322e11a3cdfe971812428a}} 
+\index{cuda/tensor/transpose.\+cc@{cuda/tensor/transpose.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}!cuda/tensor/transpose.\+cc@{cuda/tensor/transpose.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}{REGISTER\_KERNEL\_TYPED}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                  \(\backslash\)
+      Transpose,                                                  \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                \(\backslash\)
+      1,                                                          \(\backslash\)
+      T,                                                          \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                     \(\backslash\)
+      KernelDefBuilder()                                          \(\backslash\)
+          .TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>()), \(\backslash\)
+      Transpose<T>);
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2tensor_2transpose_8cc_a3738f205973584f97b53d888ceda1aec}\label{cuda_2tensor_2transpose_8cc_a3738f205973584f97b53d888ceda1aec}} 
+\index{cuda/tensor/transpose.\+cc@{cuda/tensor/transpose.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE}!cuda/tensor/transpose.\+cc@{cuda/tensor/transpose.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE}{SPECIALIZED\_COMPUTE}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+M\+P\+U\+TE(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{cuda_2tensor_2transpose_8cc_aba63258eca322e11a3cdfe971812428a}{REGISTER\_KERNEL\_TYPED}}(T)     \(\backslash\)
+  template Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) \textcolor{keyword}{const};
+\end{DoxyCode}

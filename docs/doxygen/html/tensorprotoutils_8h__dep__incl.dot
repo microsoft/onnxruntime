@@ -1,0 +1,20 @@
+digraph "onnxruntime/onnxruntime/core/framework/tensorprotoutils.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node43 [label="onnxruntime/onnxruntime\l/core/framework/tensorprotoutils.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node43 -> Node44 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node44 [label="onnxruntime/onnxruntime\l/core/framework/session\l_state_initializer.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$session__state__initializer_8cc.html"];
+  Node43 -> Node45 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node45 [label="onnxruntime/onnxruntime\l/core/framework/tensorprotoutils.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$tensorprotoutils_8cc.html"];
+  Node43 -> Node46 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node46 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow/if.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$if_8cc.html"];
+  Node43 -> Node47 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node47 [label="onnxruntime/onnxruntime\l/core/providers/cpu/controlflow\l/scan.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$scan_8cc.html"];
+  Node43 -> Node48 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node48 [label="onnxruntime/onnxruntime\l/core/providers/cpu/generator\l/constant.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$constant_8cc.html"];
+  Node43 -> Node49 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node49 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+  Node43 -> Node50 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node50 [label="onnxruntime/onnxruntime\l/core/session/onnxruntime\l_c_api.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$onnxruntime__c__api_8cc.html"];
+}

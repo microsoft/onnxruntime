@@ -1,0 +1,318 @@
+\hypertarget{namespaceonnxruntime_1_1rnn_1_1detail}{}\section{onnxruntime\+:\+:rnn\+:\+:detail Namespace Reference}
+\label{namespaceonnxruntime_1_1rnn_1_1detail}\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu}{deepcpu}}
+\end{DoxyCompactItemize}
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs}{Activation\+Funcs}}
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{Direction}} \{ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da471a88784f9f00143e0dc6b1dc9b3ea6}{k\+Forward}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1daeca0897567745c83184be011cc29f973}{k\+Reverse}} = 1, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da6d211d65b351fc4d9158892efc168bf3}{k\+Bidirectional}} = 2
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_acee1bdb20af93bee27f5abad6459b3b6}{Affine}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a7339c2c8e1979ae1963c881aeb76ac1f}{Relu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9f41ca5475b0bbf5ee96bcbce50dd4e5}{Leaky\+Relu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a14c14ab8f759d0122eede02498ddb8ef}{Thresholded\+Relu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a56295ec3957f0ec0aa90b43ee8faaaae}{Sigmoid}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a85c6f09d8c78bdc30e1edf2cec3a1eae}{Tanh}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a0bdc679e113bdd5ababfbf3875c713da}{Scaled\+Tanh}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_afe98724eebce57469762e7bbbc4312ae}{Hard\+Sigmoid}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a8ee9d7ee665498c10ffcc34b97e3aa4e}{Elu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}{Softsign}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$$>$ }\\float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a18e66157fedc94adca78a7ba550e092d}{Softsign$<$ float $>$}} (float x, float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}}, float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}})
+\item 
+{\footnotesize template$<$$>$ }\\double \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a44c6b5376a9c12cc3467fcf01243e69c}{Softsign$<$ double $>$}} (double x, double \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}}, double \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aaa951c5057c58b7aede3ebb4b2e78866}{Softplus}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\std\+::function$<$ T(T, T, T)$>$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a96884543f73215f0ac3aa5d6d9a62853}{Get\+Func\+By\+Name}} (const std\+::string \&name, const std\+::string \&default\+\_\+name)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a789b3f8290ac9eee1219682da56dcc6e}{Validate\+Common\+Rnn\+Inputs}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&X, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&W, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&R, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int W\+R\+B\+\_\+dim\+\_\+1\+\_\+multipler, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$sequence\+\_\+lens, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$initial\+\_\+h, int64\+\_\+t num\+\_\+directions, int64\+\_\+t hidden\+\_\+size)
+\item 
+std\+::string \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a7430ba18a1d92a16537bcb4906c29504}{Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count}} (const std\+::string \&activation, std\+::vector$<$ float $>$\+::const\+\_\+iterator \&cur\+\_\+alpha, const std\+::vector$<$ float $>$\+::const\+\_\+iterator \&end\+\_\+alpha, std\+::vector$<$ float $>$\+::const\+\_\+iterator \&cur\+\_\+beta, const std\+::vector$<$ float $>$\+::const\+\_\+iterator \&end\+\_\+beta, float \&\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, float \&\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_adb3b48ba8d1bafa2344de37a71e96690}{Dump\+Matrix\+Impl}} (const std\+::string \&name, const float $\ast$src, int row, int col, int offset, int col\+\_\+width)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{Direction}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aeabc0c0d70045235942f55de6ea98aa1}{Make\+Direction}} (const std\+::string \&direction)
+\item 
+{\footnotesize template$<$typename T\+Alloc $>$ }\\gsl\+::span$<$ T\+Alloc $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aba3626475ee331edec1c2ac149af1692}{Allocate}} (std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator}{I\+Allocator}} $>$ allocator, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size, \mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T\+Alloc $>$ \&unique\+\_\+ptr, bool fill=false, T\+Alloc fill\+\_\+value=T\+Alloc\{\})
+\item 
+{\footnotesize template$<$typename T\+In\+Iter , typename T\+Out\+Iter $>$ }\\T\+Out\+Iter \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a08091b2e867821d9f8b8260c43c7840e}{Repeat\+Vector\+To\+Construct\+Array}} (T\+In\+Iter input\+\_\+begin, T\+In\+Iter input\+\_\+end, T\+Out\+Iter output, int64\+\_\+t repetitions)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a6949fdd6fb359403f29a7cc9594cfdab}{Reverse\+Sequence}} (gsl\+::span$<$ const T $>$ inputs, gsl\+::span$<$ T $>$ inputs\+\_\+reverse, gsl\+::span$<$ const int $>$ sequence\+\_\+lengths, const int max\+\_\+sequence\+\_\+length, const int batch\+\_\+size, const int input\+\_\+size, const int num\+\_\+directions)
+\item 
+{\footnotesize template$<$typename T\+Span\+A\+Iter , typename T\+Span\+B\+Iter , typename T\+Span\+C\+Iter $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a65f176827472830fb9fde7fefb96e623}{Compute\+Gemm}} (const int M, const int N, const int K, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T\+Span\+A\+Iter A, T\+Span\+A\+Iter A\+\_\+end, const int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, T\+Span\+B\+Iter \mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, T\+Span\+B\+Iter B\+\_\+end, const int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, T\+Span\+C\+Iter \mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, T\+Span\+C\+Iter C\+\_\+end, const int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_ac6e5fd9766ba90302551cd51d222bc91}{Safe\+Raw\+Const\+Pointer}} (typename gsl\+::span$<$ T $>$\+::const\+\_\+iterator cur, typename gsl\+::span$<$ T $>$\+::const\+\_\+iterator end, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_abac03a9f5be0f301681ee7bbfd7ffc8e}{Safe\+Raw\+Const\+Pointer}} (gsl\+::span$<$ T $>$ span, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} offset, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a7eee4ee52633bb01c2e273ea709ac3e8}{Safe\+Raw\+Pointer}} (typename gsl\+::span$<$ T $>$\+::iterator cur, typename gsl\+::span$<$ T $>$\+::iterator end, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_ae10eb0035c900f7caf6ed6852532c353}{Safe\+Raw\+Pointer}} (typename gsl\+::span$<$ T $>$ span, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} offset, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+{\footnotesize template$<$typename T\+Lambda $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_acd48e2c1247f45a983b648dc0d973725}{Execute\+Lambda\+In\+Parallel}} (const std\+::string \&name, T\+Lambda lambda, int max, int step, \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} \&ttp, const \+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{onnxruntime\+::logging\+::\+Logger}} \&logger)
+\end{DoxyCompactItemize}
+
+
+\subsection{Enumeration Type Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}\label{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Direction@{Direction}}
+\index{Direction@{Direction}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Direction}{Direction}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{onnxruntime\+::rnn\+::detail\+::\+Direction}}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Forward@{k\+Forward}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!k\+Forward@{k\+Forward}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da471a88784f9f00143e0dc6b1dc9b3ea6}\label{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da471a88784f9f00143e0dc6b1dc9b3ea6}} 
+k\+Forward&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Reverse@{k\+Reverse}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!k\+Reverse@{k\+Reverse}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1daeca0897567745c83184be011cc29f973}\label{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1daeca0897567745c83184be011cc29f973}} 
+k\+Reverse&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Bidirectional@{k\+Bidirectional}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!k\+Bidirectional@{k\+Bidirectional}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da6d211d65b351fc4d9158892efc168bf3}\label{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1da6d211d65b351fc4d9158892efc168bf3}} 
+k\+Bidirectional&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_acee1bdb20af93bee27f5abad6459b3b6}\label{namespaceonnxruntime_1_1rnn_1_1detail_acee1bdb20af93bee27f5abad6459b3b6}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Affine@{Affine}}
+\index{Affine@{Affine}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Affine()}{Affine()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Affine (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T}]{beta }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_aba3626475ee331edec1c2ac149af1692}\label{namespaceonnxruntime_1_1rnn_1_1detail_aba3626475ee331edec1c2ac149af1692}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Allocate@{Allocate}}
+\index{Allocate@{Allocate}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Allocate()}{Allocate()}}
+{\footnotesize\ttfamily template$<$typename T\+Alloc $>$ \\
+gsl\+::span$<$T\+Alloc$>$ onnxruntime\+::rnn\+::detail\+::\+Allocate (\begin{DoxyParamCaption}\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IAllocator}{I\+Allocator}} $>$}]{allocator,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T\+Alloc $>$ \&}]{unique\+\_\+ptr,  }\item[{bool}]{fill = {\ttfamily false},  }\item[{T\+Alloc}]{fill\+\_\+value = {\ttfamily TAlloc\{\}} }\end{DoxyParamCaption})}
+
+Allocate a unique\+\_\+ptr using allocator\+\_\+, and return a span to the allocated memory so usage is safe 
+\begin{DoxyParams}{Parameters}
+{\em allocator} & \mbox{\hyperlink{classonnxruntime_1_1IAllocator}{I\+Allocator}} to use for the allocation. \\
+\hline
+{\em size} & Allocation size. Number of elements of type T\+Alloc, or total size if T\+Alloc is \textquotesingle{}void\textquotesingle{}. \\
+\hline
+{\em unique\+\_\+ptr} & unique\+\_\+ptr that will control the lifetime of the allocated memory. \\
+\hline
+{\em fill} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} true, fill the allocated memory with fill\+\_\+value. \\
+\hline
+{\em fill\+\_\+value} & Value to use if \textquotesingle{}fill\textquotesingle{} is true. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+A span to provide bounds checked access to the allocated memory. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a65f176827472830fb9fde7fefb96e623}\label{namespaceonnxruntime_1_1rnn_1_1detail_a65f176827472830fb9fde7fefb96e623}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Compute\+Gemm@{Compute\+Gemm}}
+\index{Compute\+Gemm@{Compute\+Gemm}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Compute\+Gemm()}{ComputeGemm()}}
+{\footnotesize\ttfamily template$<$typename T\+Span\+A\+Iter , typename T\+Span\+B\+Iter , typename T\+Span\+C\+Iter $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::\+Compute\+Gemm (\begin{DoxyParamCaption}\item[{const int}]{M,  }\item[{const int}]{N,  }\item[{const int}]{K,  }\item[{const float}]{alpha,  }\item[{T\+Span\+A\+Iter}]{A,  }\item[{T\+Span\+A\+Iter}]{A\+\_\+end,  }\item[{const int}]{lda,  }\item[{T\+Span\+B\+Iter}]{B,  }\item[{T\+Span\+B\+Iter}]{B\+\_\+end,  }\item[{const int}]{ldb,  }\item[{const float}]{beta,  }\item[{T\+Span\+C\+Iter}]{C,  }\item[{T\+Span\+C\+Iter}]{C\+\_\+end,  }\item[{const int}]{ldc }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_adb3b48ba8d1bafa2344de37a71e96690}\label{namespaceonnxruntime_1_1rnn_1_1detail_adb3b48ba8d1bafa2344de37a71e96690}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Dump\+Matrix\+Impl@{Dump\+Matrix\+Impl}}
+\index{Dump\+Matrix\+Impl@{Dump\+Matrix\+Impl}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Dump\+Matrix\+Impl()}{DumpMatrixImpl()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::\+Dump\+Matrix\+Impl (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const float $\ast$}]{src,  }\item[{int}]{row,  }\item[{int}]{col,  }\item[{int}]{offset,  }\item[{int}]{col\+\_\+width }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a8ee9d7ee665498c10ffcc34b97e3aa4e}\label{namespaceonnxruntime_1_1rnn_1_1detail_a8ee9d7ee665498c10ffcc34b97e3aa4e}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Elu@{Elu}}
+\index{Elu@{Elu}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Elu()}{Elu()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Elu (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_acd48e2c1247f45a983b648dc0d973725}\label{namespaceonnxruntime_1_1rnn_1_1detail_acd48e2c1247f45a983b648dc0d973725}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Execute\+Lambda\+In\+Parallel@{Execute\+Lambda\+In\+Parallel}}
+\index{Execute\+Lambda\+In\+Parallel@{Execute\+Lambda\+In\+Parallel}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Execute\+Lambda\+In\+Parallel()}{ExecuteLambdaInParallel()}}
+{\footnotesize\ttfamily template$<$typename T\+Lambda $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::\+Execute\+Lambda\+In\+Parallel (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{T\+Lambda}]{lambda,  }\item[{int}]{max,  }\item[{int}]{step,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} \&}]{ttp,  }\item[{const \+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{onnxruntime\+::logging\+::\+Logger}} \&}]{logger }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a96884543f73215f0ac3aa5d6d9a62853}\label{namespaceonnxruntime_1_1rnn_1_1detail_a96884543f73215f0ac3aa5d6d9a62853}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Get\+Func\+By\+Name@{Get\+Func\+By\+Name}}
+\index{Get\+Func\+By\+Name@{Get\+Func\+By\+Name}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Get\+Func\+By\+Name()}{GetFuncByName()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+std\+::function$<$T(T, T, T)$>$ onnxruntime\+::rnn\+::detail\+::\+Get\+Func\+By\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{default\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_afe98724eebce57469762e7bbbc4312ae}\label{namespaceonnxruntime_1_1rnn_1_1detail_afe98724eebce57469762e7bbbc4312ae}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Hard\+Sigmoid@{Hard\+Sigmoid}}
+\index{Hard\+Sigmoid@{Hard\+Sigmoid}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Hard\+Sigmoid()}{HardSigmoid()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Hard\+Sigmoid (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T}]{beta }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a9f41ca5475b0bbf5ee96bcbce50dd4e5}\label{namespaceonnxruntime_1_1rnn_1_1detail_a9f41ca5475b0bbf5ee96bcbce50dd4e5}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Leaky\+Relu@{Leaky\+Relu}}
+\index{Leaky\+Relu@{Leaky\+Relu}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Leaky\+Relu()}{LeakyRelu()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Leaky\+Relu (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_aeabc0c0d70045235942f55de6ea98aa1}\label{namespaceonnxruntime_1_1rnn_1_1detail_aeabc0c0d70045235942f55de6ea98aa1}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Make\+Direction@{Make\+Direction}}
+\index{Make\+Direction@{Make\+Direction}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Make\+Direction()}{MakeDirection()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{Direction}} onnxruntime\+::rnn\+::detail\+::\+Make\+Direction (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{direction }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a7430ba18a1d92a16537bcb4906c29504}\label{namespaceonnxruntime_1_1rnn_1_1detail_a7430ba18a1d92a16537bcb4906c29504}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count@{Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count}}
+\index{Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count@{Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count()}{NormalizeActivationArgumentAndGetAlphaBetaCount()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::rnn\+::detail\+::\+Normalize\+Activation\+Argument\+And\+Get\+Alpha\+Beta\+Count (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{activation,  }\item[{std\+::vector$<$ float $>$\+::const\+\_\+iterator \&}]{cur\+\_\+alpha,  }\item[{const std\+::vector$<$ float $>$\+::const\+\_\+iterator \&}]{end\+\_\+alpha,  }\item[{std\+::vector$<$ float $>$\+::const\+\_\+iterator \&}]{cur\+\_\+beta,  }\item[{const std\+::vector$<$ float $>$\+::const\+\_\+iterator \&}]{end\+\_\+beta,  }\item[{float \&}]{alpha,  }\item[{float \&}]{beta }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a7339c2c8e1979ae1963c881aeb76ac1f}\label{namespaceonnxruntime_1_1rnn_1_1detail_a7339c2c8e1979ae1963c881aeb76ac1f}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Relu@{Relu}}
+\index{Relu@{Relu}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Relu()}{Relu()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Relu (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a08091b2e867821d9f8b8260c43c7840e}\label{namespaceonnxruntime_1_1rnn_1_1detail_a08091b2e867821d9f8b8260c43c7840e}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Repeat\+Vector\+To\+Construct\+Array@{Repeat\+Vector\+To\+Construct\+Array}}
+\index{Repeat\+Vector\+To\+Construct\+Array@{Repeat\+Vector\+To\+Construct\+Array}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Repeat\+Vector\+To\+Construct\+Array()}{RepeatVectorToConstructArray()}}
+{\footnotesize\ttfamily template$<$typename T\+In\+Iter , typename T\+Out\+Iter $>$ \\
+T\+Out\+Iter onnxruntime\+::rnn\+::detail\+::\+Repeat\+Vector\+To\+Construct\+Array (\begin{DoxyParamCaption}\item[{T\+In\+Iter}]{input\+\_\+begin,  }\item[{T\+In\+Iter}]{input\+\_\+end,  }\item[{T\+Out\+Iter}]{output,  }\item[{int64\+\_\+t}]{repetitions }\end{DoxyParamCaption})}
+
+Copy an input array repeatedly to an output array 
+\begin{DoxyParams}{Parameters}
+{\em input\+\_\+begin} & Beginning of input \\
+\hline
+{\em input\+\_\+end} & End of input \\
+\hline
+{\em output} & Output iterator \\
+\hline
+{\em repetitions} & Number of times to repeat copy. Assumes output is sufficiently sized. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Position of output iterator after copy is completed 
+\end{DoxyReturn}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a6949fdd6fb359403f29a7cc9594cfdab}\label{namespaceonnxruntime_1_1rnn_1_1detail_a6949fdd6fb359403f29a7cc9594cfdab}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Reverse\+Sequence@{Reverse\+Sequence}}
+\index{Reverse\+Sequence@{Reverse\+Sequence}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Reverse\+Sequence()}{ReverseSequence()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::rnn\+::detail\+::\+Reverse\+Sequence (\begin{DoxyParamCaption}\item[{gsl\+::span$<$ const T $>$}]{inputs,  }\item[{gsl\+::span$<$ T $>$}]{inputs\+\_\+reverse,  }\item[{gsl\+::span$<$ const int $>$}]{sequence\+\_\+lengths,  }\item[{const int}]{max\+\_\+sequence\+\_\+length,  }\item[{const int}]{batch\+\_\+size,  }\item[{const int}]{input\+\_\+size,  }\item[{const int}]{num\+\_\+directions }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_ac6e5fd9766ba90302551cd51d222bc91}\label{namespaceonnxruntime_1_1rnn_1_1detail_ac6e5fd9766ba90302551cd51d222bc91}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Safe\+Raw\+Const\+Pointer@{Safe\+Raw\+Const\+Pointer}}
+\index{Safe\+Raw\+Const\+Pointer@{Safe\+Raw\+Const\+Pointer}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Safe\+Raw\+Const\+Pointer()}{SafeRawConstPointer()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Const\+Pointer (\begin{DoxyParamCaption}\item[{typename gsl\+::span$<$ T $>$\+::const\+\_\+iterator}]{cur,  }\item[{typename gsl\+::span$<$ T $>$\+::const\+\_\+iterator}]{end,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_abac03a9f5be0f301681ee7bbfd7ffc8e}\label{namespaceonnxruntime_1_1rnn_1_1detail_abac03a9f5be0f301681ee7bbfd7ffc8e}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Safe\+Raw\+Const\+Pointer@{Safe\+Raw\+Const\+Pointer}}
+\index{Safe\+Raw\+Const\+Pointer@{Safe\+Raw\+Const\+Pointer}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Safe\+Raw\+Const\+Pointer()}{SafeRawConstPointer()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Const\+Pointer (\begin{DoxyParamCaption}\item[{gsl\+::span$<$ T $>$}]{span,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{offset,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a7eee4ee52633bb01c2e273ea709ac3e8}\label{namespaceonnxruntime_1_1rnn_1_1detail_a7eee4ee52633bb01c2e273ea709ac3e8}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Safe\+Raw\+Pointer@{Safe\+Raw\+Pointer}}
+\index{Safe\+Raw\+Pointer@{Safe\+Raw\+Pointer}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Safe\+Raw\+Pointer()}{SafeRawPointer()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Pointer (\begin{DoxyParamCaption}\item[{typename gsl\+::span$<$ T $>$\+::iterator}]{cur,  }\item[{typename gsl\+::span$<$ T $>$\+::iterator}]{end,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_ae10eb0035c900f7caf6ed6852532c353}\label{namespaceonnxruntime_1_1rnn_1_1detail_ae10eb0035c900f7caf6ed6852532c353}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Safe\+Raw\+Pointer@{Safe\+Raw\+Pointer}}
+\index{Safe\+Raw\+Pointer@{Safe\+Raw\+Pointer}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Safe\+Raw\+Pointer()}{SafeRawPointer()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ onnxruntime\+::rnn\+::detail\+::\+Safe\+Raw\+Pointer (\begin{DoxyParamCaption}\item[{typename gsl\+::span$<$ T $>$}]{span,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{offset,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a0bdc679e113bdd5ababfbf3875c713da}\label{namespaceonnxruntime_1_1rnn_1_1detail_a0bdc679e113bdd5ababfbf3875c713da}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Scaled\+Tanh@{Scaled\+Tanh}}
+\index{Scaled\+Tanh@{Scaled\+Tanh}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Scaled\+Tanh()}{ScaledTanh()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Scaled\+Tanh (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T}]{beta }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a56295ec3957f0ec0aa90b43ee8faaaae}\label{namespaceonnxruntime_1_1rnn_1_1detail_a56295ec3957f0ec0aa90b43ee8faaaae}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Sigmoid@{Sigmoid}}
+\index{Sigmoid@{Sigmoid}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Sigmoid()}{Sigmoid()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Sigmoid (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_aaa951c5057c58b7aede3ebb4b2e78866}\label{namespaceonnxruntime_1_1rnn_1_1detail_aaa951c5057c58b7aede3ebb4b2e78866}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Softplus@{Softplus}}
+\index{Softplus@{Softplus}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Softplus()}{Softplus()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Softplus (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}\label{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Softsign@{Softsign}}
+\index{Softsign@{Softsign}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Softsign()}{Softsign()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Softsign (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T}]{beta }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a44c6b5376a9c12cc3467fcf01243e69c}\label{namespaceonnxruntime_1_1rnn_1_1detail_a44c6b5376a9c12cc3467fcf01243e69c}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Softsign$<$ double $>$@{Softsign$<$ double $>$}}
+\index{Softsign$<$ double $>$@{Softsign$<$ double $>$}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Softsign$<$ double $>$()}{Softsign< double >()}}
+{\footnotesize\ttfamily template$<$$>$ \\
+double \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}{onnxruntime\+::rnn\+::detail\+::\+Softsign}}$<$ double $>$ (\begin{DoxyParamCaption}\item[{double}]{x,  }\item[{double \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}}]{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED,  }\item[{double \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a18e66157fedc94adca78a7ba550e092d}\label{namespaceonnxruntime_1_1rnn_1_1detail_a18e66157fedc94adca78a7ba550e092d}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Softsign$<$ float $>$@{Softsign$<$ float $>$}}
+\index{Softsign$<$ float $>$@{Softsign$<$ float $>$}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Softsign$<$ float $>$()}{Softsign< float >()}}
+{\footnotesize\ttfamily template$<$$>$ \\
+float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}{onnxruntime\+::rnn\+::detail\+::\+Softsign}}$<$ float $>$ (\begin{DoxyParamCaption}\item[{float}]{x,  }\item[{float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}}]{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED,  }\item[{float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a85c6f09d8c78bdc30e1edf2cec3a1eae}\label{namespaceonnxruntime_1_1rnn_1_1detail_a85c6f09d8c78bdc30e1edf2cec3a1eae}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Tanh@{Tanh}}
+\index{Tanh@{Tanh}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Tanh()}{Tanh()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Tanh (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a14c14ab8f759d0122eede02498ddb8ef}\label{namespaceonnxruntime_1_1rnn_1_1detail_a14c14ab8f759d0122eede02498ddb8ef}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Thresholded\+Relu@{Thresholded\+Relu}}
+\index{Thresholded\+Relu@{Thresholded\+Relu}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Thresholded\+Relu()}{ThresholdedRelu()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T onnxruntime\+::rnn\+::detail\+::\+Thresholded\+Relu (\begin{DoxyParamCaption}\item[{T}]{x,  }\item[{T}]{alpha,  }\item[{T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}}]{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1rnn_1_1detail_a789b3f8290ac9eee1219682da56dcc6e}\label{namespaceonnxruntime_1_1rnn_1_1detail_a789b3f8290ac9eee1219682da56dcc6e}} 
+\index{onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}!Validate\+Common\+Rnn\+Inputs@{Validate\+Common\+Rnn\+Inputs}}
+\index{Validate\+Common\+Rnn\+Inputs@{Validate\+Common\+Rnn\+Inputs}!onnxruntime\+::rnn\+::detail@{onnxruntime\+::rnn\+::detail}}
+\subsubsection{\texorpdfstring{Validate\+Common\+Rnn\+Inputs()}{ValidateCommonRnnInputs()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::rnn\+::detail\+::\+Validate\+Common\+Rnn\+Inputs (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{X,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{W,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{R,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{B,  }\item[{int}]{W\+R\+B\+\_\+dim\+\_\+1\+\_\+multipler,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{sequence\+\_\+lens,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{initial\+\_\+h,  }\item[{int64\+\_\+t}]{num\+\_\+directions,  }\item[{int64\+\_\+t}]{hidden\+\_\+size }\end{DoxyParamCaption})}
+

@@ -1,0 +1,60 @@
+\hypertarget{classonnxruntime_1_1ml_1_1SVMCommon}{}\section{onnxruntime\+:\+:ml\+:\+:S\+V\+M\+Common$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1ml_1_1SVMCommon}\index{onnxruntime\+::ml\+::\+S\+V\+M\+Common$<$ T $>$@{onnxruntime\+::ml\+::\+S\+V\+M\+Common$<$ T $>$}}
+
+
+{\ttfamily \#include $<$svmclassifier.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:ml\+:\+:S\+V\+M\+Common$<$ T $>$\+:
+% FIG 0
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon_a7c8c7c6a0cbb52fa78c64b6e35226022}{S\+V\+M\+Common}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon_a06ce69d078cd9ecd44cb31cdd3109a7e}{set\+\_\+kernel\+\_\+type}} (\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b945a42c5d7da1297e6b831fe7ae807}{K\+E\+R\+N\+EL}} new\+\_\+kernel\+\_\+type)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b945a42c5d7da1297e6b831fe7ae807}{K\+E\+R\+N\+EL}} \mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon_a46d33c53c4260a2cdae57563385e79f1}{get\+\_\+kernel\+\_\+type}} () const
+\item 
+float \mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon_a90f1459ad4ae620be527218ad2a738ad}{kernel\+\_\+dot}} (const T $\ast$A, int64\+\_\+t a, const std\+::vector$<$ float $>$ \&\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int64\+\_\+t b, int64\+\_\+t len, \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b945a42c5d7da1297e6b831fe7ae807}{K\+E\+R\+N\+EL}} k) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ml_1_1SVMCommon_a7c8c7c6a0cbb52fa78c64b6e35226022}\label{classonnxruntime_1_1ml_1_1SVMCommon_a7c8c7c6a0cbb52fa78c64b6e35226022}} 
+\index{onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}!S\+V\+M\+Common@{S\+V\+M\+Common}}
+\index{S\+V\+M\+Common@{S\+V\+M\+Common}!onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}
+\subsubsection{\texorpdfstring{S\+V\+M\+Common()}{SVMCommon()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon}{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon}{S\+V\+M\+Common}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ml_1_1SVMCommon_a46d33c53c4260a2cdae57563385e79f1}\label{classonnxruntime_1_1ml_1_1SVMCommon_a46d33c53c4260a2cdae57563385e79f1}} 
+\index{onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}!get\+\_\+kernel\+\_\+type@{get\+\_\+kernel\+\_\+type}}
+\index{get\+\_\+kernel\+\_\+type@{get\+\_\+kernel\+\_\+type}!onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}
+\subsubsection{\texorpdfstring{get\+\_\+kernel\+\_\+type()}{get\_kernel\_type()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b945a42c5d7da1297e6b831fe7ae807}{K\+E\+R\+N\+EL}} \mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon}{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}$<$ T $>$\+::get\+\_\+kernel\+\_\+type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ml_1_1SVMCommon_a90f1459ad4ae620be527218ad2a738ad}\label{classonnxruntime_1_1ml_1_1SVMCommon_a90f1459ad4ae620be527218ad2a738ad}} 
+\index{onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}!kernel\+\_\+dot@{kernel\+\_\+dot}}
+\index{kernel\+\_\+dot@{kernel\+\_\+dot}!onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}
+\subsubsection{\texorpdfstring{kernel\+\_\+dot()}{kernel\_dot()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+float \mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon}{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}$<$ T $>$\+::kernel\+\_\+dot (\begin{DoxyParamCaption}\item[{const T $\ast$}]{A,  }\item[{int64\+\_\+t}]{a,  }\item[{const std\+::vector$<$ float $>$ \&}]{B,  }\item[{int64\+\_\+t}]{b,  }\item[{int64\+\_\+t}]{len,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b945a42c5d7da1297e6b831fe7ae807}{K\+E\+R\+N\+EL}}}]{k }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ml_1_1SVMCommon_a06ce69d078cd9ecd44cb31cdd3109a7e}\label{classonnxruntime_1_1ml_1_1SVMCommon_a06ce69d078cd9ecd44cb31cdd3109a7e}} 
+\index{onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}!set\+\_\+kernel\+\_\+type@{set\+\_\+kernel\+\_\+type}}
+\index{set\+\_\+kernel\+\_\+type@{set\+\_\+kernel\+\_\+type}!onnxruntime\+::ml\+::\+S\+V\+M\+Common@{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}
+\subsubsection{\texorpdfstring{set\+\_\+kernel\+\_\+type()}{set\_kernel\_type()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1ml_1_1SVMCommon}{onnxruntime\+::ml\+::\+S\+V\+M\+Common}}$<$ T $>$\+::set\+\_\+kernel\+\_\+type (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a3b945a42c5d7da1297e6b831fe7ae807}{K\+E\+R\+N\+EL}}}]{new\+\_\+kernel\+\_\+type }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/ml/\mbox{\hyperlink{svmclassifier_8h}{svmclassifier.\+h}}\end{DoxyCompactItemize}

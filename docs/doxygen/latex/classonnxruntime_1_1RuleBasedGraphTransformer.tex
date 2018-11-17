@@ -1,0 +1,61 @@
+\hypertarget{classonnxruntime_1_1RuleBasedGraphTransformer}{}\section{onnxruntime\+:\+:Rule\+Based\+Graph\+Transformer Class Reference}
+\label{classonnxruntime_1_1RuleBasedGraphTransformer}\index{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}}
+
+
+{\ttfamily \#include $<$graph\+\_\+transformer.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Rule\+Based\+Graph\+Transformer\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Rule\+Based\+Graph\+Transformer\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1RuleBasedGraphTransformer_a06da39482c0ef903b602cfdcba89387c}{Rule\+Based\+Graph\+Transformer}} (const std\+::string \&name, const std\+::string \&desc)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1RuleBasedGraphTransformer_a829ec095108f9fc3fd5863eeee1e4f5a}{Register}} (const std\+::string \&op\+\_\+type, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1RewriteRule}{Rewrite\+Rule}} $>$ rule)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1RuleBasedGraphTransformer_a881cf20384e8ed66fce914b4908d4eb4}{Has\+Rules}} (const std\+::string \&op\+\_\+type) const
+\item 
+const std\+::vector$<$ std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1RewriteRule}{Rewrite\+Rule}} $>$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1RuleBasedGraphTransformer_af76b962a3244353152d6e5b2b181be9f}{Get\+Rewrite\+Rules}} (const std\+::string \&op\+\_\+type) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1RuleBasedGraphTransformer_a06da39482c0ef903b602cfdcba89387c}\label{classonnxruntime_1_1RuleBasedGraphTransformer_a06da39482c0ef903b602cfdcba89387c}} 
+\index{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}!Rule\+Based\+Graph\+Transformer@{Rule\+Based\+Graph\+Transformer}}
+\index{Rule\+Based\+Graph\+Transformer@{Rule\+Based\+Graph\+Transformer}!onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Rule\+Based\+Graph\+Transformer()}{RuleBasedGraphTransformer()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Rule\+Based\+Graph\+Transformer\+::\+Rule\+Based\+Graph\+Transformer (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{desc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1RuleBasedGraphTransformer_af76b962a3244353152d6e5b2b181be9f}\label{classonnxruntime_1_1RuleBasedGraphTransformer_af76b962a3244353152d6e5b2b181be9f}} 
+\index{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}!Get\+Rewrite\+Rules@{Get\+Rewrite\+Rules}}
+\index{Get\+Rewrite\+Rules@{Get\+Rewrite\+Rules}!onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Get\+Rewrite\+Rules()}{GetRewriteRules()}}
+{\footnotesize\ttfamily const std\+::vector$<$std\+::unique\+\_\+ptr$<$\mbox{\hyperlink{classonnxruntime_1_1RewriteRule}{Rewrite\+Rule}}$>$ $>$\& onnxruntime\+::\+Rule\+Based\+Graph\+Transformer\+::\+Get\+Rewrite\+Rules (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{op\+\_\+type }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1RuleBasedGraphTransformer_a881cf20384e8ed66fce914b4908d4eb4}\label{classonnxruntime_1_1RuleBasedGraphTransformer_a881cf20384e8ed66fce914b4908d4eb4}} 
+\index{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}!Has\+Rules@{Has\+Rules}}
+\index{Has\+Rules@{Has\+Rules}!onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Has\+Rules()}{HasRules()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Rule\+Based\+Graph\+Transformer\+::\+Has\+Rules (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{op\+\_\+type }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1RuleBasedGraphTransformer_a829ec095108f9fc3fd5863eeee1e4f5a}\label{classonnxruntime_1_1RuleBasedGraphTransformer_a829ec095108f9fc3fd5863eeee1e4f5a}} 
+\index{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}!Register@{Register}}
+\index{Register@{Register}!onnxruntime\+::\+Rule\+Based\+Graph\+Transformer@{onnxruntime\+::\+Rule\+Based\+Graph\+Transformer}}
+\subsubsection{\texorpdfstring{Register()}{Register()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Rule\+Based\+Graph\+Transformer\+::\+Register (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{op\+\_\+type,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1RewriteRule}{Rewrite\+Rule}} $>$}]{rule }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph__transformer_8h}{graph\+\_\+transformer.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{graph__transformer_8cc}{graph\+\_\+transformer.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,74 @@
+\hypertarget{cpu_2reduction_2reduction__ops_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/reduction/reduction\+\_\+ops.cc File Reference}
+\label{cpu_2reduction_2reduction__ops_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/reduction/reduction\+\_\+ops.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/reduction/reduction\+\_\+ops.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/reduction/reduction\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+Include dependency graph for reduction\+\_\+ops.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cpu_2reduction_2reduction__ops_8cc_a8c5f87746a1a5082dda0197b96b7f90b}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}}(x,  since\+Version)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a2b7f1a8718a33b0628870782f3d6747c}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+L1, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a9f35f382970153c66e38d51ea773fa7c}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+L2, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a3b15c7ed24155f34fe56120074b9d6d7}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Log\+Sum, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a96c8f9c3f09ee24e442f3cf96fb9b5f8}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Log\+Sum\+Exp, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a9fa6c41523491546a82ed39a984feb86}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Max, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a1839af015e25a33a7d475b8f0e12d572}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Mean, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aecc610a34a66d5ca2e200575d9a9a7c0}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Min, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aec7c7575ed9ad1d9fece86481231505d}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Prod, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a4edce93cb6d321903c598d3de373f4c9}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Sum, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a21ff9bc989ce6029b8aded6581c31164}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Reduce\+Sum\+Square, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad1b041424917194ed0beaf0aaa19641f}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Arg\+Max, 1)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a20c5343db4bf69674f9e23e5cf6fd611}{onnxruntime\+::\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}} (Arg\+Min, 1)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a13f102913e6ac947fb6df1a6aea1ec25}{onnxruntime\+::\+Prepare\+For\+Reduce}} (Op\+Kernel\+Context $\ast$ctx, std\+::vector$<$ T $>$ \&transposed\+Input\+Data, Tensor $\ast$$\ast$reduced\+Tensor, int64\+\_\+t \&block\+\_\+size, int64\+\_\+t \&blocks, const std\+::vector$<$ int64\+\_\+t $>$ \&axes\+\_\+, bool keepdims\+\_\+)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cpu_2reduction_2reduction__ops_8cc_a8c5f87746a1a5082dda0197b96b7f90b}\label{cpu_2reduction_2reduction__ops_8cc_a8c5f87746a1a5082dda0197b96b7f90b}} 
+\index{cpu/reduction/reduction\+\_\+ops.\+cc@{cpu/reduction/reduction\+\_\+ops.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}!cpu/reduction/reduction\+\_\+ops.\+cc@{cpu/reduction/reduction\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL}{REGISTER\_UNARY\_ELEMENTWISE\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{since\+Version }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}{ONNX\_CPU\_OPERATOR\_TYPED\_KERNEL}}(                                              
+             \(\backslash\)
+      x,                                                                              \(\backslash\)
+      sinceVersion,                                                                   \(\backslash\)
+      \textcolor{keywordtype}{float},                                                                          \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<float>()),   \(\backslash\)
+      x<float>);                                                                      
+      \mbox{\hyperlink{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}{\(\backslash\)}}
+
+      \mbox{\hyperlink{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}{                                                                                      \(\backslash\)}}
+\mbox{\hyperlink{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}{  ONNX\_CPU\_OPERATOR\_TYPED\_KERNEL}}(                                          
+                 \(\backslash\)
+      x,                                                                              \(\backslash\)
+      sinceVersion,                                                                   \(\backslash\)
+      int32\_t,                                                                        \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<int32\_t>()), \(\backslash\)
+      x<int32\_t>);
+\end{DoxyCode}

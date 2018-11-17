@@ -1,0 +1,28 @@
+digraph "onnxruntime/onnxruntime/core/platform/env_time.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node3 [label="onnxruntime/onnxruntime\l/core/platform/env_time.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node3 -> Node4 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node4 [label="onnxruntime/onnxruntime\l/core/platform/env.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$env_8h.html"];
+  Node4 -> Node5 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node5 [label="onnxruntime/onnxruntime\l/core/framework/allocation\l_planner.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$allocation__planner_8cc.html"];
+  Node4 -> Node6 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node6 [label="onnxruntime/onnxruntime\l/core/graph/model.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$model_8cc.html"];
+  Node4 -> Node7 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node7 [label="onnxruntime/onnxruntime\l/core/platform/env.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$env_8cc.html"];
+  Node4 -> Node8 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node8 [label="onnxruntime/onnxruntime\l/core/platform/posix/env.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$posix_2env_8cc.html"];
+  Node4 -> Node9 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node9 [label="onnxruntime/onnxruntime\l/core/platform/windows\l/env.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$windows_2env_8cc.html"];
+  Node4 -> Node10 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node10 [label="onnxruntime/onnxruntime\l/core/session/CustomOpsLoader.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$CustomOpsLoader_8cc.html"];
+  Node4 -> Node11 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node11 [label="onnxruntime/onnxruntime\l/core/util/math_cpu.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$math__cpu_8cc.html"];
+  Node3 -> Node12 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node12 [label="onnxruntime/onnxruntime\l/core/platform/env_time.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$env__time_8cc.html"];
+  Node3 -> Node13 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node13 [label="onnxruntime/onnxruntime\l/core/platform/posix/env\l_time.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$posix_2env__time_8cc.html"];
+  Node3 -> Node14 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node14 [label="onnxruntime/onnxruntime\l/core/platform/windows\l/env_time.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$windows_2env__time_8cc.html"];
+}

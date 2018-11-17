@@ -1,0 +1,126 @@
+\hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}{}\section{onnxruntime\+:\+:cuda\+:\+:Binary\+Elementwise\+Preparation Struct Reference}
+\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation}\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+
+
+{\ttfamily \#include $<$binary\+\_\+elementwise\+\_\+ops.\+h$>$}
+
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Binary\+Elementwise\+Preparation\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a36f2903469519a3db28a5138e610d2a0}{Binary\+Elementwise\+Preparation}} (const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$op\+\_\+kernel)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ae8057fc5747b8c08a40df19422ca41b0}{Copy\+To\+Gpu}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_aa0b44414b24d61109e896fb3817c4142}{Binary\+Elementwise\+Broadcast\+Prepare\+Helper}} (int device\+\_\+id, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&lhs\+\_\+shape, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&rhs\+\_\+shape, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&output\+\_\+shape)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ad82404e3c1e95ec44efddff36e8e886a}{lhs\+\_\+tensor}} = nullptr
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a30db30553236d3694eb6442c2af7edb4}{rhs\+\_\+tensor}} = nullptr
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a8e5baa8a6c92e84c17e3e040ca9acdd2}{output\+\_\+tensor}} = nullptr
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ae6b234b7debc4cba40d21bbff24c18e6}{output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast}} = 0
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a3d6d41eac8f6f1d9d2a66262ef6abdcf}{lhs\+\_\+padded\+\_\+strides}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ad4b9356d9ef8d6ce775abe0d269580b6}{rhs\+\_\+padded\+\_\+strides}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1fast__divmod}{fast\+\_\+divmod}} $>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a7abae73c49c51912d621e34ba336aef9}{fdm\+\_\+output\+\_\+strides}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1fast__divmod}{fast\+\_\+divmod}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_abac17f92f3658f4b478f2f534ce21d4f}{fdm\+\_\+H}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1fast__divmod}{fast\+\_\+divmod}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ac07a5b9eca61fcc7295038038d306cda}{fdm\+\_\+C}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a36f2903469519a3db28a5138e610d2a0}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a36f2903469519a3db28a5138e610d2a0}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!Binary\+Elementwise\+Preparation@{Binary\+Elementwise\+Preparation}}
+\index{Binary\+Elementwise\+Preparation@{Binary\+Elementwise\+Preparation}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{Binary\+Elementwise\+Preparation()}{BinaryElementwisePreparation()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::\+Binary\+Elementwise\+Preparation (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel}{Cuda\+Kernel}} $\ast$}]{op\+\_\+kernel }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_aa0b44414b24d61109e896fb3817c4142}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_aa0b44414b24d61109e896fb3817c4142}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!Binary\+Elementwise\+Broadcast\+Prepare\+Helper@{Binary\+Elementwise\+Broadcast\+Prepare\+Helper}}
+\index{Binary\+Elementwise\+Broadcast\+Prepare\+Helper@{Binary\+Elementwise\+Broadcast\+Prepare\+Helper}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{Binary\+Elementwise\+Broadcast\+Prepare\+Helper()}{BinaryElementwiseBroadcastPrepareHelper()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::\+Binary\+Elementwise\+Broadcast\+Prepare\+Helper (\begin{DoxyParamCaption}\item[{int}]{device\+\_\+id,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{lhs\+\_\+shape,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{rhs\+\_\+shape,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{output\+\_\+shape }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ae8057fc5747b8c08a40df19422ca41b0}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ae8057fc5747b8c08a40df19422ca41b0}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!Copy\+To\+Gpu@{Copy\+To\+Gpu}}
+\index{Copy\+To\+Gpu@{Copy\+To\+Gpu}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{Copy\+To\+Gpu()}{CopyToGpu()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::\+Copy\+To\+Gpu (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ac07a5b9eca61fcc7295038038d306cda}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ac07a5b9eca61fcc7295038038d306cda}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!fdm\+\_\+C@{fdm\+\_\+C}}
+\index{fdm\+\_\+C@{fdm\+\_\+C}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{fdm\+\_\+C}{fdm\_C}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1fast__divmod}{fast\+\_\+divmod}} onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::fdm\+\_\+C}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_abac17f92f3658f4b478f2f534ce21d4f}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_abac17f92f3658f4b478f2f534ce21d4f}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!fdm\+\_\+H@{fdm\+\_\+H}}
+\index{fdm\+\_\+H@{fdm\+\_\+H}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{fdm\+\_\+H}{fdm\_H}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1fast__divmod}{fast\+\_\+divmod}} onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::fdm\+\_\+H}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a7abae73c49c51912d621e34ba336aef9}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a7abae73c49c51912d621e34ba336aef9}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!fdm\+\_\+output\+\_\+strides@{fdm\+\_\+output\+\_\+strides}}
+\index{fdm\+\_\+output\+\_\+strides@{fdm\+\_\+output\+\_\+strides}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{fdm\+\_\+output\+\_\+strides}{fdm\_output\_strides}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1fast__divmod}{fast\+\_\+divmod}}$>$ onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::fdm\+\_\+output\+\_\+strides}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a3d6d41eac8f6f1d9d2a66262ef6abdcf}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a3d6d41eac8f6f1d9d2a66262ef6abdcf}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!lhs\+\_\+padded\+\_\+strides@{lhs\+\_\+padded\+\_\+strides}}
+\index{lhs\+\_\+padded\+\_\+strides@{lhs\+\_\+padded\+\_\+strides}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{lhs\+\_\+padded\+\_\+strides}{lhs\_padded\_strides}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$int64\+\_\+t$>$ onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::lhs\+\_\+padded\+\_\+strides}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ad82404e3c1e95ec44efddff36e8e886a}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ad82404e3c1e95ec44efddff36e8e886a}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!lhs\+\_\+tensor@{lhs\+\_\+tensor}}
+\index{lhs\+\_\+tensor@{lhs\+\_\+tensor}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{lhs\+\_\+tensor}{lhs\_tensor}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}}$\ast$ onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::lhs\+\_\+tensor = nullptr}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ae6b234b7debc4cba40d21bbff24c18e6}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ae6b234b7debc4cba40d21bbff24c18e6}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast@{output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast}}
+\index{output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast@{output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast}{output\_rank\_or\_simple\_broadcast}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::output\+\_\+rank\+\_\+or\+\_\+simple\+\_\+broadcast = 0}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a8e5baa8a6c92e84c17e3e040ca9acdd2}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a8e5baa8a6c92e84c17e3e040ca9acdd2}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!output\+\_\+tensor@{output\+\_\+tensor}}
+\index{output\+\_\+tensor@{output\+\_\+tensor}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{output\+\_\+tensor}{output\_tensor}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}}$\ast$ onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::output\+\_\+tensor = nullptr}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ad4b9356d9ef8d6ce775abe0d269580b6}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_ad4b9356d9ef8d6ce775abe0d269580b6}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!rhs\+\_\+padded\+\_\+strides@{rhs\+\_\+padded\+\_\+strides}}
+\index{rhs\+\_\+padded\+\_\+strides@{rhs\+\_\+padded\+\_\+strides}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{rhs\+\_\+padded\+\_\+strides}{rhs\_padded\_strides}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Kernel\+::\+Cuda\+Async\+Buffer}}$<$int64\+\_\+t$>$ onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::rhs\+\_\+padded\+\_\+strides}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a30db30553236d3694eb6442c2af7edb4}\label{structonnxruntime_1_1cuda_1_1BinaryElementwisePreparation_a30db30553236d3694eb6442c2af7edb4}} 
+\index{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}!rhs\+\_\+tensor@{rhs\+\_\+tensor}}
+\index{rhs\+\_\+tensor@{rhs\+\_\+tensor}!onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation@{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation}}
+\subsubsection{\texorpdfstring{rhs\+\_\+tensor}{rhs\_tensor}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}}$\ast$ onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Preparation\+::rhs\+\_\+tensor = nullptr}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/math/\mbox{\hyperlink{binary__elementwise__ops_8h}{binary\+\_\+elementwise\+\_\+ops.\+h}}\end{DoxyCompactItemize}

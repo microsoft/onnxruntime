@@ -1,0 +1,168 @@
+\hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{}\section{onnxruntime\+:\+:M\+L\+Value\+Tensor\+Slicer$<$ T $>$\+:\+:Iterator Class Reference}
+\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer$<$ T $>$\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer$<$ T $>$\+::\+Iterator}}
+
+
+{\ttfamily \#include $<$mlvalue\+\_\+tensor\+\_\+slicer.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1}{Direction}} \{ \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1ae7c3602dce09c755e09250077a601a51}{Direction\+::k\+Forward}}, 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1abec8e974f160af3e10611c35be7972be}{Direction\+::k\+Reverse}}
+ \}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_abb629695163b5a562a4de32b77f88d64}{iterator\+\_\+category}} = std\+::input\+\_\+iterator\+\_\+tag
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad17283e0490333d5f34e50ba7c83c279}{value\+\_\+type}} = T
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a927741252788936cc33b0c46e86ad646}{difference\+\_\+type}} = ptrdiff\+\_\+t
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a74772736a244aaa7c9b7ae9dd9c1c83b}{pointer}} = T $\ast$
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}} = T \&
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_aafbb938cecd84d85c4eef5b9e4332873}{const\+\_\+reference}} = std\+::add\+\_\+const\+\_\+t$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}} $>$
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a3cf3c5e88a712753ab3c0d7a728fa0df}{Iterator}} (T \&mlvalue, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} slice\+\_\+dimension, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dim0\+\_\+offset, int64\+\_\+t position, \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1}{Direction}} direction=\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1ae7c3602dce09c755e09250077a601a51}{Direction\+::k\+Forward}})
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a6aea224055665bfbb5f538060a4cdd75}{operator==}} (const \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \&other) const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a091b61988d4a78e6fb3f8d9b1de7d468}{operator!=}} (const \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \&other) const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \& \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a172403b59d8c520d0d9f5515e4188ba0}{operator++}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ac751c6e41f9d708d7e5d73223c53ee99}{operator++}} (int)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_aafbb938cecd84d85c4eef5b9e4332873}{const\+\_\+reference}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a64da46bb41ce7eca8e644e31890507c4}{operator$\ast$}} () const
+\item 
+std\+::enable\+\_\+if\+\_\+t$<$!std\+::is\+\_\+const$<$ \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}} $>$\+::value, \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}} $>$ \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a84eeddda16f4d2a08e1ea2bd005ce905}{operator$\ast$}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_aafbb938cecd84d85c4eef5b9e4332873}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_aafbb938cecd84d85c4eef5b9e4332873}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!const\+\_\+reference@{const\+\_\+reference}}
+\index{const\+\_\+reference@{const\+\_\+reference}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{const\+\_\+reference}{const\_reference}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_aafbb938cecd84d85c4eef5b9e4332873}{Iterator\+::const\+\_\+reference}} =  std\+::add\+\_\+const\+\_\+t$<$\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}}$>$}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a927741252788936cc33b0c46e86ad646}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a927741252788936cc33b0c46e86ad646}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!difference\+\_\+type@{difference\+\_\+type}}
+\index{difference\+\_\+type@{difference\+\_\+type}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{difference\+\_\+type}{difference\_type}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a927741252788936cc33b0c46e86ad646}{Iterator\+::difference\+\_\+type}} =  ptrdiff\+\_\+t}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_abb629695163b5a562a4de32b77f88d64}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_abb629695163b5a562a4de32b77f88d64}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!iterator\+\_\+category@{iterator\+\_\+category}}
+\index{iterator\+\_\+category@{iterator\+\_\+category}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{iterator\+\_\+category}{iterator\_category}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_abb629695163b5a562a4de32b77f88d64}{Iterator\+::iterator\+\_\+category}} =  std\+::input\+\_\+iterator\+\_\+tag}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a74772736a244aaa7c9b7ae9dd9c1c83b}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a74772736a244aaa7c9b7ae9dd9c1c83b}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!pointer@{pointer}}
+\index{pointer@{pointer}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{pointer}{pointer}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a74772736a244aaa7c9b7ae9dd9c1c83b}{Iterator\+::pointer}} =  T$\ast$}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!reference@{reference}}
+\index{reference@{reference}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{reference}{reference}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{Iterator\+::reference}} =  T\&}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad17283e0490333d5f34e50ba7c83c279}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad17283e0490333d5f34e50ba7c83c279}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!value\+\_\+type@{value\+\_\+type}}
+\index{value\+\_\+type@{value\+\_\+type}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{value\+\_\+type}{value\_type}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad17283e0490333d5f34e50ba7c83c279}{Iterator\+::value\+\_\+type}} =  T}
+
+
+
+\subsection{Member Enumeration Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!Direction@{Direction}}
+\index{Direction@{Direction}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{Direction}{Direction}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+enum \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator\+::\+Direction}}\hspace{0.3cm}{\ttfamily [strong]}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Forward@{k\+Forward}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!k\+Forward@{k\+Forward}}}\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1ae7c3602dce09c755e09250077a601a51}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1ae7c3602dce09c755e09250077a601a51}} 
+k\+Forward&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Reverse@{k\+Reverse}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!k\+Reverse@{k\+Reverse}}}\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1abec8e974f160af3e10611c35be7972be}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1abec8e974f160af3e10611c35be7972be}} 
+k\+Reverse&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a3cf3c5e88a712753ab3c0d7a728fa0df}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a3cf3c5e88a712753ab3c0d7a728fa0df}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!Iterator@{Iterator}}
+\index{Iterator@{Iterator}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{Iterator()}{Iterator()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::\+Iterator (\begin{DoxyParamCaption}\item[{T \&}]{mlvalue,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{slice\+\_\+dimension,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dim0\+\_\+offset,  }\item[{int64\+\_\+t}]{position,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1}{Direction}}}]{direction = {\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ad83ea2768d16fdaead62f58e6190a0c1ae7c3602dce09c755e09250077a601a51}{Direction\+::k\+Forward}}} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a091b61988d4a78e6fb3f8d9b1de7d468}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a091b61988d4a78e6fb3f8d9b1de7d468}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!operator"!=@{operator"!=}}
+\index{operator"!=@{operator"!=}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{operator"!=()}{operator!=()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::operator!= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a64da46bb41ce7eca8e644e31890507c4}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a64da46bb41ce7eca8e644e31890507c4}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!operator$\ast$@{operator$\ast$}}
+\index{operator$\ast$@{operator$\ast$}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{operator$\ast$()}{operator*()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_aafbb938cecd84d85c4eef5b9e4332873}{const\+\_\+reference}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::operator$\ast$ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a84eeddda16f4d2a08e1ea2bd005ce905}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a84eeddda16f4d2a08e1ea2bd005ce905}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!operator$\ast$@{operator$\ast$}}
+\index{operator$\ast$@{operator$\ast$}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{operator$\ast$()}{operator*()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+std\+::enable\+\_\+if\+\_\+t$<$!std\+::is\+\_\+const$<$\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}}$>$\+::value, \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a528f0b8364b23168f0565c1503b44cd0}{reference}}$>$ \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::operator$\ast$ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a172403b59d8c520d0d9f5515e4188ba0}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a172403b59d8c520d0d9f5515e4188ba0}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!operator++@{operator++}}
+\index{operator++@{operator++}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{operator++()}{operator++()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}}\& \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::operator++ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ac751c6e41f9d708d7e5d73223c53ee99}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_ac751c6e41f9d708d7e5d73223c53ee99}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!operator++@{operator++}}
+\index{operator++@{operator++}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{operator++()}{operator++()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::operator++ (\begin{DoxyParamCaption}\item[{int}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a6aea224055665bfbb5f538060a4cdd75}\label{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator_a6aea224055665bfbb5f538060a4cdd75}} 
+\index{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}!operator==@{operator==}}
+\index{operator==@{operator==}!onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator@{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer\+::\+Iterator}}
+\subsubsection{\texorpdfstring{operator==()}{operator==()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer}{onnxruntime\+::\+M\+L\+Value\+Tensor\+Slicer}}$<$ T $>$\+::Iterator\+::operator== (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1MLValueTensorSlicer_1_1Iterator}{Iterator}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mlvalue__tensor__slicer_8h}{mlvalue\+\_\+tensor\+\_\+slicer.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mlvalue__tensor__slicer_8cc}{mlvalue\+\_\+tensor\+\_\+slicer.\+cc}}\end{DoxyCompactItemize}

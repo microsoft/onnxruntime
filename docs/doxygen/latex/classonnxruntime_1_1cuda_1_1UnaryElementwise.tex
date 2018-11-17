@@ -1,0 +1,62 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1UnaryElementwise}{}\section{onnxruntime\+:\+:cuda\+:\+:Unary\+Elementwise Class Reference}
+\label{classonnxruntime_1_1cuda_1_1UnaryElementwise}\index{onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}}
+
+
+{\ttfamily \#include $<$unary\+\_\+elementwise\+\_\+ops.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:cuda\+:\+:Unary\+Elementwise\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Unary\+Elementwise\+:
+% FIG 1
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1UnaryElementwise_a592f03e4a1344568b75b12178aff8dfb}{Unary\+Elementwise}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1UnaryElementwise_abbbcb29c3937e2ac9e2ad768d9c69fca}{Compute\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$) const override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1UnaryElementwise_a4309faae3b11787992d9a2c47c225f95}{Prepare}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context, \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1UnaryElementwisePreparation}{Unary\+Elementwise\+Preparation}} $\ast$p) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1UnaryElementwise_a592f03e4a1344568b75b12178aff8dfb}\label{classonnxruntime_1_1cuda_1_1UnaryElementwise_a592f03e4a1344568b75b12178aff8dfb}} 
+\index{onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}!Unary\+Elementwise@{Unary\+Elementwise}}
+\index{Unary\+Elementwise@{Unary\+Elementwise}!onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}}
+\subsubsection{\texorpdfstring{Unary\+Elementwise()}{UnaryElementwise()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Unary\+Elementwise\+::\+Unary\+Elementwise (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1UnaryElementwise_abbbcb29c3937e2ac9e2ad768d9c69fca}\label{classonnxruntime_1_1cuda_1_1UnaryElementwise_abbbcb29c3937e2ac9e2ad768d9c69fca}} 
+\index{onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}!Compute\+Internal@{Compute\+Internal}}
+\index{Compute\+Internal@{Compute\+Internal}!onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}}
+\subsubsection{\texorpdfstring{Compute\+Internal()}{ComputeInternal()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Unary\+Elementwise\+::\+Compute\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [protected]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_aca7af04ae448017d6023d30bba231ebb}{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}.
+
+
+
+Reimplemented in \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Exp_a311efdccc5969833cb43fa07058186d0}{onnxruntime\+::cuda\+::\+Exp$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Log_a857314aeb210d599f086e8109e6324d4}{onnxruntime\+::cuda\+::\+Log$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Sqrt_a8bc2beeaa3b9aecd40e1ad87a118b723}{onnxruntime\+::cuda\+::\+Sqrt$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Reciprocal_aa4aef164f01dedd8969d326ab2f37a0d}{onnxruntime\+::cuda\+::\+Reciprocal$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Ceil_a9126a17817969afaf0c4bcf827907782}{onnxruntime\+::cuda\+::\+Ceil$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Floor_ad9062f3bb265d435c16206fa28ba4f4f}{onnxruntime\+::cuda\+::\+Floor$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Neg_a7ff46cf8e38f3a9e57a428d33ef00e9e}{onnxruntime\+::cuda\+::\+Neg$<$ T $>$}}, and \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Abs_a1bf2979c1a4933cd6155c2952c1dc772}{onnxruntime\+::cuda\+::\+Abs$<$ T $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1UnaryElementwise_a4309faae3b11787992d9a2c47c225f95}\label{classonnxruntime_1_1cuda_1_1UnaryElementwise_a4309faae3b11787992d9a2c47c225f95}} 
+\index{onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}!Prepare@{Prepare}}
+\index{Prepare@{Prepare}!onnxruntime\+::cuda\+::\+Unary\+Elementwise@{onnxruntime\+::cuda\+::\+Unary\+Elementwise}}
+\subsubsection{\texorpdfstring{Prepare()}{Prepare()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Unary\+Elementwise\+::\+Prepare (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context,  }\item[{\mbox{\hyperlink{structonnxruntime_1_1cuda_1_1UnaryElementwisePreparation}{Unary\+Elementwise\+Preparation}} $\ast$}]{p }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/math/\mbox{\hyperlink{unary__elementwise__ops_8h}{unary\+\_\+elementwise\+\_\+ops.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cuda/math/\mbox{\hyperlink{unary__elementwise__ops_8cc}{unary\+\_\+elementwise\+\_\+ops.\+cc}}\end{DoxyCompactItemize}

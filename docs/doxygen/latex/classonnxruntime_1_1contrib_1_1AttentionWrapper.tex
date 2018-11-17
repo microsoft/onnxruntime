@@ -1,0 +1,84 @@
+\hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper}{}\section{onnxruntime\+:\+:contrib\+:\+:Attention\+Wrapper$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1contrib_1_1AttentionWrapper}\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper$<$ T $>$@{onnxruntime\+::contrib\+::\+Attention\+Wrapper$<$ T $>$}}
+
+
+{\ttfamily \#include $<$attention\+\_\+wrapper.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_a4d30d5692fafbfb82a282595e5b92756}{Attention\+Wrapper}} (\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} allocator, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger, int batch\+\_\+size, int attn\+\_\+context\+\_\+depth, int attn\+\_\+layer\+\_\+depth, int inner\+\_\+cell\+\_\+hidden\+\_\+size, bool has\+\_\+attn\+\_\+layer, const \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{I\+Attention\+Mechanism}}$<$ T $>$ \&attention\+\_\+mechanism)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_acbf5eef271e8a8cac608d1d4b51f7b5c}{$\sim$\+Attention\+Wrapper}} ()=default
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_a49dfb4da39265819061ddb3824b79023}{Process\+Output}} (const gsl\+::span$<$ const T $>$ \&rnn\+\_\+cell\+\_\+state)
+\item 
+gsl\+::span$<$ const T $>$ \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_a667a0b3d4e6b0f917a024fc452ded468}{Get\+Attn\+States}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_ad8a0553c691ac852a17c9f3e993a8ab5}{Set\+Weights}} (const gsl\+::span$<$ const T $>$ \&wrapper\+\_\+weights)
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_afcd08301996741c5a16f30ee6a2e666a}{Get\+Attention\+Size}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper_ab07de3a078cec083222479b6f849e656}{Get\+Attention\+Context\+Size}} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_a4d30d5692fafbfb82a282595e5b92756}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_a4d30d5692fafbfb82a282595e5b92756}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!Attention\+Wrapper@{Attention\+Wrapper}}
+\index{Attention\+Wrapper@{Attention\+Wrapper}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{Attention\+Wrapper()}{AttentionWrapper()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{Attention\+Wrapper}} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{allocator,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger,  }\item[{int}]{batch\+\_\+size,  }\item[{int}]{attn\+\_\+context\+\_\+depth,  }\item[{int}]{attn\+\_\+layer\+\_\+depth,  }\item[{int}]{inner\+\_\+cell\+\_\+hidden\+\_\+size,  }\item[{bool}]{has\+\_\+attn\+\_\+layer,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1IAttentionMechanism}{I\+Attention\+Mechanism}}$<$ T $>$ \&}]{attention\+\_\+mechanism }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_acbf5eef271e8a8cac608d1d4b51f7b5c}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_acbf5eef271e8a8cac608d1d4b51f7b5c}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!````~Attention\+Wrapper@{$\sim$\+Attention\+Wrapper}}
+\index{````~Attention\+Wrapper@{$\sim$\+Attention\+Wrapper}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{$\sim$\+Attention\+Wrapper()}{~AttentionWrapper()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+virtual \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::$\sim$\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{Attention\+Wrapper}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_ab07de3a078cec083222479b6f849e656}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_ab07de3a078cec083222479b6f849e656}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!Get\+Attention\+Context\+Size@{Get\+Attention\+Context\+Size}}
+\index{Get\+Attention\+Context\+Size@{Get\+Attention\+Context\+Size}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{Get\+Attention\+Context\+Size()}{GetAttentionContextSize()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+int \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::Get\+Attention\+Context\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_afcd08301996741c5a16f30ee6a2e666a}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_afcd08301996741c5a16f30ee6a2e666a}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!Get\+Attention\+Size@{Get\+Attention\+Size}}
+\index{Get\+Attention\+Size@{Get\+Attention\+Size}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{Get\+Attention\+Size()}{GetAttentionSize()}}
+{\footnotesize\ttfamily template$<$typename T$>$ \\
+int \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::Get\+Attention\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_a667a0b3d4e6b0f917a024fc452ded468}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_a667a0b3d4e6b0f917a024fc452ded468}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!Get\+Attn\+States@{Get\+Attn\+States}}
+\index{Get\+Attn\+States@{Get\+Attn\+States}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{Get\+Attn\+States()}{GetAttnStates()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+gsl\+::span$<$ const T $>$ \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::Get\+Attn\+States (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_a49dfb4da39265819061ddb3824b79023}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_a49dfb4da39265819061ddb3824b79023}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!Process\+Output@{Process\+Output}}
+\index{Process\+Output@{Process\+Output}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{Process\+Output()}{ProcessOutput()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::Process\+Output (\begin{DoxyParamCaption}\item[{const gsl\+::span$<$ const T $>$ \&}]{rnn\+\_\+cell\+\_\+state }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1AttentionWrapper_ad8a0553c691ac852a17c9f3e993a8ab5}\label{classonnxruntime_1_1contrib_1_1AttentionWrapper_ad8a0553c691ac852a17c9f3e993a8ab5}} 
+\index{onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}!Set\+Weights@{Set\+Weights}}
+\index{Set\+Weights@{Set\+Weights}!onnxruntime\+::contrib\+::\+Attention\+Wrapper@{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}
+\subsubsection{\texorpdfstring{Set\+Weights()}{SetWeights()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{onnxruntime\+::contrib\+::\+Attention\+Wrapper}}$<$ T $>$\+::Set\+Weights (\begin{DoxyParamCaption}\item[{const gsl\+::span$<$ const T $>$ \&}]{wrapper\+\_\+weights }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/\mbox{\hyperlink{attention__wrapper_8h}{attention\+\_\+wrapper.\+h}}\item 
+onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/\mbox{\hyperlink{attention__wrapper_8cc}{attention\+\_\+wrapper.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,57 @@
+\hypertarget{classonnxruntime_1_1LpPool}{}\section{onnxruntime\+:\+:Lp\+Pool Class Reference}
+\label{classonnxruntime_1_1LpPool}\index{onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}}
+
+
+{\ttfamily \#include $<$pool\+\_\+base.\+h$>$}
+
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static float \mbox{\hyperlink{classonnxruntime_1_1LpPool_a95e4b48f5d30740b52d62675f4aeaf14}{Initialize}} ()
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1LpPool_a4cdfce18edaf2fb76ca549f487878a24}{Process}} (const T \&x\+\_\+data, T \&y\+\_\+data, const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&cxt)
+\item 
+{\footnotesize template$<$typename T $>$ }\\static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1LpPool_a7e139347e30f90d425a66ad3694e330e}{Finalize}} (const int64\+\_\+t, T \&y\+\_\+data, const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&cxt)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} \mbox{\hyperlink{classonnxruntime_1_1LpPool_a9953e01493d041c462c59a49e6d6f007}{type}} = \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060a386cc7744fd4f4a934f933df6d105fd4}{Pool\+Type\+::k\+Lp\+Pool}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LpPool_a7e139347e30f90d425a66ad3694e330e}\label{classonnxruntime_1_1LpPool_a7e139347e30f90d425a66ad3694e330e}} 
+\index{onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}!Finalize@{Finalize}}
+\index{Finalize@{Finalize}!onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}}
+\subsubsection{\texorpdfstring{Finalize()}{Finalize()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Lp\+Pool\+::\+Finalize (\begin{DoxyParamCaption}\item[{const int64\+\_\+t}]{,  }\item[{T \&}]{y\+\_\+data,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&}]{cxt }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LpPool_a95e4b48f5d30740b52d62675f4aeaf14}\label{classonnxruntime_1_1LpPool_a95e4b48f5d30740b52d62675f4aeaf14}} 
+\index{onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}!Initialize@{Initialize}}
+\index{Initialize@{Initialize}!onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}}
+\subsubsection{\texorpdfstring{Initialize()}{Initialize()}}
+{\footnotesize\ttfamily static float onnxruntime\+::\+Lp\+Pool\+::\+Initialize (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LpPool_a4cdfce18edaf2fb76ca549f487878a24}\label{classonnxruntime_1_1LpPool_a4cdfce18edaf2fb76ca549f487878a24}} 
+\index{onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}!Process@{Process}}
+\index{Process@{Process}!onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}}
+\subsubsection{\texorpdfstring{Process()}{Process()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+static \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Lp\+Pool\+::\+Process (\begin{DoxyParamCaption}\item[{const T \&}]{x\+\_\+data,  }\item[{T \&}]{y\+\_\+data,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1PoolProcessContext}{Pool\+Process\+Context}} \&}]{cxt }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LpPool_a9953e01493d041c462c59a49e6d6f007}\label{classonnxruntime_1_1LpPool_a9953e01493d041c462c59a49e6d6f007}} 
+\index{onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}!type@{type}}
+\index{type@{type}!onnxruntime\+::\+Lp\+Pool@{onnxruntime\+::\+Lp\+Pool}}
+\subsubsection{\texorpdfstring{type}{type}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} onnxruntime\+::\+Lp\+Pool\+::type = \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060a386cc7744fd4f4a934f933df6d105fd4}{Pool\+Type\+::k\+Lp\+Pool}}\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{pool__base_8h}{pool\+\_\+base.\+h}}\end{DoxyCompactItemize}

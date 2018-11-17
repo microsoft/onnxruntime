@@ -1,0 +1,106 @@
+\hypertarget{classonnxruntime_1_1GraphNodes}{}\section{onnxruntime\+:\+:Graph\+Nodes Class Reference}
+\label{classonnxruntime_1_1GraphNodes}\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+
+
+{\ttfamily \#include $<$graph\+\_\+nodes.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}
+\end{DoxyCompactItemize}
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} = \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Nodes\+Container\+::const\+\_\+iterator $>$
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}{Mutable\+Node\+Iterator}} = \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Nodes\+Container\+::iterator $>$
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a7222da2e71a88c370ecd61bbdfb6fa0b}{Graph\+Nodes}} (T\+Nodes\+Container \&nodes) noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_aa80817528df1c60051efab8da5d0f3af}{cbegin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a35efe6c770f4ecbe12d5d49aa239105e}{cend}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_adc1b59aa4d9e881aedb831f894d18a32}{begin}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_aa9426cdcde9482961f8bae49278990ad}{end}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}{Mutable\+Node\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_aa4be9eb877bdf0e6ffa7d4bdf1b59a2d}{begin}} () noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}{Mutable\+Node\+Iterator}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a6f722ad93ac2141a7ea3d004f2e80da6}{end}} () noexcept
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Class that provides iteration services for nodes in the \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}}. It\textquotesingle{}s primary function is to hide holes in the nodes vector due to removed nodes. 
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}\label{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!Const\+Node\+Iterator@{Const\+Node\+Iterator}}
+\index{Const\+Node\+Iterator@{Const\+Node\+Iterator}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{Const\+Node\+Iterator}{ConstNodeIterator}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{onnxruntime\+::\+Graph\+Nodes\+::\+Const\+Node\+Iterator}} =  \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$T\+Nodes\+Container\+::const\+\_\+iterator$>$}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}\label{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!Mutable\+Node\+Iterator@{Mutable\+Node\+Iterator}}
+\index{Mutable\+Node\+Iterator@{Mutable\+Node\+Iterator}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{Mutable\+Node\+Iterator}{MutableNodeIterator}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}{onnxruntime\+::\+Graph\+Nodes\+::\+Mutable\+Node\+Iterator}} =  \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$T\+Nodes\+Container\+::iterator$>$}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_a7222da2e71a88c370ecd61bbdfb6fa0b}\label{classonnxruntime_1_1GraphNodes_a7222da2e71a88c370ecd61bbdfb6fa0b}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!Graph\+Nodes@{Graph\+Nodes}}
+\index{Graph\+Nodes@{Graph\+Nodes}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{Graph\+Nodes()}{GraphNodes()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Graph\+Nodes\+::\+Graph\+Nodes (\begin{DoxyParamCaption}\item[{T\+Nodes\+Container \&}]{nodes }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}, {\ttfamily [noexcept]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_adc1b59aa4d9e881aedb831f894d18a32}\label{classonnxruntime_1_1GraphNodes_adc1b59aa4d9e881aedb831f894d18a32}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!begin@{begin}}
+\index{begin@{begin}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{begin()}{begin()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} onnxruntime\+::\+Graph\+Nodes\+::begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_aa4be9eb877bdf0e6ffa7d4bdf1b59a2d}\label{classonnxruntime_1_1GraphNodes_aa4be9eb877bdf0e6ffa7d4bdf1b59a2d}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!begin@{begin}}
+\index{begin@{begin}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{begin()}{begin()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}{Mutable\+Node\+Iterator}} onnxruntime\+::\+Graph\+Nodes\+::begin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_aa80817528df1c60051efab8da5d0f3af}\label{classonnxruntime_1_1GraphNodes_aa80817528df1c60051efab8da5d0f3af}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!cbegin@{cbegin}}
+\index{cbegin@{cbegin}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{cbegin()}{cbegin()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} onnxruntime\+::\+Graph\+Nodes\+::cbegin (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_a35efe6c770f4ecbe12d5d49aa239105e}\label{classonnxruntime_1_1GraphNodes_a35efe6c770f4ecbe12d5d49aa239105e}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!cend@{cend}}
+\index{cend@{cend}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{cend()}{cend()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} onnxruntime\+::\+Graph\+Nodes\+::cend (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_aa9426cdcde9482961f8bae49278990ad}\label{classonnxruntime_1_1GraphNodes_aa9426cdcde9482961f8bae49278990ad}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!end@{end}}
+\index{end@{end}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{end()}{end()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_a291880456b7298e7daededf91e494b6a}{Const\+Node\+Iterator}} onnxruntime\+::\+Graph\+Nodes\+::end (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_a6f722ad93ac2141a7ea3d004f2e80da6}\label{classonnxruntime_1_1GraphNodes_a6f722ad93ac2141a7ea3d004f2e80da6}} 
+\index{onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}!end@{end}}
+\index{end@{end}!onnxruntime\+::\+Graph\+Nodes@{onnxruntime\+::\+Graph\+Nodes}}
+\subsubsection{\texorpdfstring{end()}{end()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_ab5a670376171a0bc405018f0d6bb909d}{Mutable\+Node\+Iterator}} onnxruntime\+::\+Graph\+Nodes\+::end (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph__nodes_8h}{graph\+\_\+nodes.\+h}}\end{DoxyCompactItemize}

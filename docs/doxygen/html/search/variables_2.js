@@ -1,0 +1,25 @@
+var searchData=
+[
+  ['b',['B',['../structMLAS__SGEMM__WORK__BLOCK_1_1SEGMENT.html#a1c5355d8d381039ea67c9ec6343aabd0',1,'MLAS_SGEMM_WORK_BLOCK::SEGMENT::B()'],['../structonnxruntime_1_1ConvTransposeBase_1_1Prepare.html#a143f9da8141e571b123b91ece78cafaa',1,'onnxruntime::ConvTransposeBase::Prepare::B()']]],
+  ['b_5ftensor',['b_tensor',['../structonnxruntime_1_1cuda_1_1CudnnConvState.html#a608414be81a9adb6e9b7365cb0617f67',1,'onnxruntime::cuda::CudnnConvState']]],
+  ['baseline_5fopset_5fversion',['baseline_opset_version',['../structSchemasContainer.html#af63cb1307f8638f5d9f22b3602cae565',1,'SchemasContainer::baseline_opset_version()'],['../structonnxruntime_1_1SchemaRegistryVersion.html#a8fc688910486cafe9ff5b40184306796',1,'onnxruntime::SchemaRegistryVersion::baseline_opset_version()']]],
+  ['batchcount',['BatchCount',['../structMLAS__CONV__PARAMETERS.html#a81f5a9ae2f21920aaabf8e92b7e9f16a',1,'MLAS_CONV_PARAMETERS']]],
+  ['beta',['beta',['../structonnxruntime_1_1contrib_1_1detail_1_1ActivationInfo.html#a2a26b84c28ddf7bb4dee73320f4187a1',1,'onnxruntime::contrib::detail::ActivationInfo::beta()'],['../structonnxruntime_1_1detail_1_1ActivationInfo.html#a7e6eadd6c8fdb991ac31d47a83fecb3a',1,'onnxruntime::detail::ActivationInfo::beta()'],['../structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry.html#a21e1f0e0d6699332be80ca3ec4981946',1,'onnxruntime::rnn::detail::ActivationFuncs::Entry::beta()'],['../structonnxruntime_1_1cuda_1_1CtxAlphaBeta.html#a765fd1f911ca4b161660d9cc24e62012',1,'onnxruntime::cuda::CtxAlphaBeta::beta()']]],
+  ['beta_5f',['beta_',['../classonnxruntime_1_1LRN.html#a690f2ff9893fad8423d0534af3e04869',1,'onnxruntime::LRN::beta_()'],['../mkldnn_2nn_2lrn_8cc.html#a1c20a6698c62cad6311ed1ed6ba64d67',1,'beta_():&#160;lrn.cc']]],
+  ['beta_5f0',['beta_0',['../namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu.html#a0ad5d1492edf9db329b66c7e822bffbd',1,'onnxruntime::rnn::detail::deepcpu']]],
+  ['beta_5f2',['beta_2',['../namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu.html#a92da2bcd7e3c3e092ac24bbd6630f2f2',1,'onnxruntime::rnn::detail::deepcpu']]],
+  ['beta_5f4',['beta_4',['../namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu.html#a445505f7bbf83b7c36790df4c93edcc4',1,'onnxruntime::rnn::detail::deepcpu']]],
+  ['beta_5f6',['beta_6',['../namespaceonnxruntime_1_1rnn_1_1detail_1_1deepcpu.html#aa4b4fe678d7989e1dfd0ade43ef542fb',1,'onnxruntime::rnn::detail::deepcpu']]],
+  ['bias_5f',['bias_',['../classonnxruntime_1_1LRN.html#a94db5cd6e1d3ffebdee9413a08af9d90',1,'onnxruntime::LRN::bias_()'],['../classonnxruntime_1_1ImageScaler.html#aefdecedc355195cb19ccdb2db452fe33',1,'onnxruntime::ImageScaler::bias_()'],['../mkldnn_2nn_2lrn_8cc.html#a068c693ca824c649a83655056a31bebc',1,'bias_():&#160;lrn.cc']]],
+  ['bias_5fdims',['bias_dims',['../mkldnn_2nn_2conv_8cc.html#a5a2468622da3139a6acd14c0c28a58e8',1,'conv.cc']]],
+  ['bias_5fmd',['bias_md',['../mkldnn_2nn_2conv_8cc.html#ac4c16abd0799dc8486790c60604d72d9',1,'conv.cc']]],
+  ['bias_5fmem',['bias_mem',['../mkldnn_2nn_2conv_8cc.html#a987ca0ae60c5c743e606e0808e7bdf15',1,'conv.cc']]],
+  ['block_5f',['block_',['../structonnxruntime_1_1MemPatternPlanner_1_1MLValueAllocationBlock.html#aad93381fbc7c02c93606143e05e435d8',1,'onnxruntime::MemPatternPlanner::MLValueAllocationBlock']]],
+  ['blocks_5f',['blocks_',['../classonnxruntime_1_1MemPatternPlanner.html#a31d6add32bbd81db6d3174ef6e187e6f',1,'onnxruntime::MemPatternPlanner']]],
+  ['blocksize_5f',['blocksize_',['../classonnxruntime_1_1SpaceDepthBase.html#abcda784e40ba19733f34160b9c6b185a',1,'onnxruntime::SpaceDepthBase']]],
+  ['border_5f',['border_',['../classonnxruntime_1_1CropBase.html#a555a90a84b1501aa17b85cd4e5ebcc3a',1,'onnxruntime::CropBase']]],
+  ['buffer',['buffer',['../structSymbolHelper_1_1Symbol.html#a6c4668d294f65cc22302b3fd93a7fffd',1,'SymbolHelper::Symbol::buffer()'],['../structonnxruntime_1_1detail_1_1SymbolHelper_1_1Symbol.html#a31dad8fbecab994a90467a591f94e7bd',1,'onnxruntime::detail::SymbolHelper::Symbol::buffer()']]],
+  ['buffer_5fsize',['buffer_size',['../classonnxruntime_1_1MemPatternPlanner.html#adc47283af8c8a28ec80e3931988e4903',1,'onnxruntime::MemPatternPlanner']]],
+  ['bytes_5fin_5fuse',['bytes_in_use',['../structonnxruntime_1_1AllocatorStats.html#a185a8a0202f5b6b0bda751e12f957e34',1,'onnxruntime::AllocatorStats']]],
+  ['bytes_5flimit',['bytes_limit',['../structonnxruntime_1_1AllocatorStats.html#a9bcf01c3227c2f8396acc5ee377a123d',1,'onnxruntime::AllocatorStats']]]
+];

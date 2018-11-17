@@ -1,0 +1,128 @@
+\hypertarget{classonnxruntime_1_1KernelDef}{}\section{onnxruntime\+:\+:Kernel\+Def Class Reference}
+\label{classonnxruntime_1_1KernelDef}\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+
+
+{\ttfamily \#include $<$kernel\+\_\+def\+\_\+builder.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_ae874d0d7c281f29444425cf090bd9f79}{Op\+Name}} () const
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_ada26407246c0c73ad1e362b20fc4b12f}{Domain}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1KernelDef_a68bb3fdfd24118843231e5d66e909d4a}{Since\+Version}} (int $\ast$start, int $\ast$end) const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} \mbox{\hyperlink{classonnxruntime_1_1KernelDef_ae7e7a00809efc699a2dbd1f5c02505c8}{Provider}} () const
+\item 
+const std\+::unordered\+\_\+map$<$ std\+::string, std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} $>$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_a6639ce1c43c3d37e84eb9db07921b1e8}{Type\+Constraints}} () const
+\item 
+const std\+::vector$<$ std\+::pair$<$ int, int $>$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_ada61b5a989565708579fff57468f48fd}{May\+Inplace}} () const
+\item 
+const std\+::vector$<$ std\+::pair$<$ int, int $>$ $>$ \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_a69d708dea7e1c6f379a5d5b8a3cfba6b}{Alias}} () const
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{Mem\+Type\+Map}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_ab9fbbfbb44dac50a83eef2f5b85f7321}{Input\+Memory\+Type}} () const
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{Mem\+Type\+Map}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_a3c5f3b25f46ca1b522afd2ecace02b93}{Output\+Memory\+Type}} () const
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{Mem\+Type\+Map}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDef_ab2d22ffd3fb8b3eec5c52ff20adc45d3}{Memory\+Type}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1KernelDef_a2e80ae3bc24e948e7f9913645fbb7f81}{Exec\+Queue\+Id}} () const
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1KernelDef_af4271b4e0263560fcfed7079c95900b2}{Is\+Conflict}} (const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} \&other) const
+\end{DoxyCompactItemize}
+\subsection*{Friends}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1KernelDef_a33a81fbddaa5f272008974dd2a2bf591}{Kernel\+Def\+Builder}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_a69d708dea7e1c6f379a5d5b8a3cfba6b}\label{classonnxruntime_1_1KernelDef_a69d708dea7e1c6f379a5d5b8a3cfba6b}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Alias@{Alias}}
+\index{Alias@{Alias}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Alias()}{Alias()}}
+{\footnotesize\ttfamily const std\+::vector$<$std\+::pair$<$int, int$>$ $>$\& onnxruntime\+::\+Kernel\+Def\+::\+Alias (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_ada26407246c0c73ad1e362b20fc4b12f}\label{classonnxruntime_1_1KernelDef_ada26407246c0c73ad1e362b20fc4b12f}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Domain@{Domain}}
+\index{Domain@{Domain}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Domain()}{Domain()}}
+{\footnotesize\ttfamily const std\+::string\& onnxruntime\+::\+Kernel\+Def\+::\+Domain (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_a2e80ae3bc24e948e7f9913645fbb7f81}\label{classonnxruntime_1_1KernelDef_a2e80ae3bc24e948e7f9913645fbb7f81}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Exec\+Queue\+Id@{Exec\+Queue\+Id}}
+\index{Exec\+Queue\+Id@{Exec\+Queue\+Id}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Exec\+Queue\+Id()}{ExecQueueId()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Kernel\+Def\+::\+Exec\+Queue\+Id (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_ab9fbbfbb44dac50a83eef2f5b85f7321}\label{classonnxruntime_1_1KernelDef_ab9fbbfbb44dac50a83eef2f5b85f7321}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Input\+Memory\+Type@{Input\+Memory\+Type}}
+\index{Input\+Memory\+Type@{Input\+Memory\+Type}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Input\+Memory\+Type()}{InputMemoryType()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{Mem\+Type\+Map}}\& onnxruntime\+::\+Kernel\+Def\+::\+Input\+Memory\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_af4271b4e0263560fcfed7079c95900b2}\label{classonnxruntime_1_1KernelDef_af4271b4e0263560fcfed7079c95900b2}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Is\+Conflict@{Is\+Conflict}}
+\index{Is\+Conflict@{Is\+Conflict}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Is\+Conflict()}{IsConflict()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Kernel\+Def\+::\+Is\+Conflict (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} \&}]{other }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_ada61b5a989565708579fff57468f48fd}\label{classonnxruntime_1_1KernelDef_ada61b5a989565708579fff57468f48fd}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!May\+Inplace@{May\+Inplace}}
+\index{May\+Inplace@{May\+Inplace}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{May\+Inplace()}{MayInplace()}}
+{\footnotesize\ttfamily const std\+::vector$<$std\+::pair$<$int, int$>$ $>$\& onnxruntime\+::\+Kernel\+Def\+::\+May\+Inplace (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_ab2d22ffd3fb8b3eec5c52ff20adc45d3}\label{classonnxruntime_1_1KernelDef_ab2d22ffd3fb8b3eec5c52ff20adc45d3}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Memory\+Type@{Memory\+Type}}
+\index{Memory\+Type@{Memory\+Type}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Memory\+Type()}{MemoryType()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{Mem\+Type\+Map}}\& onnxruntime\+::\+Kernel\+Def\+::\+Memory\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_ae874d0d7c281f29444425cf090bd9f79}\label{classonnxruntime_1_1KernelDef_ae874d0d7c281f29444425cf090bd9f79}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Op\+Name@{Op\+Name}}
+\index{Op\+Name@{Op\+Name}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Op\+Name()}{OpName()}}
+{\footnotesize\ttfamily const std\+::string\& onnxruntime\+::\+Kernel\+Def\+::\+Op\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_a3c5f3b25f46ca1b522afd2ecace02b93}\label{classonnxruntime_1_1KernelDef_a3c5f3b25f46ca1b522afd2ecace02b93}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Output\+Memory\+Type@{Output\+Memory\+Type}}
+\index{Output\+Memory\+Type@{Output\+Memory\+Type}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Output\+Memory\+Type()}{OutputMemoryType()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_ad53d5ace215052258a4346ee68c2624e}{Mem\+Type\+Map}}\& onnxruntime\+::\+Kernel\+Def\+::\+Output\+Memory\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_ae7e7a00809efc699a2dbd1f5c02505c8}\label{classonnxruntime_1_1KernelDef_ae7e7a00809efc699a2dbd1f5c02505c8}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Provider@{Provider}}
+\index{Provider@{Provider}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Provider()}{Provider()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} onnxruntime\+::\+Kernel\+Def\+::\+Provider (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_a68bb3fdfd24118843231e5d66e909d4a}\label{classonnxruntime_1_1KernelDef_a68bb3fdfd24118843231e5d66e909d4a}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Since\+Version@{Since\+Version}}
+\index{Since\+Version@{Since\+Version}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Since\+Version()}{SinceVersion()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Kernel\+Def\+::\+Since\+Version (\begin{DoxyParamCaption}\item[{int $\ast$}]{start,  }\item[{int $\ast$}]{end }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_a6639ce1c43c3d37e84eb9db07921b1e8}\label{classonnxruntime_1_1KernelDef_a6639ce1c43c3d37e84eb9db07921b1e8}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Type\+Constraints@{Type\+Constraints}}
+\index{Type\+Constraints@{Type\+Constraints}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Type\+Constraints()}{TypeConstraints()}}
+{\footnotesize\ttfamily const std\+::unordered\+\_\+map$<$std\+::string, std\+::vector$<$\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}$>$ $>$\& onnxruntime\+::\+Kernel\+Def\+::\+Type\+Constraints (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Friends And Related Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDef_a33a81fbddaa5f272008974dd2a2bf591}\label{classonnxruntime_1_1KernelDef_a33a81fbddaa5f272008974dd2a2bf591}} 
+\index{onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}!Kernel\+Def\+Builder@{Kernel\+Def\+Builder}}
+\index{Kernel\+Def\+Builder@{Kernel\+Def\+Builder}!onnxruntime\+::\+Kernel\+Def@{onnxruntime\+::\+Kernel\+Def}}
+\subsubsection{\texorpdfstring{Kernel\+Def\+Builder}{KernelDefBuilder}}
+{\footnotesize\ttfamily friend class \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\hspace{0.3cm}{\ttfamily [friend]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{kernel__def__builder_8h}{kernel\+\_\+def\+\_\+builder.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{kernel__def__builder_8cc}{kernel\+\_\+def\+\_\+builder.\+cc}}\end{DoxyCompactItemize}

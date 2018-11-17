@@ -1,0 +1,49 @@
+\hypertarget{array__feature__extractor_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/ml/array\+\_\+feature\+\_\+extractor.cc File Reference}
+\label{array__feature__extractor_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/ml/array\+\_\+feature\+\_\+extractor.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/ml/array\+\_\+feature\+\_\+extractor.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/ml/array\+\_\+feature\+\_\+extractor.\+h\char`\"{}}\newline
+Include dependency graph for array\+\_\+feature\+\_\+extractor.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{array__feature__extractor_8cc_aec3fe4c18d08c1d7dbf6d5ddb5da47f0}{R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}}(in\+\_\+type)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a70dd6b78edc4fb459a0602ba49a68274}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_aa98449b4e73b0f444a351f7382d08535}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a1445f2c0810e98dc4b62df89d69a2517}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}} (int32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a5bb062d9542c80b56e047154ca69d693}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a63377d6caf1e64c47ef6ee40b61aa61e}{onnxruntime\+::ml\+::\+R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}} (string)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{array__feature__extractor_8cc_aec3fe4c18d08c1d7dbf6d5ddb5da47f0}\label{array__feature__extractor_8cc_aec3fe4c18d08c1d7dbf6d5ddb5da47f0}} 
+\index{array\+\_\+feature\+\_\+extractor.\+cc@{array\+\_\+feature\+\_\+extractor.\+cc}!R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR@{R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}}
+\index{R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR@{R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}!array\+\_\+feature\+\_\+extractor.\+cc@{array\+\_\+feature\+\_\+extractor.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR}{REG\_ARRAYFEATUREEXTRACTOR}}
+{\footnotesize\ttfamily \#define R\+E\+G\+\_\+\+A\+R\+R\+A\+Y\+F\+E\+A\+T\+U\+R\+E\+E\+X\+T\+R\+A\+C\+T\+OR(\begin{DoxyParamCaption}\item[{}]{in\+\_\+type }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}{ONNX\_CPU\_OPERATOR\_TYPED\_ML\_KERNEL}}(                                        
+                \(\backslash\)
+      ArrayFeatureExtractor,                                                          \(\backslash\)
+      1,                                                                              \(\backslash\)
+      in\_type,                                                                        \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<in\_type>()), \(\backslash\)
+      ArrayFeatureExtractorOp<in\_type>);
+\end{DoxyCode}

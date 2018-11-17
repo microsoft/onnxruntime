@@ -1,0 +1,70 @@
+\hypertarget{structonnxruntime_1_1TBroadcasterExpand}{}\section{onnxruntime\+:\+:T\+Broadcaster\+Expand$<$ T $>$ Struct Template Reference}
+\label{structonnxruntime_1_1TBroadcasterExpand}\index{onnxruntime\+::\+T\+Broadcaster\+Expand$<$ T $>$@{onnxruntime\+::\+T\+Broadcaster\+Expand$<$ T $>$}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand_a3c6e48da90bcd15e9cf6ba7b9cc63289}{T\+Broadcaster\+Expand}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&input, const std\+::vector$<$ int64\+\_\+t $>$ \&shape)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand_a67d4843aedc9e85848c2c875b728e649}{Get\+Output\+Shape}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand_af97cb7082da7e26d1741748983d34b83}{Get\+Span\+Size}} () const
+\item 
+bool \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand_ae8492f89a6100cd05dd890f74a9596d5}{Is\+Input0\+Scalar}} () const
+\item 
+T \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand_a761c9e4cb5fc6ca6f48b5cfdb4ab68a1}{Next\+Scalar}} ()
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a16eca66228ee3a40fe3ae89db53e08ee}{Const\+Eigen\+Vector\+Map}}$<$ T $>$ \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand_a6e8353c3f6e4d485bf4d74f5cedeeba3}{Next\+Eigen}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1TBroadcasterExpand_a3c6e48da90bcd15e9cf6ba7b9cc63289}\label{structonnxruntime_1_1TBroadcasterExpand_a3c6e48da90bcd15e9cf6ba7b9cc63289}} 
+\index{onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}!T\+Broadcaster\+Expand@{T\+Broadcaster\+Expand}}
+\index{T\+Broadcaster\+Expand@{T\+Broadcaster\+Expand}!onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}}
+\subsubsection{\texorpdfstring{T\+Broadcaster\+Expand()}{TBroadcasterExpand()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand}}$<$ T $>$\+::\mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{T\+Broadcaster\+Expand}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{input,  }\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{shape }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1TBroadcasterExpand_a67d4843aedc9e85848c2c875b728e649}\label{structonnxruntime_1_1TBroadcasterExpand_a67d4843aedc9e85848c2c875b728e649}} 
+\index{onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}!Get\+Output\+Shape@{Get\+Output\+Shape}}
+\index{Get\+Output\+Shape@{Get\+Output\+Shape}!onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}}
+\subsubsection{\texorpdfstring{Get\+Output\+Shape()}{GetOutputShape()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand}}$<$ T $>$\+::Get\+Output\+Shape (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1TBroadcasterExpand_af97cb7082da7e26d1741748983d34b83}\label{structonnxruntime_1_1TBroadcasterExpand_af97cb7082da7e26d1741748983d34b83}} 
+\index{onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}!Get\+Span\+Size@{Get\+Span\+Size}}
+\index{Get\+Span\+Size@{Get\+Span\+Size}!onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}}
+\subsubsection{\texorpdfstring{Get\+Span\+Size()}{GetSpanSize()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand}}$<$ T $>$\+::Get\+Span\+Size (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1TBroadcasterExpand_ae8492f89a6100cd05dd890f74a9596d5}\label{structonnxruntime_1_1TBroadcasterExpand_ae8492f89a6100cd05dd890f74a9596d5}} 
+\index{onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}!Is\+Input0\+Scalar@{Is\+Input0\+Scalar}}
+\index{Is\+Input0\+Scalar@{Is\+Input0\+Scalar}!onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}}
+\subsubsection{\texorpdfstring{Is\+Input0\+Scalar()}{IsInput0Scalar()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+bool \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand}}$<$ T $>$\+::Is\+Input0\+Scalar (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1TBroadcasterExpand_a6e8353c3f6e4d485bf4d74f5cedeeba3}\label{structonnxruntime_1_1TBroadcasterExpand_a6e8353c3f6e4d485bf4d74f5cedeeba3}} 
+\index{onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}!Next\+Eigen@{Next\+Eigen}}
+\index{Next\+Eigen@{Next\+Eigen}!onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}}
+\subsubsection{\texorpdfstring{Next\+Eigen()}{NextEigen()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a16eca66228ee3a40fe3ae89db53e08ee}{Const\+Eigen\+Vector\+Map}}$<$T$>$ \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand}}$<$ T $>$\+::Next\+Eigen (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1TBroadcasterExpand_a761c9e4cb5fc6ca6f48b5cfdb4ab68a1}\label{structonnxruntime_1_1TBroadcasterExpand_a761c9e4cb5fc6ca6f48b5cfdb4ab68a1}} 
+\index{onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}!Next\+Scalar@{Next\+Scalar}}
+\index{Next\+Scalar@{Next\+Scalar}!onnxruntime\+::\+T\+Broadcaster\+Expand@{onnxruntime\+::\+T\+Broadcaster\+Expand}}
+\subsubsection{\texorpdfstring{Next\+Scalar()}{NextScalar()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand}}$<$ T $>$\+::Next\+Scalar (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/math/\mbox{\hyperlink{element__wise__ops_8cc}{element\+\_\+wise\+\_\+ops.\+cc}}\end{DoxyCompactItemize}

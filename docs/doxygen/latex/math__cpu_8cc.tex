@@ -1,0 +1,555 @@
+\hypertarget{math__cpu_8cc}{}\section{onnxruntime/onnxruntime/core/util/math\+\_\+cpu.cc File Reference}
+\label{math__cpu_8cc}\index{onnxruntime/onnxruntime/core/util/math\+\_\+cpu.\+cc@{onnxruntime/onnxruntime/core/util/math\+\_\+cpu.\+cc}}
+{\ttfamily \#include $<$algorithm$>$}\newline
+{\ttfamily \#include $<$atomic$>$}\newline
+{\ttfamily \#include $<$chrono$>$}\newline
+{\ttfamily \#include $<$random$>$}\newline
+{\ttfamily \#include $<$unordered\+\_\+set$>$}\newline
+{\ttfamily \#include \char`\"{}core/platform/env.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cpu/cpu\+\_\+execution\+\_\+provider.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}Eigen/src/\+Core/arch/\+C\+U\+D\+A/\+Half.\+h\char`\"{}}\newline
+Include dependency graph for math\+\_\+cpu.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1math}{onnxruntime\+::math}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_afb451e8f48a9f42510e6ab1d01dd8ed5}{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE}}(T,  prefix)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a8a4693c00e8636e1058ef0b8f0e3dc76}{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT}}(T,  prefix)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a9d8433a91a218bdb67fb93ccd7f70bbc}{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY}}(T,  prefix)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a9f1a64a4493217edc56001e64c049c74}{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY}}(T,  prefix)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_aa8dd00424eb9cc08404b4b9cbad0b934}{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(T,  Funcname,  expr)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a330f40150a356104ed232a78716d2b9f}{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_aa76254be1a287845a75eb567933a1f67}{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a0c5caa9d8b1a092520a39523cec90608}{E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(T,  Funcname,  expr)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_ab74d0d05652687cc33ce88726e602605}{D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(Funcname,  expr)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_aa80cea8bfefdedf684ca281fec17ffda}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_af8e17c9a053944fa60ebc485574d5e91}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a7e337bb24f72c67ba81edaa6c7dd421f}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_abf4d3c86ceaf404e3c0b1ee801c0a3a2}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_afc6a5c6557129a908e163c8b8894ea85}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a0f9a8e15644d5579ac68c7405286d890}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a3d6ba0eb0399d9930dbda50fd6c9301b}{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(T,  Funcname,  expr)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a95302a22927265f2451b086a2926e4b4}{D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}(name,  op)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a2deda3eb4330e4417c16db63eb2c99a0}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_ad149f31cdab456a8f7ea673226a65a89}{I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}}(name,  op,  T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a13a581a9caa13dcd4bca000bd91436b7}{D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}}(name,  op)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_a60b647fa5e429289ae0220976ef3430f}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_af4dfcb307e7ac24eac5ca1f9be79c40a}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}}(T)
+\item 
+\#define \mbox{\hyperlink{math__cpu_8cc_aa1808bef615a00543e4d7908ac4ced20}{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR}}(T)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_abc3e8a69d5980bcf568ca96dc41c7bc1}{onnxruntime\+::math\+::\+Gemm$<$ float, C\+P\+U\+Math\+Util $>$}} (const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransA, const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransB, const int64\+\_\+t M, const int64\+\_\+t N, const int64\+\_\+t K, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float $\ast$A, const float $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, float $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, C\+P\+U\+Math\+Util $\ast$, M\+L\+Data\+Type)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_ae7ad1df8b62f3b7c4944a12d7c9a5e53}{onnxruntime\+::math\+::\+Gemm\+Ex$<$ float, C\+P\+U\+Math\+Util $>$}} (const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransA, const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransB, const int M, const int N, const int K, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float $\ast$A, const int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const float $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, const int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, float $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, const int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}}, C\+P\+U\+Math\+Util $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a8fecd4da59b1aaf9bb4fc371a40037b7}{onnxruntime\+::math\+::\+Gemv$<$ float, C\+P\+U\+Math\+Util $>$}} (const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransA, const int M, const int N, const float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float $\ast$A, const float $\ast$x, const float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, float $\ast$y, C\+P\+U\+Math\+Util $\ast$, M\+L\+Data\+Type)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a539b25bb6fa905d986a740ed0ff61f0e}{onnxruntime\+::math\+::\+Gemm\+Batched$<$ float, C\+P\+U\+Math\+Util $>$}} (const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransA, const \mbox{\hyperlink{cblas_8h_a44dfaddb823648755b110dbad849c5a9}{C\+B\+L\+A\+S\+\_\+\+T\+R\+A\+N\+S\+P\+O\+SE}} TransB, const int A\+\_\+size, const int A\+\_\+batches, const int B\+\_\+size, const int B\+\_\+batches, const int M, const int N, const int K, const float, const float $\ast$A, const float $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, const float, float $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, C\+P\+U\+Math\+Util $\ast$provider, Tensor $\ast$, M\+L\+Data\+Type)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_adab07301d9e5c71a0bb01f01814fb215}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a1753d26885bde93c37ba49fe0f6b3940}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_affe96f99d52b21d26395b273d58a7784}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (int8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_ac248e86639fe34d1a30ae764ad4a05d2}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (int16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a181d9964415a98de9080e8838641d9b2}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (int32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_ac8502f2d2002aab86e04f41351a31439}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a592615674e0b60427db47c6e5651269e}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (bool)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_abefec0dc5bedd5c2ac09d7799f2612d2}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (char)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_ab98664af57b9ef79dbc8b5dbe4722097}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (uint8\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a5430e386127f5830315fc75d91e11547}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}} (uint16\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a5328d5b44e7841f23fc6c9921123155b}{onnxruntime\+::math\+::\+D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (LT,$<$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_ac09da20179e9d4055d76e2959d269e2c}{onnxruntime\+::math\+::\+D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (LE,$<$=)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_afeaff858435c116eea1600b5cc31cebe}{onnxruntime\+::math\+::\+D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (GT, $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_ac4b9e38905be95d12359c1d9cfe3ecc8}{onnxruntime\+::math\+::\+D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (GE, $>$=)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a2d38d95ed202f752a4e714591df54858}{onnxruntime\+::math\+::\+I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (Or,$\vert$, bool)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a15e1a2930ed8097efda5f007037633eb}{onnxruntime\+::math\+::\+I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (And, \&, bool)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_af0e97d0d77ce88d2c12cffcfed1197d5}{onnxruntime\+::math\+::\+I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}} (Xor, $^\wedge$, bool)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_acedd20955c9a52f9e7e60517ef35fc79}{onnxruntime\+::math\+::\+Not$<$ bool, C\+P\+U\+Math\+Util $>$}} (const int n, const bool $\ast$x, bool $\ast$y, C\+P\+U\+Math\+Util $\ast$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_adc64114fca61b95498260e9e8be7ab3a}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH}} (float)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a4b2f943a58a834387d4de84b8c2e5714}{onnxruntime\+::math\+::\+Rand\+Uniform$<$ float, C\+P\+U\+Math\+Util $>$}} (const int n, const float a, const float b, float $\ast$r, C\+P\+U\+Math\+Util $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_ac5ce151c45379ea7490c0d9700d88749}{onnxruntime\+::math\+::\+Rand\+Uniform$<$ int, C\+P\+U\+Math\+Util $>$}} (const int n, const int a, const int b, int $\ast$r, C\+P\+U\+Math\+Util $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a942e9cce900cd43050f760c163af67c4}{onnxruntime\+::math\+::\+Rand\+Gaussian$<$ float, C\+P\+U\+Math\+Util $>$}} (const int n, const float mean, const float std, float $\ast$r, C\+P\+U\+Math\+Util $\ast$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a73846fad0829fa2b07974a135abe6f2d}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_aa6926607de0ad578945815dec77b51ca}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}} (int32\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1math_a30e0fe3ea70473a15869776e474e0271}{onnxruntime\+::math\+::\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}} (int64\+\_\+t)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a95efa2c6981147ba9a08c2e6db872c94}{onnxruntime\+::math\+::\+Sum\+Sqr$<$ float, C\+P\+U\+Math\+Util $>$}} (const int N, const float $\ast$x, float $\ast$y, C\+P\+U\+Math\+Util $\ast$, Tensor $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a5af96dd791e9b526301eb469b35374d8}{onnxruntime\+::math\+::\+Select$<$ float, C\+P\+U\+Math\+Util $>$}} (const int N, const int D, const float $\ast$x, const int $\ast$idx, float $\ast$y, C\+P\+U\+Math\+Util $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a81ac2d7f2ea2b9bc15c568bc0733f7b9}{onnxruntime\+::math\+::\+Im2col\+Nd$<$ float, C\+P\+U\+Math\+Util, Storage\+Order\+::\+N\+C\+H\+W $>$}} (const float $\ast$data\+\_\+img, const int64\+\_\+t $\ast$im\+\_\+shape, const int64\+\_\+t $\ast$col\+\_\+shape, const int64\+\_\+t, const int64\+\_\+t, const int64\+\_\+t $\ast$kernel\+\_\+shape, const int64\+\_\+t $\ast$stride, const int64\+\_\+t $\ast$dilation, const int64\+\_\+t $\ast$pad, const int64\+\_\+t N, float $\ast$data\+\_\+col, C\+P\+U\+Math\+Util $\ast$, bool accumulate\+\_\+output)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a8e8d34a7f9a4fcf0b2f8f511f75b20cc}{onnxruntime\+::math\+::\+Col2im\+Nd$<$ float, C\+P\+U\+Math\+Util, Storage\+Order\+::\+N\+C\+H\+W $>$}} (const float $\ast$data\+\_\+col, const int64\+\_\+t $\ast$img\+\_\+shape, const int64\+\_\+t $\ast$col\+\_\+shape, const int64\+\_\+t img\+\_\+size, const int64\+\_\+t col\+\_\+size, const int64\+\_\+t $\ast$kernel\+\_\+shape, const int64\+\_\+t $\ast$stride, const int64\+\_\+t $\ast$dilation, const int64\+\_\+t $\ast$pad, const int64\+\_\+t N, float $\ast$data\+\_\+img, C\+P\+U\+Math\+Util $\ast$context)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_afb1aa82e9ab3e9b38a7062dc6a0ea6d5}{onnxruntime\+::math\+::\+Im2col$<$ float, C\+P\+U\+Math\+Util, Storage\+Order\+::\+N\+C\+H\+W $>$}} (const float $\ast$data\+\_\+im, const int64\+\_\+t channels, const int64\+\_\+t height, const int64\+\_\+t width, const int64\+\_\+t kernel\+\_\+h, const int64\+\_\+t kernel\+\_\+w, const int64\+\_\+t dilation\+\_\+h, const int64\+\_\+t dilation\+\_\+w, const int64\+\_\+t pad\+\_\+t, const int64\+\_\+t pad\+\_\+l, const int64\+\_\+t pad\+\_\+b, const int64\+\_\+t pad\+\_\+r, const int64\+\_\+t stride\+\_\+h, const int64\+\_\+t stride\+\_\+w, float $\ast$data\+\_\+col, C\+P\+U\+Math\+Util $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a5f7576e544a884d7245a591113f0c23f}{onnxruntime\+::math\+::\+Im2col$<$ float, C\+P\+U\+Math\+Util, Storage\+Order\+::\+N\+H\+W\+C $>$}} (const float $\ast$data\+\_\+im, const int64\+\_\+t channels, const int64\+\_\+t height, const int64\+\_\+t width, const int64\+\_\+t kernel\+\_\+h, const int64\+\_\+t kernel\+\_\+w, const int64\+\_\+t dilation\+\_\+h, const int64\+\_\+t dilation\+\_\+w, const int64\+\_\+t pad\+\_\+t, const int64\+\_\+t pad\+\_\+l, const int64\+\_\+t pad\+\_\+b, const int64\+\_\+t pad\+\_\+r, const int64\+\_\+t stride\+\_\+h, const int64\+\_\+t stride\+\_\+w, float $\ast$data\+\_\+col, C\+P\+U\+Math\+Util $\ast$)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a81f54d326919afb1852b762199b22e3d}{onnxruntime\+::math\+::\+Col2im$<$ float, C\+P\+U\+Math\+Util, Storage\+Order\+::\+N\+C\+H\+W $>$}} (const float $\ast$data\+\_\+col, const int64\+\_\+t channels, const int64\+\_\+t height, const int64\+\_\+t width, const int64\+\_\+t kernel\+\_\+h, const int64\+\_\+t kernel\+\_\+w, const int64\+\_\+t dilation\+\_\+h, const int64\+\_\+t dilation\+\_\+w, const int64\+\_\+t pad\+\_\+t, const int64\+\_\+t pad\+\_\+l, const int64\+\_\+t pad\+\_\+b, const int64\+\_\+t pad\+\_\+r, const int64\+\_\+t stride\+\_\+h, const int64\+\_\+t stride\+\_\+w, float $\ast$data\+\_\+im, C\+P\+U\+Math\+Util $\ast$context)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a56961fa111a24e283dad2df286c006c7}{onnxruntime\+::math\+::\+Col2im$<$ float, C\+P\+U\+Math\+Util, Storage\+Order\+::\+N\+H\+W\+C $>$}} (const float $\ast$data\+\_\+col, const int64\+\_\+t channels, const int64\+\_\+t height, const int64\+\_\+t width, const int64\+\_\+t kernel\+\_\+h, const int64\+\_\+t kernel\+\_\+w, const int64\+\_\+t dilation\+\_\+h, const int64\+\_\+t dilation\+\_\+w, const int64\+\_\+t pad\+\_\+t, const int64\+\_\+t pad\+\_\+l, const int64\+\_\+t pad\+\_\+b, const int64\+\_\+t pad\+\_\+r, const int64\+\_\+t stride\+\_\+h, const int64\+\_\+t stride\+\_\+w, float $\ast$data\+\_\+im, C\+P\+U\+Math\+Util $\ast$context)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1math_a0cdbbd78e474c1bbbfae1e907f5b42be}{onnxruntime\+::math\+::\+Copy\+Matrix$<$ C\+P\+U\+Math\+Util $>$}} (const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} itemsize, const int M, const int N, const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$A, const int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, const int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, C\+P\+U\+Math\+Util $\ast$, Typed\+Copy copy)
+\item 
+uint32\+\_\+t \mbox{\hyperlink{namespaceonnxruntime_1_1math_a4aa5e50c4fa1e17ef92e533310f6d3f7}{onnxruntime\+::math\+::random\+Number\+Seed}} ()
+\item 
+uint16\+\_\+t \mbox{\hyperlink{namespaceonnxruntime_1_1math_af0161f533f3526e6869f3aefd52240fb}{onnxruntime\+::math\+::float\+To\+Half}} (float f)
+\item 
+float \mbox{\hyperlink{namespaceonnxruntime_1_1math_a8de05e56120ffebec75c2cfae25d7a7c}{onnxruntime\+::math\+::half\+To\+Float}} (uint16\+\_\+t h)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{math__cpu_8cc_a9f1a64a4493217edc56001e64c049c74}\label{math__cpu_8cc_a9f1a64a4493217edc56001e64c049c74}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY}}
+\index{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY}{CAFFE2\_SPECIALIZED\_AXPBY}}
+{\footnotesize\ttfamily \#define C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+P\+BY(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{prefix }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                   \(\backslash\)
+  void Axpby<T, CPUMathUtil>(                   \(\backslash\)
+      const \textcolor{keywordtype}{int} N,                              \(\backslash\)
+      const T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}},                            \(\backslash\)
+      const T* x,                               \(\backslash\)
+      const T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}},                             \(\backslash\)
+      T* y,                                     \(\backslash\)
+      CPUMathUtil*) \{                           \(\backslash\)
+    cblas\_##prefix##scal(N, \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, y, 1);        \(\backslash\)
+    cblas\_##prefix##axpy(N, \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, x, 1, y, 1); \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a9d8433a91a218bdb67fb93ccd7f70bbc}\label{math__cpu_8cc_a9d8433a91a218bdb67fb93ccd7f70bbc}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY}}
+\index{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY}{CAFFE2\_SPECIALIZED\_AXPY}}
+{\footnotesize\ttfamily \#define C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+A\+X\+PY(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{prefix }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                        \(\backslash\)
+  void Axpy<T, CPUMathUtil>(                                         \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{  \(\backslash\)
+    cblas\_##prefix##axpy(N, \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, x, 1, y, 1);                      \(\backslash\)
+  \}                                                                  \(\backslash\)
+  template <>                                                        \(\backslash\)
+  void Axpy<T, CPUMathUtil>(                                         \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{ \(\backslash\)
+    cblas\_##prefix##axpy(N, *\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, x, 1, y, 1);                     \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a8a4693c00e8636e1058ef0b8f0e3dc76}\label{math__cpu_8cc_a8a4693c00e8636e1058ef0b8f0e3dc76}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT}}
+\index{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT}{CAFFE2\_SPECIALIZED\_DOT}}
+{\footnotesize\ttfamily \#define C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+D\+OT(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{prefix }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                    \(\backslash\)
+  void Dot<T, CPUMathUtil>(                                      \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* a, \textcolor{keyword}{const} T* b, T* y, CPUMathUtil*) \{ \(\backslash\)
+    *y = cblas\_##prefix##dot(N, a, 1, b, 1);                     \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_afb451e8f48a9f42510e6ab1d01dd8ed5}\label{math__cpu_8cc_afb451e8f48a9f42510e6ab1d01dd8ed5}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE}}
+\index{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE@{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE}{CAFFE2\_SPECIALIZED\_SCALE}}
+{\footnotesize\ttfamily \#define C\+A\+F\+F\+E2\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+C\+A\+LE(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{prefix }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                            \(\backslash\)
+  void Scale<T, CPUMathUtil>(                                            \(\backslash\)
+      const \textcolor{keywordtype}{int} n, \textcolor{keyword}{const} \textcolor{keywordtype}{float} \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{  \(\backslash\)
+    if (y != x)                                                          \(\backslash\)
+      cblas\_##prefix##copy(n, x, 1, y, 1);                               \(\backslash\)
+    cblas\_##prefix##scal(n, static\_cast<float>(\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}), y, 1);            \(\backslash\)
+  \}                                                                      \(\backslash\)
+  template <>                                                            \(\backslash\)
+  void Scale<T, CPUMathUtil>(                                            \(\backslash\)
+      const \textcolor{keywordtype}{int} n, \textcolor{keyword}{const} \textcolor{keywordtype}{float}* \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{ \(\backslash\)
+    if (y != x)                                                          \(\backslash\)
+      cblas\_##prefix##copy(n, x, 1, y, 1);                               \(\backslash\)
+    cblas\_##prefix##scal(n, static\_cast<float>(*\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}), y, 1);           \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a13a581a9caa13dcd4bca000bd91436b7}\label{math__cpu_8cc_a13a581a9caa13dcd4bca000bd91436b7}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP@{D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}}
+\index{D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP@{D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}{DEFINE\_BINARY\_OP}}
+{\footnotesize\ttfamily \#define D\+E\+F\+I\+N\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{op }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{math__cpu_8cc_ad149f31cdab456a8f7ea673226a65a89}{INSTANTIATE\_BINARY\_OP}}(name, op, \textcolor{keywordtype}{float})   \(\backslash\)
+  INSTANTIATE\_BINARY\_OP(name, op, int32\_t) \(\backslash\)
+  INSTANTIATE\_BINARY\_OP(name, op, int64\_t)
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a95302a22927265f2451b086a2926e4b4}\label{math__cpu_8cc_a95302a22927265f2451b086a2926e4b4}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{DEFINE\_BROADCAST\_BINARY\_FUNCTION}}
+{\footnotesize\ttfamily \#define D\+E\+F\+I\+N\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{op }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{math__cpu_8cc_a3d6ba0eb0399d9930dbda50fd6c9301b}{DELEGATE\_BROADCAST\_BINARY\_FUNCTION}}(int32\_t, name, op) \(\backslash\)
+  DELEGATE\_BROADCAST\_BINARY\_FUNCTION(int64\_t, name, op) \(\backslash\)
+  DELEGATE\_BROADCAST\_BINARY\_FUNCTION(\textcolor{keywordtype}{float}, name, op)
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_ab74d0d05652687cc33ce88726e602605}\label{math__cpu_8cc_ab74d0d05652687cc33ce88726e602605}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{DEFINE\_SIMPLE\_BINARY\_FUNCTION}}
+{\footnotesize\ttfamily \#define D\+E\+F\+I\+N\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{Funcname,  }\item[{}]{expr }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{math__cpu_8cc_a0c5caa9d8b1a092520a39523cec90608}{EIGEN\_SIMPLE\_BINARY\_FUNCTION}}(\textcolor{keywordtype}{float}, Funcname, expr)   \(\backslash\)
+  EIGEN\_SIMPLE\_BINARY\_FUNCTION(int32\_t, Funcname, expr) \(\backslash\)
+  EIGEN\_SIMPLE\_BINARY\_FUNCTION(int64\_t, Funcname, expr)
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a3d6ba0eb0399d9930dbda50fd6c9301b}\label{math__cpu_8cc_a3d6ba0eb0399d9930dbda50fd6c9301b}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{DELEGATE\_BROADCAST\_BINARY\_FUNCTION}}
+{\footnotesize\ttfamily \#define D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+B\+R\+O\+A\+D\+C\+A\+S\+T\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{Funcname,  }\item[{}]{expr }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                 \(\backslash\)
+  void Funcname##ToRow<T, CPUMathUtil>(                                       \(\backslash\)
+      const \textcolor{keywordtype}{int} M, \textcolor{keyword}{const} \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* a, \textcolor{keyword}{const} T* b, T* y, CPUMathUtil*) \{ \(\backslash\)
+    EigenArrayMap<T>(y, N, M) = ConstEigenArrayMap<T>(a, N, M).colwise()      \(\backslash\)
+                                    expr ConstEigenVectorArrayMap<T>(b, N);   \(\backslash\)
+  \}                                                                           \(\backslash\)
+  \textcolor{comment}{/* inplace versions */}                                                      \(\backslash\)
+  template <>                                                                 \(\backslash\)
+  void Funcname##ToRow<T, CPUMathUtil>(                                       \(\backslash\)
+      const \textcolor{keywordtype}{int} M, \textcolor{keyword}{const} \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{             \(\backslash\)
+    EigenArrayMap<T>(y, N, M).colwise() expr\textcolor{preprocessor}{## =                              \(\backslash\)}
+\textcolor{preprocessor}{        ConstEigenVectorArrayMap<T>(x, N);                                    \(\backslash\)}
+\textcolor{preprocessor}{  \}                                                                           \(\backslash\)}
+\textcolor{preprocessor}{  template <>                                                                 \(\backslash\)}
+\textcolor{preprocessor}{  void Funcname##ToCol<T, CPUMathUtil>(                                       \(\backslash\)}
+\textcolor{preprocessor}{      const int M, const int N, const T* x, T* y, CPUMathUtil*) \{             \(\backslash\)}
+\textcolor{preprocessor}{    EigenArrayMap<T>(y, N, M).rowwise() expr## =                              \(\backslash\)}
+\textcolor{preprocessor}{        ConstEigenVectorArrayMap<T>(x, M).transpose();                        \(\backslash\)}
+\textcolor{preprocessor}{  \}}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_aa76254be1a287845a75eb567933a1f67}\label{math__cpu_8cc_aa76254be1a287845a75eb567933a1f67}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{DELEGATE\_POWX\_FUNCTION}}
+{\footnotesize\ttfamily \#define D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+P\+O\+W\+X\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                   \(\backslash\)
+  void Powx<T, CPUMathUtil>(\textcolor{keyword}{const} \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* a, T b, T* y, CPUMathUtil*) \{ \(\backslash\)
+    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array().pow(b);      \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_aa8dd00424eb9cc08404b4b9cbad0b934}\label{math__cpu_8cc_aa8dd00424eb9cc08404b4b9cbad0b934}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{DELEGATE\_SIMPLE\_UNARY\_FUNCTION}}
+{\footnotesize\ttfamily \#define D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+U\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{Funcname,  }\item[{}]{expr }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                  \(\backslash\)
+  void Funcname<T, CPUMathUtil>(\textcolor{keyword}{const} \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{ \(\backslash\)
+    EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr();     \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a330f40150a356104ed232a78716d2b9f}\label{math__cpu_8cc_a330f40150a356104ed232a78716d2b9f}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{DELEGATE\_SINCOS\_FUNCTION}}
+{\footnotesize\ttfamily \#define D\+E\+L\+E\+G\+A\+T\+E\+\_\+\+S\+I\+N\+C\+O\+S\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                              \(\backslash\)
+  void SinCos<T, CPUMathUtil>(                                             \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* x, T* ys, T* yc, CPUMathUtil*) \{               \(\backslash\)
+    EigenVectorMap<T>(ys, N) = ConstEigenVectorMap<T>(x, N).array().sin(); \(\backslash\)
+    EigenVectorMap<T>(yc, N) = ConstEigenVectorMap<T>(x, N).array().cos(); \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a0c5caa9d8b1a092520a39523cec90608}\label{math__cpu_8cc_a0c5caa9d8b1a092520a39523cec90608}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}}
+\index{E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON@{E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON}{EIGEN\_SIMPLE\_BINARY\_FUNCTION}}
+{\footnotesize\ttfamily \#define E\+I\+G\+E\+N\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{T,  }\item[{}]{Funcname,  }\item[{}]{expr }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                           \(\backslash\)
+  void Funcname<T, CPUMathUtil>(                        \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* a, \textcolor{keyword}{const} T* b, T* y,        \(\backslash\)
+      CPUMathUtil*) \{                                   \(\backslash\)
+    EigenVectorMap<T>(y, N) =                           \(\backslash\)
+        ConstEigenVectorMap<T>(a, N).array() expr       \(\backslash\)
+            ConstEigenVectorMap<T>(b, N)                \(\backslash\)
+                .array();                               \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_ad149f31cdab456a8f7ea673226a65a89}\label{math__cpu_8cc_ad149f31cdab456a8f7ea673226a65a89}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP@{I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}}
+\index{I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP@{I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP}{INSTANTIATE\_BINARY\_OP}}
+{\footnotesize\ttfamily \#define I\+N\+S\+T\+A\+N\+T\+I\+A\+T\+E\+\_\+\+B\+I\+N\+A\+R\+Y\+\_\+\+OP(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{op,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                       \(\backslash\)
+  void name<T, CPUMathUtil>(                                        \(\backslash\)
+      const \textcolor{keywordtype}{int} n, \textcolor{keyword}{const} T* a, \textcolor{keyword}{const} T* b, \textcolor{keywordtype}{bool}* y, CPUMathUtil*) \{ \(\backslash\)
+    for (\textcolor{keywordtype}{int} i = 0; i < n; ++i) \{                                   \(\backslash\)
+      y[i] = a[i] op b[i];                                          \(\backslash\)
+    \}                                                               \(\backslash\)
+  \}                                                                 \(\backslash\)
+  template <>                                                       \(\backslash\)
+  void name##ToRow<T, CPUMathUtil>(                                 \(\backslash\)
+      const \textcolor{keywordtype}{int} m,                                                  \(\backslash\)
+      const \textcolor{keywordtype}{int} n,                                                  \(\backslash\)
+      const T* a,                                                   \(\backslash\)
+      const T* b,                                                   \(\backslash\)
+      bool* y,                                                      \(\backslash\)
+      CPUMathUtil*) \{                                               \(\backslash\)
+    for (\textcolor{keywordtype}{int} i = 0; i < n * m; ++i) \{                               \(\backslash\)
+      y[i] = a[i] op b[i % n];                                      \(\backslash\)
+    \}                                                               \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_abf4d3c86ceaf404e3c0b1ee801c0a3a2}\label{math__cpu_8cc_abf4d3c86ceaf404e3c0b1ee801c0a3a2}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX}{SPECIALIZED\_COLWISEMAX}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+L\+W\+I\+S\+E\+M\+AX(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                     \(\backslash\)
+  void ColwiseMax<T, CPUMathUtil>(                                \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} \textcolor{keywordtype}{int} D, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{ \(\backslash\)
+    EigenVectorMap<T>(y, D) =                                     \(\backslash\)
+        ConstEigenMatrixMap<T>(x, D, N).rowwise().maxCoeff();     \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_aa1808bef615a00543e4d7908ac4ced20}\label{math__cpu_8cc_aa1808bef615a00543e4d7908ac4ced20}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR}{SPECIALIZED\_COPYVECTOR}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+O\+P\+Y\+V\+E\+C\+T\+OR(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                        \(\backslash\)
+  void CopyVector<T, CPUMathUtil>(                                   \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* src, T* dst, CPUMathUtil* \textcolor{comment}{/*context*/}) \{ \(\backslash\)
+    if (src != dst && N > 0) \{                                       \(\backslash\)
+      memcpy(dst, src, \textcolor{keyword}{sizeof}(T) * N);                               \(\backslash\)
+    \}                                                                \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a60b647fa5e429289ae0220976ef3430f}\label{math__cpu_8cc_a60b647fa5e429289ae0220976ef3430f}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH}{SPECIALIZED\_CPU\_ADD\_STRIPED\_BATCH}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+C\+P\+U\+\_\+\+A\+D\+D\+\_\+\+S\+T\+R\+I\+P\+E\+D\+\_\+\+B\+A\+T\+CH(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                     \(\backslash\)
+  void \mbox{\hyperlink{namespaceonnxruntime_1_1math_a204b2ced988c7d73477b57d38688a53d}{AddStripedBatch}}(                                           \(\backslash\)
+      \textcolor{keyword}{const} \textcolor{keywordtype}{int} N,                                                \(\backslash\)
+      \textcolor{keyword}{const} T* first,                                             \(\backslash\)
+      T* y,                                                       \(\backslash\)
+      \textcolor{keyword}{const} \textcolor{keywordtype}{int} stripe,                                           \(\backslash\)
+      \textcolor{keyword}{const} \textcolor{keywordtype}{int} batch,                                            \(\backslash\)
+      CPUMathUtil* provider) \{                                    \(\backslash\)
+    for (\textcolor{keywordtype}{int} j = 0; j < batch; j++) \{                             \(\backslash\)
+      Add<T, CPUMathUtil>(N, first + j * stripe, y, y, provider); \(\backslash\)
+    \}                                                             \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_afc6a5c6557129a908e163c8b8894ea85}\label{math__cpu_8cc_afc6a5c6557129a908e163c8b8894ea85}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX}{SPECIALIZED\_ELEMWISEMAX}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+E\+L\+E\+M\+W\+I\+S\+E\+M\+AX(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                \(\backslash\)
+  void ElemwiseMax<T, CPUMathUtil>(                                          \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} T* x, \textcolor{keyword}{const} T* y, T* z, CPUMathUtil* \textcolor{comment}{/*context*/}) \{ \(\backslash\)
+    std::transform(x, x + N, y, z, [](\textcolor{keyword}{const} T& x\_i, \textcolor{keyword}{const} T& y\_i) \{          \(\backslash\)
+      return std::max(x\_i, y\_i);                                             \(\backslash\)
+    \});                                                                      \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a0f9a8e15644d5579ac68c7405286d890}\label{math__cpu_8cc_a0f9a8e15644d5579ac68c7405286d890}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM}{SPECIALIZED\_MAXIMUM}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+M\+A\+X\+I\+M\+UM(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                        \(\backslash\)
+  void Maximum<T, CPUMathUtil>(                                                      \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} \textcolor{keywordtype}{float} \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil* \textcolor{comment}{/*provider*/}) \{ \(\backslash\)
+    std::transform(                                                                  \(\backslash\)
+        x, x + N, y, [&\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}](\textcolor{keyword}{const} T& x\_i) \{ \textcolor{keywordflow}{return} std::max(x\_i, \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}); \});       \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_af8e17c9a053944fa60ebc485574d5e91}\label{math__cpu_8cc_af8e17c9a053944fa60ebc485574d5e91}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX}{SPECIALIZED\_REDUCEMAX}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+AX(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                         \(\backslash\)
+  void ReduceMax<T, CPUMathUtil>(     \(\backslash\)
+      const \textcolor{keywordtype}{int} N,                    \(\backslash\)
+      const T* x,                     \(\backslash\)
+      T* y,                           \(\backslash\)
+      Tensor* \textcolor{comment}{/*scratch\_ptr*/},        \(\backslash\)
+      CPUMathUtil* \textcolor{comment}{/*context*/}) \{     \(\backslash\)
+    *y = *std::max\_element(x, x + N); \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_aa80cea8bfefdedf684ca281fec17ffda}\label{math__cpu_8cc_aa80cea8bfefdedf684ca281fec17ffda}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN}{SPECIALIZED\_REDUCEMIN}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+E\+D\+U\+C\+E\+M\+IN(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                         \(\backslash\)
+  void ReduceMin<T, CPUMathUtil>(     \(\backslash\)
+      const \textcolor{keywordtype}{int} N,                    \(\backslash\)
+      const T* x,                     \(\backslash\)
+      T* y,                           \(\backslash\)
+      Tensor* \textcolor{comment}{/*scratch\_ptr*/},        \(\backslash\)
+      CPUMathUtil* \textcolor{comment}{/*context*/}) \{     \(\backslash\)
+    *y = *std::min\_element(x, x + N); \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a7e337bb24f72c67ba81edaa6c7dd421f}\label{math__cpu_8cc_a7e337bb24f72c67ba81edaa6c7dd421f}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX}{SPECIALIZED\_ROWWISEMAX}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+R\+O\+W\+W\+I\+S\+E\+M\+AX(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                     \(\backslash\)
+  void RowwiseMax<T, CPUMathUtil>(                                \(\backslash\)
+      const \textcolor{keywordtype}{int} N, \textcolor{keyword}{const} \textcolor{keywordtype}{int} D, \textcolor{keyword}{const} T* x, T* y, CPUMathUtil*) \{ \(\backslash\)
+    EigenVectorMap<T>(y, N) =                                     \(\backslash\)
+        ConstEigenMatrixMap<T>(x, D, N).colwise().maxCoeff();     \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_a2deda3eb4330e4417c16db63eb2c99a0}\label{math__cpu_8cc_a2deda3eb4330e4417c16db63eb2c99a0}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET}{SPECIALIZED\_SET}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+ET(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                    \(\backslash\)
+  void Set<T, CPUMathUtil>(\textcolor{keyword}{const} int64\_t N, \textcolor{keyword}{const} T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T* Y, CPUMathUtil*) \{ \(\backslash\)
+    if (\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} == (T)0) \{                                                         \(\backslash\)
+      memset(Y, 0, N * \textcolor{keyword}{sizeof}(T));                                               \(\backslash\)
+    \} \textcolor{keywordflow}{else} \{                                                                     \(\backslash\)
+      EigenVectorMap<T>(Y, N).setConstant(\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}});                                \(\backslash\)
+    \}                                                                            \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{math__cpu_8cc_af4dfcb307e7ac24eac5ca1f9be79c40a}\label{math__cpu_8cc_af4dfcb307e7ac24eac5ca1f9be79c40a}} 
+\index{math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}!S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}}
+\index{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM@{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}!math\+\_\+cpu.\+cc@{math\+\_\+cpu.\+cc}}
+\subsubsection{\texorpdfstring{S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM}{SPECIALIZED\_SUM}}
+{\footnotesize\ttfamily \#define S\+P\+E\+C\+I\+A\+L\+I\+Z\+E\+D\+\_\+\+S\+UM(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                \(\backslash\)
+  void Sum<T, CPUMathUtil>(                  \(\backslash\)
+      const \textcolor{keywordtype}{int} N,                           \(\backslash\)
+      const T* x,                            \(\backslash\)
+      T* y,                                  \(\backslash\)
+      CPUMathUtil* \textcolor{comment}{/* unused */},             \(\backslash\)
+      Tensor* \textcolor{comment}{/* unused */}) \{                \(\backslash\)
+    *y = ConstEigenVectorMap<T>(x, N).sum(); \(\backslash\)
+  \}
+\end{DoxyCode}

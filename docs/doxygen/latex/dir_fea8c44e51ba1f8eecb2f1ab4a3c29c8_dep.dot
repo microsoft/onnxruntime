@@ -1,0 +1,14 @@
+digraph "onnxruntime/onnxruntime/core/providers/cuda/reduction" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_893aee19ddfc3e61cc87531e2d88f525 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="cuda" fontname="Helvetica", fontsize="10", URL="dir_893aee19ddfc3e61cc87531e2d88f525.html"]
+  dir_fea8c44e51ba1f8eecb2f1ab4a3c29c8 [shape=box, label="reduction", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_fea8c44e51ba1f8eecb2f1ab4a3c29c8.html"];
+  }
+  dir_3683cb2698e6daed4ebbd4c1d451f237 [shape=box label="cpu" fillcolor="white" style="filled" color="red" URL="dir_3683cb2698e6daed4ebbd4c1d451f237.html"];
+  dir_609afc67b08be54db96cf2542a798d92 [shape=box label="math" URL="dir_609afc67b08be54db96cf2542a798d92.html"];
+  dir_fea8c44e51ba1f8eecb2f1ab4a3c29c8->dir_3683cb2698e6daed4ebbd4c1d451f237 [headlabel="2", labeldistance=1.5 headhref="dir_000056_000028.html"];
+  dir_fea8c44e51ba1f8eecb2f1ab4a3c29c8->dir_609afc67b08be54db96cf2542a798d92 [headlabel="3", labeldistance=1.5 headhref="dir_000056_000047.html"];
+  dir_609afc67b08be54db96cf2542a798d92->dir_3683cb2698e6daed4ebbd4c1d451f237 [headlabel="3", labeldistance=1.5 headhref="dir_000047_000028.html"];
+}

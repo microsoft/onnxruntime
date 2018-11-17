@@ -1,0 +1,57 @@
+\hypertarget{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{}\section{onnxruntime\+:\+:contrib\+:\+:rnn\+:\+:detail\+:\+:Uni\+Directional\+Attn\+Lstm$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}\index{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm$<$ T $>$@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm$<$ T $>$}}
+
+
+{\ttfamily \#include $<$uni\+\_\+dir\+\_\+attn\+\_\+lstm.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_a4366e877a3cb2febd29550d5bc93f9ae}{Uni\+Directional\+Attn\+Lstm}} (\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} allocator, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger, const int seq\+\_\+length, const int batch\+\_\+size, const int input\+\_\+size, const int hidden\+\_\+size, Direction direction, const bool input\+\_\+forget, \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{Attention\+Wrapper}}$<$ T $>$ \&attention\+\_\+wrapper, const gsl\+::span$<$ const T $>$ \&bias, const gsl\+::span$<$ const T $>$ \&peephole\+\_\+weights, const gsl\+::span$<$ const T $>$ \&initial\+\_\+hidden\+\_\+state, const gsl\+::span$<$ const T $>$ \&initial\+\_\+cell\+\_\+state, const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&activation\+\_\+func\+\_\+f, const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&activation\+\_\+func\+\_\+g, const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&activation\+\_\+func\+\_\+h, const float clip, \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} \&ttp)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_ad0dee12c0610b82a3d0af32da1ec3ac8}{Compute}} (const gsl\+::span$<$ const T $>$ \&inputs, const gsl\+::span$<$ const int $>$ \&sequence\+\_\+lengths, const int num\+\_\+directions, const gsl\+::span$<$ const T $>$ \&input\+\_\+weights, const gsl\+::span$<$ const T $>$ \&recurrent\+\_\+weights, gsl\+::span$<$ T $>$ \&outputs, gsl\+::span$<$ T $>$ \&final\+\_\+hidden\+\_\+state, gsl\+::span$<$ T $>$ \&final\+\_\+cell\+\_\+state)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_a9c6fd872601da10b0adabdcc4a6346d4}{$\sim$\+Uni\+Directional\+Attn\+Lstm}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{Attention\+Wrapper}}$<$ T $>$ \& \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_afa2e0511cc65d7bdcb3e4d67c3829959}{Get\+Attention\+Wrapper}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_a4366e877a3cb2febd29550d5bc93f9ae}\label{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_a4366e877a3cb2febd29550d5bc93f9ae}} 
+\index{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}!Uni\+Directional\+Attn\+Lstm@{Uni\+Directional\+Attn\+Lstm}}
+\index{Uni\+Directional\+Attn\+Lstm@{Uni\+Directional\+Attn\+Lstm}!onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}
+\subsubsection{\texorpdfstring{Uni\+Directional\+Attn\+Lstm()}{UniDirectionalAttnLstm()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{Uni\+Directional\+Attn\+Lstm}} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{allocator,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger,  }\item[{const int}]{seq\+\_\+length,  }\item[{const int}]{batch\+\_\+size,  }\item[{const int}]{input\+\_\+size,  }\item[{const int}]{hidden\+\_\+size,  }\item[{Direction}]{direction,  }\item[{const bool}]{input\+\_\+forget,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{Attention\+Wrapper}}$<$ T $>$ \&}]{attention\+\_\+wrapper,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{bias,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{peephole\+\_\+weights,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{initial\+\_\+hidden\+\_\+state,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{initial\+\_\+cell\+\_\+state,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&}]{activation\+\_\+func\+\_\+f,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&}]{activation\+\_\+func\+\_\+g,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&}]{activation\+\_\+func\+\_\+h,  }\item[{const float}]{clip,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} \&}]{ttp }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_a9c6fd872601da10b0adabdcc4a6346d4}\label{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_a9c6fd872601da10b0adabdcc4a6346d4}} 
+\index{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}!````~Uni\+Directional\+Attn\+Lstm@{$\sim$\+Uni\+Directional\+Attn\+Lstm}}
+\index{````~Uni\+Directional\+Attn\+Lstm@{$\sim$\+Uni\+Directional\+Attn\+Lstm}!onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}
+\subsubsection{\texorpdfstring{$\sim$\+Uni\+Directional\+Attn\+Lstm()}{~UniDirectionalAttnLstm()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}$<$ T $>$\+::$\sim$\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{Uni\+Directional\+Attn\+Lstm}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_ad0dee12c0610b82a3d0af32da1ec3ac8}\label{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_ad0dee12c0610b82a3d0af32da1ec3ac8}} 
+\index{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{const gsl\+::span$<$ const T $>$ \&}]{inputs,  }\item[{const gsl\+::span$<$ const int $>$ \&}]{sequence\+\_\+lengths,  }\item[{const int}]{num\+\_\+directions,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{input\+\_\+weights,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{recurrent\+\_\+weights,  }\item[{gsl\+::span$<$ T $>$ \&}]{outputs,  }\item[{gsl\+::span$<$ T $>$ \&}]{final\+\_\+hidden\+\_\+state,  }\item[{gsl\+::span$<$ T $>$ \&}]{final\+\_\+cell\+\_\+state }\end{DoxyParamCaption})}
+
+$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$\+L\+S\+TM Calculations$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$/ \mbox{\Hypertarget{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_afa2e0511cc65d7bdcb3e4d67c3829959}\label{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm_afa2e0511cc65d7bdcb3e4d67c3829959}} 
+\index{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}!Get\+Attention\+Wrapper@{Get\+Attention\+Wrapper}}
+\index{Get\+Attention\+Wrapper@{Get\+Attention\+Wrapper}!onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm@{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}
+\subsubsection{\texorpdfstring{Get\+Attention\+Wrapper()}{GetAttentionWrapper()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1contrib_1_1AttentionWrapper}{Attention\+Wrapper}}$<$T$>$\& \mbox{\hyperlink{classonnxruntime_1_1contrib_1_1rnn_1_1detail_1_1UniDirectionalAttnLstm}{onnxruntime\+::contrib\+::rnn\+::detail\+::\+Uni\+Directional\+Attn\+Lstm}}$<$ T $>$\+::Get\+Attention\+Wrapper (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/\mbox{\hyperlink{uni__dir__attn__lstm_8h}{uni\+\_\+dir\+\_\+attn\+\_\+lstm.\+h}}\item 
+onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/\mbox{\hyperlink{uni__dir__attn__lstm_8cc}{uni\+\_\+dir\+\_\+attn\+\_\+lstm.\+cc}}\end{DoxyCompactItemize}

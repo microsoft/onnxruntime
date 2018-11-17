@@ -1,0 +1,75 @@
+\hypertarget{classonnxruntime_1_1ImageScaler}{}\section{onnxruntime\+:\+:Image\+Scaler$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1ImageScaler}\index{onnxruntime\+::\+Image\+Scaler$<$ T $>$@{onnxruntime\+::\+Image\+Scaler$<$ T $>$}}
+
+
+{\ttfamily \#include $<$image\+\_\+scaler.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Image\+Scaler$<$ T $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Image\+Scaler$<$ T $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ImageScaler_ad2f31b891202d651182be9af28eff3dd}{Image\+Scaler}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ImageScaler_ab6b04f35b90a54f27093b7915fe3f2a1}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const override
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+float \mbox{\hyperlink{classonnxruntime_1_1ImageScaler_a43010f6839787f7fd46ae8ece2d363aa}{scale\+\_\+}}
+\item 
+std\+::vector$<$ float $>$ \mbox{\hyperlink{classonnxruntime_1_1ImageScaler_aefdecedc355195cb19ccdb2db452fe33}{bias\+\_\+}}
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ImageScaler_ad2f31b891202d651182be9af28eff3dd}\label{classonnxruntime_1_1ImageScaler_ad2f31b891202d651182be9af28eff3dd}} 
+\index{onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}!Image\+Scaler@{Image\+Scaler}}
+\index{Image\+Scaler@{Image\+Scaler}!onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}}
+\subsubsection{\texorpdfstring{Image\+Scaler()}{ImageScaler()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1ImageScaler}{onnxruntime\+::\+Image\+Scaler}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ImageScaler}{Image\+Scaler}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ImageScaler_ab6b04f35b90a54f27093b7915fe3f2a1}\label{classonnxruntime_1_1ImageScaler_ab6b04f35b90a54f27093b7915fe3f2a1}} 
+\index{onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ImageScaler}{onnxruntime\+::\+Image\+Scaler}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ImageScaler_aefdecedc355195cb19ccdb2db452fe33}\label{classonnxruntime_1_1ImageScaler_aefdecedc355195cb19ccdb2db452fe33}} 
+\index{onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}!bias\+\_\+@{bias\+\_\+}}
+\index{bias\+\_\+@{bias\+\_\+}!onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}}
+\subsubsection{\texorpdfstring{bias\+\_\+}{bias\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+std\+::vector$<$float$>$ \mbox{\hyperlink{classonnxruntime_1_1ImageScaler}{onnxruntime\+::\+Image\+Scaler}}$<$ T $>$\+::bias\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ImageScaler_a43010f6839787f7fd46ae8ece2d363aa}\label{classonnxruntime_1_1ImageScaler_a43010f6839787f7fd46ae8ece2d363aa}} 
+\index{onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}!scale\+\_\+@{scale\+\_\+}}
+\index{scale\+\_\+@{scale\+\_\+}!onnxruntime\+::\+Image\+Scaler@{onnxruntime\+::\+Image\+Scaler}}
+\subsubsection{\texorpdfstring{scale\+\_\+}{scale\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+float \mbox{\hyperlink{classonnxruntime_1_1ImageScaler}{onnxruntime\+::\+Image\+Scaler}}$<$ T $>$\+::scale\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/tensor/\mbox{\hyperlink{cpu_2tensor_2image__scaler_8h}{image\+\_\+scaler.\+h}}\end{DoxyCompactItemize}

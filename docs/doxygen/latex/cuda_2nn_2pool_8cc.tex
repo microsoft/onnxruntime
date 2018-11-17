@@ -1,0 +1,75 @@
+\hypertarget{cuda_2nn_2pool_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/nn/pool.cc File Reference}
+\label{cuda_2nn_2pool_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/nn/pool.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/nn/pool.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cuda/nn/pool.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/cudnn\+\_\+common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/nn/max\+\_\+pool\+\_\+with\+\_\+index.\+h\char`\"{}}\newline
+Include dependency graph for pool.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnPoolingDescriptor}{onnxruntime\+::cuda\+::\+Cudnn\+Pooling\+Descriptor}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda_2nn_2pool_8cc_a61973dddd66a72650b203911aa0ab844}{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}}(\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}},  data\+\_\+type,  pool\+\_\+type,  since\+\_\+version)
+\item 
+\#define \mbox{\hyperlink{cuda_2nn_2pool_8cc_a13bd27a650e22d3b3c168d62b4c58b3c}{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED}}(\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}},  data\+\_\+type,  pool\+\_\+type,  since\+\_\+version,  end\+\_\+version)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda_2nn_2pool_8cc_a61973dddd66a72650b203911aa0ab844}\label{cuda_2nn_2pool_8cc_a61973dddd66a72650b203911aa0ab844}} 
+\index{cuda/nn/pool.\+cc@{cuda/nn/pool.\+cc}!P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL@{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}}
+\index{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL@{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}!cuda/nn/pool.\+cc@{cuda/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL}{POOLING\_KERNEL}}
+{\footnotesize\ttfamily \#define P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}},  }\item[{}]{data\+\_\+type,  }\item[{}]{pool\+\_\+type,  }\item[{}]{since\+\_\+version }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                                
+              \(\backslash\)
+      \mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\_name}},                                                                          \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                                      \(\backslash\)
+      since\_version,                                                                    \(\backslash\)
+      data\_type,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                                        
+         \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<data\_type>()), \(\backslash\)
+      Pool<data\_type, pool\_type>);
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2nn_2pool_8cc_a13bd27a650e22d3b3c168d62b4c58b3c}\label{cuda_2nn_2pool_8cc_a13bd27a650e22d3b3c168d62b4c58b3c}} 
+\index{cuda/nn/pool.\+cc@{cuda/nn/pool.\+cc}!P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED@{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED}}
+\index{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED@{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED}!cuda/nn/pool.\+cc@{cuda/nn/pool.\+cc}}
+\subsubsection{\texorpdfstring{P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED}{POOLING\_KERNEL\_VERSIONED}}
+{\footnotesize\ttfamily \#define P\+O\+O\+L\+I\+N\+G\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+ED(\begin{DoxyParamCaption}\item[{}]{\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}},  }\item[{}]{data\+\_\+type,  }\item[{}]{pool\+\_\+type,  }\item[{}]{since\+\_\+version,  }\item[{}]{end\+\_\+version }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_EX}}(                            
+                                                                                    \(\backslash\)
+      \mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\_name}},                                                                                      
+                                                      \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                                              
+                                                          \(\backslash\)
+      since\_version,                                                                                       
+                                               \(\backslash\)
+      end\_version,                                                                                         
+                                               \(\backslash\)
+      data\_type,                                                                                           
+                                               \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                                        
+                                                                     \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<data\_type>()).TypeConstraint(\textcolor{stringliteral}{"I"}, 
+      DataTypeImpl::GetTensorType<int64\_t>()), \(\backslash\)
+      Pool<data\_type, pool\_type>);
+\end{DoxyCode}

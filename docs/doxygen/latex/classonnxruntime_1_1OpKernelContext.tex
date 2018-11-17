@@ -1,0 +1,253 @@
+\hypertarget{classonnxruntime_1_1OpKernelContext}{}\section{onnxruntime\+:\+:Op\+Kernel\+Context Class Reference}
+\label{classonnxruntime_1_1OpKernelContext}\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+
+
+{\ttfamily \#include $<$op\+\_\+kernel.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Op\+Kernel\+Context\+:
+% FIG 0
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_ae0b5ac00d35dcfd43bbc28f655f92fe1}{Arg\+Map}} = std\+::unordered\+\_\+map$<$ std\+::string, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a833fe4cfdf449be56ef3bab665774bff}{Op\+Kernel\+Context}} (\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} $\ast$frame, const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $\ast$\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}{kernel}}, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a84fd2b6aa991a81856913bee18e2231d}{$\sim$\+Op\+Kernel\+Context}} ()=default
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a961585972b6d85e8500faf2e138d3aaa}{Num\+Variadic\+Inputs}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} arg\+\_\+num) const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a06c1e42dcfddb17f96c9e31cc1185027}{Input\+Type}} (int index) const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a253e5bdfb161a27eec52823dcc6f63ce}{Output\+Type}} (int index) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a55aa066dae670496d009d642c69407d0}{Input}} (int index) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a6d56830ba7a73e38d8c5ca92699b8c69}{Output}} (int index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a1aa7d10ea6fd4770151e30e3e6891cd9}{Output}} (int index, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&shape)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \& \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a510003379f7b247e102390cc1deb5c7c}{Logger}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a155914a177b5e3bd08f6aa3d110bd7a3}{Input\+Count}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a6abb7a4b5f90e4675ba6113146a63a09}{Implicit\+Input\+Count}} () const
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a3761dd6cb3ba88c633e09bce648a5aab}{Output\+Count}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_af72694f683ed00ea2762638c860149b1}{Get\+Temp\+Space\+Allocator}} (\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} $\ast$output) const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a248e10d4549d836294cfee933098c71f}{Input\+Fence}} (int index) const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a7ff52b09e3b71c94f680bf75917647a9}{Implicit\+Input\+Fence}} (int index) const
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_aa99f644d327b045733e6f5cd000264e1}{Output\+Fence}} (int index) const
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a00b2277826ce34e6adc2b1efd028a6cc}{Output}} (int index)
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a58ebfd9ec8b6062ea79bb2fdb98fd2da}{Get\+Node\+Index}} () const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \& \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_aa39b5ccbcbed000ba572de3398f38738}{Get\+Session\+State}} () const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a1af1631383c5599a72357667c899d790}{Get\+Input\+M\+L\+Value}} (int index) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a690b78acd5f2e55b7ef39e7d014f796c}{Get\+Implicit\+Input\+M\+L\+Value}} (int index) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_a762e7a53c262fbade08d571bfbb5ce7d}{Get\+Output\+M\+L\+Value}} (int index)
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_ae0b5ac00d35dcfd43bbc28f655f92fe1}\label{classonnxruntime_1_1OpKernelContext_ae0b5ac00d35dcfd43bbc28f655f92fe1}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Arg\+Map@{Arg\+Map}}
+\index{Arg\+Map@{Arg\+Map}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Arg\+Map}{ArgMap}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1OpKernelContext_ae0b5ac00d35dcfd43bbc28f655f92fe1}{onnxruntime\+::\+Op\+Kernel\+Context\+::\+Arg\+Map}} =  std\+::unordered\+\_\+map$<$std\+::string, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}$>$}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a833fe4cfdf449be56ef3bab665774bff}\label{classonnxruntime_1_1OpKernelContext_a833fe4cfdf449be56ef3bab665774bff}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Op\+Kernel\+Context@{Op\+Kernel\+Context}}
+\index{Op\+Kernel\+Context@{Op\+Kernel\+Context}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Op\+Kernel\+Context()}{OpKernelContext()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Op\+Kernel\+Context\+::\+Op\+Kernel\+Context (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1ExecutionFrame}{Execution\+Frame}} $\ast$}]{frame,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $\ast$}]{kernel,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a84fd2b6aa991a81856913bee18e2231d}\label{classonnxruntime_1_1OpKernelContext_a84fd2b6aa991a81856913bee18e2231d}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!````~Op\+Kernel\+Context@{$\sim$\+Op\+Kernel\+Context}}
+\index{````~Op\+Kernel\+Context@{$\sim$\+Op\+Kernel\+Context}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{$\sim$\+Op\+Kernel\+Context()}{~OpKernelContext()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+Op\+Kernel\+Context\+::$\sim$\+Op\+Kernel\+Context (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a690b78acd5f2e55b7ef39e7d014f796c}\label{classonnxruntime_1_1OpKernelContext_a690b78acd5f2e55b7ef39e7d014f796c}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Get\+Implicit\+Input\+M\+L\+Value@{Get\+Implicit\+Input\+M\+L\+Value}}
+\index{Get\+Implicit\+Input\+M\+L\+Value@{Get\+Implicit\+Input\+M\+L\+Value}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Get\+Implicit\+Input\+M\+L\+Value()}{GetImplicitInputMLValue()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Get\+Implicit\+Input\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a1af1631383c5599a72357667c899d790}\label{classonnxruntime_1_1OpKernelContext_a1af1631383c5599a72357667c899d790}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Get\+Input\+M\+L\+Value@{Get\+Input\+M\+L\+Value}}
+\index{Get\+Input\+M\+L\+Value@{Get\+Input\+M\+L\+Value}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Get\+Input\+M\+L\+Value()}{GetInputMLValue()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Get\+Input\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a58ebfd9ec8b6062ea79bb2fdb98fd2da}\label{classonnxruntime_1_1OpKernelContext_a58ebfd9ec8b6062ea79bb2fdb98fd2da}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Get\+Node\+Index@{Get\+Node\+Index}}
+\index{Get\+Node\+Index@{Get\+Node\+Index}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Get\+Node\+Index()}{GetNodeIndex()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Get\+Node\+Index (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a762e7a53c262fbade08d571bfbb5ce7d}\label{classonnxruntime_1_1OpKernelContext_a762e7a53c262fbade08d571bfbb5ce7d}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Get\+Output\+M\+L\+Value@{Get\+Output\+M\+L\+Value}}
+\index{Get\+Output\+M\+L\+Value@{Get\+Output\+M\+L\+Value}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Get\+Output\+M\+L\+Value()}{GetOutputMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} $\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Get\+Output\+M\+L\+Value (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_aa39b5ccbcbed000ba572de3398f38738}\label{classonnxruntime_1_1OpKernelContext_aa39b5ccbcbed000ba572de3398f38738}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Get\+Session\+State@{Get\+Session\+State}}
+\index{Get\+Session\+State@{Get\+Session\+State}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Get\+Session\+State()}{GetSessionState()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \& onnxruntime\+::\+Op\+Kernel\+Context\+::\+Get\+Session\+State (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_af72694f683ed00ea2762638c860149b1}\label{classonnxruntime_1_1OpKernelContext_af72694f683ed00ea2762638c860149b1}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Get\+Temp\+Space\+Allocator@{Get\+Temp\+Space\+Allocator}}
+\index{Get\+Temp\+Space\+Allocator@{Get\+Temp\+Space\+Allocator}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Get\+Temp\+Space\+Allocator()}{GetTempSpaceAllocator()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Get\+Temp\+Space\+Allocator (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} $\ast$}]{output }\end{DoxyParamCaption}) const}
+
+return an allocator on device 0, with memtype of O\+N\+N\+X\+Runtime\+Mem\+Type\+Default \mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a6abb7a4b5f90e4675ba6113146a63a09}\label{classonnxruntime_1_1OpKernelContext_a6abb7a4b5f90e4675ba6113146a63a09}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Implicit\+Input\+Count@{Implicit\+Input\+Count}}
+\index{Implicit\+Input\+Count@{Implicit\+Input\+Count}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Implicit\+Input\+Count()}{ImplicitInputCount()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Op\+Kernel\+Context\+::\+Implicit\+Input\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a7ff52b09e3b71c94f680bf75917647a9}\label{classonnxruntime_1_1OpKernelContext_a7ff52b09e3b71c94f680bf75917647a9}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Implicit\+Input\+Fence@{Implicit\+Input\+Fence}}
+\index{Implicit\+Input\+Fence@{Implicit\+Input\+Fence}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Implicit\+Input\+Fence()}{ImplicitInputFence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Implicit\+Input\+Fence (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const}
+
+Return the fence of current node\textquotesingle{}s implicit input. 
+\begin{DoxyParams}{Parameters}
+{\em index} & The index of the implicit input. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Point to the Fence of the implicit input \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}. It is null if the input \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} doesn\textquotesingle{}t have fence or the input is optional. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a55aa066dae670496d009d642c69407d0}\label{classonnxruntime_1_1OpKernelContext_a55aa066dae670496d009d642c69407d0}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Input@{Input}}
+\index{Input@{Input}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Input()}{Input()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Input (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a155914a177b5e3bd08f6aa3d110bd7a3}\label{classonnxruntime_1_1OpKernelContext_a155914a177b5e3bd08f6aa3d110bd7a3}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Input\+Count@{Input\+Count}}
+\index{Input\+Count@{Input\+Count}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Input\+Count()}{InputCount()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Op\+Kernel\+Context\+::\+Input\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a248e10d4549d836294cfee933098c71f}\label{classonnxruntime_1_1OpKernelContext_a248e10d4549d836294cfee933098c71f}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Input\+Fence@{Input\+Fence}}
+\index{Input\+Fence@{Input\+Fence}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Input\+Fence()}{InputFence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Input\+Fence (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const}
+
+Return the fence of current node\textquotesingle{}s input. 
+\begin{DoxyParams}{Parameters}
+{\em index} & The index of the input. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Point to the Fence of the input \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}. It is null if the input \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} doesn\textquotesingle{}t have fence or the input is optional. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a06c1e42dcfddb17f96c9e31cc1185027}\label{classonnxruntime_1_1OpKernelContext_a06c1e42dcfddb17f96c9e31cc1185027}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Input\+Type@{Input\+Type}}
+\index{Input\+Type@{Input\+Type}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Input\+Type()}{InputType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Input\+Type (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a510003379f7b247e102390cc1deb5c7c}\label{classonnxruntime_1_1OpKernelContext_a510003379f7b247e102390cc1deb5c7c}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Logger@{Logger}}
+\index{Logger@{Logger}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Logger()}{Logger()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}}\& onnxruntime\+::\+Op\+Kernel\+Context\+::\+Logger (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a961585972b6d85e8500faf2e138d3aaa}\label{classonnxruntime_1_1OpKernelContext_a961585972b6d85e8500faf2e138d3aaa}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Num\+Variadic\+Inputs@{Num\+Variadic\+Inputs}}
+\index{Num\+Variadic\+Inputs@{Num\+Variadic\+Inputs}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Num\+Variadic\+Inputs()}{NumVariadicInputs()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Op\+Kernel\+Context\+::\+Num\+Variadic\+Inputs (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{arg\+\_\+num }\end{DoxyParamCaption}) const}
+
+Return the number of inputs for a variadic argument. 
+\begin{DoxyParams}{Parameters}
+{\em arg\+\_\+num} & The operator argument number. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Number of inputs the argument has. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a6d56830ba7a73e38d8c5ca92699b8c69}\label{classonnxruntime_1_1OpKernelContext_a6d56830ba7a73e38d8c5ca92699b8c69}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Output@{Output}}
+\index{Output@{Output}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Output()}{Output()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+T$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Output (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a1aa7d10ea6fd4770151e30e3e6891cd9}\label{classonnxruntime_1_1OpKernelContext_a1aa7d10ea6fd4770151e30e3e6891cd9}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Output@{Output}}
+\index{Output@{Output}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Output()}{Output()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Output (\begin{DoxyParamCaption}\item[{int}]{index,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{shape }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a00b2277826ce34e6adc2b1efd028a6cc}\label{classonnxruntime_1_1OpKernelContext_a00b2277826ce34e6adc2b1efd028a6cc}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Output@{Output}}
+\index{Output@{Output}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Output()}{Output()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}}$\ast$ onnxruntime\+::\+Op\+Kernel\+Context\+::\+Output (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a3761dd6cb3ba88c633e09bce648a5aab}\label{classonnxruntime_1_1OpKernelContext_a3761dd6cb3ba88c633e09bce648a5aab}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Output\+Count@{Output\+Count}}
+\index{Output\+Count@{Output\+Count}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Output\+Count()}{OutputCount()}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Op\+Kernel\+Context\+::\+Output\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_aa99f644d327b045733e6f5cd000264e1}\label{classonnxruntime_1_1OpKernelContext_aa99f644d327b045733e6f5cd000264e1}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Output\+Fence@{Output\+Fence}}
+\index{Output\+Fence@{Output\+Fence}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Output\+Fence()}{OutputFence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a71ef3c4da6339a3625cdf4c4937e4913}{Fence\+\_\+t}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Output\+Fence (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const}
+
+Return the fence of current node\textquotesingle{}s output identifed by index. 
+\begin{DoxyParams}{Parameters}
+{\em index} & The index of the output. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Point to the Fence of the output \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}}. It is null if the output \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} doesn\textquotesingle{}t have fence or the output is optional. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelContext_a253e5bdfb161a27eec52823dcc6f63ce}\label{classonnxruntime_1_1OpKernelContext_a253e5bdfb161a27eec52823dcc6f63ce}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}!Output\+Type@{Output\+Type}}
+\index{Output\+Type@{Output\+Type}!onnxruntime\+::\+Op\+Kernel\+Context@{onnxruntime\+::\+Op\+Kernel\+Context}}
+\subsubsection{\texorpdfstring{Output\+Type()}{OutputType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} onnxruntime\+::\+Op\+Kernel\+Context\+::\+Output\+Type (\begin{DoxyParamCaption}\item[{int}]{index }\end{DoxyParamCaption}) const}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{op__kernel_8h}{op\+\_\+kernel.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{op__kernel_8cc}{op\+\_\+kernel.\+cc}}\end{DoxyCompactItemize}

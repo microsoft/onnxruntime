@@ -1,0 +1,10 @@
+digraph "onnxruntime/onnxruntime/contrib_ops/cpu/attnlstm/uni_dir_attn_lstm.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node63 [label="onnxruntime/onnxruntime\l/contrib_ops/cpu/attnlstm\l/uni_dir_attn_lstm.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node63 -> Node64 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node64 [label="onnxruntime/onnxruntime\l/contrib_ops/cpu/attnlstm\l/deep_cpu_attn_lstm.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$deep__cpu__attn__lstm_8cc.html"];
+  Node63 -> Node65 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node65 [label="onnxruntime/onnxruntime\l/contrib_ops/cpu/attnlstm\l/uni_dir_attn_lstm.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$uni__dir__attn__lstm_8cc.html"];
+}

@@ -1,0 +1,25 @@
+\hypertarget{normalizer_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/ml/normalizer.cc File Reference}
+\label{normalizer_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/ml/normalizer.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/ml/normalizer.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/ml/normalizer.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$algorithm$>$}\newline
+{\ttfamily \#include \char`\"{}gsl/span\char`\"{}}\newline
+Include dependency graph for normalizer.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a83b6fca67ac01d5a16a173611aae6a45}{onnxruntime\+::ml\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+M\+L\+\_\+\+K\+E\+R\+N\+EL}} (Normalizer, 1, Kernel\+Def\+Builder().May\+Inplace(0, 0) .Type\+Constraint(\char`\"{}T\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ double $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()\}), Normalizer)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a139f0b2858ef69c7f042de7e40c3d68e}{onnxruntime\+::ml\+::\+Normalize\+Max}} (const gsl\+::span$<$ const T $>$ \&in, gsl\+::span$<$ float $>$ \&out, int64\+\_\+t offset, int64\+\_\+t stride, int64\+\_\+t increment\+\_\+by)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1ml_a728024f4161db1cc2bb78c176c44a30b}{onnxruntime\+::ml\+::\+Normalize\+L1}} (const gsl\+::span$<$ const T $>$ \&in, gsl\+::span$<$ float $>$ \&out, int64\+\_\+t offset, int64\+\_\+t stride, int64\+\_\+t increment\+\_\+by)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1ml_ac76638f7a14b53fec05c3a89531dff63}{onnxruntime\+::ml\+::\+Normalize\+L2}} (const gsl\+::span$<$ const T $>$ \&in, gsl\+::span$<$ float $>$ \&out, int64\+\_\+t offset, int64\+\_\+t stride, int64\+\_\+t increment\+\_\+by)
+\end{DoxyCompactItemize}

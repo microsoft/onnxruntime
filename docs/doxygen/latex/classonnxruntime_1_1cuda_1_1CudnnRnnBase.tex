@@ -1,0 +1,148 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{}\section{onnxruntime\+:\+:cuda\+:\+:Cudnn\+Rnn\+Base$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase}\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base$<$ T $>$@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base$<$ T $>$}}
+
+
+{\ttfamily \#include $<$cudnn\+\_\+rnn\+\_\+base.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:cuda\+:\+:Cudnn\+Rnn\+Base$<$ T $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Cudnn\+Rnn\+Base$<$ T $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a202c5560e8d830d451742ce7fb05a867}{Cudnn\+Rnn\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_acf8e4d67f6937aef141fee74b5d8401a}{Set\+Cudnn\+Rnn\+Desc}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a8a9e22cbec1bc69d53a557a53a6fe790}{Cache\+Cudnn\+Rnn\+Weights}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ab7e2e0912ffc9b23069b9a2fee25aa2b}{Compute\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$ctx) const override
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a8bce1f099dd2137878ca7076ee778768}{num\+\_\+directions\+\_\+}}
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a356775ca69710062927763d8caf012fc}{hidden\+\_\+size\+\_\+}}
+\item 
+cudnn\+R\+N\+N\+Mode\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a4d560327ff9db8d163c70c1db681ae2c}{rnn\+\_\+mode\+\_\+}}
+\item 
+std\+::vector$<$ int $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a5238bfaa798ff8e995650b1239ec1562}{W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}}
+\item 
+std\+::vector$<$ int $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ac8928d0f3f1a61979c26ed046a8521ce}{R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRNN}{Cudnn\+R\+NN}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_aa8c1a73fe24936e85ebed992805d02b3}{rnn\+\_\+desc\+\_\+}}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a9f4414feb5fdb7391741be9f4546293b}{reverse\+\_\+}}
+\item 
+int \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_afcd51336238a0ff10b7132b3b6d6407d}{num\+\_\+layers\+\_\+}}
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a202c5560e8d830d451742ce7fb05a867}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a202c5560e8d830d451742ce7fb05a867}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!Cudnn\+Rnn\+Base@{Cudnn\+Rnn\+Base}}
+\index{Cudnn\+Rnn\+Base@{Cudnn\+Rnn\+Base}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{Cudnn\+Rnn\+Base()}{CudnnRnnBase()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{Cudnn\+Rnn\+Base}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a8a9e22cbec1bc69d53a557a53a6fe790}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a8a9e22cbec1bc69d53a557a53a6fe790}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!Cache\+Cudnn\+Rnn\+Weights@{Cache\+Cudnn\+Rnn\+Weights}}
+\index{Cache\+Cudnn\+Rnn\+Weights@{Cache\+Cudnn\+Rnn\+Weights}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{Cache\+Cudnn\+Rnn\+Weights()}{CacheCudnnRnnWeights()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::Cache\+Cudnn\+Rnn\+Weights (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ab7e2e0912ffc9b23069b9a2fee25aa2b}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ab7e2e0912ffc9b23069b9a2fee25aa2b}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!Compute\+Internal@{Compute\+Internal}}
+\index{Compute\+Internal@{Compute\+Internal}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{Compute\+Internal()}{ComputeInternal()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::Compute\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{ctx }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_aca7af04ae448017d6023d30bba231ebb}{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_acf8e4d67f6937aef141fee74b5d8401a}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_acf8e4d67f6937aef141fee74b5d8401a}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!Set\+Cudnn\+Rnn\+Desc@{Set\+Cudnn\+Rnn\+Desc}}
+\index{Set\+Cudnn\+Rnn\+Desc@{Set\+Cudnn\+Rnn\+Desc}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{Set\+Cudnn\+Rnn\+Desc()}{SetCudnnRnnDesc()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::Set\+Cudnn\+Rnn\+Desc (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a356775ca69710062927763d8caf012fc}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a356775ca69710062927763d8caf012fc}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!hidden\+\_\+size\+\_\+@{hidden\+\_\+size\+\_\+}}
+\index{hidden\+\_\+size\+\_\+@{hidden\+\_\+size\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{hidden\+\_\+size\+\_\+}{hidden\_size\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::hidden\+\_\+size\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a8bce1f099dd2137878ca7076ee778768}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a8bce1f099dd2137878ca7076ee778768}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!num\+\_\+directions\+\_\+@{num\+\_\+directions\+\_\+}}
+\index{num\+\_\+directions\+\_\+@{num\+\_\+directions\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{num\+\_\+directions\+\_\+}{num\_directions\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::num\+\_\+directions\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_afcd51336238a0ff10b7132b3b6d6407d}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_afcd51336238a0ff10b7132b3b6d6407d}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!num\+\_\+layers\+\_\+@{num\+\_\+layers\+\_\+}}
+\index{num\+\_\+layers\+\_\+@{num\+\_\+layers\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{num\+\_\+layers\+\_\+}{num\_layers\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+int \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::num\+\_\+layers\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ac8928d0f3f1a61979c26ed046a8521ce}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ac8928d0f3f1a61979c26ed046a8521ce}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+@{R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}}
+\index{R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+@{R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}{R\_lin\_layer\_id\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+std\+::vector$<$int$>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::R\+\_\+lin\+\_\+layer\+\_\+id\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a9f4414feb5fdb7391741be9f4546293b}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a9f4414feb5fdb7391741be9f4546293b}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!reverse\+\_\+@{reverse\+\_\+}}
+\index{reverse\+\_\+@{reverse\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{reverse\+\_\+}{reverse\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::reverse\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_aa8c1a73fe24936e85ebed992805d02b3}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_aa8c1a73fe24936e85ebed992805d02b3}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!rnn\+\_\+desc\+\_\+@{rnn\+\_\+desc\+\_\+}}
+\index{rnn\+\_\+desc\+\_\+@{rnn\+\_\+desc\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{rnn\+\_\+desc\+\_\+}{rnn\_desc\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRNN}{Cudnn\+R\+NN}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::rnn\+\_\+desc\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a4d560327ff9db8d163c70c1db681ae2c}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a4d560327ff9db8d163c70c1db681ae2c}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!rnn\+\_\+mode\+\_\+@{rnn\+\_\+mode\+\_\+}}
+\index{rnn\+\_\+mode\+\_\+@{rnn\+\_\+mode\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{rnn\+\_\+mode\+\_\+}{rnn\_mode\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+cudnn\+R\+N\+N\+Mode\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::rnn\+\_\+mode\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a5238bfaa798ff8e995650b1239ec1562}\label{classonnxruntime_1_1cuda_1_1CudnnRnnBase_a5238bfaa798ff8e995650b1239ec1562}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}!W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+@{W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}}
+\index{W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+@{W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}!onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base@{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}
+\subsubsection{\texorpdfstring{W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+}{W\_lin\_layer\_id\_}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+std\+::vector$<$int$>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base}}$<$ T $>$\+::W\+\_\+lin\+\_\+layer\+\_\+id\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/rnn/\mbox{\hyperlink{cudnn__rnn__base_8h}{cudnn\+\_\+rnn\+\_\+base.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cuda/rnn/\mbox{\hyperlink{cudnn__rnn__base_8cc}{cudnn\+\_\+rnn\+\_\+base.\+cc}}\end{DoxyCompactItemize}

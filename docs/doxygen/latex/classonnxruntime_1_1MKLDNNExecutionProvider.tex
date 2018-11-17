@@ -1,0 +1,103 @@
+\hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider}{}\section{onnxruntime\+:\+:M\+K\+L\+D\+N\+N\+Execution\+Provider Class Reference}
+\label{classonnxruntime_1_1MKLDNNExecutionProvider}\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+
+
+{\ttfamily \#include $<$mkldnn\+\_\+execution\+\_\+provider.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:M\+K\+L\+D\+N\+N\+Execution\+Provider\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:M\+K\+L\+D\+N\+N\+Execution\+Provider\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MKLDNNExecutionProvider_a7c3d7298c44f70b17d3ded733ad85f4e}{M\+K\+L\+D\+N\+N\+Execution\+Provider}} (const \mbox{\hyperlink{structonnxruntime_1_1MKLDNNExecutionProviderInfo}{M\+K\+L\+D\+N\+N\+Execution\+Provider\+Info}} \&info)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1MKLDNNExecutionProvider_aefa7535d02badeb51b9a3d1e20bf6f32}{$\sim$\+M\+K\+L\+D\+N\+N\+Execution\+Provider}} ()
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1MKLDNNExecutionProvider_a9d13e248253f882664260bb3e7d093b9}{Type}} () const override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1MKLDNNExecutionProvider_a84adc2668cac60f53d2566e03b2080b0}{Copy\+Tensor}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&src, \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&dst) const override
+\item 
+const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1MKLDNNExecutionProvider_a8e47e298e1b0d6bd0b8bde10d6e1d7e4}{Get\+Execution\+Handle}} () const noexcept override
+\item 
+virtual std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $>$ \mbox{\hyperlink{classonnxruntime_1_1MKLDNNExecutionProvider_ad6f1e4b2ef0355a8f6b9c8fd866257ef}{Get\+Kernel\+Registry}} () const override
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider_a7c3d7298c44f70b17d3ded733ad85f4e}\label{classonnxruntime_1_1MKLDNNExecutionProvider_a7c3d7298c44f70b17d3ded733ad85f4e}} 
+\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!M\+K\+L\+D\+N\+N\+Execution\+Provider@{M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\index{M\+K\+L\+D\+N\+N\+Execution\+Provider@{M\+K\+L\+D\+N\+N\+Execution\+Provider}!onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{M\+K\+L\+D\+N\+N\+Execution\+Provider()}{MKLDNNExecutionProvider()}}
+{\footnotesize\ttfamily onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1MKLDNNExecutionProviderInfo}{M\+K\+L\+D\+N\+N\+Execution\+Provider\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider_aefa7535d02badeb51b9a3d1e20bf6f32}\label{classonnxruntime_1_1MKLDNNExecutionProvider_aefa7535d02badeb51b9a3d1e20bf6f32}} 
+\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!````~M\+K\+L\+D\+N\+N\+Execution\+Provider@{$\sim$\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\index{````~M\+K\+L\+D\+N\+N\+Execution\+Provider@{$\sim$\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{$\sim$\+M\+K\+L\+D\+N\+N\+Execution\+Provider()}{~MKLDNNExecutionProvider()}}
+{\footnotesize\ttfamily onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider\+::$\sim$\+M\+K\+L\+D\+N\+N\+Execution\+Provider (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider_a84adc2668cac60f53d2566e03b2080b0}\label{classonnxruntime_1_1MKLDNNExecutionProvider_a84adc2668cac60f53d2566e03b2080b0}} 
+\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!Copy\+Tensor@{Copy\+Tensor}}
+\index{Copy\+Tensor@{Copy\+Tensor}!onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Copy\+Tensor()}{CopyTensor()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider\+::\+Copy\+Tensor (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{src,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{dst }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Copy tensor between execution providers 
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a2b9bb47c0d2d72598ceb381688adfe26}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider_a8e47e298e1b0d6bd0b8bde10d6e1d7e4}\label{classonnxruntime_1_1MKLDNNExecutionProvider_a8e47e298e1b0d6bd0b8bde10d6e1d7e4}} 
+\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!Get\+Execution\+Handle@{Get\+Execution\+Handle}}
+\index{Get\+Execution\+Handle@{Get\+Execution\+Handle}!onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Execution\+Handle()}{GetExecutionHandle()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider\+::\+Get\+Execution\+Handle (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}, {\ttfamily [noexcept]}}
+
+Returns an opaque handle whose exact type varies based on the provider and is interpreted accordingly by the corresponding kernel implementation. For Direct3D operator kernels, this may return an I\+Unknown supporting Query\+Interface to I\+D3\+D12\+Graphics\+Command\+List1. 
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_aebaeab04945539bc5db5942b63684ccb}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider_ad6f1e4b2ef0355a8f6b9c8fd866257ef}\label{classonnxruntime_1_1MKLDNNExecutionProvider_ad6f1e4b2ef0355a8f6b9c8fd866257ef}} 
+\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!Get\+Kernel\+Registry@{Get\+Kernel\+Registry}}
+\index{Get\+Kernel\+Registry@{Get\+Kernel\+Registry}!onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Kernel\+Registry()}{GetKernelRegistry()}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $>$ onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider\+::\+Get\+Kernel\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Get kernel registry per execution provider type. The \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} share pointer returned is shared across sessions.
+
+N\+O\+TE\+: this is a tricky but final solution to achieve following goals,
+\begin{DoxyEnumerate}
+\item The execution provider type based kernel registry should be shared across sessions. Only one copy of this kind of kernel registry exists in O\+N\+N\+X\+Runtime with multiple sessions/models.
+\item Adding an execution provider into O\+N\+N\+X\+Runtime does not need to touch O\+N\+N\+X\+Runtime frameowrk/session code.
+\item onnxruntime runtime (framework/session) does not depend on any specific execution provider lib. 
+\end{DoxyEnumerate}
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a83caf9a8da9fcbc4e7fdc891055d664d}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1MKLDNNExecutionProvider_a9d13e248253f882664260bb3e7d093b9}\label{classonnxruntime_1_1MKLDNNExecutionProvider_a9d13e248253f882664260bb3e7d093b9}} 
+\index{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider@{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Execution\+Provider\+::\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+\begin{DoxyReturn}{Returns}
+type of the execution provider; should match that set in the node through the Set\+Execution\+Provider A\+PI. Example valid return values are\+: k\+Cpu\+Execution\+Provider, k\+Cuda\+Execution\+Provider 
+\end{DoxyReturn}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a6bfeb7af172299bcc6083a418b01fac1}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/mkldnn/\mbox{\hyperlink{mkldnn__execution__provider_8h}{mkldnn\+\_\+execution\+\_\+provider.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/mkldnn/\mbox{\hyperlink{mkldnn__execution__provider_8cc}{mkldnn\+\_\+execution\+\_\+provider.\+cc}}\end{DoxyCompactItemize}

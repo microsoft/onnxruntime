@@ -1,0 +1,22 @@
+\hypertarget{upsample__impl_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/tensor/upsample\+\_\+impl.h File Reference}
+\label{upsample__impl_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/tensor/upsample\+\_\+impl.\+h@{onnxruntime/onnxruntime/core/providers/cuda/tensor/upsample\+\_\+impl.\+h}}
+{\ttfamily \#include $<$stdint.\+h$>$}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/upsample.\+h\char`\"{}}\newline
+Include dependency graph for upsample\+\_\+impl.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a678bd36af10db05e306d877d311e0747}{onnxruntime\+::cuda\+::\+Upample\+Impl}} (const \mbox{\hyperlink{namespaceonnxruntime_ac1731b73e10b6a91015c32c7e29d03bd}{onnxruntime\+::\+Upsample\+Mode}} upsample\+\_\+mode, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} rank, const int64\+\_\+t input\+\_\+dim2, const int64\+\_\+t $\ast$input\+\_\+pitches, const fast\+\_\+divmod $\ast$output\+\_\+div\+\_\+pitches, const fast\+\_\+divmod $\ast$scales\+\_\+div, const T $\ast$input\+\_\+data, T $\ast$output\+\_\+data, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} N)
+\end{DoxyCompactItemize}

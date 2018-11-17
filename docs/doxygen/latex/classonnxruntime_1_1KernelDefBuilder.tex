@@ -1,0 +1,159 @@
+\hypertarget{classonnxruntime_1_1KernelDefBuilder}{}\section{onnxruntime\+:\+:Kernel\+Def\+Builder Class Reference}
+\label{classonnxruntime_1_1KernelDefBuilder}\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+
+
+{\ttfamily \#include $<$kernel\+\_\+def\+\_\+builder.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_aaeaaa7326473772ed8fa6dac82c8a0c6}{Kernel\+Def\+Builder}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a48ebec00826acee0353169ba1a31be91}{Set\+Name}} (const std\+::string \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a3a7f1ca778ce6b4a22735e8b57736c04}{op\+\_\+name}})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_af21211cd18ea345bd116de8b22347676}{Set\+Domain}} (const std\+::string \&domain)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_ae0ddc824b271a1cb40f689f162049784}{Since\+Version}} (int since\+\_\+version)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a62f33b8471d08dd6d3c8acf086dc33a4}{Since\+Version}} (int since\+\_\+version\+\_\+start, int since\+\_\+version\+\_\+end)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a541928f5f11459f7356c76c981435dca}{Provider}} (\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} provider\+\_\+type)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_aa0b8ea800fdf94fdb0bfac4695b75e9a}{Type\+Constraint}} (const std\+::string \&arg\+\_\+name, const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} $>$ \&supported\+\_\+types)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_af70791aeb4d4368813271ad264927f0d}{Type\+Constraint}} (const std\+::string \&arg\+\_\+name, \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} supported\+\_\+type)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a5384a86c2c9aeab28fc66522020408a6}{May\+Inplace}} (const std\+::vector$<$ std\+::pair$<$ int, int $>$$>$ \&inplaces)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_adff085d96a9beac42baf91fc1ad23135}{May\+Inplace}} (int input\+\_\+index, int output\+\_\+index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a16942b49b19a69699c44c8527fee69f4}{Alias}} (const std\+::vector$<$ std\+::pair$<$ int, int $>$$>$ \&aliases)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_aabc4fe80ca7f5f0b0562ab51262a216a}{Alias}} (int input\+\_\+index, int output\+\_\+index)
+\item 
+{\footnotesize template$<$O\+N\+N\+X\+Runtime\+Mem\+Type T$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a0d017e27105e5d62bedb95cd110c2819}{Input\+Memory\+Type}} (int input\+\_\+index)
+\item 
+{\footnotesize template$<$O\+N\+N\+X\+Runtime\+Mem\+Type T$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a07b8f5af0f2e23ea09c3f9c0b52dc227}{Output\+Memory\+Type}} (int output\+\_\+index)
+\item 
+{\footnotesize template$<$O\+N\+N\+X\+Runtime\+Mem\+Type T$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_a09fef65d419d1c76521580801f8c3cb0}{Memory\+Type}} (int output\+\_\+index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \& \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_ad4b3599dd2324207a04cb9a7c729fbd3}{Exec\+Queue\+Id}} (int queue\+\_\+id)
+\item 
+std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} $>$ \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder_ada0f9d0670890071573b8c09305227d5}{Build}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_aaeaaa7326473772ed8fa6dac82c8a0c6}\label{classonnxruntime_1_1KernelDefBuilder_aaeaaa7326473772ed8fa6dac82c8a0c6}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Kernel\+Def\+Builder@{Kernel\+Def\+Builder}}
+\index{Kernel\+Def\+Builder@{Kernel\+Def\+Builder}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Kernel\+Def\+Builder()}{KernelDefBuilder()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Kernel\+Def\+Builder (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a16942b49b19a69699c44c8527fee69f4}\label{classonnxruntime_1_1KernelDefBuilder_a16942b49b19a69699c44c8527fee69f4}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Alias@{Alias}}
+\index{Alias@{Alias}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Alias()}{Alias()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Alias (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ std\+::pair$<$ int, int $>$$>$ \&}]{aliases }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Alias mapping from inputs to outputs. Different from Inplace that the content of the tensor is not changed. This is to take care of operators such as Identity and \mbox{\hyperlink{classonnxruntime_1_1Reshape}{Reshape}}. \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_aabc4fe80ca7f5f0b0562ab51262a216a}\label{classonnxruntime_1_1KernelDefBuilder_aabc4fe80ca7f5f0b0562ab51262a216a}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Alias@{Alias}}
+\index{Alias@{Alias}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Alias()}{Alias()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Alias (\begin{DoxyParamCaption}\item[{int}]{input\+\_\+index,  }\item[{int}]{output\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_ada0f9d0670890071573b8c09305227d5}\label{classonnxruntime_1_1KernelDefBuilder_ada0f9d0670890071573b8c09305227d5}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Build@{Build}}
+\index{Build@{Build}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Build()}{Build()}}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$\mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}}$>$ onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Build (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Return the kernel definition, passing ownership of the \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} to the caller \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_ad4b3599dd2324207a04cb9a7c729fbd3}\label{classonnxruntime_1_1KernelDefBuilder_ad4b3599dd2324207a04cb9a7c729fbd3}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Exec\+Queue\+Id@{Exec\+Queue\+Id}}
+\index{Exec\+Queue\+Id@{Exec\+Queue\+Id}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Exec\+Queue\+Id()}{ExecQueueId()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Exec\+Queue\+Id (\begin{DoxyParamCaption}\item[{int}]{queue\+\_\+id }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Specify that this kernel runs on which execution queue in the provider \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a0d017e27105e5d62bedb95cd110c2819}\label{classonnxruntime_1_1KernelDefBuilder_a0d017e27105e5d62bedb95cd110c2819}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Input\+Memory\+Type@{Input\+Memory\+Type}}
+\index{Input\+Memory\+Type@{Input\+Memory\+Type}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Input\+Memory\+Type()}{InputMemoryType()}}
+{\footnotesize\ttfamily template$<$O\+N\+N\+X\+Runtime\+Mem\+Type T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Input\+Memory\+Type (\begin{DoxyParamCaption}\item[{int}]{input\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Specify that this kernel requires an input arg in certain memory type (instead of the default, device memory). \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a5384a86c2c9aeab28fc66522020408a6}\label{classonnxruntime_1_1KernelDefBuilder_a5384a86c2c9aeab28fc66522020408a6}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!May\+Inplace@{May\+Inplace}}
+\index{May\+Inplace@{May\+Inplace}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{May\+Inplace()}{MayInplace()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+May\+Inplace (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ std\+::pair$<$ int, int $>$$>$ \&}]{inplaces }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Inplace mapping from inputs to outputs allowed. It means that uplayer runtime could do memory in-\/place optimization as it will not impact the correctness of this kernel. \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_adff085d96a9beac42baf91fc1ad23135}\label{classonnxruntime_1_1KernelDefBuilder_adff085d96a9beac42baf91fc1ad23135}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!May\+Inplace@{May\+Inplace}}
+\index{May\+Inplace@{May\+Inplace}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{May\+Inplace()}{MayInplace()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+May\+Inplace (\begin{DoxyParamCaption}\item[{int}]{input\+\_\+index,  }\item[{int}]{output\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+allowing output\mbox{[}output\+\_\+index\mbox{]} to reuse memory of input\mbox{[}input\+\_\+index\mbox{]} \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a09fef65d419d1c76521580801f8c3cb0}\label{classonnxruntime_1_1KernelDefBuilder_a09fef65d419d1c76521580801f8c3cb0}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Memory\+Type@{Memory\+Type}}
+\index{Memory\+Type@{Memory\+Type}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Memory\+Type()}{MemoryType()}}
+{\footnotesize\ttfamily template$<$O\+N\+N\+X\+Runtime\+Mem\+Type T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Memory\+Type (\begin{DoxyParamCaption}\item[{int}]{output\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a07b8f5af0f2e23ea09c3f9c0b52dc227}\label{classonnxruntime_1_1KernelDefBuilder_a07b8f5af0f2e23ea09c3f9c0b52dc227}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Output\+Memory\+Type@{Output\+Memory\+Type}}
+\index{Output\+Memory\+Type@{Output\+Memory\+Type}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Output\+Memory\+Type()}{OutputMemoryType()}}
+{\footnotesize\ttfamily template$<$O\+N\+N\+X\+Runtime\+Mem\+Type T$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Output\+Memory\+Type (\begin{DoxyParamCaption}\item[{int}]{output\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Specify that this kernel provides an output arg in certain memory type (instead of the default, device memory). \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a541928f5f11459f7356c76c981435dca}\label{classonnxruntime_1_1KernelDefBuilder_a541928f5f11459f7356c76c981435dca}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Provider@{Provider}}
+\index{Provider@{Provider}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Provider()}{Provider()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Provider (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{provider\+\_\+type }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+The execution provider type of the kernel. \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_af21211cd18ea345bd116de8b22347676}\label{classonnxruntime_1_1KernelDefBuilder_af21211cd18ea345bd116de8b22347676}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Set\+Domain@{Set\+Domain}}
+\index{Set\+Domain@{Set\+Domain}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Set\+Domain()}{SetDomain()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Set\+Domain (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{domain }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a48ebec00826acee0353169ba1a31be91}\label{classonnxruntime_1_1KernelDefBuilder_a48ebec00826acee0353169ba1a31be91}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Set\+Name@{Set\+Name}}
+\index{Set\+Name@{Set\+Name}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Set\+Name()}{SetName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Set\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{op\+\_\+name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_ae0ddc824b271a1cb40f689f162049784}\label{classonnxruntime_1_1KernelDefBuilder_ae0ddc824b271a1cb40f689f162049784}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Since\+Version@{Since\+Version}}
+\index{Since\+Version@{Since\+Version}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Since\+Version()}{SinceVersion()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Since\+Version (\begin{DoxyParamCaption}\item[{int}]{since\+\_\+version }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+This kernel supports operator definition since $<$since\+\_\+version$>$ (to latest). \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_a62f33b8471d08dd6d3c8acf086dc33a4}\label{classonnxruntime_1_1KernelDefBuilder_a62f33b8471d08dd6d3c8acf086dc33a4}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Since\+Version@{Since\+Version}}
+\index{Since\+Version@{Since\+Version}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Since\+Version()}{SinceVersion()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Since\+Version (\begin{DoxyParamCaption}\item[{int}]{since\+\_\+version\+\_\+start,  }\item[{int}]{since\+\_\+version\+\_\+end }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+The start and end version should be set accordingly per version range for each domain registered in Op\+Schema\+Registry\+::\+Domain\+To\+Version\+Range in .h as below. Key\+: domain. Value\+: $<$lowest version, highest version$>$ pair. std\+::unordered\+\_\+map$<$std\+::string, std\+::pair$<$int, int$>$$>$ map\+\_\+; \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_aa0b8ea800fdf94fdb0bfac4695b75e9a}\label{classonnxruntime_1_1KernelDefBuilder_aa0b8ea800fdf94fdb0bfac4695b75e9a}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Type\+Constraint@{Type\+Constraint}}
+\index{Type\+Constraint@{Type\+Constraint}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Type\+Constraint()}{TypeConstraint()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Type\+Constraint (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{arg\+\_\+name,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} $>$ \&}]{supported\+\_\+types }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Specify the set of types that this kernel supports. A further restriction of the set of types specified in the op schema. The arg name could be either op formal parameter name, say \char`\"{}\+X\char`\"{}, or type argument name specified in op schema, say \char`\"{}\+T\char`\"{}. \mbox{\Hypertarget{classonnxruntime_1_1KernelDefBuilder_af70791aeb4d4368813271ad264927f0d}\label{classonnxruntime_1_1KernelDefBuilder_af70791aeb4d4368813271ad264927f0d}} 
+\index{onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}!Type\+Constraint@{Type\+Constraint}}
+\index{Type\+Constraint@{Type\+Constraint}!onnxruntime\+::\+Kernel\+Def\+Builder@{onnxruntime\+::\+Kernel\+Def\+Builder}}
+\subsubsection{\texorpdfstring{Type\+Constraint()}{TypeConstraint()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}}\& onnxruntime\+::\+Kernel\+Def\+Builder\+::\+Type\+Constraint (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{arg\+\_\+name,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}}}]{supported\+\_\+type }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Like Type\+Constraint but supports just a single type. 
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{kernel__def__builder_8h}{kernel\+\_\+def\+\_\+builder.\+h}}\end{DoxyCompactItemize}

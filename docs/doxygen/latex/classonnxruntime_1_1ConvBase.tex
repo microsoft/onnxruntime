@@ -1,0 +1,119 @@
+\hypertarget{classonnxruntime_1_1ConvBase}{}\section{onnxruntime\+:\+:Conv\+Base Class Reference}
+\label{classonnxruntime_1_1ConvBase}\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+
+
+{\ttfamily \#include $<$conv\+\_\+base.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Conv\+Base\+:
+% FIG 0
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ConvBase_a45226b6c1b85908b6d345f978bd5b646}{Conv\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ConvBase_a1cce4373ad0c3eff0e0ec6219db1a15c}{$\sim$\+Conv\+Base}} ()
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1ConvBase_a75473e0ea902948d818bc4a4b8578592}{Compute\+Kernel\+Shape}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&weight\+\_\+shape) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ConvBase_ab65984bcf5c5ce841711fa2cfc440889}{Validate\+Input\+Shape}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$X, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$W) const
+\item 
+{\footnotesize template$<$bool Force\+Symmetric\+Auto\+Padding = false$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1ConvBase_a344978b6239c1b49ab049ca95eaf6f8b}{Infer\+Output\+Shape}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&input\+\_\+shape, const std\+::vector$<$ int64\+\_\+t $>$ \&kernel\+\_\+shape, const std\+::vector$<$ int64\+\_\+t $>$ \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_abdced837e2fca213b15df1588e8782c4}{strides}}, const std\+::vector$<$ int64\+\_\+t $>$ \&\mbox{\hyperlink{mkldnn_2nn_2conv_8cc_a57cdc76062a8d113d8204fa0b160836b}{dilations}}, std\+::vector$<$ int64\+\_\+t $>$ $\ast$pads, std\+::vector$<$ int64\+\_\+t $>$ $\ast$output\+\_\+shape) const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_add1059a27d156d4ed3567a3a6852d94f}{Auto\+Pad\+Type}} \mbox{\hyperlink{classonnxruntime_1_1ConvBase_a8fc7967659cab901602822bd6a008c7f}{auto\+\_\+pad\+\_\+}}
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1ConvBase_adc7040aae00906ea72fc285446afea59}{group\+\_\+}}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1ConvBase_a977ea0ff754348337686c30a3e3476de}{kernel\+\_\+shape\+\_\+specified\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1ConvBase_a4b8c43469d15e0876cbb0658e4bc97d1}{strides\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1ConvBase_a32c67beb3cc30024848438317a56199c}{pads\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1ConvBase_abf0a7ade410cb557b5acf3e524eecf93}{dilations\+\_\+}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a45226b6c1b85908b6d345f978bd5b646}\label{classonnxruntime_1_1ConvBase_a45226b6c1b85908b6d345f978bd5b646}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!Conv\+Base@{Conv\+Base}}
+\index{Conv\+Base@{Conv\+Base}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{Conv\+Base()}{ConvBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Conv\+Base\+::\+Conv\+Base (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a1cce4373ad0c3eff0e0ec6219db1a15c}\label{classonnxruntime_1_1ConvBase_a1cce4373ad0c3eff0e0ec6219db1a15c}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!````~Conv\+Base@{$\sim$\+Conv\+Base}}
+\index{````~Conv\+Base@{$\sim$\+Conv\+Base}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{$\sim$\+Conv\+Base()}{~ConvBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Conv\+Base\+::$\sim$\+Conv\+Base (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a75473e0ea902948d818bc4a4b8578592}\label{classonnxruntime_1_1ConvBase_a75473e0ea902948d818bc4a4b8578592}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!Compute\+Kernel\+Shape@{Compute\+Kernel\+Shape}}
+\index{Compute\+Kernel\+Shape@{Compute\+Kernel\+Shape}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{Compute\+Kernel\+Shape()}{ComputeKernelShape()}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Conv\+Base\+::\+Compute\+Kernel\+Shape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{weight\+\_\+shape }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a344978b6239c1b49ab049ca95eaf6f8b}\label{classonnxruntime_1_1ConvBase_a344978b6239c1b49ab049ca95eaf6f8b}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!Infer\+Output\+Shape@{Infer\+Output\+Shape}}
+\index{Infer\+Output\+Shape@{Infer\+Output\+Shape}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{Infer\+Output\+Shape()}{InferOutputShape()}}
+{\footnotesize\ttfamily template$<$bool Force\+Symmetric\+Auto\+Padding = false$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Conv\+Base\+::\+Infer\+Output\+Shape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{input\+\_\+shape,  }\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{kernel\+\_\+shape,  }\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{strides,  }\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{dilations,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ $\ast$}]{pads,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ $\ast$}]{output\+\_\+shape }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_ab65984bcf5c5ce841711fa2cfc440889}\label{classonnxruntime_1_1ConvBase_ab65984bcf5c5ce841711fa2cfc440889}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!Validate\+Input\+Shape@{Validate\+Input\+Shape}}
+\index{Validate\+Input\+Shape@{Validate\+Input\+Shape}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{Validate\+Input\+Shape()}{ValidateInputShape()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Conv\+Base\+::\+Validate\+Input\+Shape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{X,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$}]{W }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a8fc7967659cab901602822bd6a008c7f}\label{classonnxruntime_1_1ConvBase_a8fc7967659cab901602822bd6a008c7f}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!auto\+\_\+pad\+\_\+@{auto\+\_\+pad\+\_\+}}
+\index{auto\+\_\+pad\+\_\+@{auto\+\_\+pad\+\_\+}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{auto\+\_\+pad\+\_\+}{auto\_pad\_}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_add1059a27d156d4ed3567a3a6852d94f}{Auto\+Pad\+Type}} onnxruntime\+::\+Conv\+Base\+::auto\+\_\+pad\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_abf0a7ade410cb557b5acf3e524eecf93}\label{classonnxruntime_1_1ConvBase_abf0a7ade410cb557b5acf3e524eecf93}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!dilations\+\_\+@{dilations\+\_\+}}
+\index{dilations\+\_\+@{dilations\+\_\+}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{dilations\+\_\+}{dilations\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Conv\+Base\+::dilations\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_adc7040aae00906ea72fc285446afea59}\label{classonnxruntime_1_1ConvBase_adc7040aae00906ea72fc285446afea59}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!group\+\_\+@{group\+\_\+}}
+\index{group\+\_\+@{group\+\_\+}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{group\+\_\+}{group\_}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Conv\+Base\+::group\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a977ea0ff754348337686c30a3e3476de}\label{classonnxruntime_1_1ConvBase_a977ea0ff754348337686c30a3e3476de}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!kernel\+\_\+shape\+\_\+specified\+\_\+@{kernel\+\_\+shape\+\_\+specified\+\_\+}}
+\index{kernel\+\_\+shape\+\_\+specified\+\_\+@{kernel\+\_\+shape\+\_\+specified\+\_\+}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{kernel\+\_\+shape\+\_\+specified\+\_\+}{kernel\_shape\_specified\_}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Conv\+Base\+::kernel\+\_\+shape\+\_\+specified\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a32c67beb3cc30024848438317a56199c}\label{classonnxruntime_1_1ConvBase_a32c67beb3cc30024848438317a56199c}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!pads\+\_\+@{pads\+\_\+}}
+\index{pads\+\_\+@{pads\+\_\+}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{pads\+\_\+}{pads\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Conv\+Base\+::pads\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConvBase_a4b8c43469d15e0876cbb0658e4bc97d1}\label{classonnxruntime_1_1ConvBase_a4b8c43469d15e0876cbb0658e4bc97d1}} 
+\index{onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}!strides\+\_\+@{strides\+\_\+}}
+\index{strides\+\_\+@{strides\+\_\+}!onnxruntime\+::\+Conv\+Base@{onnxruntime\+::\+Conv\+Base}}
+\subsubsection{\texorpdfstring{strides\+\_\+}{strides\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Conv\+Base\+::strides\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{conv__base_8h}{conv\+\_\+base.\+h}}\end{DoxyCompactItemize}

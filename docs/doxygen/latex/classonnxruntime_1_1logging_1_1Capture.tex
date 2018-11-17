@@ -1,0 +1,148 @@
+\hypertarget{classonnxruntime_1_1logging_1_1Capture}{}\section{onnxruntime\+:\+:logging\+:\+:Capture Class Reference}
+\label{classonnxruntime_1_1logging_1_1Capture}\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+
+
+{\ttfamily \#include $<$capture.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a753b3eeee666d0303d81e0bcae11bc05}{Capture}} (const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} \&logger, \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{logging\+::\+Severity}} severity, const char $\ast$category, \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{logging\+::\+Data\+Type}} data\+Type, const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&location)
+\item 
+std\+::ostream \& \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_aff0e9dfa2a1791e6e0b9058207bd64a6}{Stream}} () noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a3b7d64d0e021d658c4d0950727b2612c}{Capture\+Printf}} (\mbox{\hyperlink{capture_8h_a7249ae45e189a29f562633e536a1042c}{msvc\+\_\+printf\+\_\+check}} const char $\ast$format,...) \+\_\+\+\_\+attribute\+\_\+\+\_\+((format(printf
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_acd24ef8d8c31bb342f005baf595f3cc3}{Process\+Printf}} (\mbox{\hyperlink{capture_8h_a7249ae45e189a29f562633e536a1042c}{msvc\+\_\+printf\+\_\+check}} const char $\ast$format, va\+\_\+list args)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{logging\+::\+Severity}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a647ba6b4406a1d5733e350e134da50fa}{Severity}} () const noexcept
+\item 
+char \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_ad13001a74ade433dc8f529b4f898e097}{Severity\+Prefix}} () const noexcept
+\item 
+const char $\ast$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_adb3d6734a64050e6662760db493662ad}{Category}} () const noexcept
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{logging\+::\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a901ba03e1dd6ea6b0346bcc7e0698617}{Data\+Type}} () const noexcept
+\item 
+const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \& \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a970cedfcf2f57bffaa01064947bce978}{Location}} () const noexcept
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a4aee00c9959c0f4d7e2b6dcd13fe1334}{Message}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture_a83b4d77f2027b237bad0452046bf96c4}{$\sim$\+Capture}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Class to capture the details of a log message. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a753b3eeee666d0303d81e0bcae11bc05}\label{classonnxruntime_1_1logging_1_1Capture_a753b3eeee666d0303d81e0bcae11bc05}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Capture@{Capture}}
+\index{Capture@{Capture}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Capture()}{Capture()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+Capture\+::\+Capture (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} \&}]{logger,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{logging\+::\+Severity}}}]{severity,  }\item[{const char $\ast$}]{category,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{logging\+::\+Data\+Type}}}]{data\+Type,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&}]{location }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} class. 
+\begin{DoxyParams}{Parameters}
+{\em logger} & The logger. \\
+\hline
+{\em severity} & The severity. \\
+\hline
+{\em category} & The category. \\
+\hline
+{\em data\+Type} & Type of the data. \\
+\hline
+{\em location} & The file location the log message is coming from. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a83b4d77f2027b237bad0452046bf96c4}\label{classonnxruntime_1_1logging_1_1Capture_a83b4d77f2027b237bad0452046bf96c4}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!````~Capture@{$\sim$\+Capture}}
+\index{````~Capture@{$\sim$\+Capture}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{$\sim$\+Capture()}{~Capture()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+Capture\+::$\sim$\+Capture (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a3b7d64d0e021d658c4d0950727b2612c}\label{classonnxruntime_1_1logging_1_1Capture_a3b7d64d0e021d658c4d0950727b2612c}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Capture\+Printf@{Capture\+Printf}}
+\index{Capture\+Printf@{Capture\+Printf}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Capture\+Printf()}{CapturePrintf()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+Capture\+::\+Capture\+Printf (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{capture_8h_a7249ae45e189a29f562633e536a1042c}{msvc\+\_\+printf\+\_\+check}} const char $\ast$}]{format,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+Captures a printf style log message. 
+\begin{DoxyParams}{Parameters}
+{\em name=\char`\"{}format\char`\"{}$>$\+The} & printf format. \\
+\hline
+{\em name=\char`\"{}\char`\"{}$>$\+Arguments} & to the printf format if needed. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyRemark}{Remarks}
+A maximum of 2K of output will be captured currently. Non-\/static method, so \textquotesingle{}this\textquotesingle{} is implicit first arg, and we use format(printf(2,3) 
+\end{DoxyRemark}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_adb3d6734a64050e6662760db493662ad}\label{classonnxruntime_1_1logging_1_1Capture_adb3d6734a64050e6662760db493662ad}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Category@{Category}}
+\index{Category@{Category}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Category()}{Category()}}
+{\footnotesize\ttfamily const char$\ast$ onnxruntime\+::logging\+::\+Capture\+::\+Category (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a901ba03e1dd6ea6b0346bcc7e0698617}\label{classonnxruntime_1_1logging_1_1Capture_a901ba03e1dd6ea6b0346bcc7e0698617}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Data\+Type@{Data\+Type}}
+\index{Data\+Type@{Data\+Type}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Data\+Type()}{DataType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951}{logging\+::\+Data\+Type}} onnxruntime\+::logging\+::\+Capture\+::\+Data\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a970cedfcf2f57bffaa01064947bce978}\label{classonnxruntime_1_1logging_1_1Capture_a970cedfcf2f57bffaa01064947bce978}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Location@{Location}}
+\index{Location@{Location}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Location()}{Location()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}}\& onnxruntime\+::logging\+::\+Capture\+::\+Location (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a4aee00c9959c0f4d7e2b6dcd13fe1334}\label{classonnxruntime_1_1logging_1_1Capture_a4aee00c9959c0f4d7e2b6dcd13fe1334}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Message@{Message}}
+\index{Message@{Message}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Message()}{Message()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::logging\+::\+Capture\+::\+Message (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_acd24ef8d8c31bb342f005baf595f3cc3}\label{classonnxruntime_1_1logging_1_1Capture_acd24ef8d8c31bb342f005baf595f3cc3}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Process\+Printf@{Process\+Printf}}
+\index{Process\+Printf@{Process\+Printf}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Process\+Printf()}{ProcessPrintf()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+Capture\+::\+Process\+Printf (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{capture_8h_a7249ae45e189a29f562633e536a1042c}{msvc\+\_\+printf\+\_\+check}} const char $\ast$}]{format,  }\item[{va\+\_\+list}]{args }\end{DoxyParamCaption})}
+
+Process a printf style log message. 
+\begin{DoxyParams}{Parameters}
+{\em format} & The printf format. \\
+\hline
+{\em ...} & Arguments to the printf format if needed. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyRemark}{Remarks}
+A maximum of 2K of output will be captured currently. Note\+: As va\+\_\+list is \textquotesingle{}char $\ast$\textquotesingle{}, we have to disambiguate this from Capture\+Printf so that something like \char`\"{}\+One string\+: \%s\char`\"{}, \char`\"{}the string\char`\"{} does not consider \char`\"{}the string\char`\"{} to be the va\+\_\+list. 
+\end{DoxyRemark}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_a647ba6b4406a1d5733e350e134da50fa}\label{classonnxruntime_1_1logging_1_1Capture_a647ba6b4406a1d5733e350e134da50fa}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Severity@{Severity}}
+\index{Severity@{Severity}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Severity()}{Severity()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{logging\+::\+Severity}} onnxruntime\+::logging\+::\+Capture\+::\+Severity (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_ad13001a74ade433dc8f529b4f898e097}\label{classonnxruntime_1_1logging_1_1Capture_ad13001a74ade433dc8f529b4f898e097}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Severity\+Prefix@{Severity\+Prefix}}
+\index{Severity\+Prefix@{Severity\+Prefix}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Severity\+Prefix()}{SeverityPrefix()}}
+{\footnotesize\ttfamily char onnxruntime\+::logging\+::\+Capture\+::\+Severity\+Prefix (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1Capture_aff0e9dfa2a1791e6e0b9058207bd64a6}\label{classonnxruntime_1_1logging_1_1Capture_aff0e9dfa2a1791e6e0b9058207bd64a6}} 
+\index{onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}!Stream@{Stream}}
+\index{Stream@{Stream}!onnxruntime\+::logging\+::\+Capture@{onnxruntime\+::logging\+::\+Capture}}
+\subsubsection{\texorpdfstring{Stream()}{Stream()}}
+{\footnotesize\ttfamily std\+::ostream\& onnxruntime\+::logging\+::\+Capture\+::\+Stream (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+The stream that can capture the message via operator$<$$<$. \begin{DoxyReturn}{Returns}
+Output stream. 
+\end{DoxyReturn}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/logging/\mbox{\hyperlink{capture_8h}{capture.\+h}}\item 
+onnxruntime/onnxruntime/core/common/logging/\mbox{\hyperlink{capture_8cc}{capture.\+cc}}\end{DoxyCompactItemize}

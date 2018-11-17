@@ -1,0 +1,127 @@
+\hypertarget{op__node__proto__helper_8cc}{}\section{onnxruntime/onnxruntime/core/framework/op\+\_\+node\+\_\+proto\+\_\+helper.cc File Reference}
+\label{op__node__proto__helper_8cc}\index{onnxruntime/onnxruntime/core/framework/op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{onnxruntime/onnxruntime/core/framework/op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}}
+{\ttfamily \#include \char`\"{}core/common/exceptions.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/op.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}onnx/defs/schema.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}gsl/span\char`\"{}}\newline
+Include dependency graph for op\+\_\+node\+\_\+proto\+\_\+helper.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{op__node__proto__helper_8cc_a2b7074185aa179d3df655a2dcac7bf75}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR}}(I\+M\+P\+L\+\_\+T,  T,  type)
+\item 
+\#define \mbox{\hyperlink{op__node__proto__helper_8cc_ad0b7c6335977f07d2f31c6a3937fa92a}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS}}(I\+M\+P\+L\+\_\+T,  T,  list)
+\item 
+\#define \mbox{\hyperlink{op__node__proto__helper_8cc_ae0483d945eabb07b54c154dc23f6fcd8}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}}(type,  list)
+\item 
+\#define \mbox{\hyperlink{op__node__proto__helper_8cc_ada7a24b11e92e25f01dab9c20fdad525}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}}(type,  list)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{op__node__proto__helper_8cc_a2b7074185aa179d3df655a2dcac7bf75}\label{op__node__proto__helper_8cc_a2b7074185aa179d3df655a2dcac7bf75}} 
+\index{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR}!op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR}{ONNXRUNTIME\_DEFINE\_GET\_ATTR}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+TR(\begin{DoxyParamCaption}\item[{}]{I\+M\+P\+L\+\_\+T,  }\item[{}]{T,  }\item[{}]{type }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                                               \(\backslash\)
+  template <>                                                                                              
+       \(\backslash\)
+  Status OpNodeProtoHelper<IMPL\_T>::GetAttr<T>(                                                            
+       \(\backslash\)
+      const std::string& name, T* value) \textcolor{keyword}{const} \{                                                           
+       \(\backslash\)
+    const AttributeProto* attr = TryGetAttribute(name);                                                    
+       \(\backslash\)
+    if (!attr) \{                                                                                           
+       \(\backslash\)
+      return \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_ac661f959a674df6e716a2826e3bc74ca}{ONNXRUNTIME\_MAKE\_STATUS}}(\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{ONNXRUNTIME}}, 
+      \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{FAIL}}, \textcolor{stringliteral}{"No attribute with name:'"}, name, \textcolor{stringliteral}{"'is defined."});  \(\backslash\)
+    \}                                                                                                      
+       \(\backslash\)
+    if (!attr->has\_##type()) \{                                                                             
+       \(\backslash\)
+      return Status(\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{ONNXRUNTIME}}, \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{FAIL}}, \textcolor{stringliteral}{"Attibute name and type don't match"});               
+                      \(\backslash\)
+    \} \textcolor{keywordflow}{else} \{                                                                                               
+       \(\backslash\)
+      *value = \textcolor{keyword}{static\_cast<}T\textcolor{keyword}{>}(attr->type());                                                               
+       \(\backslash\)
+      return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                                       
+                 \(\backslash\)
+    \}                                                                                                      
+       \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{op__node__proto__helper_8cc_ae0483d945eabb07b54c154dc23f6fcd8}\label{op__node__proto__helper_8cc_ae0483d945eabb07b54c154dc23f6fcd8}} 
+\index{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}!op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}{ONNXRUNTIME\_DEFINE\_GET\_ATTR\_SPECIALIZATIONS}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS(\begin{DoxyParamCaption}\item[{}]{type,  }\item[{}]{list }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__node__proto__helper_8cc_a2b7074185aa179d3df655a2dcac7bf75}{ONNXRUNTIME\_DEFINE\_GET\_ATTR}}(ProtoHelperNodeContext, type, list) \(\backslash\)
+  ONNXRUNTIME\_DEFINE\_GET\_ATTR(InferenceContext, type, list)
+\end{DoxyCode}
+\mbox{\Hypertarget{op__node__proto__helper_8cc_ad0b7c6335977f07d2f31c6a3937fa92a}\label{op__node__proto__helper_8cc_ad0b7c6335977f07d2f31c6a3937fa92a}} 
+\index{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS}!op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS}{ONNXRUNTIME\_DEFINE\_GET\_ATTRS}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+RS(\begin{DoxyParamCaption}\item[{}]{I\+M\+P\+L\+\_\+T,  }\item[{}]{T,  }\item[{}]{list }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                      \(\backslash\)
+  template <>                                                                      \(\backslash\)
+  Status OpNodeProtoHelper<IMPL\_T>::GetAttrs<T>(                                   \(\backslash\)
+      const std::string& name, std::vector<T>& values) \textcolor{keyword}{const} \{                     \(\backslash\)
+    const AttributeProto* attr = TryGetAttribute(name);                            \(\backslash\)
+    if (!attr) \{                                                                   \(\backslash\)
+      return Status(\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{ONNXRUNTIME}}, \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{FAIL}}, \textcolor{stringliteral}{"No attribute with this name is defined."}); \(\backslash\)
+    \}                                                                              \(\backslash\)
+    values.reserve(attr->list##\_size());                                           \(\backslash\)
+    for (\textcolor{keywordtype}{int} i = 0; i < attr->list##\_size(); ++i) \{                                \(\backslash\)
+      values.push\_back(static\_cast<T>(attr->list(i)));                             \(\backslash\)
+    \}                                                                              \(\backslash\)
+    return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                           \(\backslash\)
+  \}                                                                                \(\backslash\)
+  template <>                                                                      \(\backslash\)
+  template <>                                                                      \(\backslash\)
+  Status OpNodeProtoHelper<IMPL\_T>::GetAttrs<T>(                                   \(\backslash\)
+      const std::string& name, gsl::span<T> values) \textcolor{keyword}{const} \{                        \(\backslash\)
+    const AttributeProto* attr = TryGetAttribute(name);                            \(\backslash\)
+    if (!attr) \{                                                                   \(\backslash\)
+      return Status(\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{ONNXRUNTIME}}, \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{FAIL}}, \textcolor{stringliteral}{"No attribute with this name is defined."}); \(\backslash\)
+    \}                                                                              \(\backslash\)
+    ONNXRUNTIME\_ENFORCE(values.size() == attr->list##\_size());                     \(\backslash\)
+    for (\textcolor{keywordtype}{int} i = 0; i < attr->list##\_size(); ++i) \{                                \(\backslash\)
+      values[i] = \textcolor{keyword}{static\_cast<}T\textcolor{keyword}{>}(attr->list(i));                                   \(\backslash\)
+    \}                                                                              \(\backslash\)
+    return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                           \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{op__node__proto__helper_8cc_ada7a24b11e92e25f01dab9c20fdad525}\label{op__node__proto__helper_8cc_ada7a24b11e92e25f01dab9c20fdad525}} 
+\index{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}!op\+\_\+node\+\_\+proto\+\_\+helper.\+cc@{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS}{ONNXRUNTIME\_DEFINE\_GET\_ATTRS\_SPECIALIZATIONS}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+D\+E\+F\+I\+N\+E\+\_\+\+G\+E\+T\+\_\+\+A\+T\+T\+R\+S\+\_\+\+S\+P\+E\+C\+I\+A\+L\+I\+Z\+A\+T\+I\+O\+NS(\begin{DoxyParamCaption}\item[{}]{type,  }\item[{}]{list }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__node__proto__helper_8cc_ad0b7c6335977f07d2f31c6a3937fa92a}{ONNXRUNTIME\_DEFINE\_GET\_ATTRS}}(ProtoHelperNodeContext, type, list) \(\backslash\)
+  ONNXRUNTIME\_DEFINE\_GET\_ATTRS(InferenceContext, type, list)
+\end{DoxyCode}

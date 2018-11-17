@@ -1,0 +1,176 @@
+\hypertarget{element__wise__ops_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/math/element\+\_\+wise\+\_\+ops.cc File Reference}
+\label{element__wise__ops_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/math/element\+\_\+wise\+\_\+ops.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/math/element\+\_\+wise\+\_\+ops.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/math/element\+\_\+wise\+\_\+ops.\+h\char`\"{}}\newline
+Include dependency graph for element\+\_\+wise\+\_\+ops.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator}{onnxruntime\+::\+Broadcast\+Iterator}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1Broadcaster}{onnxruntime\+::\+Broadcaster}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1TBroadcaster}{onnxruntime\+::\+T\+Broadcaster$<$ T $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1TBroadcastOutput}{onnxruntime\+::\+T\+Broadcast\+Output$<$ T $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1TensorAllocator}{onnxruntime\+::\+Tensor\+Allocator$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Sin}{onnxruntime\+::\+Sin$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Cos}{onnxruntime\+::\+Cos$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Tan}{onnxruntime\+::\+Tan$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Asin}{onnxruntime\+::\+Asin$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Acos}{onnxruntime\+::\+Acos$<$ T $>$}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1Atan}{onnxruntime\+::\+Atan$<$ T $>$}}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1TBroadcasterExpand}{onnxruntime\+::\+T\+Broadcaster\+Expand$<$ T $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{element__wise__ops_8cc_a1374daf7d2fd6903026d79d131b2b1d2}{R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL}}(T\+Y\+PE)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a090d6b31bfd9b6b3764e30847321acab}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Add, 7, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Add$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a832b5eb7688544dcbef02231844b1a99}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Add, 7, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Add$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aba05953d22f6ddefe5cf6a12901f01cc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Add, 7, int64\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()), Add$<$ int64\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8f6b21a39466568621b0eeafb7e50cc5}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Sub, 7, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Sub$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a93c64fe5e0e61147c06c77cf53981f80}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Sub, 7, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Sub$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_acef1440ef5e8e4a70d5a43506acd30c8}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Sub, 7, int64\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()), Sub$<$ int64\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a991428b30c16ab2bf6d55f3b9a8c72f6}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Mul, 7, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Mul$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a593bbdcbdc09724a50f2d8ef458682fc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Mul, 7, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Mul$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aeafadab661bc201e43c160f362adf967}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Mul, 7, int64\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()), Mul$<$ int64\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a751c18d5baeae15b77ffacb0c3858609}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Div, 7, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Div$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad2d3a969031b4bfa836d3fd58b47fd2f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Div, 7, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Div$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a78b0743d60452dfb72653d7076ce14a4}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Div, 7, int64\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()), Div$<$ int64\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a46dc6618b921c9c8f00289cab5f7d07e}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Neg, 6, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Neg$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a7788d1e7960168ec48580a35f0cbb8b9}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Neg, 6, int8\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int8\+\_\+t $>$()), Neg$<$ int8\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a0aa8ad645236a5045c292d8bc5adec50}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Neg, 6, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Neg$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_af117840a82acc82de3a9fd673303c8fb}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Floor, 6, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Floor$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a1c6fb1b083137bd916ad3955efd58a13}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Ceil, 6, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Ceil$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a0a11e782119a35b73eb34f32de75ef38}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Reciprocal, 6, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Reciprocal$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a7bf62227feebe7bb3f7fbe80515f8964}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Sqrt, 6, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Sqrt$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a5a7505e8ec33f7bf37ad09e554cd31bc}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Pow, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Pow$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a12a7dd6ae631936bd8a399b96ae8b8a0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Exp, 6, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Exp$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ac57608f9d297dbbddcb08e4cf2d94b1b}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Log, 6, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Log$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aab49c0ee13a015a3856f04413b885244}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Sum, 6, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Sum\+\_\+6$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aa42b4dcb5b8ece4c6a547f87a38e5237}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Sum, 8, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Sum\+\_\+8$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_abd1c401295a4526e2e827660df206d3b}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Min, 6, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Min\+\_\+6$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a9d9b9571cc8d180f03e89e79d5d92643}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Min, 8, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Min\+\_\+8$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aa13b2da4424dc2a2c003293509fd7120}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Max, 6, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Max\+\_\+6$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ac5bfc1c77459546ed6c5b66c4ade89aa}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Max, 8, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Max\+\_\+8$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a4a67a23a4c8f84a56fa3f98704509d3d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Not, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ bool $>$()), Not)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a46bb38f20584f4780c54e7561bf99209}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (And, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ bool $>$()), And)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a2628c52d307cd79ff709c7de317a2291}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Or, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ bool $>$()), Or)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a8d0daf8830c8db4450305687f52d8852}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Xor, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ bool $>$()), Xor)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a582bca10c7b08f9d8c5ce0ff020cee46}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Less, 7, 9, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Less$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a3c2fea39f9b3b324372839725eac1786}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Less, 9, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Less$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a7f256e7b5fa4221978ee3923d617d09f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Greater, 7, 9, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Greater$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a144901f6ad2d5be1e8d1557917197d17}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Greater, 9, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Greater$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a0e602251b099b6c206375851597e0a1f}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Equal, 7, bool, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ bool $>$()), Equal$<$ bool $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aea46f562e362b783aaee4fd700644865}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Equal, 7, int32\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Equal$<$ int32\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a5efcb207c00da7b5f004a175ae6d2032}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Equal, 7, int64\+\_\+t, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()), Equal$<$ int64\+\_\+t $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a54293bf4dad77a57fb6af04d77aaff23}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Mean, 6, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Mean\+\_\+6$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a59dd3281355f0384fbcc398cef3c07b0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Mean, 8, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Mean\+\_\+8$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a547dcf28628ae19e6d18628a6014cbf2}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Affine, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Affine$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a28889f3b1cfa5022ee6dd502e3e76f3d}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Scale, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Scale$<$ float $>$)
+\item 
+{\footnotesize template$<$typename T $>$ }\\auto \mbox{\hyperlink{namespaceonnxruntime_a5a75fd027083acfbb453a8eaed023655}{onnxruntime\+::\+Make\+Eigen\+Array\+Map}} (Tensor \&t)
+\item 
+{\footnotesize template$<$typename T $>$ }\\auto \mbox{\hyperlink{namespaceonnxruntime_a38092b5d7f14f52ec3259f2a71097478}{onnxruntime\+::\+Make\+Eigen\+Array\+Map}} (const Tensor \&t)
+\item 
+{\footnotesize template$<$typename T\+Broadcaster , typename Output , typename Input0\+Scalar , typename Input1\+Scalar , typename General $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a04ecd366b25e02c905a08b3f0381c1d3}{onnxruntime\+::\+Broadcast\+Loop}} (T\+Broadcaster \&bc, Output \&output, Input0\+Scalar input0scalar, Input1\+Scalar input1scalar, General general)
+\item 
+{\footnotesize template$<$typename T\+Input , typename T\+Output , typename Input0\+Scalar , typename Input1\+Scalar , typename General $>$ }\\Status \mbox{\hyperlink{namespaceonnxruntime_a9a929616f7dda34b229406547264d336}{onnxruntime\+::\+Broadcast\+Two}} (Op\+Kernel\+Context \&context, Input0\+Scalar input0scalar, Input1\+Scalar input1scalar, General general)
+\item 
+{\footnotesize template$<$typename T\+Input , typename T\+Output , typename Input0\+Scalar , typename Input1\+Scalar , typename General $>$ }\\Status \mbox{\hyperlink{namespaceonnxruntime_a70e606a96056237abaae81b61c5f4d4f}{onnxruntime\+::\+Broadcast\+Variadic}} (const Node \&node, Op\+Kernel\+Context \&context, Input0\+Scalar input0scalar, Input1\+Scalar input1scalar, General general)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a21718799e0d749610f51b3de0c0576df}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Sin, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Sin$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a4ba010d6e6c555647c932a7ecaf19d08}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Cos, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Cos$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a0887eda4c36055779b15bfef859e0e0c}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Tan, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Tan$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a025b9871a12d0f051c6aae150da1e83a}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Asin, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Asin$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ae39b8375d5f8ca96340bc80758e82b20}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Acos, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Acos$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aaee389763c2b8c8ac438ce238225c721}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Atan, 7, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Atan$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a3c4e95abfd009e0ceea9664dca3e1825}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (P\+Relu, 7, 9, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), P\+Relu$<$ float $>$)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aa3423ea65eb4bd29d15fbfd4263bf845}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+EL}} (Expand, 8, float, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Expand\+\_\+8$<$ float $>$)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{element__wise__ops_8cc_a1374daf7d2fd6903026d79d131b2b1d2}\label{element__wise__ops_8cc_a1374daf7d2fd6903026d79d131b2b1d2}} 
+\index{element\+\_\+wise\+\_\+ops.\+cc@{element\+\_\+wise\+\_\+ops.\+cc}!R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL}}
+\index{R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL@{R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL}!element\+\_\+wise\+\_\+ops.\+cc@{element\+\_\+wise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL}{REG\_ABS\_KERNEL}}
+{\footnotesize\ttfamily \#define R\+E\+G\+\_\+\+A\+B\+S\+\_\+\+K\+E\+R\+N\+EL(\begin{DoxyParamCaption}\item[{}]{T\+Y\+PE }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_af31b1816dc7c61476066f23343ea6ebd}{ONNX\_CPU\_OPERATOR\_TYPED\_KERNEL}}(                                              
+          \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_1_1math_a8988cb42d57c2365657e6a803b16ec7d}{Abs}},                                                                         \(\backslash\)
+      6,                                                                           \(\backslash\)
+      TYPE,                                                                        \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<TYPE>()), \(\backslash\)
+      Abs<TYPE>);
+\end{DoxyCode}

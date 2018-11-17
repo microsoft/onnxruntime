@@ -1,0 +1,68 @@
+\hypertarget{classonnxruntime_1_1GraphEditor}{}\section{onnxruntime\+:\+:Graph\+Editor Class Reference}
+\label{classonnxruntime_1_1GraphEditor}\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+
+
+{\ttfamily \#include $<$rewrite\+\_\+rule.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphEditor_a9386ce2eda03c33519102ecd1b1eabbc}{Graph\+Editor}} (\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \&graph) noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1GraphEditor_aa2d4e6435f26f0661c9c5a8c6efd011e}{Add\+Node}} (const std\+::string \&name, const std\+::string \&op\+\_\+type, const std\+::string \&description, const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&input\+\_\+args, const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&output\+\_\+args, const std\+::string \&domain=\char`\"{}\char`\"{})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1GraphEditor_ae7d6d60d1f59f87f932dc049d4c6a8d8}{Add\+Node}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&other)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphEditor_a01082a28ba40bb25ae08e750993d6b76}{Remove\+Node}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} node\+\_\+index)
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphEditor_ab8c53aca450ba7221343edb9c8f20926}{Add\+Control\+Edge}} (\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} src, \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}} dst)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1GraphEditor_a801fa93d7efaff4d190e7328df390975}{Resolve}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphEditor_a9386ce2eda03c33519102ecd1b1eabbc}\label{classonnxruntime_1_1GraphEditor_a9386ce2eda03c33519102ecd1b1eabbc}} 
+\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}!Graph\+Editor@{Graph\+Editor}}
+\index{Graph\+Editor@{Graph\+Editor}!onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+\subsubsection{\texorpdfstring{Graph\+Editor()}{GraphEditor()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Graph\+Editor\+::\+Graph\+Editor (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \&}]{graph }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}, {\ttfamily [noexcept]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphEditor_ab8c53aca450ba7221343edb9c8f20926}\label{classonnxruntime_1_1GraphEditor_ab8c53aca450ba7221343edb9c8f20926}} 
+\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}!Add\+Control\+Edge@{Add\+Control\+Edge}}
+\index{Add\+Control\+Edge@{Add\+Control\+Edge}!onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+\subsubsection{\texorpdfstring{Add\+Control\+Edge()}{AddControlEdge()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+Editor\+::\+Add\+Control\+Edge (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{src,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{dst }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphEditor_aa2d4e6435f26f0661c9c5a8c6efd011e}\label{classonnxruntime_1_1GraphEditor_aa2d4e6435f26f0661c9c5a8c6efd011e}} 
+\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}!Add\+Node@{Add\+Node}}
+\index{Add\+Node@{Add\+Node}!onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+\subsubsection{\texorpdfstring{Add\+Node()}{AddNode()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}}$\ast$ onnxruntime\+::\+Graph\+Editor\+::\+Add\+Node (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{op\+\_\+type,  }\item[{const std\+::string \&}]{description,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{input\+\_\+args,  }\item[{const std\+::vector$<$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} $\ast$$>$ \&}]{output\+\_\+args,  }\item[{const std\+::string \&}]{domain = {\ttfamily \char`\"{}\char`\"{}} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphEditor_ae7d6d60d1f59f87f932dc049d4c6a8d8}\label{classonnxruntime_1_1GraphEditor_ae7d6d60d1f59f87f932dc049d4c6a8d8}} 
+\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}!Add\+Node@{Add\+Node}}
+\index{Add\+Node@{Add\+Node}!onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+\subsubsection{\texorpdfstring{Add\+Node()}{AddNode()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}}$\ast$ onnxruntime\+::\+Graph\+Editor\+::\+Add\+Node (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphEditor_a01082a28ba40bb25ae08e750993d6b76}\label{classonnxruntime_1_1GraphEditor_a01082a28ba40bb25ae08e750993d6b76}} 
+\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}!Remove\+Node@{Remove\+Node}}
+\index{Remove\+Node@{Remove\+Node}!onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+\subsubsection{\texorpdfstring{Remove\+Node()}{RemoveNode()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Graph\+Editor\+::\+Remove\+Node (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{Node\+Index}}}]{node\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphEditor_a801fa93d7efaff4d190e7328df390975}\label{classonnxruntime_1_1GraphEditor_a801fa93d7efaff4d190e7328df390975}} 
+\index{onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}!Resolve@{Resolve}}
+\index{Resolve@{Resolve}!onnxruntime\+::\+Graph\+Editor@{onnxruntime\+::\+Graph\+Editor}}
+\subsubsection{\texorpdfstring{Resolve()}{Resolve()}}
+{\footnotesize\ttfamily \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Graph\+Editor\+::\+Resolve (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{rewrite__rule_8h}{rewrite\+\_\+rule.\+h}}\end{DoxyCompactItemize}

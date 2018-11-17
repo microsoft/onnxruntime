@@ -1,0 +1,51 @@
+\hypertarget{classonnxruntime_1_1LoopStateVariable}{}\section{onnxruntime\+:\+:Loop\+State\+Variable Class Reference}
+\label{classonnxruntime_1_1LoopStateVariable}\index{onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1LoopStateVariable_a3371d7e2d0114b53fd4a7447ed4eb8e6}{Loop\+State\+Variable}} (const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&original\+\_\+value, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&final\+\_\+value, const int64\+\_\+t sequence\+\_\+len, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \&allocator)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \& \mbox{\hyperlink{classonnxruntime_1_1LoopStateVariable_a0cad42b00c0c870f55e7e4f8f128e3f1}{Input}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \& \mbox{\hyperlink{classonnxruntime_1_1LoopStateVariable_a1d2635e8030adfcb688a39d8996584b2}{Output}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1LoopStateVariable_a6f75bdd576a44b30f651cdd05c4a28a8}{Next}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Class to provide input/output \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} instances for a loop state variable. The \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} flips between two internal temporary buffers to minimize copies. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LoopStateVariable_a3371d7e2d0114b53fd4a7447ed4eb8e6}\label{classonnxruntime_1_1LoopStateVariable_a3371d7e2d0114b53fd4a7447ed4eb8e6}} 
+\index{onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}!Loop\+State\+Variable@{Loop\+State\+Variable}}
+\index{Loop\+State\+Variable@{Loop\+State\+Variable}!onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}}
+\subsubsection{\texorpdfstring{Loop\+State\+Variable()}{LoopStateVariable()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Loop\+State\+Variable\+::\+Loop\+State\+Variable (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{original\+\_\+value,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{final\+\_\+value,  }\item[{const int64\+\_\+t}]{sequence\+\_\+len,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \&}]{allocator }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1LoopStateVariable_a0cad42b00c0c870f55e7e4f8f128e3f1}\label{classonnxruntime_1_1LoopStateVariable_a0cad42b00c0c870f55e7e4f8f128e3f1}} 
+\index{onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}!Input@{Input}}
+\index{Input@{Input}!onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}}
+\subsubsection{\texorpdfstring{Input()}{Input()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \& onnxruntime\+::\+Loop\+State\+Variable\+::\+Input (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LoopStateVariable_a6f75bdd576a44b30f651cdd05c4a28a8}\label{classonnxruntime_1_1LoopStateVariable_a6f75bdd576a44b30f651cdd05c4a28a8}} 
+\index{onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}!Next@{Next}}
+\index{Next@{Next}!onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}}
+\subsubsection{\texorpdfstring{Next()}{Next()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Loop\+State\+Variable\+::\+Next (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1LoopStateVariable_a1d2635e8030adfcb688a39d8996584b2}\label{classonnxruntime_1_1LoopStateVariable_a1d2635e8030adfcb688a39d8996584b2}} 
+\index{onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}!Output@{Output}}
+\index{Output@{Output}!onnxruntime\+::\+Loop\+State\+Variable@{onnxruntime\+::\+Loop\+State\+Variable}}
+\subsubsection{\texorpdfstring{Output()}{Output()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \& onnxruntime\+::\+Loop\+State\+Variable\+::\+Output (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/controlflow/\mbox{\hyperlink{scan_8cc}{scan.\+cc}}\end{DoxyCompactItemize}

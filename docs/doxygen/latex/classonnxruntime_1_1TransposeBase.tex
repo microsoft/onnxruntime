@@ -1,0 +1,62 @@
+\hypertarget{classonnxruntime_1_1TransposeBase}{}\section{onnxruntime\+:\+:Transpose\+Base Class Reference}
+\label{classonnxruntime_1_1TransposeBase}\index{onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}}
+
+
+{\ttfamily \#include $<$transpose.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Transpose\+Base\+:
+% FIG 0
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TransposeBase_aa62896c131835f8ecdc76027266c2a61}{Transpose\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1TransposeBase_a7fefe794b110fe706187c25dae4f0b74}{Compute\+Output\+Shape}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&X, std\+::vector$<$ int64\+\_\+t $>$ \&output\+\_\+dims, std\+::vector$<$ int64\+\_\+t $>$ \&default\+\_\+perm, const std\+::vector$<$ int64\+\_\+t $>$ $\ast$\&p\+\_\+perm) const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1TransposeBase_a61ce1837b9fb0de4811bd324f3d4c582}{perm\+\_\+specified\+\_\+}} = false
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1TransposeBase_a13bfaf981fd59875af221183e642b21d}{perm\+\_\+}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TransposeBase_aa62896c131835f8ecdc76027266c2a61}\label{classonnxruntime_1_1TransposeBase_aa62896c131835f8ecdc76027266c2a61}} 
+\index{onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}!Transpose\+Base@{Transpose\+Base}}
+\index{Transpose\+Base@{Transpose\+Base}!onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}}
+\subsubsection{\texorpdfstring{Transpose\+Base()}{TransposeBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Transpose\+Base\+::\+Transpose\+Base (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TransposeBase_a7fefe794b110fe706187c25dae4f0b74}\label{classonnxruntime_1_1TransposeBase_a7fefe794b110fe706187c25dae4f0b74}} 
+\index{onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}!Compute\+Output\+Shape@{Compute\+Output\+Shape}}
+\index{Compute\+Output\+Shape@{Compute\+Output\+Shape}!onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}}
+\subsubsection{\texorpdfstring{Compute\+Output\+Shape()}{ComputeOutputShape()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Transpose\+Base\+::\+Compute\+Output\+Shape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{X,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ \&}]{output\+\_\+dims,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ \&}]{default\+\_\+perm,  }\item[{const std\+::vector$<$ int64\+\_\+t $>$ $\ast$\&}]{p\+\_\+perm }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TransposeBase_a13bfaf981fd59875af221183e642b21d}\label{classonnxruntime_1_1TransposeBase_a13bfaf981fd59875af221183e642b21d}} 
+\index{onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}!perm\+\_\+@{perm\+\_\+}}
+\index{perm\+\_\+@{perm\+\_\+}!onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}}
+\subsubsection{\texorpdfstring{perm\+\_\+}{perm\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Transpose\+Base\+::perm\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TransposeBase_a61ce1837b9fb0de4811bd324f3d4c582}\label{classonnxruntime_1_1TransposeBase_a61ce1837b9fb0de4811bd324f3d4c582}} 
+\index{onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}!perm\+\_\+specified\+\_\+@{perm\+\_\+specified\+\_\+}}
+\index{perm\+\_\+specified\+\_\+@{perm\+\_\+specified\+\_\+}!onnxruntime\+::\+Transpose\+Base@{onnxruntime\+::\+Transpose\+Base}}
+\subsubsection{\texorpdfstring{perm\+\_\+specified\+\_\+}{perm\_specified\_}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Transpose\+Base\+::perm\+\_\+specified\+\_\+ = false\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/tensor/\mbox{\hyperlink{cpu_2tensor_2transpose_8h}{transpose.\+h}}\end{DoxyCompactItemize}

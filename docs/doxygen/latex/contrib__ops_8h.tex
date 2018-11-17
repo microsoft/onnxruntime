@@ -1,0 +1,88 @@
+\hypertarget{contrib__ops_8h}{}\section{onnxruntime/onnxruntime/contrib\+\_\+ops/contrib\+\_\+ops.h File Reference}
+\label{contrib__ops_8h}\index{onnxruntime/onnxruntime/contrib\+\_\+ops/contrib\+\_\+ops.\+h@{onnxruntime/onnxruntime/contrib\+\_\+ops/contrib\+\_\+ops.\+h}}
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/kernel\+\_\+registry.\+h\char`\"{}}\newline
+Include dependency graph for contrib\+\_\+ops.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1contrib}{onnxruntime\+::contrib}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{contrib__ops_8h_adbabd423fcba77a347f0d397011d11a9}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA}}(name)~\mbox{\hyperlink{contrib__ops_8h_aa19f8568ca8c970e239564c321472126}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER}}(\+\_\+\+\_\+\+C\+O\+U\+N\+T\+E\+R\+\_\+\+\_\+, name)
+\item 
+\#define \mbox{\hyperlink{contrib__ops_8h_aa19f8568ca8c970e239564c321472126}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER}}(Counter,  name)~\mbox{\hyperlink{contrib__ops_8h_a1e58bde0193c6744e3c2d031c61aa5c2}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ}}(Counter, name)
+\item 
+\#define \mbox{\hyperlink{contrib__ops_8h_a1e58bde0193c6744e3c2d031c61aa5c2}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ}}(Counter,  name)
+\item 
+\#define \mbox{\hyperlink{contrib__ops_8h_a895e217463a730de61c5acc18338bc04}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(name,  schema\+\_\+func)~\mbox{\hyperlink{contrib__ops_8h_a5dbff8c71f73c185496638963ef46b04}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(\+\_\+\+\_\+\+C\+O\+U\+N\+T\+E\+R\+\_\+\+\_\+, name, schema\+\_\+func)
+\item 
+\#define \mbox{\hyperlink{contrib__ops_8h_a5dbff8c71f73c185496638963ef46b04}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(Counter,  name,  schema\+\_\+func)~\mbox{\hyperlink{contrib__ops_8h_ae46cf2a5c24ac27d86deeb00e4ae82ca}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(Counter, name, schema\+\_\+func)
+\item 
+\#define \mbox{\hyperlink{contrib__ops_8h_ae46cf2a5c24ac27d86deeb00e4ae82ca}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(Counter,  name,  schema\+\_\+func)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1contrib_aa4c5b16cc0a80f9d630b6a8353a433d0}{onnxruntime\+::contrib\+::\+Register\+Contrib\+Schemas}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1contrib_a4b729f666760ab53d11c9597b1c9ee4b}{onnxruntime\+::contrib\+::\+Register\+Contrib\+Kernels}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(Kernel\+Create\+Info \&\&)$>$ fn)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{contrib__ops_8h_adbabd423fcba77a347f0d397011d11a9}\label{contrib__ops_8h_adbabd423fcba77a347f0d397011d11a9}} 
+\index{contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}!O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA}}
+\index{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA}!contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA}{ONNX\_CONTRIB\_OPERATOR\_SCHEMA}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+MA(\begin{DoxyParamCaption}\item[{}]{name }\end{DoxyParamCaption})~\mbox{\hyperlink{contrib__ops_8h_aa19f8568ca8c970e239564c321472126}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER}}(\+\_\+\+\_\+\+C\+O\+U\+N\+T\+E\+R\+\_\+\+\_\+, name)}
+
+\mbox{\Hypertarget{contrib__ops_8h_a895e217463a730de61c5acc18338bc04}\label{contrib__ops_8h_a895e217463a730de61c5acc18338bc04}} 
+\index{contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}!O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}
+\index{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}!contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}{ONNX\_CONTRIB\_OPERATOR\_SCHEMA\_ELSEWHERE}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{schema\+\_\+func }\end{DoxyParamCaption})~\mbox{\hyperlink{contrib__ops_8h_a5dbff8c71f73c185496638963ef46b04}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(\+\_\+\+\_\+\+C\+O\+U\+N\+T\+E\+R\+\_\+\+\_\+, name, schema\+\_\+func)}
+
+\mbox{\Hypertarget{contrib__ops_8h_a1e58bde0193c6744e3c2d031c61aa5c2}\label{contrib__ops_8h_a1e58bde0193c6744e3c2d031c61aa5c2}} 
+\index{contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}!O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ}}
+\index{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ}!contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ}{ONNX\_CONTRIB\_OPERATOR\_SCHEMA\_UNIQ}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ(\begin{DoxyParamCaption}\item[{}]{Counter,  }\item[{}]{name }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{static} ONNX\_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce( \(\backslash\)
+      op\_schema\_register\_once##name##Counter) ONNX\_UNUSED =      \(\backslash\)
+      ONNX\_NAMESPACE::OpSchema(#name, \_\_FILE\_\_, \_\_LINE\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{contrib__ops_8h_ae46cf2a5c24ac27d86deeb00e4ae82ca}\label{contrib__ops_8h_ae46cf2a5c24ac27d86deeb00e4ae82ca}} 
+\index{contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}!O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}
+\index{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}!contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}{ONNX\_CONTRIB\_OPERATOR\_SCHEMA\_UNIQ\_ELSEWHERE}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE(\begin{DoxyParamCaption}\item[{}]{Counter,  }\item[{}]{name,  }\item[{}]{schema\+\_\+func }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{static} ONNX\_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce( \(\backslash\)
+      op\_schema\_register\_once##name##Counter) ONNX\_UNUSED =      \(\backslash\)
+      schema\_func(ONNX\_NAMESPACE::OpSchema(#name, \_\_FILE\_\_, \_\_LINE\_\_))
+\end{DoxyCode}
+\mbox{\Hypertarget{contrib__ops_8h_aa19f8568ca8c970e239564c321472126}\label{contrib__ops_8h_aa19f8568ca8c970e239564c321472126}} 
+\index{contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}!O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER}}
+\index{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER}!contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER}{ONNX\_CONTRIB\_OPERATOR\_SCHEMA\_UNIQ\_HELPER}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+ER(\begin{DoxyParamCaption}\item[{}]{Counter,  }\item[{}]{name }\end{DoxyParamCaption})~\mbox{\hyperlink{contrib__ops_8h_a1e58bde0193c6744e3c2d031c61aa5c2}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+IQ}}(Counter, name)}
+
+\mbox{\Hypertarget{contrib__ops_8h_a5dbff8c71f73c185496638963ef46b04}\label{contrib__ops_8h_a5dbff8c71f73c185496638963ef46b04}} 
+\index{contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}!O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}
+\index{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE@{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}!contrib\+\_\+ops.\+h@{contrib\+\_\+ops.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}{ONNX\_CONTRIB\_OPERATOR\_SCHEMA\_UNIQ\_HELPER\_ELSEWHERE}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+H\+E\+L\+P\+E\+R\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE(\begin{DoxyParamCaption}\item[{}]{Counter,  }\item[{}]{name,  }\item[{}]{schema\+\_\+func }\end{DoxyParamCaption})~\mbox{\hyperlink{contrib__ops_8h_ae46cf2a5c24ac27d86deeb00e4ae82ca}{O\+N\+N\+X\+\_\+\+C\+O\+N\+T\+R\+I\+B\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+S\+C\+H\+E\+M\+A\+\_\+\+U\+N\+I\+Q\+\_\+\+E\+L\+S\+E\+W\+H\+E\+RE}}(Counter, name, schema\+\_\+func)}
+

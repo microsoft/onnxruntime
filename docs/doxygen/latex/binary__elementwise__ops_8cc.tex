@@ -1,0 +1,216 @@
+\hypertarget{binary__elementwise__ops_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops.cc File Reference}
+\label{binary__elementwise__ops_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops.\+cc}}
+{\ttfamily \#include \char`\"{}binary\+\_\+elementwise\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h\char`\"{}}\newline
+Include dependency graph for binary\+\_\+elementwise\+\_\+ops.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a95cc2f11a76e3d7bebe7a94864c5022f}{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}(x,  ver,  T)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_ae8cb000dda66563101f5883f24d81250}{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED}}(x,  startver,  endver,  T)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a62dc706db31fcccc08c5aa7fc8fb197f}{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}}(x,  T)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a7a1993320b30a9e99c4485286686842e}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}}(name,  ver,  T)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a8c36abfa22a22e3fa8745d454488ff5a}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}}(name,  ver)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a6eda2557af8d0354e701476c28f0e3bc}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD}}(name,  ver)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a90b72708768a99b695752d063f331344}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD}}(name,  ver)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a394585ec013e33a2c8a67cc5e01223ad}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD}}(name,  ver)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_a2896a14468e714c0e7c8eb43f46041fc}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD}}(name,  startver,  endver)
+\item 
+\#define \mbox{\hyperlink{binary__elementwise__ops_8cc_afc1b93a1a3e8205fd8963af9aaabbe7b}{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD}}(name,  startver,  endver)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_abdb130419be4fca46b9b5a2f288e3f37}{onnxruntime\+::cuda\+::\+Binary\+Elementwise\+Broadcast\+Prepare}} (int device\+\_\+id, const Tensor $\ast$lhs\+\_\+tensor, const Tensor $\ast$rhs\+\_\+tensor, Tensor $\ast$output\+\_\+tensor, Binary\+Elementwise\+Preparation $\ast$p, const Tensor\+Shape $\ast$override\+\_\+lhs\+\_\+shape=nullptr, const Tensor\+Shape $\ast$override\+\_\+rhs\+\_\+shape=nullptr)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a62dc706db31fcccc08c5aa7fc8fb197f}\label{binary__elementwise__ops_8cc_a62dc706db31fcccc08c5aa7fc8fb197f}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE}{BINARY\_ELEMENTWISE\_COMPUTE}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+C\+O\+M\+P\+U\+TE(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <>                                                                                                
+          \(\backslash\)
+  Status x<T>::ComputeInternal(OpKernelContext* context)\textcolor{keyword}{ const }\{                                           
+            \(\backslash\)
+    BinaryElementwisePreparation prepare(\textcolor{keyword}{this});                                                            
+            \(\backslash\)
+    Prepare(context, 0, &prepare);                                                                         
+            \(\backslash\)
+    ONNXRUNTIME\_RETURN\_IF\_ERROR(prepare.CopyToGpu());                                                      
+            \(\backslash\)
+    Impl\_##x<typename ToCudaType<T>::MappedType>(                                                          
+            \(\backslash\)
+        prepare.output\_rank\_or\_simple\_broadcast,                                                           
+            \(\backslash\)
+        prepare.lhs\_padded\_strides.GpuPtr(),                                                               
+            \(\backslash\)
+        reinterpret\_cast<\textcolor{keyword}{const} \textcolor{keyword}{typename} ToCudaType<T>::MappedType*>(prepare.lhs\_tensor->template Data<T>())
+      ,     \(\backslash\)
+        prepare.rhs\_padded\_strides.GpuPtr(),                                                               
+            \(\backslash\)
+        reinterpret\_cast<\textcolor{keyword}{const} \textcolor{keyword}{typename} ToCudaType<T>::MappedType*>(prepare.rhs\_tensor->template Data<T>())
+      ,     \(\backslash\)
+        prepare.fdm\_output\_strides.GpuPtr(),                                                               
+            \(\backslash\)
+        prepare.fdm\_H,                                                                                     
+            \(\backslash\)
+        prepare.fdm\_C,                                                                                     
+            \(\backslash\)
+        reinterpret\_cast<\textcolor{keyword}{typename} ToCudaType<T>::MappedType*>(prepare.output\_tensor->template 
+      MutableData<T>()), \(\backslash\)
+        prepare.output\_tensor->Shape().Size());                                                            
+            \(\backslash\)
+    return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                                         
+                      \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a95cc2f11a76e3d7bebe7a94864c5022f}\label{binary__elementwise__ops_8cc_a95cc2f11a76e3d7bebe7a94864c5022f}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{ver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                                
+      \(\backslash\)
+      x,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                              \(\backslash\)
+      ver,                                                                      \(\backslash\)
+      T,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                                   \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>()), \(\backslash\)
+      x<T>);
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_ae8cb000dda66563101f5883f24d81250}\label{binary__elementwise__ops_8cc_ae8cb000dda66563101f5883f24d81250}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED@{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{x,  }\item[{}]{startver,  }\item[{}]{endver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_ab63a4cd08bef574dcc72c83f63185112}{ONNX\_OPERATOR\_VERSIONED\_TYPED\_KERNEL\_EX}}(                            
+                   \(\backslash\)
+      x,                                                                           \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                                 \(\backslash\)
+      startver,                                                                    \(\backslash\)
+      endver,                                                                      \(\backslash\)
+      T,                                                                           \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                                      \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>()),    \(\backslash\)
+      x<T>);
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a8c36abfa22a22e3fa8745d454488ff5a}\label{binary__elementwise__ops_8cc_a8c36abfa22a22e3fa8745d454488ff5a}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD}{BINARY\_OP\_HFD}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_a7a1993320b30a9e99c4485286686842e}{BINARY\_OP\_TYPED}}(name, ver, MLFloat16) \(\backslash\)
+  BINARY\_OP\_TYPED(name, ver, \textcolor{keywordtype}{float})     \(\backslash\)
+  BINARY\_OP\_TYPED(name, ver, \textcolor{keywordtype}{double})
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a90b72708768a99b695752d063f331344}\label{binary__elementwise__ops_8cc_a90b72708768a99b695752d063f331344}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD}{BINARY\_OP\_REGISTER\_HFD}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_a95cc2f11a76e3d7bebe7a94864c5022f}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED}}(name, ver, MLFloat16) \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED(name, ver, \textcolor{keywordtype}{float})     \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED(name, ver, \textcolor{keywordtype}{double})
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a394585ec013e33a2c8a67cc5e01223ad}\label{binary__elementwise__ops_8cc_a394585ec013e33a2c8a67cc5e01223ad}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD}{BINARY\_OP\_REGISTER\_UZILHFD}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+U\+Z\+I\+L\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_a95cc2f11a76e3d7bebe7a94864c5022f}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED}}(name, ver, uint32\_t) \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED(name, ver, uint64\_t) \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED(name, ver, int32\_t)  \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED(name, ver, int64\_t)  \(\backslash\)
+  BINARY\_OP\_REGISTER\_HFD(name, ver)
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a2896a14468e714c0e7c8eb43f46041fc}\label{binary__elementwise__ops_8cc_a2896a14468e714c0e7c8eb43f46041fc}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD}{BINARY\_OP\_REGISTER\_VERSIONED\_HFD}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_ae8cb000dda66563101f5883f24d81250}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED}}(name, 
+      startver, endver, MLFloat16) \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED(name, startver, endver, \textcolor{keywordtype}{float})     \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED(name, startver, endver, \textcolor{keywordtype}{double})
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_afc1b93a1a3e8205fd8963af9aaabbe7b}\label{binary__elementwise__ops_8cc_afc1b93a1a3e8205fd8963af9aaabbe7b}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD}{BINARY\_OP\_REGISTER\_VERSIONED\_UZILHFD}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+U\+Z\+I\+L\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{startver,  }\item[{}]{endver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_ae8cb000dda66563101f5883f24d81250}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED}}(name, 
+      startver, endver, uint32\_t) \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED(name, startver, endver, uint64\_t) \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED(name, startver, endver, int32\_t)  \(\backslash\)
+  BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_VERSIONED\_TYPED(name, startver, endver, int64\_t)  \(\backslash\)
+  BINARY\_OP\_REGISTER\_VERSIONED\_HFD(name, startver, endver)
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a7a1993320b30a9e99c4485286686842e}\label{binary__elementwise__ops_8cc_a7a1993320b30a9e99c4485286686842e}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED}{BINARY\_OP\_TYPED}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_a95cc2f11a76e3d7bebe7a94864c5022f}{BINARY\_ELEMENTWISE\_REGISTER\_KERNEL\_TYPED}}(name, ver, T) \(\backslash\)
+  BINARY\_ELEMENTWISE\_COMPUTE(name, T)
+\end{DoxyCode}
+\mbox{\Hypertarget{binary__elementwise__ops_8cc_a6eda2557af8d0354e701476c28f0e3bc}\label{binary__elementwise__ops_8cc_a6eda2557af8d0354e701476c28f0e3bc}} 
+\index{binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}!B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD}}
+\index{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD@{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD}!binary\+\_\+elementwise\+\_\+ops.\+cc@{binary\+\_\+elementwise\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD}{BINARY\_OP\_UZILHFD}}
+{\footnotesize\ttfamily \#define B\+I\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+U\+Z\+I\+L\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{ver }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{binary__elementwise__ops_8cc_a7a1993320b30a9e99c4485286686842e}{BINARY\_OP\_TYPED}}(name, ver, uint32\_t) \(\backslash\)
+  BINARY\_OP\_TYPED(name, ver, uint64\_t) \(\backslash\)
+  BINARY\_OP\_TYPED(name, ver, int32\_t)  \(\backslash\)
+  BINARY\_OP\_TYPED(name, ver, int64\_t)  \(\backslash\)
+  BINARY\_OP\_HFD(name, ver)
+\end{DoxyCode}

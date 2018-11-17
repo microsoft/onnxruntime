@@ -1,0 +1,79 @@
+\hypertarget{classonnxruntime_1_1SliceBase}{}\section{onnxruntime\+:\+:Slice\+Base Class Reference}
+\label{classonnxruntime_1_1SliceBase}\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+
+
+{\ttfamily \#include $<$slice.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Slice\+Base\+:
+% FIG 0
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SliceBase_a11f5d17d420505aa93f1aed03aefa603}{Slice\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1SliceBase_af5027d33a64a37d4ff7eb2c599083e63}{Prepare\+For\+Compute}} (const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} dimension\+\_\+count, const std\+::vector$<$ int64\+\_\+t $>$ \&input\+\_\+dimensions, std\+::vector$<$ int64\+\_\+t $>$ \&starts, std\+::vector$<$ int64\+\_\+t $>$ \&output\+\_\+dims) const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1SliceBase_afb18bd853e3c7bec3036b425f3c50601}{axes\+\_\+}}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1SliceBase_a5b5a59fb9e84bbfd3b3584e9f4a55827}{has\+\_\+axes\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1SliceBase_a7ee90fe3930425804793ea0f8298ee9c}{starts\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1SliceBase_aebafc23295c3f86ab955fd59664d9956}{ends\+\_\+}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SliceBase_a11f5d17d420505aa93f1aed03aefa603}\label{classonnxruntime_1_1SliceBase_a11f5d17d420505aa93f1aed03aefa603}} 
+\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}!Slice\+Base@{Slice\+Base}}
+\index{Slice\+Base@{Slice\+Base}!onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+\subsubsection{\texorpdfstring{Slice\+Base()}{SliceBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Slice\+Base\+::\+Slice\+Base (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SliceBase_af5027d33a64a37d4ff7eb2c599083e63}\label{classonnxruntime_1_1SliceBase_af5027d33a64a37d4ff7eb2c599083e63}} 
+\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}!Prepare\+For\+Compute@{Prepare\+For\+Compute}}
+\index{Prepare\+For\+Compute@{Prepare\+For\+Compute}!onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+\subsubsection{\texorpdfstring{Prepare\+For\+Compute()}{PrepareForCompute()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Slice\+Base\+::\+Prepare\+For\+Compute (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{dimension\+\_\+count,  }\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{input\+\_\+dimensions,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ \&}]{starts,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ \&}]{output\+\_\+dims }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SliceBase_afb18bd853e3c7bec3036b425f3c50601}\label{classonnxruntime_1_1SliceBase_afb18bd853e3c7bec3036b425f3c50601}} 
+\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}!axes\+\_\+@{axes\+\_\+}}
+\index{axes\+\_\+@{axes\+\_\+}!onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+\subsubsection{\texorpdfstring{axes\+\_\+}{axes\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Slice\+Base\+::axes\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SliceBase_aebafc23295c3f86ab955fd59664d9956}\label{classonnxruntime_1_1SliceBase_aebafc23295c3f86ab955fd59664d9956}} 
+\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}!ends\+\_\+@{ends\+\_\+}}
+\index{ends\+\_\+@{ends\+\_\+}!onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+\subsubsection{\texorpdfstring{ends\+\_\+}{ends\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Slice\+Base\+::ends\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SliceBase_a5b5a59fb9e84bbfd3b3584e9f4a55827}\label{classonnxruntime_1_1SliceBase_a5b5a59fb9e84bbfd3b3584e9f4a55827}} 
+\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}!has\+\_\+axes\+\_\+@{has\+\_\+axes\+\_\+}}
+\index{has\+\_\+axes\+\_\+@{has\+\_\+axes\+\_\+}!onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+\subsubsection{\texorpdfstring{has\+\_\+axes\+\_\+}{has\_axes\_}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Slice\+Base\+::has\+\_\+axes\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SliceBase_a7ee90fe3930425804793ea0f8298ee9c}\label{classonnxruntime_1_1SliceBase_a7ee90fe3930425804793ea0f8298ee9c}} 
+\index{onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}!starts\+\_\+@{starts\+\_\+}}
+\index{starts\+\_\+@{starts\+\_\+}!onnxruntime\+::\+Slice\+Base@{onnxruntime\+::\+Slice\+Base}}
+\subsubsection{\texorpdfstring{starts\+\_\+}{starts\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Slice\+Base\+::starts\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/tensor/\mbox{\hyperlink{cpu_2tensor_2slice_8h}{slice.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cpu/tensor/\mbox{\hyperlink{cpu_2tensor_2slice_8cc}{slice.\+cc}}\end{DoxyCompactItemize}

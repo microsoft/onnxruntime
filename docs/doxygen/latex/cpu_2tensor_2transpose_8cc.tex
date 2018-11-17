@@ -1,0 +1,25 @@
+\hypertarget{cpu_2tensor_2transpose_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/tensor/transpose.cc File Reference}
+\label{cpu_2tensor_2transpose_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/tensor/transpose.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/tensor/transpose.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/transpose.\+h\char`\"{}}\newline
+Include dependency graph for transpose.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{namespaceonnxruntime_a7a2e4f2598c13e495cadce91ef4bea4f}{onnxruntime\+::\+Compute\+Offset}} (const std\+::vector$<$ int64\+\_\+t $>$ \&index, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&stride, int64\+\_\+t num\+\_\+axes)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a8cd33aa591de91e90770d34bd0dabdf9}{onnxruntime\+::\+Increment\+Index}} (std\+::vector$<$ int64\+\_\+t $>$ \&index, const std\+::vector$<$ int64\+\_\+t $>$ \&upper\+\_\+bound, int64\+\_\+t num\+\_\+axes)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_a138af3ff525d223a802d265a9074cd57}{onnxruntime\+::\+Do\+Transpose}} (int64\+\_\+t num\+\_\+axes, const std\+::vector$<$ int64\+\_\+t $>$ \&target\+\_\+dims, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num\+\_\+blocks, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num\+\_\+elts\+\_\+in\+\_\+block, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&stride, float $\ast$target, const float $\ast$source)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_ae41610a7f42e9801286c0bec42e82eb1}{onnxruntime\+::\+Do\+Transpose\+Elt\+Wise}} (int64\+\_\+t num\+\_\+axes, const std\+::vector$<$ int64\+\_\+t $>$ \&target\+\_\+dims, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num\+\_\+blocks, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&stride, float $\ast$target, const float $\ast$source)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_ae5d554a8dfb6473becd9d8e1aadb8734}{onnxruntime\+::\+Do\+Transpose\+Single\+Block}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num\+\_\+elts\+\_\+in\+\_\+block, float $\ast$target, const float $\ast$source)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_acbd4a122ad38ce85c1641e39aeac3be0}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (Transpose, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()), Transpose$<$ float $>$)
+\end{DoxyCompactItemize}

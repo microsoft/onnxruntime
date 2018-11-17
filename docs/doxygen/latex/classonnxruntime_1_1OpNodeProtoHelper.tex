@@ -1,0 +1,168 @@
+\hypertarget{classonnxruntime_1_1OpNodeProtoHelper}{}\section{onnxruntime\+:\+:Op\+Node\+Proto\+Helper$<$ Impl\+\_\+t $>$ Class Template Reference}
+\label{classonnxruntime_1_1OpNodeProtoHelper}\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper$<$ Impl\+\_\+t $>$@{onnxruntime\+::\+Op\+Node\+Proto\+Helper$<$ Impl\+\_\+t $>$}}
+
+
+{\ttfamily \#include $<$op\+\_\+node\+\_\+proto\+\_\+helper.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a7ebaae149b91605487008748a1d9bdbf}{Op\+Node\+Proto\+Helper}} (const Impl\+\_\+t $\ast$impl)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_ac1cf3e77a444ae4b2b5ce34a56f5e4c9}{Get\+Attr}} (const std\+::string \&name, T $\ast$value) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_ad6faae953b43361c87bcc09defb57f18}{Get\+Attr\+Or\+Default}} (const std\+::string \&name, const T \&default\+\_\+value) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a29395a652a337744db55dbea2f0551a1}{Get\+Attr\+Or\+Default}} (const std\+::string \&name, T $\ast$value, const T \&default\+\_\+value) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} std\+::vector$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a16d14c1bba35f141ab9c9921d9190f6c}{Get\+Attrs\+Or\+Default}} (const std\+::string \&name, const std\+::vector$<$ T $>$ \&default\+\_\+value=std\+::vector$<$ T $>$\{\}) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a9eb3e20eb1e04d901b67bbb32f027161}{Get\+Attrs}} (const std\+::string \&name, std\+::vector$<$ T $>$ \&values) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a8062b57424aadbfffcfe1095ce871765}{Get\+Attrs}} (const std\+::string \&name, gsl\+::span$<$ T $>$ values) const
+\item 
+uint32\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_ad077f2ec1f980aec98a792cfbcca4dfb}{Get\+Primitive\+Attr\+Element\+Count}} (O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto\+\_\+\+Attribute\+Type type, const std\+::string \&name) const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_af4b6e9a3a48ac7edfe8beaecc765f8e4}{Has\+Primitive\+Attribute}} (O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto\+\_\+\+Attribute\+Type type, const std\+::string \&name) const noexcept
+\item 
+uint32\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a297703ea309efda9c6803fd49ce0cc6f}{Get\+Input\+Count}} () const
+\item 
+uint32\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_ac3378cdeed5ea5ba03af197396816d00}{Get\+Output\+Count}} () const
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_ab8738d1e3871fd8ab36e70a88444463f}{Get\+Input\+Type}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) const
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a6ca065e1d93d8ba0bc2bca41451cecbd}{Get\+Output\+Type}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) const
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a6163876dfd97f4e055cdd25bc2a3750c}{Try\+Get\+Attribute}} (const std\+::string \&name) const
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper_a1cf9304aa856c38063b20b13f6fcbeb6}{Get\+Attribute}} (const std\+::string \&name) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+\subsubsection*{template$<$class Impl\+\_\+t$>$\newline
+class onnxruntime\+::\+Op\+Node\+Proto\+Helper$<$ Impl\+\_\+t $>$}
+
+A set of wrappers with common signatures for use with both \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} (as its base class) and Inference\+Context. Used by A\+BI kernels for both shape / type inference and kernel construction 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a7ebaae149b91605487008748a1d9bdbf}\label{classonnxruntime_1_1OpNodeProtoHelper_a7ebaae149b91605487008748a1d9bdbf}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Op\+Node\+Proto\+Helper@{Op\+Node\+Proto\+Helper}}
+\index{Op\+Node\+Proto\+Helper@{Op\+Node\+Proto\+Helper}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Op\+Node\+Proto\+Helper()}{OpNodeProtoHelper()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::\mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{Op\+Node\+Proto\+Helper}} (\begin{DoxyParamCaption}\item[{const Impl\+\_\+t $\ast$}]{impl }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_ac1cf3e77a444ae4b2b5ce34a56f5e4c9}\label{classonnxruntime_1_1OpNodeProtoHelper_ac1cf3e77a444ae4b2b5ce34a56f5e4c9}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attr@{Get\+Attr}}
+\index{Get\+Attr@{Get\+Attr}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attr()}{GetAttr()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+template$<$typename T $>$ \\
+\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attr (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{T $\ast$}]{value }\end{DoxyParamCaption}) const}
+
+Get a single attribute \mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a1cf9304aa856c38063b20b13f6fcbeb6}\label{classonnxruntime_1_1OpNodeProtoHelper_a1cf9304aa856c38063b20b13f6fcbeb6}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attribute@{Get\+Attribute}}
+\index{Get\+Attribute@{Get\+Attribute}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attribute()}{GetAttribute()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto$\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attribute (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_ad6faae953b43361c87bcc09defb57f18}\label{classonnxruntime_1_1OpNodeProtoHelper_ad6faae953b43361c87bcc09defb57f18}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attr\+Or\+Default@{Get\+Attr\+Or\+Default}}
+\index{Get\+Attr\+Or\+Default@{Get\+Attr\+Or\+Default}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attr\+Or\+Default()}{GetAttrOrDefault()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+template$<$typename T $>$ \\
+T \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attr\+Or\+Default (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const T \&}]{default\+\_\+value }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Get a single attribute Call this function only when onnx doesn\textquotesingle{}t have default value \mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a29395a652a337744db55dbea2f0551a1}\label{classonnxruntime_1_1OpNodeProtoHelper_a29395a652a337744db55dbea2f0551a1}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attr\+Or\+Default@{Get\+Attr\+Or\+Default}}
+\index{Get\+Attr\+Or\+Default@{Get\+Attr\+Or\+Default}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attr\+Or\+Default()}{GetAttrOrDefault()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attr\+Or\+Default (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{T $\ast$}]{value,  }\item[{const T \&}]{default\+\_\+value }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Get a single attribute Call this function only when onnx doesn\textquotesingle{}t have default value \mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a9eb3e20eb1e04d901b67bbb32f027161}\label{classonnxruntime_1_1OpNodeProtoHelper_a9eb3e20eb1e04d901b67bbb32f027161}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attrs@{Get\+Attrs}}
+\index{Get\+Attrs@{Get\+Attrs}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attrs()}{GetAttrs()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+template$<$typename T $>$ \\
+\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attrs (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{std\+::vector$<$ T $>$ \&}]{values }\end{DoxyParamCaption}) const}
+
+Get repeated attributes \mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a8062b57424aadbfffcfe1095ce871765}\label{classonnxruntime_1_1OpNodeProtoHelper_a8062b57424aadbfffcfe1095ce871765}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attrs@{Get\+Attrs}}
+\index{Get\+Attrs@{Get\+Attrs}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attrs()}{GetAttrs()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+template$<$typename T $>$ \\
+\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attrs (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{gsl\+::span$<$ T $>$}]{values }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a16d14c1bba35f141ab9c9921d9190f6c}\label{classonnxruntime_1_1OpNodeProtoHelper_a16d14c1bba35f141ab9c9921d9190f6c}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Attrs\+Or\+Default@{Get\+Attrs\+Or\+Default}}
+\index{Get\+Attrs\+Or\+Default@{Get\+Attrs\+Or\+Default}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Attrs\+Or\+Default()}{GetAttrsOrDefault()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+template$<$typename T $>$ \\
+\mbox{\hyperlink{op__node__proto__helper_8h_afefbce768b9d0df9c9ebc30dd6d13fed}{M\+U\+S\+T\+\_\+\+U\+S\+E\+\_\+\+R\+E\+S\+U\+LT}} std\+::vector$<$T$>$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Attrs\+Or\+Default (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::vector$<$ T $>$ \&}]{default\+\_\+value = {\ttfamily std\+:\+:vector$<$T$>$\{\}} }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+Get repeated attributes Call this function only when onnx doesn\textquotesingle{}t have default value \mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a297703ea309efda9c6803fd49ce0cc6f}\label{classonnxruntime_1_1OpNodeProtoHelper_a297703ea309efda9c6803fd49ce0cc6f}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Input\+Count@{Get\+Input\+Count}}
+\index{Get\+Input\+Count@{Get\+Input\+Count}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Input\+Count()}{GetInputCount()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+uint32\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Input\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_ab8738d1e3871fd8ab36e70a88444463f}\label{classonnxruntime_1_1OpNodeProtoHelper_ab8738d1e3871fd8ab36e70a88444463f}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Input\+Type@{Get\+Input\+Type}}
+\index{Get\+Input\+Type@{Get\+Input\+Type}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Input\+Type()}{GetInputType()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto$\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Input\+Type (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_ac3378cdeed5ea5ba03af197396816d00}\label{classonnxruntime_1_1OpNodeProtoHelper_ac3378cdeed5ea5ba03af197396816d00}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Output\+Count@{Get\+Output\+Count}}
+\index{Get\+Output\+Count@{Get\+Output\+Count}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Output\+Count()}{GetOutputCount()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+uint32\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Output\+Count (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a6ca065e1d93d8ba0bc2bca41451cecbd}\label{classonnxruntime_1_1OpNodeProtoHelper_a6ca065e1d93d8ba0bc2bca41451cecbd}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Output\+Type@{Get\+Output\+Type}}
+\index{Get\+Output\+Type@{Get\+Output\+Type}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Output\+Type()}{GetOutputType()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto$\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Output\+Type (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_ad077f2ec1f980aec98a792cfbcca4dfb}\label{classonnxruntime_1_1OpNodeProtoHelper_ad077f2ec1f980aec98a792cfbcca4dfb}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Get\+Primitive\+Attr\+Element\+Count@{Get\+Primitive\+Attr\+Element\+Count}}
+\index{Get\+Primitive\+Attr\+Element\+Count@{Get\+Primitive\+Attr\+Element\+Count}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Get\+Primitive\+Attr\+Element\+Count()}{GetPrimitiveAttrElementCount()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+uint32\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Get\+Primitive\+Attr\+Element\+Count (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto\+\_\+\+Attribute\+Type}]{type,  }\item[{const std\+::string \&}]{name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_af4b6e9a3a48ac7edfe8beaecc765f8e4}\label{classonnxruntime_1_1OpNodeProtoHelper_af4b6e9a3a48ac7edfe8beaecc765f8e4}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Has\+Primitive\+Attribute@{Has\+Primitive\+Attribute}}
+\index{Has\+Primitive\+Attribute@{Has\+Primitive\+Attribute}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Has\+Primitive\+Attribute()}{HasPrimitiveAttribute()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Has\+Primitive\+Attribute (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto\+\_\+\+Attribute\+Type}]{type,  }\item[{const std\+::string \&}]{name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpNodeProtoHelper_a6163876dfd97f4e055cdd25bc2a3750c}\label{classonnxruntime_1_1OpNodeProtoHelper_a6163876dfd97f4e055cdd25bc2a3750c}} 
+\index{onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}!Try\+Get\+Attribute@{Try\+Get\+Attribute}}
+\index{Try\+Get\+Attribute@{Try\+Get\+Attribute}!onnxruntime\+::\+Op\+Node\+Proto\+Helper@{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}
+\subsubsection{\texorpdfstring{Try\+Get\+Attribute()}{TryGetAttribute()}}
+{\footnotesize\ttfamily template$<$class Impl\+\_\+t$>$ \\
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Attribute\+Proto$\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpNodeProtoHelper}{onnxruntime\+::\+Op\+Node\+Proto\+Helper}}$<$ Impl\+\_\+t $>$\+::Try\+Get\+Attribute (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{op__node__proto__helper_8h}{op\+\_\+node\+\_\+proto\+\_\+helper.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{op__node__proto__helper_8cc}{op\+\_\+node\+\_\+proto\+\_\+helper.\+cc}}\end{DoxyCompactItemize}

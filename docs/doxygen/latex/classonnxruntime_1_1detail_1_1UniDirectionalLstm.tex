@@ -1,0 +1,43 @@
+\hypertarget{classonnxruntime_1_1detail_1_1UniDirectionalLstm}{}\section{onnxruntime\+:\+:detail\+:\+:Uni\+Directional\+Lstm$<$ T $>$ Class Template Reference}
+\label{classonnxruntime_1_1detail_1_1UniDirectionalLstm}\index{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm$<$ T $>$@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm$<$ T $>$}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a8305997736890bded87cdb2b14cddd56}{Uni\+Directional\+Lstm}} (\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} allocator, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger, const int seq\+\_\+length, const int batch\+\_\+size, const int input\+\_\+size, const int hidden\+\_\+size, \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{Direction}} direction, const bool input\+\_\+forget, const gsl\+::span$<$ const T $>$ \&bias, const gsl\+::span$<$ const T $>$ \&peephole\+\_\+weights, const gsl\+::span$<$ const T $>$ \&initial\+\_\+hidden\+\_\+state, const gsl\+::span$<$ const T $>$ \&initial\+\_\+cell\+\_\+state, const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&activation\+\_\+func\+\_\+f, const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&activation\+\_\+func\+\_\+g, const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&activation\+\_\+func\+\_\+h, const float clip, \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} \&ttp)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a63b38c940bfa73e61b756af810677b5b}{Compute}} (const gsl\+::span$<$ const T $>$ \&inputs, const gsl\+::span$<$ const int $>$ \&sequence\+\_\+lengths, const int num\+\_\+directions, const gsl\+::span$<$ const T $>$ \&input\+\_\+weights, const gsl\+::span$<$ const T $>$ \&recurrent\+\_\+weights, gsl\+::span$<$ T $>$ \&outputs, gsl\+::span$<$ T $>$ \&final\+\_\+hidden\+\_\+state, gsl\+::span$<$ T $>$ \&final\+\_\+cell\+\_\+state)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a89f068ebc2f0614ffc238e0d6f7fe086}{$\sim$\+Uni\+Directional\+Lstm}} ()=default
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a8305997736890bded87cdb2b14cddd56}\label{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a8305997736890bded87cdb2b14cddd56}} 
+\index{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}!Uni\+Directional\+Lstm@{Uni\+Directional\+Lstm}}
+\index{Uni\+Directional\+Lstm@{Uni\+Directional\+Lstm}!onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}}
+\subsubsection{\texorpdfstring{Uni\+Directional\+Lstm()}{UniDirectionalLstm()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm}{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}}$<$ T $>$\+::\mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm}{Uni\+Directional\+Lstm}} (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{allocator,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&}]{logger,  }\item[{const int}]{seq\+\_\+length,  }\item[{const int}]{batch\+\_\+size,  }\item[{const int}]{input\+\_\+size,  }\item[{const int}]{hidden\+\_\+size,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a3a4cfb298df0a68436cdb8879647de1d}{Direction}}}]{direction,  }\item[{const bool}]{input\+\_\+forget,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{bias,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{peephole\+\_\+weights,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{initial\+\_\+hidden\+\_\+state,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{initial\+\_\+cell\+\_\+state,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&}]{activation\+\_\+func\+\_\+f,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&}]{activation\+\_\+func\+\_\+g,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1rnn_1_1detail_1_1ActivationFuncs_1_1Entry}{Activation\+Funcs\+::\+Entry}} \&}]{activation\+\_\+func\+\_\+h,  }\item[{const float}]{clip,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool}{Task\+Thread\+Pool}} \&}]{ttp }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a89f068ebc2f0614ffc238e0d6f7fe086}\label{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a89f068ebc2f0614ffc238e0d6f7fe086}} 
+\index{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}!````~Uni\+Directional\+Lstm@{$\sim$\+Uni\+Directional\+Lstm}}
+\index{````~Uni\+Directional\+Lstm@{$\sim$\+Uni\+Directional\+Lstm}!onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}}
+\subsubsection{\texorpdfstring{$\sim$\+Uni\+Directional\+Lstm()}{~UniDirectionalLstm()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm}{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}}$<$ T $>$\+::$\sim$\mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm}{Uni\+Directional\+Lstm}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a63b38c940bfa73e61b756af810677b5b}\label{classonnxruntime_1_1detail_1_1UniDirectionalLstm_a63b38c940bfa73e61b756af810677b5b}} 
+\index{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm@{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1detail_1_1UniDirectionalLstm}{onnxruntime\+::detail\+::\+Uni\+Directional\+Lstm}}$<$ T $>$\+::Compute (\begin{DoxyParamCaption}\item[{const gsl\+::span$<$ const T $>$ \&}]{inputs,  }\item[{const gsl\+::span$<$ const int $>$ \&}]{sequence\+\_\+lengths,  }\item[{const int}]{num\+\_\+directions,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{input\+\_\+weights,  }\item[{const gsl\+::span$<$ const T $>$ \&}]{recurrent\+\_\+weights,  }\item[{gsl\+::span$<$ T $>$ \&}]{outputs,  }\item[{gsl\+::span$<$ T $>$ \&}]{final\+\_\+hidden\+\_\+state,  }\item[{gsl\+::span$<$ T $>$ \&}]{final\+\_\+cell\+\_\+state }\end{DoxyParamCaption})}
+
+$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$\+L\+S\+TM Calculations$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$$\ast$/ 
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/rnn/\mbox{\hyperlink{deep__cpu__lstm_8cc}{deep\+\_\+cpu\+\_\+lstm.\+cc}}\end{DoxyCompactItemize}

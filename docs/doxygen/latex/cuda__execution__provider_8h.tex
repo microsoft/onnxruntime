@@ -1,0 +1,33 @@
+\hypertarget{cuda__execution__provider_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+execution\+\_\+provider.h File Reference}
+\label{cuda__execution__provider_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+execution\+\_\+provider.\+h@{onnxruntime/onnxruntime/core/providers/cuda/cuda\+\_\+execution\+\_\+provider.\+h}}
+{\ttfamily \#include \char`\"{}cuda\+\_\+pch.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph\+\_\+transformer.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/allocatormgr.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/execution\+\_\+provider.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}shared\+\_\+inc/cuda\+\_\+utils.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$deque$>$}\newline
+Include dependency graph for cuda\+\_\+execution\+\_\+provider.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1CUDAExecutionProviderInfo}{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+Info}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider}{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_a43d7a39c044fbc3f2147feb0f958dfc5}{onnxruntime\+::\+C\+U\+D\+A\+Stream\+Type}} \+: int \{ \mbox{\hyperlink{namespaceonnxruntime_a43d7a39c044fbc3f2147feb0f958dfc5a4ae0061404363e5e7776fd109be3a793}{onnxruntime\+::k\+Cuda\+Stream\+Default}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_a43d7a39c044fbc3f2147feb0f958dfc5a40d087c7c878c70ebf65562fe6e2ad4c}{onnxruntime\+::k\+Cuda\+Stream\+Copy\+In}}, 
+\mbox{\hyperlink{namespaceonnxruntime_a43d7a39c044fbc3f2147feb0f958dfc5af156736a4e02a015cda5dba140f8337a}{onnxruntime\+::k\+Cuda\+Stream\+Copy\+Out}}, 
+\mbox{\hyperlink{namespaceonnxruntime_a43d7a39c044fbc3f2147feb0f958dfc5a4e64c2d197beda91bce52d1c11a260a5}{onnxruntime\+::k\+Total\+Cuda\+Streams}}
+ \}
+\end{DoxyCompactItemize}

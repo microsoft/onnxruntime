@@ -1,0 +1,207 @@
+\subsection*{Supported dev environments}
+
+\tabulinesep=1mm
+\begin{longtabu} spread 0pt [c]{*{4}{|X[-1]}|}
+\hline
+\rowcolor{\tableheadbgcolor}\textbf{ OS  }&\textbf{ Supports C\+PU  }&\textbf{ Supports G\+PU  }&\textbf{ Notes   }\\\cline{1-4}
+\endfirsthead
+\hline
+\endfoot
+\hline
+\rowcolor{\tableheadbgcolor}\textbf{ OS  }&\textbf{ Supports C\+PU  }&\textbf{ Supports G\+PU  }&\textbf{ Notes   }\\\cline{1-4}
+\endhead
+Windows 10  &Y\+ES  &Y\+ES  &Must use VS 2017 or the latest V\+S2015   \\\cline{1-4}
+Windows 10 ~\newline
+ Subsystem for Linux  &Y\+ES  &NO  &\\\cline{1-4}
+Ubuntu 16.\+x  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Ubuntu 17.\+x  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Ubuntu 18.\+x  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Fedora 24  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Fedora 25  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Fedora 26  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Fedora 27  &Y\+ES  &Y\+ES  &\\\cline{1-4}
+Fedora 28  &Y\+ES  &NO  &Cannot build G\+PU kernels but can run them   \\\cline{1-4}
+\end{longtabu}
+
+
+
+\begin{DoxyItemize}
+\item Red Hat Enterprise Linux and Cent\+OS are not supported.
+\item G\+CC 4.\+x and below are not supported. If you are using G\+CC 7.\+0+, you\textquotesingle{}ll need to upgrade eigen to a newer version before compiling O\+N\+NX Runtime.
+\end{DoxyItemize}
+
+O\+S/\+Compiler Matrix\+:
+
+\tabulinesep=1mm
+\begin{longtabu} spread 0pt [c]{*{4}{|X[-1]}|}
+\hline
+\rowcolor{\tableheadbgcolor}\textbf{ O\+S/\+Compiler  }&\textbf{ Supports VC  }&\textbf{ Supports G\+CC  }&\textbf{ Supports Clang   }\\\cline{1-4}
+\endfirsthead
+\hline
+\endfoot
+\hline
+\rowcolor{\tableheadbgcolor}\textbf{ O\+S/\+Compiler  }&\textbf{ Supports VC  }&\textbf{ Supports G\+CC  }&\textbf{ Supports Clang   }\\\cline{1-4}
+\endhead
+Windows 10  &Y\+ES  &Not tested  &Not tested   \\\cline{1-4}
+Linux  &NO  &Y\+ES(gcc$>$=5.\+0)  &Y\+ES   \\\cline{1-4}
+\end{longtabu}
+
+
+O\+N\+NX Runtime python binding only supports Python 3.\+x. Please use python 3.\+5+.
+
+\subsection*{Build}
+
+Install cmake-\/3.\+11 or better from \href{https://cmake.org/download/}{\tt https\+://cmake.\+org/download/}.
+
+Checkout the source tree\+: 
+\begin{DoxyCode}
+git clone --recursive https://github.com/Microsoft/onnxruntime
+cd onnxruntime
+./build.sh for Linux (or ./build.bat for Windows)
+\end{DoxyCode}
+ The build script runs all unit tests by default.
+
+The complete list of build options can be found by running {\ttfamily ./build.sh (or ./build.bat) -\/-\/help}
+
+\subsection*{Integration Tests}
+
+To run onnx model tests on Linux,
+
+
+\begin{DoxyEnumerate}
+\item Install docker
+\item (optional) Run \char`\"{}export A\+Z\+U\+R\+E\textbackslash{}\+\_\+\+B\+L\+O\+B\textbackslash{}\+\_\+\+K\+E\+Y=$<$secret\+\_\+value$>$\char`\"{}. You can get the key by executing \char`\"{}az storage keys list -\/-\/account-\/name lotus\char`\"{} if you have Azure C\+LI 2.\+0 installed or just ask for that.
+\item Run tools/ci\+\_\+build/github/linux/run\+\_\+build.\+sh.
+\end{DoxyEnumerate}
+
+For Windows, please follow the R\+E\+A\+D\+ME file at onnxruntime/test/onnx/\+R\+E\+A\+D\+M\+E.\+txt
+
+\subsection*{Build/\+Test Flavors for CI}
+
+\subsubsection*{CI Build Environments}
+
+\tabulinesep=1mm
+\begin{longtabu} spread 0pt [c]{*{5}{|X[-1]}|}
+\hline
+\rowcolor{\tableheadbgcolor}\textbf{ Build Job Name  }&\textbf{ Environment  }&\textbf{ Dependency  }&\textbf{ Test Coverage  }&\textbf{ Scripts   }\\\cline{1-5}
+\endfirsthead
+\hline
+\endfoot
+\hline
+\rowcolor{\tableheadbgcolor}\textbf{ Build Job Name  }&\textbf{ Environment  }&\textbf{ Dependency  }&\textbf{ Test Coverage  }&\textbf{ Scripts   }\\\cline{1-5}
+\endhead
+Linux\+\_\+\+C\+I\+\_\+\+Dev  &Ubuntu 16.\+04  &python=3.\+5  &Unit tests; O\+N\+N\+X\+Model\+Zoo  &\href{tools/ci_build/github/linux/run_build.sh}{\tt script}   \\\cline{1-5}
+Linux\+\_\+\+C\+I\+\_\+\+G\+P\+U\+\_\+\+Dev  &Ubuntu 16.\+04  &python=3.\+5; nvidia-\/docker  &Unit tests; O\+N\+N\+X\+Model\+Zoo  &\href{tools/ci_build/github/linux/run_build.sh}{\tt script}   \\\cline{1-5}
+Windows\+\_\+\+C\+I\+\_\+\+Dev  &Windows Server 2016  &python=3.\+5  &Unit tests; O\+N\+N\+X\+Model\+Zoo  &\href{build.bat}{\tt script}   \\\cline{1-5}
+Windows\+\_\+\+C\+I\+\_\+\+G\+P\+U\+\_\+\+Dev  &Windows Server 2016  &cuda=9.\+0; cudnn=7.\+0; python=3.\+5  &Unit tests; O\+N\+N\+X\+Model\+Zoo  &\href{build.bat}{\tt script}   \\\cline{1-5}
+\end{longtabu}
+
+
+\subsection*{Additional Build Flavors}
+
+The complete list of build flavors can be seen by running {\ttfamily ./build.sh -\/-\/help} or {\ttfamily ./build.bat -\/-\/help}. Here are some common flavors.
+
+\subsubsection*{Windows C\+U\+DA Build}
+
+O\+N\+NX Runtime supports C\+U\+DA builds. You will need to download and install \href{https://developer.nvidia.com/cuda-toolkit}{\tt C\+U\+DA} and \href{https://developer.nvidia.com/cudnn}{\tt C\+U\+D\+NN}.
+
+O\+N\+NX Runtime is built and tested with C\+U\+DA 9.\+0 and C\+U\+D\+NN 7.\+0 using the Visual Studio 2017 14.\+11 toolset (i.\+e. Visual Studio 2017 v15.\+3). C\+U\+DA versions up to 9.\+2 and C\+U\+D\+NN version 7.\+1 should also work with versions of Visual Studio 2017 up to and including v15.\+7, however you may need to explicitly install and use the 14.\+11 toolset due to C\+U\+DA and C\+U\+D\+NN only being compatible with earlier versions of Visual Studio 2017.
+
+To install the Visual Studio 2017 14.\+11 toolset, see \href{https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/}{\tt https\+://blogs.\+msdn.\+microsoft.\+com/vcblog/2017/11/15/side-\/by-\/side-\/minor-\/version-\/msvc-\/toolsets-\/in-\/visual-\/studio-\/2017/}
+
+If using this toolset with a later version of Visual Studio 2017 you have two options\+:
+
+
+\begin{DoxyEnumerate}
+\item Setup the Visual Studio environment variables to point to the 14.\+11 toolset by running vcvarsall.\+bat prior to running cmake
+\begin{DoxyItemize}
+\item e.\+g. if you have V\+S2017 Enterprise, an x64 build would use the following command {\ttfamily \char`\"{}\+C\+:\textbackslash{}\+Program Files (x86)\textbackslash{}\+Microsoft Visual Studio\textbackslash{}2017\textbackslash{}\+Enterprise\textbackslash{}\+V\+C\textbackslash{}\+Auxiliary\textbackslash{}\+Build\textbackslash{}vcvarsall.\+bat\char`\"{} amd64 -\/vcvars\+\_\+ver=14.\+11}
+\end{DoxyItemize}
+\item Alternatively if you have C\+Make 3.\+12 or later you can specify the toolset version in the \char`\"{}-\/\+T\char`\"{} parameter by adding \char`\"{}version=14.\+11\char`\"{}
+\begin{DoxyItemize}
+\item e.\+g. use the following with the below cmake command {\ttfamily -\/T version=14.\+11,host=x64}
+\end{DoxyItemize}
+\end{DoxyEnumerate}
+
+C\+Make should automatically find the C\+U\+DA installation. If it does not, or finds a different version to the one you wish to use, specify your root C\+U\+DA installation directory via the -\/\+D\+C\+U\+D\+A\+\_\+\+T\+O\+O\+L\+K\+I\+T\+\_\+\+R\+O\+O\+T\+\_\+\+D\+IR C\+Make parameter.
+
+\+\_\+\+Side note\+: If you have multiple versions of C\+U\+DA installed on a Windows machine and are building with Visual Studio, C\+Make will use the build files for the highest version of C\+U\+DA it finds in the Build\+Customization folder. e.\+g. C\+: Files (x86) Visual Studio\textbackslash{}2017. If you want to build with an earlier version, you must temporarily remove the \textquotesingle{}C\+U\+DA x.\+y.$\ast$\textquotesingle{} files for later versions from this directory.\+\_\+
+
+The path to the \textquotesingle{}cuda\textquotesingle{} folder in the C\+U\+D\+NN installation must be provided. The \textquotesingle{}cuda\textquotesingle{} folder should contain \textquotesingle{}bin\textquotesingle{}, \textquotesingle{}include\textquotesingle{} and \textquotesingle{}lib\textquotesingle{} directories.
+
+You can build with\+:
+
+
+\begin{DoxyCode}
+./build.sh --use\_cuda --cudnn\_home /usr --cuda\_home /usr/local/cuda (Linux)
+./build.bat --use\_cuda --cudnn\_home <cudnn home path> --cuda\_home <cuda home path> (Windows)
+\end{DoxyCode}
+
+
+\subsubsection*{M\+K\+L-\/\+D\+NN}
+
+To build O\+N\+NX Runtime with M\+K\+L-\/\+D\+NN support, build it with {\ttfamily ./build.sh -\/-\/use\+\_\+mkldnn -\/-\/use\+\_\+mklml}
+
+\subsubsection*{Open\+B\+L\+AS}
+
+\paragraph*{Windows}
+
+Instructions how to build Open\+B\+L\+AS for windows can be found here \href{https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform}{\tt https\+://github.\+com/xianyi/\+Open\+B\+L\+A\+S/wiki/\+How-\/to-\/use-\/\+Open\+B\+L\+A\+S-\/in-\/\+Microsoft-\/\+Visual-\/\+Studio\#build-\/openblas-\/for-\/universal-\/windows-\/platform}.
+
+Once you have the Open\+B\+L\+AS binaries, build O\+N\+NX Runtime with {\ttfamily ./build.bat -\/-\/use\+\_\+openblas}
+
+\paragraph*{Linux}
+
+For Linux (e.\+g. Ubuntu 16.\+04), install libopenblas-\/dev package {\ttfamily sudo apt-\/get install libopenblas-\/dev} and build with {\ttfamily ./build.sh -\/-\/use\+\_\+openblas}
+
+\#\#\# Open\+MP 
+\begin{DoxyCode}
+./build.sh --use\_openmp (for Linux)
+./build.bat --use\_openmp (for Windows)
+\end{DoxyCode}
+
+
+\subsubsection*{Build with Docker on Linux}
+
+Install Docker\+: {\ttfamily \href{https://docs.docker.com/install/}{\tt https\+://docs.\+docker.\+com/install/}}
+
+\#\#\#\# C\+PU 
+\begin{DoxyCode}
+cd tools/ci\_build/github/linux/docker
+docker build -t onnxruntime\_dev --build-arg OS\_VERSION=16.04 -f Dockerfile.ubuntu .
+docker run --rm -it onnxruntime\_dev /bin/bash
+\end{DoxyCode}
+
+
+\paragraph*{G\+PU}
+
+If you need G\+PU support, please also install\+:
+\begin{DoxyEnumerate}
+\item nvidia driver. Before doing this please add \textquotesingle{}nomodeset rd.\+driver.\+blacklist=nouveau\textquotesingle{} to your linux \href{https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html}{\tt kernel boot parameters}.
+\item nvidia-\/docker2\+: \href{`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`}{\tt Install doc}
+\end{DoxyEnumerate}
+
+To test if your nvidia-\/docker works\+: 
+\begin{DoxyCode}
+docker run --runtime=nvidia --rm nvidia/cuda nvidia-smi
+\end{DoxyCode}
+
+
+Then build a docker image. We provided a sample for use\+: 
+\begin{DoxyCode}
+cd tools/ci\_build/github/linux/docker
+docker build -t cuda\_dev -f Dockerfile.ubuntu\_gpu .
+\end{DoxyCode}
+
+
+Then run it 
+\begin{DoxyCode}
+cd ~/src
+git clone https://github.com/Microsoft/onnxruntime
+docker run --runtime=nvidia -v ~/src/ONNX Runtime:/data/lotus --rm -it cuda\_dev /bin/bash
+mkdir build
+cmake -G Ninja -DCMAKE\_BUILD\_TYPE=Debug /data/lotus/cmake -Donnxruntime\_ENABLE\_PYTHON=ON
+       -DPYTHON\_EXECUTABLE=/usr/bin/python3 -Donnxruntime\_USE\_CUDA=ON -Donnxruntime\_CUDNN\_HOME=/usr/local/cudnn-7.0/cuda
+ninja
+\end{DoxyCode}
+ 

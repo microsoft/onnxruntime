@@ -1,0 +1,24 @@
+\hypertarget{rnn__impl_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/rnn/rnn\+\_\+impl.h File Reference}
+\label{rnn__impl_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/rnn/rnn\+\_\+impl.\+h@{onnxruntime/onnxruntime/core/providers/cuda/rnn/rnn\+\_\+impl.\+h}}
+{\ttfamily \#include $<$stdint.\+h$>$}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/shared\+\_\+inc/cuda\+\_\+utils.\+h\char`\"{}}\newline
+Include dependency graph for rnn\+\_\+impl.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a50c0e5c797779509d0ec1d12b475f238}{onnxruntime\+::cuda\+::\+Reverse\+By\+Sequence}} (const int32\+\_\+t seq\+\_\+length, const int32\+\_\+t batch\+\_\+size, const int32\+\_\+t input\+\_\+or\+\_\+hidden\+\_\+size, const T $\ast$data, T $\ast$reversed\+\_\+data, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} N)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_ace6d5943a8e890cfde1d3638b886fdcd}{onnxruntime\+::cuda\+::\+Reorder\+Bidirectional\+Data\+In\+Sequence}} (const int32\+\_\+t seq\+\_\+length, const int32\+\_\+t batch\+\_\+size, const int32\+\_\+t hidden\+\_\+size, const T $\ast$data, T $\ast$reordered\+\_\+data, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} N)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a26415486136df0da0e096efc908ab00e}{onnxruntime\+::cuda\+::\+Rnn\+Mask\+Impl}} (const int32\+\_\+t num\+\_\+directions, const int32\+\_\+t seq\+\_\+length, const int32\+\_\+t batch\+\_\+size, const int32\+\_\+t hidden\+\_\+size, const int32\+\_\+t $\ast$sequence\+\_\+lens, T $\ast$y\+\_\+output\+\_\+data, T $\ast$y\+\_\+h\+\_\+output\+\_\+data, const \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} N)
+\end{DoxyCompactItemize}

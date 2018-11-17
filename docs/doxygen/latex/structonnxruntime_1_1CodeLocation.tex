@@ -1,0 +1,139 @@
+\hypertarget{structonnxruntime_1_1CodeLocation}{}\section{onnxruntime\+:\+:Code\+Location Struct Reference}
+\label{structonnxruntime_1_1CodeLocation}\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+
+
+{\ttfamily \#include $<$code\+\_\+location.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5}{Format}} \{ \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5a85483211574729523f5ee4d9ea817a6e}{k\+Filename}}, 
+\mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5a8ade6d8ec5dcdb8e23526a0b4a2fbd2c}{k\+Filename\+And\+Path}}
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a416f2ba7671440222dbf6e9d9f73a0a2}{Code\+Location}} (const char $\ast$file\+\_\+path, const int line, const char $\ast$func)
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1CodeLocation_ade1c131ca45857a21529cc43f2bb8e69}{Code\+Location}} (const char $\ast$file\+\_\+path, const int line, const char $\ast$func, const std\+::vector$<$ std\+::string $>$ \&\mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a51bb351d8b54b29b60dc090a690fc43b}{stacktrace}})
+\item 
+std\+::string \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a9b3534852c673b2206e6615cdee8d088}{File\+No\+Path}} () const
+\item 
+std\+::string \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_ae4effa4d5b551364e9e7255798df3a2d}{To\+String}} (\mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5}{Format}} format=Format\+::k\+Filename) const
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+const std\+::string \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_aeed1a7d30e1e239744907a5ed83072e7}{file\+\_\+and\+\_\+path}}
+\item 
+const int \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_ab57d004c58c1a079d3114d560ec7c0da}{line\+\_\+num}}
+\item 
+const std\+::string \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a1df4eb946576e7098bab28cbe8ab5af4}{function}}
+\item 
+const std\+::vector$<$ std\+::string $>$ \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a51bb351d8b54b29b60dc090a690fc43b}{stacktrace}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+\mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} captures information on where in the source code a message came from. 
+
+\subsection{Member Enumeration Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5}\label{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!Format@{Format}}
+\index{Format@{Format}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{Format}{Format}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5}{onnxruntime\+::\+Code\+Location\+::\+Format}}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Filename@{k\+Filename}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!k\+Filename@{k\+Filename}}}\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5a85483211574729523f5ee4d9ea817a6e}\label{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5a85483211574729523f5ee4d9ea817a6e}} 
+k\+Filename&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{k\+Filename\+And\+Path@{k\+Filename\+And\+Path}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!k\+Filename\+And\+Path@{k\+Filename\+And\+Path}}}\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5a8ade6d8ec5dcdb8e23526a0b4a2fbd2c}\label{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5a8ade6d8ec5dcdb8e23526a0b4a2fbd2c}} 
+k\+Filename\+And\+Path&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a416f2ba7671440222dbf6e9d9f73a0a2}\label{structonnxruntime_1_1CodeLocation_a416f2ba7671440222dbf6e9d9f73a0a2}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!Code\+Location@{Code\+Location}}
+\index{Code\+Location@{Code\+Location}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{Code\+Location()}{CodeLocation()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Code\+Location\+::\+Code\+Location (\begin{DoxyParamCaption}\item[{const char $\ast$}]{file\+\_\+path,  }\item[{const int}]{line,  }\item[{const char $\ast$}]{func }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+\begin{DoxyParams}{Parameters}
+{\em file\+\_\+path} & Usually the value of {\bfseries F\+I\+LE} \\
+\hline
+{\em line} & Usually the value of {\bfseries L\+I\+NE} \\
+\hline
+{\em func} & Usually the value of {\bfseries P\+R\+E\+T\+T\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON} or {\bfseries F\+U\+N\+C\+T\+I\+ON} \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_ade1c131ca45857a21529cc43f2bb8e69}\label{structonnxruntime_1_1CodeLocation_ade1c131ca45857a21529cc43f2bb8e69}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!Code\+Location@{Code\+Location}}
+\index{Code\+Location@{Code\+Location}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{Code\+Location()}{CodeLocation()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Code\+Location\+::\+Code\+Location (\begin{DoxyParamCaption}\item[{const char $\ast$}]{file\+\_\+path,  }\item[{const int}]{line,  }\item[{const char $\ast$}]{func,  }\item[{const std\+::vector$<$ std\+::string $>$ \&}]{stacktrace }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+\begin{DoxyParams}{Parameters}
+{\em file\+\_\+path} & Usually the value of {\bfseries F\+I\+LE} \\
+\hline
+{\em line} & Usually the value of {\bfseries L\+I\+NE} \\
+\hline
+{\em func} & Usually the value of {\bfseries P\+R\+E\+T\+T\+Y\+\_\+\+F\+U\+N\+C\+T\+I\+ON} or {\bfseries F\+U\+N\+C\+T\+I\+ON} \\
+\hline
+{\em stacktrace} & Stacktrace from source of message. \\
+\hline
+\end{DoxyParams}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a9b3534852c673b2206e6615cdee8d088}\label{structonnxruntime_1_1CodeLocation_a9b3534852c673b2206e6615cdee8d088}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!File\+No\+Path@{File\+No\+Path}}
+\index{File\+No\+Path@{File\+No\+Path}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{File\+No\+Path()}{FileNoPath()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Code\+Location\+::\+File\+No\+Path (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_ae4effa4d5b551364e9e7255798df3a2d}\label{structonnxruntime_1_1CodeLocation_ae4effa4d5b551364e9e7255798df3a2d}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!To\+String@{To\+String}}
+\index{To\+String@{To\+String}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{To\+String()}{ToString()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Code\+Location\+::\+To\+String (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1CodeLocation_a3fb5bf51b3528e696939e0c2daac28d5}{Format}}}]{format = {\ttfamily Format\+:\+:kFilename} }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_aeed1a7d30e1e239744907a5ed83072e7}\label{structonnxruntime_1_1CodeLocation_aeed1a7d30e1e239744907a5ed83072e7}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!file\+\_\+and\+\_\+path@{file\+\_\+and\+\_\+path}}
+\index{file\+\_\+and\+\_\+path@{file\+\_\+and\+\_\+path}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{file\+\_\+and\+\_\+path}{file\_and\_path}}
+{\footnotesize\ttfamily const std\+::string onnxruntime\+::\+Code\+Location\+::file\+\_\+and\+\_\+path}
+
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a1df4eb946576e7098bab28cbe8ab5af4}\label{structonnxruntime_1_1CodeLocation_a1df4eb946576e7098bab28cbe8ab5af4}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!function@{function}}
+\index{function@{function}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{function}{function}}
+{\footnotesize\ttfamily const std\+::string onnxruntime\+::\+Code\+Location\+::function}
+
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_ab57d004c58c1a079d3114d560ec7c0da}\label{structonnxruntime_1_1CodeLocation_ab57d004c58c1a079d3114d560ec7c0da}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!line\+\_\+num@{line\+\_\+num}}
+\index{line\+\_\+num@{line\+\_\+num}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{line\+\_\+num}{line\_num}}
+{\footnotesize\ttfamily const int onnxruntime\+::\+Code\+Location\+::line\+\_\+num}
+
+\mbox{\Hypertarget{structonnxruntime_1_1CodeLocation_a51bb351d8b54b29b60dc090a690fc43b}\label{structonnxruntime_1_1CodeLocation_a51bb351d8b54b29b60dc090a690fc43b}} 
+\index{onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}!stacktrace@{stacktrace}}
+\index{stacktrace@{stacktrace}!onnxruntime\+::\+Code\+Location@{onnxruntime\+::\+Code\+Location}}
+\subsubsection{\texorpdfstring{stacktrace}{stacktrace}}
+{\footnotesize\ttfamily const std\+::vector$<$std\+::string$>$ onnxruntime\+::\+Code\+Location\+::stacktrace}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/\mbox{\hyperlink{code__location_8h}{code\+\_\+location.\+h}}\end{DoxyCompactItemize}

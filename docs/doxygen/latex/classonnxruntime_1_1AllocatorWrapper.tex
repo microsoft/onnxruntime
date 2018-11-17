@@ -1,0 +1,81 @@
+\hypertarget{classonnxruntime_1_1AllocatorWrapper}{}\section{onnxruntime\+:\+:Allocator\+Wrapper Class Reference}
+\label{classonnxruntime_1_1AllocatorWrapper}\index{onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}}
+
+
+{\ttfamily \#include $<$allocator\+\_\+impl.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Allocator\+Wrapper\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Allocator\+Wrapper\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_a71d3cd16e3c96db9d9b558264e3b0d38}{Allocator\+Wrapper}} (\mbox{\hyperlink{session_2allocator_8h_a9eb4a70849a17d41aca1955b07cdfaca}{O\+N\+N\+X\+Runtime\+Allocator}} $\ast$impl)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_a32e99efeb7d7f2b5abae3b5422f62417}{$\sim$\+Allocator\+Wrapper}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_aee649143cd3134b3b838fd81cfe2f457}{Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_ac41adbaba7d92b14697b271050d0cab2}{Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) override
+\item 
+const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1AllocatorWrapper_a4eca2bcda00b9c970c3e8fd610d8f7b0}{Info}} () const override
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1AllocatorWrapper_a71d3cd16e3c96db9d9b558264e3b0d38}\label{classonnxruntime_1_1AllocatorWrapper_a71d3cd16e3c96db9d9b558264e3b0d38}} 
+\index{onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}!Allocator\+Wrapper@{Allocator\+Wrapper}}
+\index{Allocator\+Wrapper@{Allocator\+Wrapper}!onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}}
+\subsubsection{\texorpdfstring{Allocator\+Wrapper()}{AllocatorWrapper()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Allocator\+Wrapper\+::\+Allocator\+Wrapper (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{session_2allocator_8h_a9eb4a70849a17d41aca1955b07cdfaca}{O\+N\+N\+X\+Runtime\+Allocator}} $\ast$}]{impl }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1AllocatorWrapper_a32e99efeb7d7f2b5abae3b5422f62417}\label{classonnxruntime_1_1AllocatorWrapper_a32e99efeb7d7f2b5abae3b5422f62417}} 
+\index{onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}!````~Allocator\+Wrapper@{$\sim$\+Allocator\+Wrapper}}
+\index{````~Allocator\+Wrapper@{$\sim$\+Allocator\+Wrapper}!onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}}
+\subsubsection{\texorpdfstring{$\sim$\+Allocator\+Wrapper()}{~AllocatorWrapper()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Allocator\+Wrapper\+::$\sim$\+Allocator\+Wrapper (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1AllocatorWrapper_aee649143cd3134b3b838fd81cfe2f457}\label{classonnxruntime_1_1AllocatorWrapper_aee649143cd3134b3b838fd81cfe2f457}} 
+\index{onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}!Alloc@{Alloc}}
+\index{Alloc@{Alloc}!onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}}
+\subsubsection{\texorpdfstring{Alloc()}{Alloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+Allocator\+Wrapper\+::\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a765590df724d3e7805c1dddbfe290b11}{onnxruntime\+::\+I\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1AllocatorWrapper_ac41adbaba7d92b14697b271050d0cab2}\label{classonnxruntime_1_1AllocatorWrapper_ac41adbaba7d92b14697b271050d0cab2}} 
+\index{onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}!Free@{Free}}
+\index{Free@{Free}!onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}}
+\subsubsection{\texorpdfstring{Free()}{Free()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Allocator\+Wrapper\+::\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aeab273380d08b613b584c9e50deeb5f9}{onnxruntime\+::\+I\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1AllocatorWrapper_a4eca2bcda00b9c970c3e8fd610d8f7b0}\label{classonnxruntime_1_1AllocatorWrapper_a4eca2bcda00b9c970c3e8fd610d8f7b0}} 
+\index{onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}!Info@{Info}}
+\index{Info@{Info}!onnxruntime\+::\+Allocator\+Wrapper@{onnxruntime\+::\+Allocator\+Wrapper}}
+\subsubsection{\texorpdfstring{Info()}{Info()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}\& onnxruntime\+::\+Allocator\+Wrapper\+::\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IAllocator_a384b9f03d2346999b7b9ce3b225982a3}{onnxruntime\+::\+I\+Allocator}}.
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{allocator__impl_8h}{allocator\+\_\+impl.\+h}}\end{DoxyCompactItemize}

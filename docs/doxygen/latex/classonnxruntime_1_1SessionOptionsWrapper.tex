@@ -1,0 +1,92 @@
+\hypertarget{classonnxruntime_1_1SessionOptionsWrapper}{}\section{onnxruntime\+:\+:Session\+Options\+Wrapper Class Reference}
+\label{classonnxruntime_1_1SessionOptionsWrapper}\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+
+
+{\ttfamily \#include $<$onnxruntime\+\_\+cxx\+\_\+api.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_a3a057f59b41aad65ab884e404c1d1645}{Session\+Options\+Wrapper}} (\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} O\+N\+N\+X\+Env\+Ptr env)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_aaca0434dec567332dd1903ca2b79d91b}{Enable\+Profiling}} (\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$profile\+\_\+file\+\_\+prefix)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_aaa117c2bf7dcd2b6a3f6f80c1da8a308}{Set\+Session\+Log\+Id}} (const char $\ast$logid)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_ae4f3f304ad1e004aa054ad9aa7e8a1d8}{Set\+Session\+Log\+Verbosity\+Level}} (uint32\+\_\+t session\+\_\+log\+\_\+verbosity\+\_\+level)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_a62afb71a382b178d482c1a29bc1c6ab7}{Set\+Session\+Thread\+Pool\+Size}} (int session\+\_\+thread\+\_\+pool\+\_\+size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_a12c895cb5dcfa90dd1455368726ce48f}{Append\+Execution\+Provider}} (\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{session__options__c__api_8h_a351bab8a857e0f355c92af5c22b759bc}{O\+N\+N\+X\+Runtime\+Provider\+Factory\+Ptr}} $\ast$f)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper}{Session\+Options\+Wrapper}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_aa68ff04f59b19e76b899e6e63c6bff27}{clone}} () const
+\item 
+O\+N\+N\+X\+Session\+Ptr \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_a1c3a0aa13d30416af7278f6e23a646d6}{O\+N\+N\+X\+Runtime\+Create\+Inference\+Session}} (\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$model\+\_\+path)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper_afc53b9cc76ce0c5f2c0d98279f1cd744}{Add\+Custom\+Op}} (\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$custom\+\_\+op\+\_\+path)
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_a3a057f59b41aad65ab884e404c1d1645}\label{classonnxruntime_1_1SessionOptionsWrapper_a3a057f59b41aad65ab884e404c1d1645}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Session\+Options\+Wrapper@{Session\+Options\+Wrapper}}
+\index{Session\+Options\+Wrapper@{Session\+Options\+Wrapper}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Session\+Options\+Wrapper()}{SessionOptionsWrapper()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Session\+Options\+Wrapper (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} O\+N\+N\+X\+Env\+Ptr}]{env }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_afc53b9cc76ce0c5f2c0d98279f1cd744}\label{classonnxruntime_1_1SessionOptionsWrapper_afc53b9cc76ce0c5f2c0d98279f1cd744}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Add\+Custom\+Op@{Add\+Custom\+Op}}
+\index{Add\+Custom\+Op@{Add\+Custom\+Op}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Add\+Custom\+Op()}{AddCustomOp()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Add\+Custom\+Op (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$}]{custom\+\_\+op\+\_\+path }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_a12c895cb5dcfa90dd1455368726ce48f}\label{classonnxruntime_1_1SessionOptionsWrapper_a12c895cb5dcfa90dd1455368726ce48f}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Append\+Execution\+Provider@{Append\+Execution\+Provider}}
+\index{Append\+Execution\+Provider@{Append\+Execution\+Provider}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Append\+Execution\+Provider()}{AppendExecutionProvider()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Append\+Execution\+Provider (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{session__options__c__api_8h_a351bab8a857e0f355c92af5c22b759bc}{O\+N\+N\+X\+Runtime\+Provider\+Factory\+Ptr}} $\ast$}]{f }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+The order of invocation indicates the preference order as well. In other words call this method on your most preferred execution provider first followed by the less preferred ones. Calling this A\+PI is optional in which case onnxruntime will use its internal C\+PU execution provider. \mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_aa68ff04f59b19e76b899e6e63c6bff27}\label{classonnxruntime_1_1SessionOptionsWrapper_aa68ff04f59b19e76b899e6e63c6bff27}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!clone@{clone}}
+\index{clone@{clone}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{clone()}{clone()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper}{Session\+Options\+Wrapper}} onnxruntime\+::\+Session\+Options\+Wrapper\+::clone (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_aaca0434dec567332dd1903ca2b79d91b}\label{classonnxruntime_1_1SessionOptionsWrapper_aaca0434dec567332dd1903ca2b79d91b}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Enable\+Profiling@{Enable\+Profiling}}
+\index{Enable\+Profiling@{Enable\+Profiling}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Enable\+Profiling()}{EnableProfiling()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Enable\+Profiling (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$}]{profile\+\_\+file\+\_\+prefix }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_a1c3a0aa13d30416af7278f6e23a646d6}\label{classonnxruntime_1_1SessionOptionsWrapper_a1c3a0aa13d30416af7278f6e23a646d6}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!O\+N\+N\+X\+Runtime\+Create\+Inference\+Session@{O\+N\+N\+X\+Runtime\+Create\+Inference\+Session}}
+\index{O\+N\+N\+X\+Runtime\+Create\+Inference\+Session@{O\+N\+N\+X\+Runtime\+Create\+Inference\+Session}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Create\+Inference\+Session()}{ONNXRuntimeCreateInferenceSession()}}
+{\footnotesize\ttfamily O\+N\+N\+X\+Session\+Ptr onnxruntime\+::\+Session\+Options\+Wrapper\+::\+O\+N\+N\+X\+Runtime\+Create\+Inference\+Session (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$}]{model\+\_\+path }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_aaa117c2bf7dcd2b6a3f6f80c1da8a308}\label{classonnxruntime_1_1SessionOptionsWrapper_aaa117c2bf7dcd2b6a3f6f80c1da8a308}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Set\+Session\+Log\+Id@{Set\+Session\+Log\+Id}}
+\index{Set\+Session\+Log\+Id@{Set\+Session\+Log\+Id}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Set\+Session\+Log\+Id()}{SetSessionLogId()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Set\+Session\+Log\+Id (\begin{DoxyParamCaption}\item[{const char $\ast$}]{logid }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_ae4f3f304ad1e004aa054ad9aa7e8a1d8}\label{classonnxruntime_1_1SessionOptionsWrapper_ae4f3f304ad1e004aa054ad9aa7e8a1d8}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Set\+Session\+Log\+Verbosity\+Level@{Set\+Session\+Log\+Verbosity\+Level}}
+\index{Set\+Session\+Log\+Verbosity\+Level@{Set\+Session\+Log\+Verbosity\+Level}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Set\+Session\+Log\+Verbosity\+Level()}{SetSessionLogVerbosityLevel()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Set\+Session\+Log\+Verbosity\+Level (\begin{DoxyParamCaption}\item[{uint32\+\_\+t}]{session\+\_\+log\+\_\+verbosity\+\_\+level }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1SessionOptionsWrapper_a62afb71a382b178d482c1a29bc1c6ab7}\label{classonnxruntime_1_1SessionOptionsWrapper_a62afb71a382b178d482c1a29bc1c6ab7}} 
+\index{onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}!Set\+Session\+Thread\+Pool\+Size@{Set\+Session\+Thread\+Pool\+Size}}
+\index{Set\+Session\+Thread\+Pool\+Size@{Set\+Session\+Thread\+Pool\+Size}!onnxruntime\+::\+Session\+Options\+Wrapper@{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\subsubsection{\texorpdfstring{Set\+Session\+Thread\+Pool\+Size()}{SetSessionThreadPoolSize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Session\+Options\+Wrapper\+::\+Set\+Session\+Thread\+Pool\+Size (\begin{DoxyParamCaption}\item[{int}]{session\+\_\+thread\+\_\+pool\+\_\+size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/session/\mbox{\hyperlink{onnxruntime__cxx__api_8h}{onnxruntime\+\_\+cxx\+\_\+api.\+h}}\end{DoxyCompactItemize}

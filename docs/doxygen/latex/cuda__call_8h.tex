@@ -1,0 +1,119 @@
+\hypertarget{cuda__call_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/cuda\+\_\+call.h File Reference}
+\label{cuda__call_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/cuda\+\_\+call.\+h@{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/cuda\+\_\+call.\+h}}
+{\ttfamily \#include \char`\"{}core/providers/cuda/cuda\+\_\+pch.\+h\char`\"{}}\newline
+Include dependency graph for cuda\+\_\+call.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a95dc0691407fb1c27b700eade028c555}{C\+U\+D\+A\+\_\+\+C\+A\+LL}}(expr)~(Cuda\+Call$<$cuda\+Error, false$>$((expr), \#expr, \char`\"{}C\+U\+DA\char`\"{}, cuda\+Success))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a86892a59abdc71aca5e0bfc999fa3028}{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL}}(expr)~(Cuda\+Call$<$cublas\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+B\+L\+AS\char`\"{}, C\+U\+B\+L\+A\+S\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a795519b1d64d9d97d2d2e1d4c28ba9b5}{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL}}(expr)~(Cuda\+Call$<$cusparse\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+S\+P\+A\+R\+SE\char`\"{}, C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a5908b26d47a6f3bd80dd8222f61680b3}{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL}}(expr)~(Cuda\+Call$<$curand\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+R\+A\+ND\char`\"{}, C\+U\+R\+A\+N\+D\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a1f7d4124eb0e6ac96ba17e1cf3a0e684}{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL}}(expr)~(Cuda\+Call$<$cudnn\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_ae9f1eab56d5075064dd48d4a804c9c88}{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2}}(expr,  m)~(Cuda\+Call$<$cudnn\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS, m))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a4c1a7d1832ea93ba3ea0c410c3737b90}{C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}(expr)~(Cuda\+Call$<$cuda\+Error, true$>$((expr), \#expr, \char`\"{}C\+U\+DA\char`\"{}, cuda\+Success))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_aef6e9fbfa7a69e560b9492f78e211418}{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}(expr)~(Cuda\+Call$<$cublas\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+B\+L\+AS\char`\"{}, C\+U\+B\+L\+A\+S\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a7f76af78e0f37904bc2ae98b28d6fcf1}{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}(expr)~(Cuda\+Call$<$cusparse\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+S\+P\+A\+R\+SE\char`\"{}, C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a1121d7e8f462516c0e0c3309c366191f}{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}(expr)~(Cuda\+Call$<$curand\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+R\+A\+ND\char`\"{}, C\+U\+R\+A\+N\+D\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_a11e740726d68cb0809095364b7c32a91}{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}(expr)~(Cuda\+Call$<$cudnn\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))
+\item 
+\#define \mbox{\hyperlink{cuda__call_8h_ad525bd51049b4ab7147318b3b6613d3b}{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2}}(expr,  m)~(Cuda\+Call$<$cudnn\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS, m))
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename E\+R\+R\+T\+Y\+PE , bool T\+H\+RW$>$ }\\bool \mbox{\hyperlink{namespaceonnxruntime_a4bcb94c50ee1b7834c90f0c6334986e0}{onnxruntime\+::\+Cuda\+Call}} (E\+R\+R\+T\+Y\+PE ret\+Code, const char $\ast$expr\+String, const char $\ast$lib\+Name, E\+R\+R\+T\+Y\+PE success\+Code, const char $\ast$msg)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda__call_8h_a86892a59abdc71aca5e0bfc999fa3028}\label{cuda__call_8h_a86892a59abdc71aca5e0bfc999fa3028}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL@{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL}}
+\index{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL@{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL}{CUBLAS\_CALL}}
+{\footnotesize\ttfamily \#define C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cublas\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+B\+L\+AS\char`\"{}, C\+U\+B\+L\+A\+S\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_aef6e9fbfa7a69e560b9492f78e211418}\label{cuda__call_8h_aef6e9fbfa7a69e560b9492f78e211418}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}
+\index{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}{CUBLAS\_CALL\_THROW}}
+{\footnotesize\ttfamily \#define C\+U\+B\+L\+A\+S\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cublas\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+B\+L\+AS\char`\"{}, C\+U\+B\+L\+A\+S\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_a95dc0691407fb1c27b700eade028c555}\label{cuda__call_8h_a95dc0691407fb1c27b700eade028c555}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+D\+A\+\_\+\+C\+A\+LL@{C\+U\+D\+A\+\_\+\+C\+A\+LL}}
+\index{C\+U\+D\+A\+\_\+\+C\+A\+LL@{C\+U\+D\+A\+\_\+\+C\+A\+LL}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+A\+\_\+\+C\+A\+LL}{CUDA\_CALL}}
+{\footnotesize\ttfamily \#define C\+U\+D\+A\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cuda\+Error, false$>$((expr), \#expr, \char`\"{}C\+U\+DA\char`\"{}, cuda\+Success))}
+
+\mbox{\Hypertarget{cuda__call_8h_a4c1a7d1832ea93ba3ea0c410c3737b90}\label{cuda__call_8h_a4c1a7d1832ea93ba3ea0c410c3737b90}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}
+\index{C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}{CUDA\_CALL\_THROW}}
+{\footnotesize\ttfamily \#define C\+U\+D\+A\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cuda\+Error, true$>$((expr), \#expr, \char`\"{}C\+U\+DA\char`\"{}, cuda\+Success))}
+
+\mbox{\Hypertarget{cuda__call_8h_a1f7d4124eb0e6ac96ba17e1cf3a0e684}\label{cuda__call_8h_a1f7d4124eb0e6ac96ba17e1cf3a0e684}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+D\+N\+N\+\_\+\+C\+A\+LL@{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL}}
+\index{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL@{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+N\+N\+\_\+\+C\+A\+LL}{CUDNN\_CALL}}
+{\footnotesize\ttfamily \#define C\+U\+D\+N\+N\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cudnn\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_ae9f1eab56d5075064dd48d4a804c9c88}\label{cuda__call_8h_ae9f1eab56d5075064dd48d4a804c9c88}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2@{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2}}
+\index{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2@{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2}{CUDNN\_CALL2}}
+{\footnotesize\ttfamily \#define C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L2(\begin{DoxyParamCaption}\item[{}]{expr,  }\item[{}]{m }\end{DoxyParamCaption})~(Cuda\+Call$<$cudnn\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS, m))}
+
+\mbox{\Hypertarget{cuda__call_8h_a11e740726d68cb0809095364b7c32a91}\label{cuda__call_8h_a11e740726d68cb0809095364b7c32a91}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}
+\index{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}{CUDNN\_CALL\_THROW}}
+{\footnotesize\ttfamily \#define C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cudnn\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_ad525bd51049b4ab7147318b3b6613d3b}\label{cuda__call_8h_ad525bd51049b4ab7147318b3b6613d3b}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2@{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2}}
+\index{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2@{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2}{CUDNN\_CALL\_THROW2}}
+{\footnotesize\ttfamily \#define C\+U\+D\+N\+N\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+O\+W2(\begin{DoxyParamCaption}\item[{}]{expr,  }\item[{}]{m }\end{DoxyParamCaption})~(Cuda\+Call$<$cudnn\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+D\+NN\char`\"{}, C\+U\+D\+N\+N\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS, m))}
+
+\mbox{\Hypertarget{cuda__call_8h_a5908b26d47a6f3bd80dd8222f61680b3}\label{cuda__call_8h_a5908b26d47a6f3bd80dd8222f61680b3}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL@{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL}}
+\index{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL@{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL}{CURAND\_CALL}}
+{\footnotesize\ttfamily \#define C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$curand\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+R\+A\+ND\char`\"{}, C\+U\+R\+A\+N\+D\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_a1121d7e8f462516c0e0c3309c366191f}\label{cuda__call_8h_a1121d7e8f462516c0e0c3309c366191f}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}
+\index{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}{CURAND\_CALL\_THROW}}
+{\footnotesize\ttfamily \#define C\+U\+R\+A\+N\+D\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$curand\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+R\+A\+ND\char`\"{}, C\+U\+R\+A\+N\+D\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_a795519b1d64d9d97d2d2e1d4c28ba9b5}\label{cuda__call_8h_a795519b1d64d9d97d2d2e1d4c28ba9b5}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL@{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL}}
+\index{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL@{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL}{CUSPARSE\_CALL}}
+{\footnotesize\ttfamily \#define C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cusparse\+Status\+\_\+t, false$>$((expr), \#expr, \char`\"{}C\+U\+S\+P\+A\+R\+SE\char`\"{}, C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+
+\mbox{\Hypertarget{cuda__call_8h_a7f76af78e0f37904bc2ae98b28d6fcf1}\label{cuda__call_8h_a7f76af78e0f37904bc2ae98b28d6fcf1}} 
+\index{cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}!C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}}
+\index{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW@{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}!cuda\+\_\+call.\+h@{cuda\+\_\+call.\+h}}
+\subsubsection{\texorpdfstring{C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW}{CUSPARSE\_CALL\_THROW}}
+{\footnotesize\ttfamily \#define C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+C\+A\+L\+L\+\_\+\+T\+H\+R\+OW(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})~(Cuda\+Call$<$cusparse\+Status\+\_\+t, true$>$((expr), \#expr, \char`\"{}C\+U\+S\+P\+A\+R\+SE\char`\"{}, C\+U\+S\+P\+A\+R\+S\+E\+\_\+\+S\+T\+A\+T\+U\+S\+\_\+\+S\+U\+C\+C\+E\+SS))}
+

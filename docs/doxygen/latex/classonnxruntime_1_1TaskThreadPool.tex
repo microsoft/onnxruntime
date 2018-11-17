@@ -1,0 +1,72 @@
+\hypertarget{classonnxruntime_1_1TaskThreadPool}{}\section{onnxruntime\+:\+:Task\+Thread\+Pool Class Reference}
+\label{classonnxruntime_1_1TaskThreadPool}\index{onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}}
+
+
+{\ttfamily \#include $<$task\+\_\+thread\+\_\+pool.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool_a38ddfb570dc9c8aced5a710b762bcffd}{Task\+Thread\+Pool}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{std\+::size\+\_\+t}} pool\+\_\+size)
+\begin{DoxyCompactList}\small\item\em Constructor. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool_a8215519b62bff207184453687ebf5fd8}{$\sim$\+Task\+Thread\+Pool}} ()
+\begin{DoxyCompactList}\small\item\em Destructor. \end{DoxyCompactList}\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool_adef074fd30b2be99af2f75392ad241ee}{Run\+Task}} (std\+::packaged\+\_\+task$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$ \&\&task)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool_a3a4ac001b97cc07fe7e1ba589c631021}{Run\+Task\+With\+ID}} (std\+::packaged\+\_\+task$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{std\+::size\+\_\+t}})$>$ \&\&task)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1TaskThreadPool_a0628841b67f641cb9cdab712ff50b1d1}{Wait\+Work\+Complete}} ()
+\begin{DoxyCompactList}\small\item\em Wait for queue to be empty. \end{DoxyCompactList}\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TaskThreadPool_a38ddfb570dc9c8aced5a710b762bcffd}\label{classonnxruntime_1_1TaskThreadPool_a38ddfb570dc9c8aced5a710b762bcffd}} 
+\index{onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}!Task\+Thread\+Pool@{Task\+Thread\+Pool}}
+\index{Task\+Thread\+Pool@{Task\+Thread\+Pool}!onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}}
+\subsubsection{\texorpdfstring{Task\+Thread\+Pool()}{TaskThreadPool()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Task\+Thread\+Pool\+::\+Task\+Thread\+Pool (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{std\+::size\+\_\+t}}}]{pool\+\_\+size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+
+
+Constructor. 
+
+\mbox{\Hypertarget{classonnxruntime_1_1TaskThreadPool_a8215519b62bff207184453687ebf5fd8}\label{classonnxruntime_1_1TaskThreadPool_a8215519b62bff207184453687ebf5fd8}} 
+\index{onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}!````~Task\+Thread\+Pool@{$\sim$\+Task\+Thread\+Pool}}
+\index{````~Task\+Thread\+Pool@{$\sim$\+Task\+Thread\+Pool}!onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}}
+\subsubsection{\texorpdfstring{$\sim$\+Task\+Thread\+Pool()}{~TaskThreadPool()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Task\+Thread\+Pool\+::$\sim$\+Task\+Thread\+Pool (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Destructor. 
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1TaskThreadPool_adef074fd30b2be99af2f75392ad241ee}\label{classonnxruntime_1_1TaskThreadPool_adef074fd30b2be99af2f75392ad241ee}} 
+\index{onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}!Run\+Task@{Run\+Task}}
+\index{Run\+Task@{Run\+Task}!onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}}
+\subsubsection{\texorpdfstring{Run\+Task()}{RunTask()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Task\+Thread\+Pool\+::\+Run\+Task (\begin{DoxyParamCaption}\item[{std\+::packaged\+\_\+task$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$ \&\&}]{task }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TaskThreadPool_a3a4ac001b97cc07fe7e1ba589c631021}\label{classonnxruntime_1_1TaskThreadPool_a3a4ac001b97cc07fe7e1ba589c631021}} 
+\index{onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}!Run\+Task\+With\+ID@{Run\+Task\+With\+ID}}
+\index{Run\+Task\+With\+ID@{Run\+Task\+With\+ID}!onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}}
+\subsubsection{\texorpdfstring{Run\+Task\+With\+I\+D()}{RunTaskWithID()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Task\+Thread\+Pool\+::\+Run\+Task\+With\+ID (\begin{DoxyParamCaption}\item[{std\+::packaged\+\_\+task$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{std\+::size\+\_\+t}})$>$ \&\&}]{task }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1TaskThreadPool_a0628841b67f641cb9cdab712ff50b1d1}\label{classonnxruntime_1_1TaskThreadPool_a0628841b67f641cb9cdab712ff50b1d1}} 
+\index{onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}!Wait\+Work\+Complete@{Wait\+Work\+Complete}}
+\index{Wait\+Work\+Complete@{Wait\+Work\+Complete}!onnxruntime\+::\+Task\+Thread\+Pool@{onnxruntime\+::\+Task\+Thread\+Pool}}
+\subsubsection{\texorpdfstring{Wait\+Work\+Complete()}{WaitWorkComplete()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Task\+Thread\+Pool\+::\+Wait\+Work\+Complete (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+Wait for queue to be empty. 
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/common/\mbox{\hyperlink{task__thread__pool_8h}{task\+\_\+thread\+\_\+pool.\+h}}\end{DoxyCompactItemize}

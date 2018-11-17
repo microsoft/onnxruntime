@@ -1,0 +1,81 @@
+\hypertarget{classonnxruntime_1_1KernelRegistry}{}\section{onnxruntime\+:\+:Kernel\+Registry Class Reference}
+\label{classonnxruntime_1_1KernelRegistry}\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+
+
+{\ttfamily \#include $<$kernel\+\_\+registry.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Kernel\+Registry\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_a8cf1430354125b884cb971db39a09bfc}{Kernel\+Registry}} ()=default
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_a1ed25e686743eb25c3f94a8ff4c47fc4}{Kernel\+Registry}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(\mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} \&\&)$>$)$>$ kernel\+\_\+reg\+\_\+fn)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_af81f6acb9b02212303a1b4e6fa7b1d42}{Register}} (\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \&kernel\+\_\+def\+\_\+builder, const \mbox{\hyperlink{namespaceonnxruntime_a2e23731e78afbe4e5e15a18493162335}{Kernel\+Create\+Fn}} \&kernel\+\_\+creator)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_a9b9a95e6d65ac684c71024d32b56163a}{Register}} (\mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} \&create\+\_\+info)
+\item 
+std\+::vector$<$ std\+::string $>$ \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_a33e9c2ab5a8ed53cfca517b228d5d9fb}{Get\+All\+Registered\+Op\+Names}} () const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_a812ae91800b74bcbe37a682ab94f4477}{Create\+Kernel}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&node, const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} \&execution\+\_\+provider, const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $>$ \&op\+\_\+kernel) const
+\item 
+const \mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry_a3f6d5f5e7596082346a3fe54f3cb3ba9}{Try\+Find\+Kernel}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&node, \mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} exec\+\_\+provider) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_a8cf1430354125b884cb971db39a09bfc}\label{classonnxruntime_1_1KernelRegistry_a8cf1430354125b884cb971db39a09bfc}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Kernel\+Registry@{Kernel\+Registry}}
+\index{Kernel\+Registry@{Kernel\+Registry}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Kernel\+Registry()}{KernelRegistry()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Kernel\+Registry\+::\+Kernel\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_a1ed25e686743eb25c3f94a8ff4c47fc4}\label{classonnxruntime_1_1KernelRegistry_a1ed25e686743eb25c3f94a8ff4c47fc4}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Kernel\+Registry@{Kernel\+Registry}}
+\index{Kernel\+Registry@{Kernel\+Registry}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Kernel\+Registry()}{KernelRegistry()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Kernel\+Registry\+::\+Kernel\+Registry (\begin{DoxyParamCaption}\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(\mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} \&\&)$>$)$>$}]{kernel\+\_\+reg\+\_\+fn }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_a812ae91800b74bcbe37a682ab94f4477}\label{classonnxruntime_1_1KernelRegistry_a812ae91800b74bcbe37a682ab94f4477}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Create\+Kernel@{Create\+Kernel}}
+\index{Create\+Kernel@{Create\+Kernel}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Create\+Kernel()}{CreateKernel()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Kernel\+Registry\+::\+Create\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&}]{node,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} \&}]{execution\+\_\+provider,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1OpKernel}{Op\+Kernel}} $>$ \&}]{op\+\_\+kernel }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_a33e9c2ab5a8ed53cfca517b228d5d9fb}\label{classonnxruntime_1_1KernelRegistry_a33e9c2ab5a8ed53cfca517b228d5d9fb}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Get\+All\+Registered\+Op\+Names@{Get\+All\+Registered\+Op\+Names}}
+\index{Get\+All\+Registered\+Op\+Names@{Get\+All\+Registered\+Op\+Names}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Get\+All\+Registered\+Op\+Names()}{GetAllRegisteredOpNames()}}
+{\footnotesize\ttfamily std\+::vector$<$ std\+::string $>$ onnxruntime\+::\+Kernel\+Registry\+::\+Get\+All\+Registered\+Op\+Names (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_af81f6acb9b02212303a1b4e6fa7b1d42}\label{classonnxruntime_1_1KernelRegistry_af81f6acb9b02212303a1b4e6fa7b1d42}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Register@{Register}}
+\index{Register@{Register}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Register()}{Register()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Kernel\+Registry\+::\+Register (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1KernelDefBuilder}{Kernel\+Def\+Builder}} \&}]{kernel\+\_\+def\+\_\+builder,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a2e23731e78afbe4e5e15a18493162335}{Kernel\+Create\+Fn}} \&}]{kernel\+\_\+creator }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_a9b9a95e6d65ac684c71024d32b56163a}\label{classonnxruntime_1_1KernelRegistry_a9b9a95e6d65ac684c71024d32b56163a}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Register@{Register}}
+\index{Register@{Register}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Register()}{Register()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Kernel\+Registry\+::\+Register (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} \&}]{create\+\_\+info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1KernelRegistry_a3f6d5f5e7596082346a3fe54f3cb3ba9}\label{classonnxruntime_1_1KernelRegistry_a3f6d5f5e7596082346a3fe54f3cb3ba9}} 
+\index{onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}!Try\+Find\+Kernel@{Try\+Find\+Kernel}}
+\index{Try\+Find\+Kernel@{Try\+Find\+Kernel}!onnxruntime\+::\+Kernel\+Registry@{onnxruntime\+::\+Kernel\+Registry}}
+\subsubsection{\texorpdfstring{Try\+Find\+Kernel()}{TryFindKernel()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structonnxruntime_1_1KernelCreateInfo}{Kernel\+Create\+Info}} $\ast$ onnxruntime\+::\+Kernel\+Registry\+::\+Try\+Find\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&}]{node,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{exec\+\_\+provider }\end{DoxyParamCaption}) const}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{kernel__registry_8h}{kernel\+\_\+registry.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{kernel__registry_8cc}{kernel\+\_\+registry.\+cc}}\end{DoxyCompactItemize}

@@ -1,0 +1,52 @@
+\hypertarget{tree__ensemble__classifier_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/ml/tree\+\_\+ensemble\+\_\+classifier.cc File Reference}
+\label{tree__ensemble__classifier_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/ml/tree\+\_\+ensemble\+\_\+classifier.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/ml/tree\+\_\+ensemble\+\_\+classifier.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/ml/tree\+\_\+ensemble\+\_\+classifier.\+h\char`\"{}}\newline
+Include dependency graph for tree\+\_\+ensemble\+\_\+classifier.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1ml}{onnxruntime\+::ml}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{tree__ensemble__classifier_8cc_a7a4885964a8146f7321216344fb4e076}{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}}(in\+\_\+type)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a5ca3fb69ea75368fc440ae6d314d7aae}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (float)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_adc25b4c0070b93ee2ba3b8b7767176ea}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (double)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_a0b4714f796c8f5d30ac5ee23c6b2b159}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (int64\+\_\+t)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1ml_aba95ca1460a619772253de1c96635b95}{onnxruntime\+::ml\+::\+A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}} (int32\+\_\+t)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{tree__ensemble__classifier_8cc_a7a4885964a8146f7321216344fb4e076}\label{tree__ensemble__classifier_8cc_a7a4885964a8146f7321216344fb4e076}} 
+\index{tree\+\_\+ensemble\+\_\+classifier.\+cc@{tree\+\_\+ensemble\+\_\+classifier.\+cc}!A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP@{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}}
+\index{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP@{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}!tree\+\_\+ensemble\+\_\+classifier.\+cc@{tree\+\_\+ensemble\+\_\+classifier.\+cc}}
+\subsubsection{\texorpdfstring{A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP}{ADD\_IN\_TYPE\_TREE\_ENSEMBLE\_CLASSIFIER\_OP}}
+{\footnotesize\ttfamily \#define A\+D\+D\+\_\+\+I\+N\+\_\+\+T\+Y\+P\+E\+\_\+\+T\+R\+E\+E\+\_\+\+E\+N\+S\+E\+M\+B\+L\+E\+\_\+\+C\+L\+A\+S\+S\+I\+F\+I\+E\+R\+\_\+\+OP(\begin{DoxyParamCaption}\item[{}]{in\+\_\+type }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_aa277928c0a381dcb5bdedafa82b64d45}{ONNX\_CPU\_OPERATOR\_TYPED\_ML\_KERNEL}}(                                        
+                                                                                                                  
+                \(\backslash\)
+      TreeEnsembleClassifier,                                                                              
+                                                                                             \(\backslash\)
+      1,                                                                                                   
+                                                                                             \(\backslash\)
+      in\_type,                                                                                             
+                                                                                             \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T1"}, DataTypeImpl::GetTensorType<in\_type>()).TypeConstraint(\textcolor{stringliteral}{"T2"}, 
+      \{DataTypeImpl::GetTensorType<int64\_t>(), DataTypeImpl::GetTensorType<std::string>()\}), \(\backslash\)
+      TreeEnsembleClassifier<in\_type>);
+\end{DoxyCode}

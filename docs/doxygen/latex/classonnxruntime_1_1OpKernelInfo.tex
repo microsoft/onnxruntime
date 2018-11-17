@@ -1,0 +1,88 @@
+\hypertarget{classonnxruntime_1_1OpKernelInfo}{}\section{onnxruntime\+:\+:Op\+Kernel\+Info Class Reference}
+\label{classonnxruntime_1_1OpKernelInfo}\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+
+
+{\ttfamily \#include $<$op\+\_\+kernel\+\_\+info.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Op\+Kernel\+Info\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Op\+Kernel\+Info\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_a6f4103663e7050bfe536c53526e42438}{Op\+Kernel\+Info}} (const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&\mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_add4a38936cf8fc4f2f1c44eb8faaf75a}{node}}, const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} \&kernel\+\_\+def, const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} \&execution\+\_\+provider, const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_a36d5960e8efcd27e25f92006da9c04e4}{Op\+Kernel\+Info}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&other)
+\item 
+const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_a64758fd2d6699e158afd926f64969a29}{Get\+Allocator\+Info}} (int device\+\_\+id, \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} mem\+\_\+type) const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} \& \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_accd44ef635dacda958a3a28c77822cb6}{Get\+Kernel\+Def}} () const
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_a759a6d4a88589a5622a2f029571337f0}{Get\+Execution\+Provider}} () const noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \& \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_add4a38936cf8fc4f2f1c44eb8faaf75a}{node}} () const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo_a7ae4c84bc281ec439f36966f37345ab8}{Try\+Get\+Constant\+Input}} (int input\+\_\+index, const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$$\ast$constant\+\_\+input\+\_\+value) const
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+A very light-\/weight class, which works as an aggregated view of all data needed for constructing a Kernel instance. N\+O\+TE\+: it does not own/hold any objects. 
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_a6f4103663e7050bfe536c53526e42438}\label{classonnxruntime_1_1OpKernelInfo_a6f4103663e7050bfe536c53526e42438}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!Op\+Kernel\+Info@{Op\+Kernel\+Info}}
+\index{Op\+Kernel\+Info@{Op\+Kernel\+Info}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{Op\+Kernel\+Info()}{OpKernelInfo()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Op\+Kernel\+Info\+::\+Op\+Kernel\+Info (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&}]{node,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} \&}]{kernel\+\_\+def,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} \&}]{execution\+\_\+provider,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_a36d5960e8efcd27e25f92006da9c04e4}\label{classonnxruntime_1_1OpKernelInfo_a36d5960e8efcd27e25f92006da9c04e4}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!Op\+Kernel\+Info@{Op\+Kernel\+Info}}
+\index{Op\+Kernel\+Info@{Op\+Kernel\+Info}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{Op\+Kernel\+Info()}{OpKernelInfo()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Op\+Kernel\+Info\+::\+Op\+Kernel\+Info (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{other }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_a64758fd2d6699e158afd926f64969a29}\label{classonnxruntime_1_1OpKernelInfo_a64758fd2d6699e158afd926f64969a29}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!Get\+Allocator\+Info@{Get\+Allocator\+Info}}
+\index{Get\+Allocator\+Info@{Get\+Allocator\+Info}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{Get\+Allocator\+Info()}{GetAllocatorInfo()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& onnxruntime\+::\+Op\+Kernel\+Info\+::\+Get\+Allocator\+Info (\begin{DoxyParamCaption}\item[{int}]{device\+\_\+id,  }\item[{\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}]{mem\+\_\+type }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_a759a6d4a88589a5622a2f029571337f0}\label{classonnxruntime_1_1OpKernelInfo_a759a6d4a88589a5622a2f029571337f0}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!Get\+Execution\+Provider@{Get\+Execution\+Provider}}
+\index{Get\+Execution\+Provider@{Get\+Execution\+Provider}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{Get\+Execution\+Provider()}{GetExecutionProvider()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider}{I\+Execution\+Provider}} $\ast$ onnxruntime\+::\+Op\+Kernel\+Info\+::\+Get\+Execution\+Provider (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_accd44ef635dacda958a3a28c77822cb6}\label{classonnxruntime_1_1OpKernelInfo_accd44ef635dacda958a3a28c77822cb6}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!Get\+Kernel\+Def@{Get\+Kernel\+Def}}
+\index{Get\+Kernel\+Def@{Get\+Kernel\+Def}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{Get\+Kernel\+Def()}{GetKernelDef()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} \& onnxruntime\+::\+Op\+Kernel\+Info\+::\+Get\+Kernel\+Def (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_add4a38936cf8fc4f2f1c44eb8faaf75a}\label{classonnxruntime_1_1OpKernelInfo_add4a38936cf8fc4f2f1c44eb8faaf75a}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!node@{node}}
+\index{node@{node}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{node()}{node()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \& onnxruntime\+::\+Op\+Kernel\+Info\+::node (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpKernelInfo_a7ae4c84bc281ec439f36966f37345ab8}\label{classonnxruntime_1_1OpKernelInfo_a7ae4c84bc281ec439f36966f37345ab8}} 
+\index{onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}!Try\+Get\+Constant\+Input@{Try\+Get\+Constant\+Input}}
+\index{Try\+Get\+Constant\+Input@{Try\+Get\+Constant\+Input}!onnxruntime\+::\+Op\+Kernel\+Info@{onnxruntime\+::\+Op\+Kernel\+Info}}
+\subsubsection{\texorpdfstring{Try\+Get\+Constant\+Input()}{TryGetConstantInput()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Op\+Kernel\+Info\+::\+Try\+Get\+Constant\+Input (\begin{DoxyParamCaption}\item[{int}]{input\+\_\+index,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $\ast$$\ast$}]{constant\+\_\+input\+\_\+value }\end{DoxyParamCaption}) const}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{op__kernel__info_8h}{op\+\_\+kernel\+\_\+info.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{op__kernel__info_8cc}{op\+\_\+kernel\+\_\+info.\+cc}}\end{DoxyCompactItemize}

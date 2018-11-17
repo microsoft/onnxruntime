@@ -1,0 +1,120 @@
+\hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState}{}\section{onnxruntime\+:\+:cuda\+:\+:Cudnn\+Conv\+State$<$ Algo\+Type $>$ Struct Template Reference}
+\label{structonnxruntime_1_1cuda_1_1CudnnConvState}\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State$<$ Algo\+Type $>$@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State$<$ Algo\+Type $>$}}
+
+
+{\ttfamily \#include $<$conv.\+h$>$}
+
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Cudnn\+Conv\+State$<$ Algo\+Type $>$\+:
+% FIG 0
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_abb6f987de8392aa5e92cda4d01cc3d46}{last\+\_\+x\+\_\+dims}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_a2e5dca00d0c047f65dda3604d38fa74c}{last\+\_\+w\+\_\+dims}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_a04e5b53d56e214e67efaa2125bb908ff}{y\+\_\+dims}}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_a9ee27988a233e86333602f53c0604d13}{workspace\+\_\+bytes}}
+\item 
+Algo\+Type \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_a7cc81dcffd6af6c52e73146a4acbf9ce}{algo}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_aeffe1e221d15d748996bf594cb300360}{x\+\_\+tensor}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnFilterDescriptor}{Cudnn\+Filter\+Descriptor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_abaef91b21d1779d5fdc67e81f49d43d4}{filter\+\_\+desc}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_a608414be81a9adb6e9b7365cb0617f67}{b\+\_\+tensor}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_aebb7cdf4e79a3d5ee09ad81240ca3a97}{y\+\_\+tensor}}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnConvolutionDescriptor}{Cudnn\+Convolution\+Descriptor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_aa7023eff86ef94dfea1f60e8c53b3dcd}{conv\+\_\+desc}}
+\item 
+std\+::mutex \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState_ac6cbeba0fac30da677f4763a0effa052}{mutex}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_a7cc81dcffd6af6c52e73146a4acbf9ce}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_a7cc81dcffd6af6c52e73146a4acbf9ce}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!algo@{algo}}
+\index{algo@{algo}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{algo}{algo}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+Algo\+Type \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::algo}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_a608414be81a9adb6e9b7365cb0617f67}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_a608414be81a9adb6e9b7365cb0617f67}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!b\+\_\+tensor@{b\+\_\+tensor}}
+\index{b\+\_\+tensor@{b\+\_\+tensor}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{b\+\_\+tensor}{b\_tensor}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::b\+\_\+tensor}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_aa7023eff86ef94dfea1f60e8c53b3dcd}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_aa7023eff86ef94dfea1f60e8c53b3dcd}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!conv\+\_\+desc@{conv\+\_\+desc}}
+\index{conv\+\_\+desc@{conv\+\_\+desc}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{conv\+\_\+desc}{conv\_desc}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnConvolutionDescriptor}{Cudnn\+Convolution\+Descriptor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::conv\+\_\+desc}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_abaef91b21d1779d5fdc67e81f49d43d4}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_abaef91b21d1779d5fdc67e81f49d43d4}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!filter\+\_\+desc@{filter\+\_\+desc}}
+\index{filter\+\_\+desc@{filter\+\_\+desc}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{filter\+\_\+desc}{filter\_desc}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnFilterDescriptor}{Cudnn\+Filter\+Descriptor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::filter\+\_\+desc}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_a2e5dca00d0c047f65dda3604d38fa74c}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_a2e5dca00d0c047f65dda3604d38fa74c}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!last\+\_\+w\+\_\+dims@{last\+\_\+w\+\_\+dims}}
+\index{last\+\_\+w\+\_\+dims@{last\+\_\+w\+\_\+dims}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{last\+\_\+w\+\_\+dims}{last\_w\_dims}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+std\+::vector$<$int64\+\_\+t$>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::last\+\_\+w\+\_\+dims}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_abb6f987de8392aa5e92cda4d01cc3d46}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_abb6f987de8392aa5e92cda4d01cc3d46}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!last\+\_\+x\+\_\+dims@{last\+\_\+x\+\_\+dims}}
+\index{last\+\_\+x\+\_\+dims@{last\+\_\+x\+\_\+dims}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{last\+\_\+x\+\_\+dims}{last\_x\_dims}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+std\+::vector$<$int64\+\_\+t$>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::last\+\_\+x\+\_\+dims}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_ac6cbeba0fac30da677f4763a0effa052}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_ac6cbeba0fac30da677f4763a0effa052}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!mutex@{mutex}}
+\index{mutex@{mutex}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{mutex}{mutex}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+std\+::mutex \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::mutex}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_a9ee27988a233e86333602f53c0604d13}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_a9ee27988a233e86333602f53c0604d13}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!workspace\+\_\+bytes@{workspace\+\_\+bytes}}
+\index{workspace\+\_\+bytes@{workspace\+\_\+bytes}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{workspace\+\_\+bytes}{workspace\_bytes}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::workspace\+\_\+bytes}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_aeffe1e221d15d748996bf594cb300360}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_aeffe1e221d15d748996bf594cb300360}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!x\+\_\+tensor@{x\+\_\+tensor}}
+\index{x\+\_\+tensor@{x\+\_\+tensor}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{x\+\_\+tensor}{x\_tensor}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::x\+\_\+tensor}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_a04e5b53d56e214e67efaa2125bb908ff}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_a04e5b53d56e214e67efaa2125bb908ff}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!y\+\_\+dims@{y\+\_\+dims}}
+\index{y\+\_\+dims@{y\+\_\+dims}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{y\+\_\+dims}{y\_dims}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+std\+::vector$<$int64\+\_\+t$>$ \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::y\+\_\+dims}
+
+\mbox{\Hypertarget{structonnxruntime_1_1cuda_1_1CudnnConvState_aebb7cdf4e79a3d5ee09ad81240ca3a97}\label{structonnxruntime_1_1cuda_1_1CudnnConvState_aebb7cdf4e79a3d5ee09ad81240ca3a97}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}!y\+\_\+tensor@{y\+\_\+tensor}}
+\index{y\+\_\+tensor@{y\+\_\+tensor}!onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State@{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}
+\subsubsection{\texorpdfstring{y\+\_\+tensor}{y\_tensor}}
+{\footnotesize\ttfamily template$<$typename Algo\+Type$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1CudnnConvState}{onnxruntime\+::cuda\+::\+Cudnn\+Conv\+State}}$<$ Algo\+Type $>$\+::y\+\_\+tensor}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/nn/\mbox{\hyperlink{cuda_2nn_2conv_8h}{conv.\+h}}\end{DoxyCompactItemize}

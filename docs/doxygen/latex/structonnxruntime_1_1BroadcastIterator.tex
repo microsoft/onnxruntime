@@ -1,0 +1,91 @@
+\hypertarget{structonnxruntime_1_1BroadcastIterator}{}\section{onnxruntime\+:\+:Broadcast\+Iterator Struct Reference}
+\label{structonnxruntime_1_1BroadcastIterator}\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_ac27affc89bf45b4a30677565cabad092}{Advance\+By}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} delta)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_a451a5a3c3520eab5759b86dc2911be7c}{Init}} (int64\+\_\+t axis, int64\+\_\+t largest)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_a6eb31c09b36a0fcf6f0b8263e3a7969b}{Append}} (int64\+\_\+t axis, int64\+\_\+t largest)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_a907eb4592f14f6ed2d49d5ed705e6806}{Stop\+Broadcasting}} ()
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_a8b43e1eab529f0133283c97a12ba8d5e}{Start\+Broadcasting}} ()
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_a100ed9262724d025bf350a61d9229476}{counters\+\_\+}}
+\item 
+std\+::vector$<$ ptrdiff\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_adf8f2de98dcec6f6dafb1e035a895a75}{deltas\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_ad44c54d5dc120bd96e24caeac566356e}{counts\+\_\+}}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{structonnxruntime_1_1BroadcastIterator_aa3a747ce571eb3a326d1004fb1dbc432}{count\+\_\+}} \{1\}
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_ac27affc89bf45b4a30677565cabad092}\label{structonnxruntime_1_1BroadcastIterator_ac27affc89bf45b4a30677565cabad092}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!Advance\+By@{Advance\+By}}
+\index{Advance\+By@{Advance\+By}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{Advance\+By()}{AdvanceBy()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Broadcast\+Iterator\+::\+Advance\+By (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{delta }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_a6eb31c09b36a0fcf6f0b8263e3a7969b}\label{structonnxruntime_1_1BroadcastIterator_a6eb31c09b36a0fcf6f0b8263e3a7969b}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!Append@{Append}}
+\index{Append@{Append}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{Append()}{Append()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Broadcast\+Iterator\+::\+Append (\begin{DoxyParamCaption}\item[{int64\+\_\+t}]{axis,  }\item[{int64\+\_\+t}]{largest }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_a451a5a3c3520eab5759b86dc2911be7c}\label{structonnxruntime_1_1BroadcastIterator_a451a5a3c3520eab5759b86dc2911be7c}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!Init@{Init}}
+\index{Init@{Init}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{Init()}{Init()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Broadcast\+Iterator\+::\+Init (\begin{DoxyParamCaption}\item[{int64\+\_\+t}]{axis,  }\item[{int64\+\_\+t}]{largest }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_a8b43e1eab529f0133283c97a12ba8d5e}\label{structonnxruntime_1_1BroadcastIterator_a8b43e1eab529f0133283c97a12ba8d5e}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!Start\+Broadcasting@{Start\+Broadcasting}}
+\index{Start\+Broadcasting@{Start\+Broadcasting}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{Start\+Broadcasting()}{StartBroadcasting()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Broadcast\+Iterator\+::\+Start\+Broadcasting (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_a907eb4592f14f6ed2d49d5ed705e6806}\label{structonnxruntime_1_1BroadcastIterator_a907eb4592f14f6ed2d49d5ed705e6806}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!Stop\+Broadcasting@{Stop\+Broadcasting}}
+\index{Stop\+Broadcasting@{Stop\+Broadcasting}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{Stop\+Broadcasting()}{StopBroadcasting()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Broadcast\+Iterator\+::\+Stop\+Broadcasting (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_aa3a747ce571eb3a326d1004fb1dbc432}\label{structonnxruntime_1_1BroadcastIterator_aa3a747ce571eb3a326d1004fb1dbc432}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!count\+\_\+@{count\+\_\+}}
+\index{count\+\_\+@{count\+\_\+}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{count\+\_\+}{count\_}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Broadcast\+Iterator\+::count\+\_\+ \{1\}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_a100ed9262724d025bf350a61d9229476}\label{structonnxruntime_1_1BroadcastIterator_a100ed9262724d025bf350a61d9229476}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!counters\+\_\+@{counters\+\_\+}}
+\index{counters\+\_\+@{counters\+\_\+}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{counters\+\_\+}{counters\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Broadcast\+Iterator\+::counters\+\_\+}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_ad44c54d5dc120bd96e24caeac566356e}\label{structonnxruntime_1_1BroadcastIterator_ad44c54d5dc120bd96e24caeac566356e}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!counts\+\_\+@{counts\+\_\+}}
+\index{counts\+\_\+@{counts\+\_\+}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{counts\+\_\+}{counts\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Broadcast\+Iterator\+::counts\+\_\+}
+
+\mbox{\Hypertarget{structonnxruntime_1_1BroadcastIterator_adf8f2de98dcec6f6dafb1e035a895a75}\label{structonnxruntime_1_1BroadcastIterator_adf8f2de98dcec6f6dafb1e035a895a75}} 
+\index{onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}!deltas\+\_\+@{deltas\+\_\+}}
+\index{deltas\+\_\+@{deltas\+\_\+}!onnxruntime\+::\+Broadcast\+Iterator@{onnxruntime\+::\+Broadcast\+Iterator}}
+\subsubsection{\texorpdfstring{deltas\+\_\+}{deltas\_}}
+{\footnotesize\ttfamily std\+::vector$<$ptrdiff\+\_\+t$>$ onnxruntime\+::\+Broadcast\+Iterator\+::deltas\+\_\+}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/math/\mbox{\hyperlink{element__wise__ops_8cc}{element\+\_\+wise\+\_\+ops.\+cc}}\end{DoxyCompactItemize}

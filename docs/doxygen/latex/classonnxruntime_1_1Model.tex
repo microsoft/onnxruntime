@@ -1,0 +1,246 @@
+\hypertarget{classonnxruntime_1_1Model}{}\section{onnxruntime\+:\+:Model Class Reference}
+\label{classonnxruntime_1_1Model}\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+
+
+{\ttfamily \#include $<$model.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Model_a26f33ca41f59c3865ec5961142b79b1b}{Model}} (const std\+::string \&graph\+\_\+name, bool is\+\_\+onnx\+\_\+domain\+\_\+only=false, const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \&model\+\_\+metadata=\mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}}(), const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} local\+\_\+registries=\{\}, const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \&domain\+\_\+to\+\_\+version=\{\})
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Model_a9c173259b1fbf481bd9dfdecbd34f7f0}{Model}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&model\+\_\+proto, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Model_ae64329b4d073efb3122d23b362c5b5f5}{Model}} (std\+::unique\+\_\+ptr$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $>$ model\+\_\+proto, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{Version}} \mbox{\hyperlink{classonnxruntime_1_1Model_a6a7bb4216f04ffd4fec8b43129d304d4}{Ir\+Version}} () const
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Model_a9c6d90551fa5943bcd70f43b84f9cb4c}{Producer\+Name}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Model_a1a2ef48c73944b335843d29214809f2a}{Set\+Producer\+Name}} (const std\+::string \&producer\+\_\+name)
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Model_a798ddae9a5f6322fa34e2e8b5f2bd9fe}{Producer\+Version}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Model_a5c4641b87c9285462d89a04e28e0824d}{Set\+Producer\+Version}} (const std\+::string \&producer\+\_\+version)
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Model_a17ae7242244056337ed571f19b54f51a}{Domain}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Model_a95c8874dfc54e6c808c2be66e19cefd2}{Set\+Domain}} (const std\+::string \&domain)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{Version}} \mbox{\hyperlink{classonnxruntime_1_1Model_abbcaaa6b05f740e6a309b1bd250f2e2a}{Model\+Version}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Model_af94a49d45c75745305a1d09e70d67f79}{Set\+Modelversion}} (\mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{onnxruntime\+::\+Version}} model\+\_\+version)
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1Model_a3255fd55fde8752cc61e1d7da47b3ee2}{Doc\+String}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Model_a5a2597f28c82e677099831245dfac50b}{Set\+Doc\+String}} (const std\+::string \&doc\+\_\+string)
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \& \mbox{\hyperlink{classonnxruntime_1_1Model_a43f838a44bfe7970a114400006b54fe2}{Meta\+Data}} () const noexcept
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& \mbox{\hyperlink{classonnxruntime_1_1Model_a3107455565d368aa674ab19cd156a433}{Main\+Graph}} () noexcept
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& \mbox{\hyperlink{classonnxruntime_1_1Model_a2a97e4baaf0238d56a4c1f583c3430ab}{Main\+Graph}} () const noexcept
+\item 
+O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \mbox{\hyperlink{classonnxruntime_1_1Model_a6548029afd30cb62977066de5f70cb90}{To\+Proto}} ()
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_a9fc3f53be6d48631d4e97add2381abf5}{Save}} (\mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} \&model, const std\+::string \&file\+\_\+path)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_a9ce245a1c4fa29450c37a5ffab2743c7}{Save}} (\mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} \&model, int fd)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_aee6c392788aa2baf2086f03032b21a3b}{Load}} (std\+::istream \&model\+\_\+istream, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $\ast$p\+\_\+model\+\_\+proto)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_a629f04ffae1930227a4dbe3591ff2f98}{Load}} (const std\+::string \&file\+\_\+path, std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&p\+\_\+model, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_ae2bc651564a923b007c572bee3f7e69d}{Load}} (int fd, std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&p\+\_\+model, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_a206de3652da23ea5115c292510248da9}{Load\+From\+Bytes}} (int count, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p\+Bytes, std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&p\+\_\+model, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_a61473df4c76c5914c712737804f8c79d}{Load}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&model\+\_\+proto, std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&p\+\_\+model, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Model_ac3349b0c44c0adacf291f6ea79abf210}{Load}} (std\+::unique\+\_\+ptr$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $>$ p\+\_\+model\+\_\+proto, std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&p\+\_\+model, const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$local\+\_\+registries=nullptr)
+\end{DoxyCompactItemize}
+\subsection*{Static Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+static constexpr \mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{Version}} \mbox{\hyperlink{classonnxruntime_1_1Model_a092dabe5ac2981fde3b0ad0875f1c0c3}{k\+No\+Version}} = I\+N\+T64\+\_\+\+M\+AX
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a26f33ca41f59c3865ec5961142b79b1b}\label{classonnxruntime_1_1Model_a26f33ca41f59c3865ec5961142b79b1b}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Model@{Model}}
+\index{Model@{Model}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Model()}{Model()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Model\+::\+Model (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{graph\+\_\+name,  }\item[{bool}]{is\+\_\+onnx\+\_\+domain\+\_\+only = {\ttfamily false},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \&}]{model\+\_\+metadata = {\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}}()},  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}}}]{local\+\_\+registries = {\ttfamily \{\}},  }\item[{const std\+::unordered\+\_\+map$<$ std\+::string, int $>$ \&}]{domain\+\_\+to\+\_\+version = {\ttfamily \{\}} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a9c173259b1fbf481bd9dfdecbd34f7f0}\label{classonnxruntime_1_1Model_a9c173259b1fbf481bd9dfdecbd34f7f0}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Model@{Model}}
+\index{Model@{Model}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Model()}{Model()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Model\+::\+Model (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&}]{model\+\_\+proto,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_ae64329b4d073efb3122d23b362c5b5f5}\label{classonnxruntime_1_1Model_ae64329b4d073efb3122d23b362c5b5f5}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Model@{Model}}
+\index{Model@{Model}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Model()}{Model()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Model\+::\+Model (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $>$}]{model\+\_\+proto,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a3255fd55fde8752cc61e1d7da47b3ee2}\label{classonnxruntime_1_1Model_a3255fd55fde8752cc61e1d7da47b3ee2}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Doc\+String@{Doc\+String}}
+\index{Doc\+String@{Doc\+String}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Doc\+String()}{DocString()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Model\+::\+Doc\+String (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a17ae7242244056337ed571f19b54f51a}\label{classonnxruntime_1_1Model_a17ae7242244056337ed571f19b54f51a}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Domain@{Domain}}
+\index{Domain@{Domain}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Domain()}{Domain()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Model\+::\+Domain (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a6a7bb4216f04ffd4fec8b43129d304d4}\label{classonnxruntime_1_1Model_a6a7bb4216f04ffd4fec8b43129d304d4}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Ir\+Version@{Ir\+Version}}
+\index{Ir\+Version@{Ir\+Version}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Ir\+Version()}{IrVersion()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{Version}} onnxruntime\+::\+Model\+::\+Ir\+Version (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_aee6c392788aa2baf2086f03032b21a3b}\label{classonnxruntime_1_1Model_aee6c392788aa2baf2086f03032b21a3b}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Model\+::\+Load (\begin{DoxyParamCaption}\item[{std\+::istream \&}]{model\+\_\+istream,  }\item[{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $\ast$}]{p\+\_\+model\+\_\+proto }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a629f04ffae1930227a4dbe3591ff2f98}\label{classonnxruntime_1_1Model_a629f04ffae1930227a4dbe3591ff2f98}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Model\+::\+Load (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{file\+\_\+path,  }\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&}]{p\+\_\+model,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_ae2bc651564a923b007c572bee3f7e69d}\label{classonnxruntime_1_1Model_ae2bc651564a923b007c572bee3f7e69d}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Model\+::\+Load (\begin{DoxyParamCaption}\item[{int}]{fd,  }\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&}]{p\+\_\+model,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a61473df4c76c5914c712737804f8c79d}\label{classonnxruntime_1_1Model_a61473df4c76c5914c712737804f8c79d}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Model\+::\+Load (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto \&}]{model\+\_\+proto,  }\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&}]{p\+\_\+model,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_ac3349b0c44c0adacf291f6ea79abf210}\label{classonnxruntime_1_1Model_ac3349b0c44c0adacf291f6ea79abf210}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Load@{Load}}
+\index{Load@{Load}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Load()}{Load()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily \+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Model\+::\+Load (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Model\+Proto $>$}]{p\+\_\+model\+\_\+proto,  }\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&}]{p\+\_\+model,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a206de3652da23ea5115c292510248da9}\label{classonnxruntime_1_1Model_a206de3652da23ea5115c292510248da9}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Load\+From\+Bytes@{Load\+From\+Bytes}}
+\index{Load\+From\+Bytes@{Load\+From\+Bytes}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Load\+From\+Bytes()}{LoadFromBytes()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Model\+::\+Load\+From\+Bytes (\begin{DoxyParamCaption}\item[{int}]{count,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p\+Bytes,  }\item[{std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} $>$ \&}]{p\+\_\+model,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_a37a91305e7190e83fa9c66117a6a4746}{I\+Onnx\+Runtime\+Op\+Schema\+Registry\+List}} $\ast$}]{local\+\_\+registries = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a3107455565d368aa674ab19cd156a433}\label{classonnxruntime_1_1Model_a3107455565d368aa674ab19cd156a433}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Main\+Graph@{Main\+Graph}}
+\index{Main\+Graph@{Main\+Graph}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Main\+Graph()}{MainGraph()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& onnxruntime\+::\+Model\+::\+Main\+Graph (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a2a97e4baaf0238d56a4c1f583c3430ab}\label{classonnxruntime_1_1Model_a2a97e4baaf0238d56a4c1f583c3430ab}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Main\+Graph@{Main\+Graph}}
+\index{Main\+Graph@{Main\+Graph}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Main\+Graph()}{MainGraph()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}} \& onnxruntime\+::\+Model\+::\+Main\+Graph (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a43f838a44bfe7970a114400006b54fe2}\label{classonnxruntime_1_1Model_a43f838a44bfe7970a114400006b54fe2}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Meta\+Data@{Meta\+Data}}
+\index{Meta\+Data@{Meta\+Data}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Meta\+Data()}{MetaData()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_a13519c21da77ccc594726b670276a266}{Model\+Meta\+Data}} \& onnxruntime\+::\+Model\+::\+Meta\+Data (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_abbcaaa6b05f740e6a309b1bd250f2e2a}\label{classonnxruntime_1_1Model_abbcaaa6b05f740e6a309b1bd250f2e2a}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Model\+Version@{Model\+Version}}
+\index{Model\+Version@{Model\+Version}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Model\+Version()}{ModelVersion()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{Version}} onnxruntime\+::\+Model\+::\+Model\+Version (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a9c6d90551fa5943bcd70f43b84f9cb4c}\label{classonnxruntime_1_1Model_a9c6d90551fa5943bcd70f43b84f9cb4c}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Producer\+Name@{Producer\+Name}}
+\index{Producer\+Name@{Producer\+Name}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Producer\+Name()}{ProducerName()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Model\+::\+Producer\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a798ddae9a5f6322fa34e2e8b5f2bd9fe}\label{classonnxruntime_1_1Model_a798ddae9a5f6322fa34e2e8b5f2bd9fe}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Producer\+Version@{Producer\+Version}}
+\index{Producer\+Version@{Producer\+Version}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Producer\+Version()}{ProducerVersion()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Model\+::\+Producer\+Version (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a9fc3f53be6d48631d4e97add2381abf5}\label{classonnxruntime_1_1Model_a9fc3f53be6d48631d4e97add2381abf5}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Save@{Save}}
+\index{Save@{Save}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Save()}{Save()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Model\+::\+Save (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} \&}]{model,  }\item[{const std\+::string \&}]{file\+\_\+path }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a9ce245a1c4fa29450c37a5ffab2743c7}\label{classonnxruntime_1_1Model_a9ce245a1c4fa29450c37a5ffab2743c7}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Save@{Save}}
+\index{Save@{Save}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Save()}{Save()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+Model\+::\+Save (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Model}{Model}} \&}]{model,  }\item[{int}]{fd }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a5a2597f28c82e677099831245dfac50b}\label{classonnxruntime_1_1Model_a5a2597f28c82e677099831245dfac50b}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Set\+Doc\+String@{Set\+Doc\+String}}
+\index{Set\+Doc\+String@{Set\+Doc\+String}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Set\+Doc\+String()}{SetDocString()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Model\+::\+Set\+Doc\+String (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{doc\+\_\+string }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a95c8874dfc54e6c808c2be66e19cefd2}\label{classonnxruntime_1_1Model_a95c8874dfc54e6c808c2be66e19cefd2}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Set\+Domain@{Set\+Domain}}
+\index{Set\+Domain@{Set\+Domain}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Set\+Domain()}{SetDomain()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Model\+::\+Set\+Domain (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{domain }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_af94a49d45c75745305a1d09e70d67f79}\label{classonnxruntime_1_1Model_af94a49d45c75745305a1d09e70d67f79}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Set\+Modelversion@{Set\+Modelversion}}
+\index{Set\+Modelversion@{Set\+Modelversion}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Set\+Modelversion()}{SetModelversion()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Model\+::\+Set\+Modelversion (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{onnxruntime\+::\+Version}}}]{model\+\_\+version }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a1a2ef48c73944b335843d29214809f2a}\label{classonnxruntime_1_1Model_a1a2ef48c73944b335843d29214809f2a}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Set\+Producer\+Name@{Set\+Producer\+Name}}
+\index{Set\+Producer\+Name@{Set\+Producer\+Name}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Set\+Producer\+Name()}{SetProducerName()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Model\+::\+Set\+Producer\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{producer\+\_\+name }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a5c4641b87c9285462d89a04e28e0824d}\label{classonnxruntime_1_1Model_a5c4641b87c9285462d89a04e28e0824d}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!Set\+Producer\+Version@{Set\+Producer\+Version}}
+\index{Set\+Producer\+Version@{Set\+Producer\+Version}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{Set\+Producer\+Version()}{SetProducerVersion()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Model\+::\+Set\+Producer\+Version (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{producer\+\_\+version }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a6548029afd30cb62977066de5f70cb90}\label{classonnxruntime_1_1Model_a6548029afd30cb62977066de5f70cb90}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!To\+Proto@{To\+Proto}}
+\index{To\+Proto@{To\+Proto}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{To\+Proto()}{ToProto()}}
+{\footnotesize\ttfamily Model\+Proto onnxruntime\+::\+Model\+::\+To\+Proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Model_a092dabe5ac2981fde3b0ad0875f1c0c3}\label{classonnxruntime_1_1Model_a092dabe5ac2981fde3b0ad0875f1c0c3}} 
+\index{onnxruntime\+::\+Model@{onnxruntime\+::\+Model}!k\+No\+Version@{k\+No\+Version}}
+\index{k\+No\+Version@{k\+No\+Version}!onnxruntime\+::\+Model@{onnxruntime\+::\+Model}}
+\subsubsection{\texorpdfstring{k\+No\+Version}{kNoVersion}}
+{\footnotesize\ttfamily constexpr \mbox{\hyperlink{namespaceonnxruntime_ab7fae8d5830807c074def3bb8ae23cf1}{Version}} onnxruntime\+::\+Model\+::k\+No\+Version = I\+N\+T64\+\_\+\+M\+AX\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{model_8h}{model.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{model_8cc}{model.\+cc}}\end{DoxyCompactItemize}

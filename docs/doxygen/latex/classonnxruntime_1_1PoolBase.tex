@@ -1,0 +1,158 @@
+\hypertarget{classonnxruntime_1_1PoolBase}{}\section{onnxruntime\+:\+:Pool\+Base Class Reference}
+\label{classonnxruntime_1_1PoolBase}\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+
+
+{\ttfamily \#include $<$pool\+\_\+base.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Pool\+Base\+:
+% FIG 0
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1PoolBase_a5af935e3b9738fdb207395c9dae84c21}{Pool\+Base}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1PoolBase_a170ff68bb0fefc4f2bf365a35a7691d3}{$\sim$\+Pool\+Base}} ()
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1PoolBase_aa29f1684c5e53beece327006e1e8f9e7}{Set\+Output\+Size}} (const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&input\+\_\+shape, int64\+\_\+t output\+\_\+channel, std\+::vector$<$ int64\+\_\+t $>$ $\ast$pads) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1PoolBase_ab49048558a89a492f93cc36f5e7ab599}{Infer\+Output\+Size}} (const std\+::vector$<$ int64\+\_\+t $>$ \&input\+\_\+dims, std\+::vector$<$ int64\+\_\+t $>$ $\ast$output\+\_\+dims, std\+::vector$<$ int64\+\_\+t $>$ $\ast$pads) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1PoolBase_ab9c9f378646859e71ecd332088797b6a}{Compute\+Size\+And\+Pad}} (const int64\+\_\+t in\+\_\+size, const int64\+\_\+t stride, const int64\+\_\+t \mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a1fd14bdce0b9db48a6bf8c6ce1320490}{kernel}}, int64\+\_\+t $\ast$pad\+\_\+head, int64\+\_\+t $\ast$pad\+\_\+tail, int64\+\_\+t $\ast$out\+\_\+size) const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1PoolBase_a452467aa88e8573f8a4e26818891a200}{stride\+\_\+h}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1PoolBase_afd7e12a7ee1236f261419666a272c3c7}{stride\+\_\+w}} () const
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1PoolBase_a8d8411f6d6befd71f4ce0ae6a7bbfca0}{stride\+\_\+d}} () const
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1PoolBase_ac5d23d7b229dc2591f9c0d3c7f9aea47}{op\+\_\+name\+\_\+}}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1PoolBase_acac1af51d56763ea787e47aade8f32e0}{global\+\_\+pooling\+\_\+}} \{\}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1PoolBase_a05b454b7656653a2e62a48cc16db8cf2}{count\+\_\+include\+\_\+pad\+\_\+}} \{\}
+\item 
+int64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1PoolBase_a8c54de261d31ff7a10f2727759768906}{storage\+\_\+order\+\_\+}} \{0\}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1PoolBase_ae5614fd2b239e5d9ce3701d4ec895eaa}{kernel\+\_\+shape\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1PoolBase_a97d82b98489070f0921c19b1811fdfab}{pads\+\_\+}}
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{classonnxruntime_1_1PoolBase_a12246aa19006cba0dfb1fd125108bb91}{strides\+\_\+}}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_add1059a27d156d4ed3567a3a6852d94f}{Auto\+Pad\+Type}} \mbox{\hyperlink{classonnxruntime_1_1PoolBase_ab76a2f8a1212875d466684de7baa4a4b}{auto\+\_\+pad\+\_\+}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a5af935e3b9738fdb207395c9dae84c21}\label{classonnxruntime_1_1PoolBase_a5af935e3b9738fdb207395c9dae84c21}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!Pool\+Base@{Pool\+Base}}
+\index{Pool\+Base@{Pool\+Base}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{Pool\+Base()}{PoolBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Pool\+Base\+::\+Pool\+Base (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a170ff68bb0fefc4f2bf365a35a7691d3}\label{classonnxruntime_1_1PoolBase_a170ff68bb0fefc4f2bf365a35a7691d3}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!````~Pool\+Base@{$\sim$\+Pool\+Base}}
+\index{````~Pool\+Base@{$\sim$\+Pool\+Base}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{$\sim$\+Pool\+Base()}{~PoolBase()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Pool\+Base\+::$\sim$\+Pool\+Base (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_ab9c9f378646859e71ecd332088797b6a}\label{classonnxruntime_1_1PoolBase_ab9c9f378646859e71ecd332088797b6a}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!Compute\+Size\+And\+Pad@{Compute\+Size\+And\+Pad}}
+\index{Compute\+Size\+And\+Pad@{Compute\+Size\+And\+Pad}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{Compute\+Size\+And\+Pad()}{ComputeSizeAndPad()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Pool\+Base\+::\+Compute\+Size\+And\+Pad (\begin{DoxyParamCaption}\item[{const int64\+\_\+t}]{in\+\_\+size,  }\item[{const int64\+\_\+t}]{stride,  }\item[{const int64\+\_\+t}]{kernel,  }\item[{int64\+\_\+t $\ast$}]{pad\+\_\+head,  }\item[{int64\+\_\+t $\ast$}]{pad\+\_\+tail,  }\item[{int64\+\_\+t $\ast$}]{out\+\_\+size }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_ab49048558a89a492f93cc36f5e7ab599}\label{classonnxruntime_1_1PoolBase_ab49048558a89a492f93cc36f5e7ab599}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!Infer\+Output\+Size@{Infer\+Output\+Size}}
+\index{Infer\+Output\+Size@{Infer\+Output\+Size}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{Infer\+Output\+Size()}{InferOutputSize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Pool\+Base\+::\+Infer\+Output\+Size (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{input\+\_\+dims,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ $\ast$}]{output\+\_\+dims,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ $\ast$}]{pads }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_aa29f1684c5e53beece327006e1e8f9e7}\label{classonnxruntime_1_1PoolBase_aa29f1684c5e53beece327006e1e8f9e7}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!Set\+Output\+Size@{Set\+Output\+Size}}
+\index{Set\+Output\+Size@{Set\+Output\+Size}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{Set\+Output\+Size()}{SetOutputSize()}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Pool\+Base\+::\+Set\+Output\+Size (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{input\+\_\+shape,  }\item[{int64\+\_\+t}]{output\+\_\+channel,  }\item[{std\+::vector$<$ int64\+\_\+t $>$ $\ast$}]{pads }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a8d8411f6d6befd71f4ce0ae6a7bbfca0}\label{classonnxruntime_1_1PoolBase_a8d8411f6d6befd71f4ce0ae6a7bbfca0}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!stride\+\_\+d@{stride\+\_\+d}}
+\index{stride\+\_\+d@{stride\+\_\+d}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{stride\+\_\+d()}{stride\_d()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Pool\+Base\+::stride\+\_\+d (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a452467aa88e8573f8a4e26818891a200}\label{classonnxruntime_1_1PoolBase_a452467aa88e8573f8a4e26818891a200}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!stride\+\_\+h@{stride\+\_\+h}}
+\index{stride\+\_\+h@{stride\+\_\+h}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{stride\+\_\+h()}{stride\_h()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Pool\+Base\+::stride\+\_\+h (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_afd7e12a7ee1236f261419666a272c3c7}\label{classonnxruntime_1_1PoolBase_afd7e12a7ee1236f261419666a272c3c7}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!stride\+\_\+w@{stride\+\_\+w}}
+\index{stride\+\_\+w@{stride\+\_\+w}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{stride\+\_\+w()}{stride\_w()}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Pool\+Base\+::stride\+\_\+w (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_ab76a2f8a1212875d466684de7baa4a4b}\label{classonnxruntime_1_1PoolBase_ab76a2f8a1212875d466684de7baa4a4b}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!auto\+\_\+pad\+\_\+@{auto\+\_\+pad\+\_\+}}
+\index{auto\+\_\+pad\+\_\+@{auto\+\_\+pad\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{auto\+\_\+pad\+\_\+}{auto\_pad\_}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_add1059a27d156d4ed3567a3a6852d94f}{Auto\+Pad\+Type}} onnxruntime\+::\+Pool\+Base\+::auto\+\_\+pad\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a05b454b7656653a2e62a48cc16db8cf2}\label{classonnxruntime_1_1PoolBase_a05b454b7656653a2e62a48cc16db8cf2}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!count\+\_\+include\+\_\+pad\+\_\+@{count\+\_\+include\+\_\+pad\+\_\+}}
+\index{count\+\_\+include\+\_\+pad\+\_\+@{count\+\_\+include\+\_\+pad\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{count\+\_\+include\+\_\+pad\+\_\+}{count\_include\_pad\_}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Pool\+Base\+::count\+\_\+include\+\_\+pad\+\_\+ \{\}\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_acac1af51d56763ea787e47aade8f32e0}\label{classonnxruntime_1_1PoolBase_acac1af51d56763ea787e47aade8f32e0}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!global\+\_\+pooling\+\_\+@{global\+\_\+pooling\+\_\+}}
+\index{global\+\_\+pooling\+\_\+@{global\+\_\+pooling\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{global\+\_\+pooling\+\_\+}{global\_pooling\_}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Pool\+Base\+::global\+\_\+pooling\+\_\+ \{\}\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_ae5614fd2b239e5d9ce3701d4ec895eaa}\label{classonnxruntime_1_1PoolBase_ae5614fd2b239e5d9ce3701d4ec895eaa}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!kernel\+\_\+shape\+\_\+@{kernel\+\_\+shape\+\_\+}}
+\index{kernel\+\_\+shape\+\_\+@{kernel\+\_\+shape\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{kernel\+\_\+shape\+\_\+}{kernel\_shape\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Pool\+Base\+::kernel\+\_\+shape\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_ac5d23d7b229dc2591f9c0d3c7f9aea47}\label{classonnxruntime_1_1PoolBase_ac5d23d7b229dc2591f9c0d3c7f9aea47}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!op\+\_\+name\+\_\+@{op\+\_\+name\+\_\+}}
+\index{op\+\_\+name\+\_\+@{op\+\_\+name\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{op\+\_\+name\+\_\+}{op\_name\_}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Pool\+Base\+::op\+\_\+name\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a97d82b98489070f0921c19b1811fdfab}\label{classonnxruntime_1_1PoolBase_a97d82b98489070f0921c19b1811fdfab}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!pads\+\_\+@{pads\+\_\+}}
+\index{pads\+\_\+@{pads\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{pads\+\_\+}{pads\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Pool\+Base\+::pads\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a8c54de261d31ff7a10f2727759768906}\label{classonnxruntime_1_1PoolBase_a8c54de261d31ff7a10f2727759768906}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!storage\+\_\+order\+\_\+@{storage\+\_\+order\+\_\+}}
+\index{storage\+\_\+order\+\_\+@{storage\+\_\+order\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{storage\+\_\+order\+\_\+}{storage\_order\_}}
+{\footnotesize\ttfamily int64\+\_\+t onnxruntime\+::\+Pool\+Base\+::storage\+\_\+order\+\_\+ \{0\}\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1PoolBase_a12246aa19006cba0dfb1fd125108bb91}\label{classonnxruntime_1_1PoolBase_a12246aa19006cba0dfb1fd125108bb91}} 
+\index{onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}!strides\+\_\+@{strides\+\_\+}}
+\index{strides\+\_\+@{strides\+\_\+}!onnxruntime\+::\+Pool\+Base@{onnxruntime\+::\+Pool\+Base}}
+\subsubsection{\texorpdfstring{strides\+\_\+}{strides\_}}
+{\footnotesize\ttfamily std\+::vector$<$int64\+\_\+t$>$ onnxruntime\+::\+Pool\+Base\+::strides\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{pool__base_8h}{pool\+\_\+base.\+h}}\end{DoxyCompactItemize}

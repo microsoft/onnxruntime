@@ -1,0 +1,47 @@
+\hypertarget{mkldnn__execution__provider_8cc}{}\section{onnxruntime/onnxruntime/core/providers/mkldnn/mkldnn\+\_\+execution\+\_\+provider.cc File Reference}
+\label{mkldnn__execution__provider_8cc}\index{onnxruntime/onnxruntime/core/providers/mkldnn/mkldnn\+\_\+execution\+\_\+provider.\+cc@{onnxruntime/onnxruntime/core/providers/mkldnn/mkldnn\+\_\+execution\+\_\+provider.\+cc}}
+{\ttfamily \#include \char`\"{}mkldnn\+\_\+allocator.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}mkldnn\+\_\+execution\+\_\+provider.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/allocator.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/transformer\+\_\+memcpy.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/memcpy.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/kernel\+\_\+registry.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}mkldnn\+\_\+fwd.\+h\char`\"{}}\newline
+Include dependency graph for mkldnn\+\_\+execution\+\_\+provider.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn}{onnxruntime\+::mkl\+\_\+dnn}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a305d1082bc73119bd7c21286ec6e168b}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}} (Memcpy\+From\+Host, k\+Onnx\+Domain, 1, k\+Mkl\+Dnn\+Execution\+Provider, Kernel\+Def\+Builder().Input\+Memory\+Type$<$ \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a3127507f1d160fd6348370cc7bd42245}{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input}} $>$(0).Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+All\+Tensor\+Types()), Memcpy)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a1dc167a0cc3f84edb27714a0ade12b45}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}} (Memcpy\+To\+Host, k\+Onnx\+Domain, 1, k\+Mkl\+Dnn\+Execution\+Provider, Kernel\+Def\+Builder().Output\+Memory\+Type$<$ \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a59888d12290735245a1b8afb40f64331}{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output}} $>$(0).Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+All\+Tensor\+Types()), Memcpy)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_abe3d3c916d3881d4bfcf770c77efd9f0}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, Conv)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_aee27f1486f7835cec56c3dc6358ae314}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 7, Gemm)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a905cd21da3699b98ae4dca4ac6381462}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, Memcpy\+From\+Host)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a5206b86b78807d0179ddf69ba860dd45}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, Memcpy\+To\+Host)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_adfc1bcfe7658a15444b6e88aeb277aa7}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 7, 8, float, Average\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a4a4119c3e027a12c2ca656169aa9467f}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, 8, float, Global\+Average\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a4182bb90f51f577a356ff8ab41650f40}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, 7, float, Max\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a363080a8931f5851f20746639d789b09}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 8, 8, float, Max\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a37bf6af7a39fe95a4be8a901ab29ffb6}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+V\+E\+R\+S\+I\+O\+N\+E\+D\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, 8, float, Global\+Max\+Pool)
+\item 
+class \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_a9fb3ca84ed79591f4becc5b23f58c497}{onnxruntime\+::mkl\+\_\+dnn\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+T\+Y\+P\+E\+D\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+C\+L\+A\+S\+S\+\_\+\+N\+A\+ME}} (k\+Mkl\+Dnn\+Execution\+Provider, k\+Onnx\+Domain, 1, float, L\+RN)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1mkl__dnn_abaedf03d0cd31659c2cd4e6d96f0e596}{onnxruntime\+::mkl\+\_\+dnn\+::\+Register\+M\+K\+L\+D\+N\+N\+Kernels}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(Kernel\+Create\+Info \&\&)$>$ fn)
+\end{DoxyCompactItemize}

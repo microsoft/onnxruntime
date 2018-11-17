@@ -1,0 +1,93 @@
+\hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry}{}\section{onnxruntime\+:\+:Onnx\+Runtime\+Op\+Schema\+Registry Class Reference}
+\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry}\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+
+
+{\ttfamily \#include $<$schema\+\_\+registry.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Onnx\+Runtime\+Op\+Schema\+Registry\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Onnx\+Runtime\+Op\+Schema\+Registry\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_af8878d9ff2b458f47b951b9f282a60ed}{Onnx\+Runtime\+Op\+Schema\+Registry}} ()=default
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a5a342a48e87028bfec6a725893f646d1}{Set\+Baseline\+And\+Opset\+Version\+For\+Domain}} (const std\+::string \&domain, int baseline\+\_\+opset\+\_\+version, int opset\+\_\+version)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ab773a024322804641f5eb4964e3471d6}{Domain\+\_\+\+To\+\_\+\+Version\+\_\+\+Map}} \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a862d1ac6dbd221ab94d6db030f6f1c52}{Get\+Latest\+Opset\+Versions}} (bool is\+\_\+onnx\+\_\+only) const override
+\item 
+\+::\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a3cb49cfee4132df744ee563d39b00a37}{Register\+Op\+Set}} (std\+::vector$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $>$ \&schemas, const std\+::string \&domain, int baseline\+\_\+opset\+\_\+version, int opset\+\_\+version)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_ab12d5511c6c08e2e38a15513ad921a57}{Get\+Schema\+And\+History}} (const std\+::string \&key, const int max\+Inclusive\+Version, const std\+::string \&domain, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $\ast$$\ast$latest\+\_\+schema, int $\ast$earliest\+\_\+opset\+\_\+where\+\_\+unchanged) const override
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a476b3325cda37a9d99428ffb18406822}{empty}} () const
+\item 
+virtual const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $\ast$ \mbox{\hyperlink{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_aebb95e90aa451584b39a50d07f87839f}{Get\+Schema}} (const std\+::string \&key, const int max\+Inclusive\+Version, const std\+::string \&domain) const final
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_af8878d9ff2b458f47b951b9f282a60ed}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_af8878d9ff2b458f47b951b9f282a60ed}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!Onnx\+Runtime\+Op\+Schema\+Registry@{Onnx\+Runtime\+Op\+Schema\+Registry}}
+\index{Onnx\+Runtime\+Op\+Schema\+Registry@{Onnx\+Runtime\+Op\+Schema\+Registry}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{Onnx\+Runtime\+Op\+Schema\+Registry()}{OnnxRuntimeOpSchemaRegistry()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry\+::\+Onnx\+Runtime\+Op\+Schema\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a476b3325cda37a9d99428ffb18406822}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a476b3325cda37a9d99428ffb18406822}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!empty@{empty}}
+\index{empty@{empty}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{empty()}{empty()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry\+::empty (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a862d1ac6dbd221ab94d6db030f6f1c52}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a862d1ac6dbd221ab94d6db030f6f1c52}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!Get\+Latest\+Opset\+Versions@{Get\+Latest\+Opset\+Versions}}
+\index{Get\+Latest\+Opset\+Versions@{Get\+Latest\+Opset\+Versions}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{Get\+Latest\+Opset\+Versions()}{GetLatestOpsetVersions()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ab773a024322804641f5eb4964e3471d6}{Domain\+\_\+\+To\+\_\+\+Version\+\_\+\+Map}} onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry\+::\+Get\+Latest\+Opset\+Versions (\begin{DoxyParamCaption}\item[{bool}]{is\+\_\+onnx\+\_\+only }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IOnnxRuntimeOpSchemaCollection_aba4c47f6650781c1ad22d6e61d09b729}{onnxruntime\+::\+I\+Onnx\+Runtime\+Op\+Schema\+Collection}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_aebb95e90aa451584b39a50d07f87839f}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_aebb95e90aa451584b39a50d07f87839f}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!Get\+Schema@{Get\+Schema}}
+\index{Get\+Schema@{Get\+Schema}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{Get\+Schema()}{GetSchema()}}
+{\footnotesize\ttfamily virtual const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema$\ast$ onnxruntime\+::\+I\+Onnx\+Runtime\+Op\+Schema\+Collection\+::\+Get\+Schema\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [final]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_ab12d5511c6c08e2e38a15513ad921a57}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_ab12d5511c6c08e2e38a15513ad921a57}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!Get\+Schema\+And\+History@{Get\+Schema\+And\+History}}
+\index{Get\+Schema\+And\+History@{Get\+Schema\+And\+History}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{Get\+Schema\+And\+History()}{GetSchemaAndHistory()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry\+::\+Get\+Schema\+And\+History (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{key,  }\item[{const int}]{max\+Inclusive\+Version,  }\item[{const std\+::string \&}]{domain,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $\ast$$\ast$}]{latest\+\_\+schema,  }\item[{int $\ast$}]{earliest\+\_\+opset\+\_\+where\+\_\+unchanged }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IOnnxRuntimeOpSchemaCollection_a9ac69a75ece4f75b614e6b352f8501f0}{onnxruntime\+::\+I\+Onnx\+Runtime\+Op\+Schema\+Collection}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a3cb49cfee4132df744ee563d39b00a37}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a3cb49cfee4132df744ee563d39b00a37}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!Register\+Op\+Set@{Register\+Op\+Set}}
+\index{Register\+Op\+Set@{Register\+Op\+Set}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{Register\+Op\+Set()}{RegisterOpSet()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry\+::\+Register\+Op\+Set (\begin{DoxyParamCaption}\item[{std\+::vector$<$ O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Op\+Schema $>$ \&}]{schemas,  }\item[{const std\+::string \&}]{domain,  }\item[{int}]{baseline\+\_\+opset\+\_\+version,  }\item[{int}]{opset\+\_\+version }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a5a342a48e87028bfec6a725893f646d1}\label{classonnxruntime_1_1OnnxRuntimeOpSchemaRegistry_a5a342a48e87028bfec6a725893f646d1}} 
+\index{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}!Set\+Baseline\+And\+Opset\+Version\+For\+Domain@{Set\+Baseline\+And\+Opset\+Version\+For\+Domain}}
+\index{Set\+Baseline\+And\+Opset\+Version\+For\+Domain@{Set\+Baseline\+And\+Opset\+Version\+For\+Domain}!onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry@{onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry}}
+\subsubsection{\texorpdfstring{Set\+Baseline\+And\+Opset\+Version\+For\+Domain()}{SetBaselineAndOpsetVersionForDomain()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{onnxruntime\+::common\+::\+Status}} onnxruntime\+::\+Onnx\+Runtime\+Op\+Schema\+Registry\+::\+Set\+Baseline\+And\+Opset\+Version\+For\+Domain (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{domain,  }\item[{int}]{baseline\+\_\+opset\+\_\+version,  }\item[{int}]{opset\+\_\+version }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{schema__registry_8h}{schema\+\_\+registry.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{schema__registry_8cc}{schema\+\_\+registry.\+cc}}\end{DoxyCompactItemize}

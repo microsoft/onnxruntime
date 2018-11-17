@@ -1,0 +1,82 @@
+\hypertarget{classonnxruntime_1_1OpaqueType}{}\section{onnxruntime\+:\+:Opaque\+Type$<$ T, D, N $>$ Class Template Reference}
+\label{classonnxruntime_1_1OpaqueType}\index{onnxruntime\+::\+Opaque\+Type$<$ T, D, N $>$@{onnxruntime\+::\+Opaque\+Type$<$ T, D, N $>$}}
+
+
+\mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{Opaque\+Type}}.  
+
+
+
+
+{\ttfamily \#include $<$data\+\_\+types.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Opaque\+Type$<$ T, D, N $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Opaque\+Type$<$ T, D, N $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1OpaqueType_a86b093877581257e6692e3028ebec5e5}{Is\+Compatible}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&type\+\_\+proto) const override
+\begin{DoxyCompactList}\small\item\em this A\+PI will be used to check type compatibility at runtime \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1OpaqueType_aa3c7c495b0e75472262f7ee2e4b72018}{Type}} ()
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Detailed Description}
+\subsubsection*{template$<$typename T, const char D, const char N$>$\newline
+class onnxruntime\+::\+Opaque\+Type$<$ T, D, N $>$}
+
+\mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{Opaque\+Type}}. 
+
+
+\begin{DoxyParams}{Parameters}
+{\em T} & -\/ cpp runtume that implements the Opaque type\\
+\hline
+{\em const} & char D\mbox{[}\mbox{]} -\/ domain must be extern to be unique\\
+\hline
+{\em const} & char N\mbox{[}\mbox{]} -\/ name must be extern to be unique\\
+\hline
+\end{DoxyParams}
+Only one C\+PP type can be associated with a particular \mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{Opaque\+Type}} registration 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1OpaqueType_a86b093877581257e6692e3028ebec5e5}\label{classonnxruntime_1_1OpaqueType_a86b093877581257e6692e3028ebec5e5}} 
+\index{onnxruntime\+::\+Opaque\+Type@{onnxruntime\+::\+Opaque\+Type}!Is\+Compatible@{Is\+Compatible}}
+\index{Is\+Compatible@{Is\+Compatible}!onnxruntime\+::\+Opaque\+Type@{onnxruntime\+::\+Opaque\+Type}}
+\subsubsection{\texorpdfstring{Is\+Compatible()}{IsCompatible()}}
+{\footnotesize\ttfamily template$<$typename T , const char D, const char N$>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{onnxruntime\+::\+Opaque\+Type}}$<$ T, D, N $>$\+::Is\+Compatible (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{type\+\_\+proto }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+this A\+PI will be used to check type compatibility at runtime 
+
+
+\begin{DoxyParams}{Parameters}
+{\em type\+\_\+proto} & a Type\+Proto instance that is constructed for a specific type will be checked against a Type\+Proto instance contained within a corresponding M\+L\+Data\+Type instance. \\
+\hline
+\end{DoxyParams}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1DataTypeImpl_a94b2c274bd74068291356c81515d69a1}{onnxruntime\+::\+Data\+Type\+Impl}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1OpaqueType_aa3c7c495b0e75472262f7ee2e4b72018}\label{classonnxruntime_1_1OpaqueType_aa3c7c495b0e75472262f7ee2e4b72018}} 
+\index{onnxruntime\+::\+Opaque\+Type@{onnxruntime\+::\+Opaque\+Type}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+Opaque\+Type@{onnxruntime\+::\+Opaque\+Type}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily template$<$typename T , const char D, const char N$>$ \\
+static \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{classonnxruntime_1_1OpaqueType}{onnxruntime\+::\+Opaque\+Type}}$<$ T, D, N $>$\+::Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{data__types_8h}{data\+\_\+types.\+h}}\end{DoxyCompactItemize}

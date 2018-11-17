@@ -1,0 +1,123 @@
+\hypertarget{classonnxruntime_1_1NodeArg}{}\section{onnxruntime\+:\+:Node\+Arg Class Reference}
+\label{classonnxruntime_1_1NodeArg}\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+
+
+{\ttfamily \#include $<$node\+\_\+arg.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NodeArg_a44f519c9e037ea2f7530e6e7c547dc0a}{Node\+Arg}} (const std\+::string \&name, const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$p\+\_\+arg\+\_\+type)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1NodeArg_a42fe9c1fd822d43315ae652c1778d198}{Node\+Arg}} (\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&\&other)=default
+\item 
+const std\+::string \& \mbox{\hyperlink{classonnxruntime_1_1NodeArg_a62c3405e01502623320ff8f2f2d8b135}{Name}} () const noexcept
+\item 
+O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Data\+Type \mbox{\hyperlink{classonnxruntime_1_1NodeArg_a58dbbe165f4f835a20f4687fd2d165d9}{Type}} () const noexcept
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg_a23e96b022bdb93ea9169cbcd292d7c87}{Type\+As\+Proto}} () const noexcept
+\item 
+const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Shape\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1NodeArg_a923de298e44cb0620c0e4b5c7c7c88e4}{Shape}} () const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1NodeArg_ab39c6f852b796c2db48ed0af0feb5784}{Set\+Shape}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Shape\+Proto \&shape)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1NodeArg_ab11045bc6bf9aa0a33a8195a2a31892b}{Update\+Type\+And\+Shape}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&input\+\_\+type)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1NodeArg_aa179dde5962354ac9ae2c62ed674a737}{Update\+Type\+And\+Shape}} (const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&node\+\_\+arg)
+\item 
+const \mbox{\hyperlink{namespaceonnxruntime_a86887111d4a0c110d744c19de4333c04}{Node\+Arg\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1NodeArg_a895f69c891315e9c304c1cc5aba31f65}{To\+Proto}} () const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1NodeArg_a99beab4822723648598119666b965ab9}{Exists}} () const noexcept
+\end{DoxyCompactItemize}
+\subsection*{Friends}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1NodeArg_afab89afd724f1b07b1aaad6bdc61c47a}{Graph}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a44f519c9e037ea2f7530e6e7c547dc0a}\label{classonnxruntime_1_1NodeArg_a44f519c9e037ea2f7530e6e7c547dc0a}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Node\+Arg@{Node\+Arg}}
+\index{Node\+Arg@{Node\+Arg}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Node\+Arg()}{NodeArg()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Node\+Arg\+::\+Node\+Arg (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto $\ast$}]{p\+\_\+arg\+\_\+type }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a42fe9c1fd822d43315ae652c1778d198}\label{classonnxruntime_1_1NodeArg_a42fe9c1fd822d43315ae652c1778d198}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Node\+Arg@{Node\+Arg}}
+\index{Node\+Arg@{Node\+Arg}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Node\+Arg()}{NodeArg()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily onnxruntime\+::\+Node\+Arg\+::\+Node\+Arg (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&\&}]{other }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a99beab4822723648598119666b965ab9}\label{classonnxruntime_1_1NodeArg_a99beab4822723648598119666b965ab9}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Exists@{Exists}}
+\index{Exists@{Exists}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Exists()}{Exists()}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Node\+Arg\+::\+Exists (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a62c3405e01502623320ff8f2f2d8b135}\label{classonnxruntime_1_1NodeArg_a62c3405e01502623320ff8f2f2d8b135}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Name@{Name}}
+\index{Name@{Name}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Name()}{Name()}}
+{\footnotesize\ttfamily const std\+::string \& onnxruntime\+::\+Node\+Arg\+::\+Name (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_ab39c6f852b796c2db48ed0af0feb5784}\label{classonnxruntime_1_1NodeArg_ab39c6f852b796c2db48ed0af0feb5784}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Set\+Shape@{Set\+Shape}}
+\index{Set\+Shape@{Set\+Shape}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Set\+Shape()}{SetShape()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Node\+Arg\+::\+Set\+Shape (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Shape\+Proto \&}]{shape }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a923de298e44cb0620c0e4b5c7c7c88e4}\label{classonnxruntime_1_1NodeArg_a923de298e44cb0620c0e4b5c7c7c88e4}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Shape@{Shape}}
+\index{Shape@{Shape}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Shape()}{Shape()}}
+{\footnotesize\ttfamily const Tensor\+Shape\+Proto $\ast$ onnxruntime\+::\+Node\+Arg\+::\+Shape (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a895f69c891315e9c304c1cc5aba31f65}\label{classonnxruntime_1_1NodeArg_a895f69c891315e9c304c1cc5aba31f65}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!To\+Proto@{To\+Proto}}
+\index{To\+Proto@{To\+Proto}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{To\+Proto()}{ToProto()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{namespaceonnxruntime_a86887111d4a0c110d744c19de4333c04}{Node\+Arg\+Info}}\& onnxruntime\+::\+Node\+Arg\+::\+To\+Proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a58dbbe165f4f835a20f4687fd2d165d9}\label{classonnxruntime_1_1NodeArg_a58dbbe165f4f835a20f4687fd2d165d9}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily Data\+Type onnxruntime\+::\+Node\+Arg\+::\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_a23e96b022bdb93ea9169cbcd292d7c87}\label{classonnxruntime_1_1NodeArg_a23e96b022bdb93ea9169cbcd292d7c87}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Type\+As\+Proto@{Type\+As\+Proto}}
+\index{Type\+As\+Proto@{Type\+As\+Proto}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Type\+As\+Proto()}{TypeAsProto()}}
+{\footnotesize\ttfamily const Type\+Proto $\ast$ onnxruntime\+::\+Node\+Arg\+::\+Type\+As\+Proto (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_ab11045bc6bf9aa0a33a8195a2a31892b}\label{classonnxruntime_1_1NodeArg_ab11045bc6bf9aa0a33a8195a2a31892b}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Update\+Type\+And\+Shape@{Update\+Type\+And\+Shape}}
+\index{Update\+Type\+And\+Shape@{Update\+Type\+And\+Shape}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Update\+Type\+And\+Shape()}{UpdateTypeAndShape()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Node\+Arg\+::\+Update\+Type\+And\+Shape (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Type\+Proto \&}]{input\+\_\+type }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_aa179dde5962354ac9ae2c62ed674a737}\label{classonnxruntime_1_1NodeArg_aa179dde5962354ac9ae2c62ed674a737}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Update\+Type\+And\+Shape@{Update\+Type\+And\+Shape}}
+\index{Update\+Type\+And\+Shape@{Update\+Type\+And\+Shape}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Update\+Type\+And\+Shape()}{UpdateTypeAndShape()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Node\+Arg\+::\+Update\+Type\+And\+Shape (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{Node\+Arg}} \&}]{node\+\_\+arg }\end{DoxyParamCaption})}
+
+
+
+\subsection{Friends And Related Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1NodeArg_afab89afd724f1b07b1aaad6bdc61c47a}\label{classonnxruntime_1_1NodeArg_afab89afd724f1b07b1aaad6bdc61c47a}} 
+\index{onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}!Graph@{Graph}}
+\index{Graph@{Graph}!onnxruntime\+::\+Node\+Arg@{onnxruntime\+::\+Node\+Arg}}
+\subsubsection{\texorpdfstring{Graph}{Graph}}
+{\footnotesize\ttfamily friend class \mbox{\hyperlink{classonnxruntime_1_1Graph}{Graph}}\hspace{0.3cm}{\ttfamily [friend]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{node__arg_8h}{node\+\_\+arg.\+h}}\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{graph_8cc}{graph.\+cc}}\end{DoxyCompactItemize}

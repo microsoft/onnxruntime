@@ -1,0 +1,87 @@
+\hypertarget{structonnxruntime_1_1profiling_1_1EventRecord}{}\section{onnxruntime\+:\+:profiling\+:\+:Event\+Record Struct Reference}
+\label{structonnxruntime_1_1profiling_1_1EventRecord}\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+
+
+{\ttfamily \#include $<$profiler.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_ab786e03ad54faa8f95d37e9e1ee481ca}{Event\+Record}} (\mbox{\hyperlink{namespaceonnxruntime_1_1profiling_acbb1d7474c26b32c5bfef2ce1ab63734}{Event\+Category}} category, int process\+\_\+id, int thread\+\_\+id, std\+::string event\+\_\+name, long long time\+\_\+stamp, long long duration, std\+::unordered\+\_\+map$<$ std\+::string, std\+::string $>$ \&\&event\+\_\+args)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1profiling_acbb1d7474c26b32c5bfef2ce1ab63734}{Event\+Category}} \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_a4011d12ea3197585caa7a059d8db2dc1}{cat}}
+\item 
+int \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_a209bd9fc66345301f935e61d113b7fdc}{pid}}
+\item 
+int \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_af3fa46823d3c6e489af93d8d51827179}{tid}}
+\item 
+std\+::string \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_ab180ebaf24bd3726e56ef72910073547}{name}}
+\item 
+long long \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_ad2d926716e9a1132b3539c191aa990d3}{ts}}
+\item 
+long long \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_aaed3bbfc663c4ea4c0130dd422a871ca}{dur}}
+\item 
+std\+::unordered\+\_\+map$<$ std\+::string, std\+::string $>$ \mbox{\hyperlink{structonnxruntime_1_1profiling_1_1EventRecord_a975e3dc6c02a05673ac3b770453365dc}{args}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_ab786e03ad54faa8f95d37e9e1ee481ca}\label{structonnxruntime_1_1profiling_1_1EventRecord_ab786e03ad54faa8f95d37e9e1ee481ca}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!Event\+Record@{Event\+Record}}
+\index{Event\+Record@{Event\+Record}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{Event\+Record()}{EventRecord()}}
+{\footnotesize\ttfamily onnxruntime\+::profiling\+::\+Event\+Record\+::\+Event\+Record (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1profiling_acbb1d7474c26b32c5bfef2ce1ab63734}{Event\+Category}}}]{category,  }\item[{int}]{process\+\_\+id,  }\item[{int}]{thread\+\_\+id,  }\item[{std\+::string}]{event\+\_\+name,  }\item[{long long}]{time\+\_\+stamp,  }\item[{long long}]{duration,  }\item[{std\+::unordered\+\_\+map$<$ std\+::string, std\+::string $>$ \&\&}]{event\+\_\+args }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_a975e3dc6c02a05673ac3b770453365dc}\label{structonnxruntime_1_1profiling_1_1EventRecord_a975e3dc6c02a05673ac3b770453365dc}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!args@{args}}
+\index{args@{args}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{args}{args}}
+{\footnotesize\ttfamily std\+::unordered\+\_\+map$<$std\+::string, std\+::string$>$ onnxruntime\+::profiling\+::\+Event\+Record\+::args}
+
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_a4011d12ea3197585caa7a059d8db2dc1}\label{structonnxruntime_1_1profiling_1_1EventRecord_a4011d12ea3197585caa7a059d8db2dc1}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!cat@{cat}}
+\index{cat@{cat}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{cat}{cat}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_1_1profiling_acbb1d7474c26b32c5bfef2ce1ab63734}{Event\+Category}} onnxruntime\+::profiling\+::\+Event\+Record\+::cat}
+
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_aaed3bbfc663c4ea4c0130dd422a871ca}\label{structonnxruntime_1_1profiling_1_1EventRecord_aaed3bbfc663c4ea4c0130dd422a871ca}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!dur@{dur}}
+\index{dur@{dur}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{dur}{dur}}
+{\footnotesize\ttfamily long long onnxruntime\+::profiling\+::\+Event\+Record\+::dur}
+
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_ab180ebaf24bd3726e56ef72910073547}\label{structonnxruntime_1_1profiling_1_1EventRecord_ab180ebaf24bd3726e56ef72910073547}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!name@{name}}
+\index{name@{name}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{name}{name}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::profiling\+::\+Event\+Record\+::name}
+
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_a209bd9fc66345301f935e61d113b7fdc}\label{structonnxruntime_1_1profiling_1_1EventRecord_a209bd9fc66345301f935e61d113b7fdc}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!pid@{pid}}
+\index{pid@{pid}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{pid}{pid}}
+{\footnotesize\ttfamily int onnxruntime\+::profiling\+::\+Event\+Record\+::pid}
+
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_af3fa46823d3c6e489af93d8d51827179}\label{structonnxruntime_1_1profiling_1_1EventRecord_af3fa46823d3c6e489af93d8d51827179}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!tid@{tid}}
+\index{tid@{tid}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{tid}{tid}}
+{\footnotesize\ttfamily int onnxruntime\+::profiling\+::\+Event\+Record\+::tid}
+
+\mbox{\Hypertarget{structonnxruntime_1_1profiling_1_1EventRecord_ad2d926716e9a1132b3539c191aa990d3}\label{structonnxruntime_1_1profiling_1_1EventRecord_ad2d926716e9a1132b3539c191aa990d3}} 
+\index{onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}!ts@{ts}}
+\index{ts@{ts}!onnxruntime\+::profiling\+::\+Event\+Record@{onnxruntime\+::profiling\+::\+Event\+Record}}
+\subsubsection{\texorpdfstring{ts}{ts}}
+{\footnotesize\ttfamily long long onnxruntime\+::profiling\+::\+Event\+Record\+::ts}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/common/\mbox{\hyperlink{profiler_8h}{profiler.\+h}}\end{DoxyCompactItemize}

@@ -1,0 +1,244 @@
+\hypertarget{classonnxruntime_1_1Env}{}\section{onnxruntime\+:\+:Env Class Reference}
+\label{classonnxruntime_1_1Env}\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+
+
+An interface used by the onnxruntime implementation to access operating system functionality like the filesystem etc.  
+
+
+
+
+{\ttfamily \#include $<$env.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1Env_1_1Task}{Task}}
+\begin{DoxyCompactList}\small\item\em for use with Eigen\+::\+Thread\+Pool \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1Env_a6bb161baf73e98f7fd274db84e3fb489}{Env\+Thread}} = \mbox{\hyperlink{classonnxruntime_1_1Thread}{Thread}}
+\begin{DoxyCompactList}\small\item\em for use with Eigen\+::\+Thread\+Pool \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1Env_abe66ea0aa527876cb0dadd0a5eeef6d1}{$\sim$\+Env}} ()=default
+\item 
+virtual int \mbox{\hyperlink{classonnxruntime_1_1Env_af71e66e4843c33e287984e0d942274a5}{Get\+Num\+Cpu\+Cores}} () const =0
+\item 
+virtual uint64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1Env_a001849df94fd8eb65a81a70307197061}{Now\+Micros}} () const
+\begin{DoxyCompactList}\small\item\em Returns the number of micro-\/seconds since the Unix epoch. \end{DoxyCompactList}\item 
+virtual uint64\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1Env_a1de6adfcff338e90b34a65803718afdf}{Now\+Seconds}} () const
+\begin{DoxyCompactList}\small\item\em Returns the number of seconds since the Unix epoch. \end{DoxyCompactList}\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Env_a2652f151c55c07c900f1e47993e603b8}{Sleep\+For\+Microseconds}} (int64\+\_\+t micros) const =0
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1Env_a6bb161baf73e98f7fd274db84e3fb489}{Env\+Thread}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Env_aced00fdfcbf0f82b59c3bad35bbdfb57}{Create\+Thread}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$ f) const =0
+\begin{DoxyCompactList}\small\item\em for use with Eigen\+::\+Thread\+Pool \end{DoxyCompactList}\item 
+virtual \mbox{\hyperlink{structonnxruntime_1_1Env_1_1Task}{Task}} \mbox{\hyperlink{classonnxruntime_1_1Env_a1cb46f1c66f9ea35bcae259a38cfb84b}{Create\+Task}} (std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$ f) const =0
+\begin{DoxyCompactList}\small\item\em for use with Eigen\+::\+Thread\+Pool \end{DoxyCompactList}\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1Env_a1270e73cbc0c76b8fc17c71623c065ec}{Execute\+Task}} (const \mbox{\hyperlink{structonnxruntime_1_1Env_1_1Task}{Task}} \&t) const =0
+\begin{DoxyCompactList}\small\item\em for use with Eigen\+::\+Thread\+Pool \end{DoxyCompactList}\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1Thread}{Thread}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1Env_a3c31e79c5ef19deafbaa10142aa4610e}{Start\+Thread}} (const \mbox{\hyperlink{structonnxruntime_1_1ThreadOptions}{Thread\+Options}} \&thread\+\_\+options, const std\+::string \&name, std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$ fn) const =0
+\begin{DoxyCompactList}\small\item\em Returns a new thread that is running fn() and is identified (for debugging/performance-\/analysis) by \char`\"{}name\char`\"{}. \end{DoxyCompactList}\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_aa0c0ce6e07920d1acd1794cff15d0577}{File\+Open\+Rd}} (const std\+::string \&path, int \&fd) const =0
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_a3a4b5c4983f2fe3f8fad18dcc8c44f1f}{File\+Open\+Wr}} (const std\+::string \&path, int \&fd) const =0
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_aba47acf27bb87a6e5710e45b20e0fc4c}{File\+Close}} (int fd) const =0
+\item 
+virtual \mbox{\hyperlink{namespaceonnxruntime_ab899e71c070d3fe82ae09bb53075b258}{P\+I\+D\+Type}} \mbox{\hyperlink{classonnxruntime_1_1Env_a1b78c553e28b5d996655d81bb447c84d}{Get\+Self\+Pid}} () const =0
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_acb9c20a7aca7ff9f33088d18a95cc81b}{Load\+Library}} (const std\+::string \&library\+\_\+filename, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$handle) const =0
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_aeabb04baa50100699264a4ecac08abce}{Unload\+Library}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$handle) const =0
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{classonnxruntime_1_1Env_a0ac6efcb6758ce44ff78c7eb158615b4}{Get\+Symbol\+From\+Library}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$handle, const std\+::string \&symbol\+\_\+name, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$symbol) const =0
+\item 
+virtual std\+::string \mbox{\hyperlink{classonnxruntime_1_1Env_a10a3d5f1d6d546321928f2860270263e}{Format\+Library\+File\+Name}} (const std\+::string \&name, const std\+::string \&\mbox{\hyperlink{mkldnn_2nn_2pool_8cc_a728b969e374aba4020e39aea7e02e64f}{version}}) const =0
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{classonnxruntime_1_1Env}{Env}} \& \mbox{\hyperlink{classonnxruntime_1_1Env_a06e769db78c33a9f62f2440de31d47f5}{Default}} ()
+\begin{DoxyCompactList}\small\item\em Returns a default environment suitable for the current operating system. \end{DoxyCompactList}\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Env_a678b158e7cd6c0dc196c4695ac482d65}{Env}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+An interface used by the onnxruntime implementation to access operating system functionality like the filesystem etc. 
+
+Callers may wish to provide a custom \mbox{\hyperlink{classonnxruntime_1_1Env}{Env}} object to get fine grain control.
+
+All \mbox{\hyperlink{classonnxruntime_1_1Env}{Env}} implementations are safe for concurrent access from multiple threads without any external synchronization. 
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a6bb161baf73e98f7fd274db84e3fb489}\label{classonnxruntime_1_1Env_a6bb161baf73e98f7fd274db84e3fb489}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Env\+Thread@{Env\+Thread}}
+\index{Env\+Thread@{Env\+Thread}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Env\+Thread}{EnvThread}}
+{\footnotesize\ttfamily using \mbox{\hyperlink{classonnxruntime_1_1Env_a6bb161baf73e98f7fd274db84e3fb489}{onnxruntime\+::\+Env\+::\+Env\+Thread}} =  \mbox{\hyperlink{classonnxruntime_1_1Thread}{Thread}}}
+
+
+
+for use with Eigen\+::\+Thread\+Pool 
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Env_abe66ea0aa527876cb0dadd0a5eeef6d1}\label{classonnxruntime_1_1Env_abe66ea0aa527876cb0dadd0a5eeef6d1}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!````~Env@{$\sim$\+Env}}
+\index{````~Env@{$\sim$\+Env}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{$\sim$\+Env()}{~Env()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+Env\+::$\sim$\+Env (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a678b158e7cd6c0dc196c4695ac482d65}\label{classonnxruntime_1_1Env_a678b158e7cd6c0dc196c4695ac482d65}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Env@{Env}}
+\index{Env@{Env}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Env()}{Env()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Env\+::\+Env (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [protected]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a1cb46f1c66f9ea35bcae259a38cfb84b}\label{classonnxruntime_1_1Env_a1cb46f1c66f9ea35bcae259a38cfb84b}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Create\+Task@{Create\+Task}}
+\index{Create\+Task@{Create\+Task}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Create\+Task()}{CreateTask()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{structonnxruntime_1_1Env_1_1Task}{Task}} onnxruntime\+::\+Env\+::\+Create\+Task (\begin{DoxyParamCaption}\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$}]{f }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+for use with Eigen\+::\+Thread\+Pool 
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_aced00fdfcbf0f82b59c3bad35bbdfb57}\label{classonnxruntime_1_1Env_aced00fdfcbf0f82b59c3bad35bbdfb57}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Create\+Thread@{Create\+Thread}}
+\index{Create\+Thread@{Create\+Thread}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Create\+Thread()}{CreateThread()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1Env_a6bb161baf73e98f7fd274db84e3fb489}{Env\+Thread}}$\ast$ onnxruntime\+::\+Env\+::\+Create\+Thread (\begin{DoxyParamCaption}\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$}]{f }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+for use with Eigen\+::\+Thread\+Pool 
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a06e769db78c33a9f62f2440de31d47f5}\label{classonnxruntime_1_1Env_a06e769db78c33a9f62f2440de31d47f5}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Default@{Default}}
+\index{Default@{Default}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Default()}{Default()}}
+{\footnotesize\ttfamily static const \mbox{\hyperlink{classonnxruntime_1_1Env}{Env}}\& onnxruntime\+::\+Env\+::\+Default (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+
+
+Returns a default environment suitable for the current operating system. 
+
+Sophisticated users may wish to provide their own \mbox{\hyperlink{classonnxruntime_1_1Env}{Env}} implementation instead of relying on this default environment.
+
+The result of \mbox{\hyperlink{classonnxruntime_1_1Env_a06e769db78c33a9f62f2440de31d47f5}{Default()}} belongs to this library and must never be deleted. \mbox{\Hypertarget{classonnxruntime_1_1Env_a1270e73cbc0c76b8fc17c71623c065ec}\label{classonnxruntime_1_1Env_a1270e73cbc0c76b8fc17c71623c065ec}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Execute\+Task@{Execute\+Task}}
+\index{Execute\+Task@{Execute\+Task}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Execute\+Task()}{ExecuteTask()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Env\+::\+Execute\+Task (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1Env_1_1Task}{Task}} \&}]{t }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+for use with Eigen\+::\+Thread\+Pool 
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_aba47acf27bb87a6e5710e45b20e0fc4c}\label{classonnxruntime_1_1Env_aba47acf27bb87a6e5710e45b20e0fc4c}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!File\+Close@{File\+Close}}
+\index{File\+Close@{File\+Close}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{File\+Close()}{FileClose()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+File\+Close (\begin{DoxyParamCaption}\item[{int}]{fd }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_aa0c0ce6e07920d1acd1794cff15d0577}\label{classonnxruntime_1_1Env_aa0c0ce6e07920d1acd1794cff15d0577}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!File\+Open\+Rd@{File\+Open\+Rd}}
+\index{File\+Open\+Rd@{File\+Open\+Rd}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{File\+Open\+Rd()}{FileOpenRd()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+File\+Open\+Rd (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{path,  }\item[{int \&}]{fd }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a3a4b5c4983f2fe3f8fad18dcc8c44f1f}\label{classonnxruntime_1_1Env_a3a4b5c4983f2fe3f8fad18dcc8c44f1f}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!File\+Open\+Wr@{File\+Open\+Wr}}
+\index{File\+Open\+Wr@{File\+Open\+Wr}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{File\+Open\+Wr()}{FileOpenWr()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+File\+Open\+Wr (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{path,  }\item[{int \&}]{fd }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a10a3d5f1d6d546321928f2860270263e}\label{classonnxruntime_1_1Env_a10a3d5f1d6d546321928f2860270263e}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Format\+Library\+File\+Name@{Format\+Library\+File\+Name}}
+\index{Format\+Library\+File\+Name@{Format\+Library\+File\+Name}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Format\+Library\+File\+Name()}{FormatLibraryFileName()}}
+{\footnotesize\ttfamily virtual std\+::string onnxruntime\+::\+Env\+::\+Format\+Library\+File\+Name (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name,  }\item[{const std\+::string \&}]{version }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_af71e66e4843c33e287984e0d942274a5}\label{classonnxruntime_1_1Env_af71e66e4843c33e287984e0d942274a5}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Get\+Num\+Cpu\+Cores@{Get\+Num\+Cpu\+Cores}}
+\index{Get\+Num\+Cpu\+Cores@{Get\+Num\+Cpu\+Cores}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Get\+Num\+Cpu\+Cores()}{GetNumCpuCores()}}
+{\footnotesize\ttfamily virtual int onnxruntime\+::\+Env\+::\+Get\+Num\+Cpu\+Cores (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a1b78c553e28b5d996655d81bb447c84d}\label{classonnxruntime_1_1Env_a1b78c553e28b5d996655d81bb447c84d}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Get\+Self\+Pid@{Get\+Self\+Pid}}
+\index{Get\+Self\+Pid@{Get\+Self\+Pid}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Get\+Self\+Pid()}{GetSelfPid()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{namespaceonnxruntime_ab899e71c070d3fe82ae09bb53075b258}{P\+I\+D\+Type}} onnxruntime\+::\+Env\+::\+Get\+Self\+Pid (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a0ac6efcb6758ce44ff78c7eb158615b4}\label{classonnxruntime_1_1Env_a0ac6efcb6758ce44ff78c7eb158615b4}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Get\+Symbol\+From\+Library@{Get\+Symbol\+From\+Library}}
+\index{Get\+Symbol\+From\+Library@{Get\+Symbol\+From\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Get\+Symbol\+From\+Library()}{GetSymbolFromLibrary()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Get\+Symbol\+From\+Library (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{handle,  }\item[{const std\+::string \&}]{symbol\+\_\+name,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$}]{symbol }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_acb9c20a7aca7ff9f33088d18a95cc81b}\label{classonnxruntime_1_1Env_acb9c20a7aca7ff9f33088d18a95cc81b}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Load\+Library@{Load\+Library}}
+\index{Load\+Library@{Load\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Load\+Library()}{LoadLibrary()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Load\+Library (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{library\+\_\+filename,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$$\ast$}]{handle }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a001849df94fd8eb65a81a70307197061}\label{classonnxruntime_1_1Env_a001849df94fd8eb65a81a70307197061}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Now\+Micros@{Now\+Micros}}
+\index{Now\+Micros@{Now\+Micros}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Now\+Micros()}{NowMicros()}}
+{\footnotesize\ttfamily virtual uint64\+\_\+t onnxruntime\+::\+Env\+::\+Now\+Micros (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [virtual]}}
+
+
+
+Returns the number of micro-\/seconds since the Unix epoch. 
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a1de6adfcff338e90b34a65803718afdf}\label{classonnxruntime_1_1Env_a1de6adfcff338e90b34a65803718afdf}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Now\+Seconds@{Now\+Seconds}}
+\index{Now\+Seconds@{Now\+Seconds}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Now\+Seconds()}{NowSeconds()}}
+{\footnotesize\ttfamily virtual uint64\+\_\+t onnxruntime\+::\+Env\+::\+Now\+Seconds (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [virtual]}}
+
+
+
+Returns the number of seconds since the Unix epoch. 
+
+\mbox{\Hypertarget{classonnxruntime_1_1Env_a2652f151c55c07c900f1e47993e603b8}\label{classonnxruntime_1_1Env_a2652f151c55c07c900f1e47993e603b8}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Sleep\+For\+Microseconds@{Sleep\+For\+Microseconds}}
+\index{Sleep\+For\+Microseconds@{Sleep\+For\+Microseconds}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Sleep\+For\+Microseconds()}{SleepForMicroseconds()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Env\+::\+Sleep\+For\+Microseconds (\begin{DoxyParamCaption}\item[{int64\+\_\+t}]{micros }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+Sleeps/delays the thread for the prescribed number of micro-\/seconds. On Windows, it\textquotesingle{}s the min time to sleep, not the actual one. \mbox{\Hypertarget{classonnxruntime_1_1Env_a3c31e79c5ef19deafbaa10142aa4610e}\label{classonnxruntime_1_1Env_a3c31e79c5ef19deafbaa10142aa4610e}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Start\+Thread@{Start\+Thread}}
+\index{Start\+Thread@{Start\+Thread}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Start\+Thread()}{StartThread()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1Thread}{Thread}}$\ast$ onnxruntime\+::\+Env\+::\+Start\+Thread (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1ThreadOptions}{Thread\+Options}} \&}]{thread\+\_\+options,  }\item[{const std\+::string \&}]{name,  }\item[{std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}()$>$}]{fn }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Returns a new thread that is running fn() and is identified (for debugging/performance-\/analysis) by \char`\"{}name\char`\"{}. 
+
+Caller takes ownership of the result and must delete it eventually (the deletion will block until fn() stops running). \mbox{\Hypertarget{classonnxruntime_1_1Env_aeabb04baa50100699264a4ecac08abce}\label{classonnxruntime_1_1Env_aeabb04baa50100699264a4ecac08abce}} 
+\index{onnxruntime\+::\+Env@{onnxruntime\+::\+Env}!Unload\+Library@{Unload\+Library}}
+\index{Unload\+Library@{Unload\+Library}!onnxruntime\+::\+Env@{onnxruntime\+::\+Env}}
+\subsubsection{\texorpdfstring{Unload\+Library()}{UnloadLibrary()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::\+Env\+::\+Unload\+Library (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{handle }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/platform/\mbox{\hyperlink{env_8h}{env.\+h}}\item 
+onnxruntime/onnxruntime/core/platform/\mbox{\hyperlink{env_8cc}{env.\+cc}}\end{DoxyCompactItemize}

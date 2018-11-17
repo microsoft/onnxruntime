@@ -1,0 +1,180 @@
+\hypertarget{classonnxruntime_1_1logging_1_1LoggingManager}{}\section{onnxruntime\+:\+:logging\+:\+:Logging\+Manager Class Reference}
+\label{classonnxruntime_1_1logging_1_1LoggingManager}\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+
+
+The logging manager. Owns the log sink and potentially provides a default \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance. Provides filtering based on a minimum Log\+Severity level, and of messages with Data\+Type\+::\+User if enabled.  
+
+
+
+
+{\ttfamily \#include $<$logging.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6}{Instance\+Type}} \{ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6aab6fc5ca706a53bb18ccc29b6dfe70e7}{Default}}, 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6a26960a6b2a2ae9f3bef95fbd07f0b072}{Temporal}}
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_ae088e9104f76dd12ce446bed84d734a4}{Logging\+Manager}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} $>$ sink, \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}} default\+\_\+min\+\_\+severity, bool default\+\_\+filter\+\_\+user\+\_\+data, \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6}{Instance\+Type}} instance\+\_\+type, const std\+::string $\ast$default\+\_\+logger\+\_\+id=nullptr, int default\+\_\+max\+\_\+vlog\+\_\+level=-\/1)
+\item 
+std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} $>$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a0060fb2bb4d5830fce54cf312ce308bb}{Create\+Logger}} (const std\+::string \&logger\+\_\+id)
+\item 
+std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} $>$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a9029481638625330691349c45085bf2b}{Create\+Logger}} (const std\+::string \&logger\+\_\+id, \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}} min\+\_\+severity, bool filter\+\_\+user\+\_\+data, int max\+\_\+vlog\+\_\+level=-\/1)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a3aa5d44bfb4df7f535a4cf4478a00248}{Log}} (const std\+::string \&logger\+\_\+id, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af991a7ada953f9be436bc2089503e90a}{$\sim$\+Logging\+Manager}} ()
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+static const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} \& \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{Default\+Logger}} ()
+\item 
+static std\+::exception \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_ae0a7438714587b804d34dbc656911216}{Log\+Fatal\+And\+Create\+Exception}} (const char $\ast$category, const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&location, const char $\ast$format\+\_\+str,...)
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+The logging manager. Owns the log sink and potentially provides a default \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance. Provides filtering based on a minimum Log\+Severity level, and of messages with Data\+Type\+::\+User if enabled. 
+
+
+
+\subsection{Member Enumeration Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6}\label{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Instance\+Type@{Instance\+Type}}
+\index{Instance\+Type@{Instance\+Type}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Instance\+Type}{InstanceType}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Instance\+Type}}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Default@{Default}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Default@{Default}}}\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6aab6fc5ca706a53bb18ccc29b6dfe70e7}\label{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6aab6fc5ca706a53bb18ccc29b6dfe70e7}} 
+Default&Default instance of \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} that should exist for the lifetime of the program. \\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{Temporal@{Temporal}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Temporal@{Temporal}}}\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6a26960a6b2a2ae9f3bef95fbd07f0b072}\label{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6a26960a6b2a2ae9f3bef95fbd07f0b072}} 
+Temporal&Temporal instance. Create\+Logger(...) should be used, however \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{Default\+Logger()}} will N\+OT be provided via this instance. \\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_ae088e9104f76dd12ce446bed84d734a4}\label{classonnxruntime_1_1logging_1_1LoggingManager_ae088e9104f76dd12ce446bed84d734a4}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Logging\+Manager@{Logging\+Manager}}
+\index{Logging\+Manager@{Logging\+Manager}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Logging\+Manager()}{LoggingManager()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Logging\+Manager (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink}{I\+Sink}} $>$}]{sink,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}}}]{default\+\_\+min\+\_\+severity,  }\item[{bool}]{default\+\_\+filter\+\_\+user\+\_\+data,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_af3489102aaa98cc9b30fcd5ac641eef6}{Instance\+Type}}}]{instance\+\_\+type,  }\item[{const std\+::string $\ast$}]{default\+\_\+logger\+\_\+id = {\ttfamily nullptr},  }\item[{int}]{default\+\_\+max\+\_\+vlog\+\_\+level = {\ttfamily -\/1} }\end{DoxyParamCaption})}
+
+Initializes a new instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} class. 
+\begin{DoxyParams}{Parameters}
+{\em sink} & The sink to write to. Use \mbox{\hyperlink{classonnxruntime_1_1logging_1_1CompositeSink}{Composite\+Sink}} if you need to write to multiple places. \\
+\hline
+{\em default\+\_\+min\+\_\+severity} & The default minimum severity. Messages with lower severity will be ignored unless overridden in Create\+Logger. \\
+\hline
+{\em default\+\_\+filter\+\_\+user\+\_\+data} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} set to true ignore messages with \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{Data\+Type\+::\+U\+S\+ER}} unless overridden in Create\+Logger. \\
+\hline
+{\em instance\+\_\+type} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} Instance\+Type\+::\+Default, this is the default instance of the \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} and is expected to exist for the lifetime of the program. It creates and owns the default logger that calls to the static Default\+Logger method return. \\
+\hline
+{\em default\+\_\+logger\+\_\+id} & \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} Id to use for the default logger. nullptr/ignored if instance\+\_\+type == Temporal. \\
+\hline
+{\em default\+\_\+max\+\_\+vlog\+\_\+level} & Default maximum level for V\+L\+OG messages to be created unless overridden in Create\+Logger. Requires a severity of k\+V\+E\+R\+B\+O\+SE for V\+L\+OG messages to be logged. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_af991a7ada953f9be436bc2089503e90a}\label{classonnxruntime_1_1logging_1_1LoggingManager_af991a7ada953f9be436bc2089503e90a}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!````~Logging\+Manager@{$\sim$\+Logging\+Manager}}
+\index{````~Logging\+Manager@{$\sim$\+Logging\+Manager}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{$\sim$\+Logging\+Manager()}{~LoggingManager()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+Logging\+Manager\+::$\sim$\+Logging\+Manager (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_a0060fb2bb4d5830fce54cf312ce308bb}\label{classonnxruntime_1_1logging_1_1LoggingManager_a0060fb2bb4d5830fce54cf312ce308bb}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Create\+Logger@{Create\+Logger}}
+\index{Create\+Logger@{Create\+Logger}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Create\+Logger()}{CreateLogger()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} $>$ onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Create\+Logger (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{logger\+\_\+id }\end{DoxyParamCaption})}
+
+Creates a new logger instance which will use the provided logger\+\_\+id and default severity and vlog levels. 
+\begin{DoxyParams}{Parameters}
+{\em logger\+\_\+id} & The log identifier. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+A new \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance that the caller owns. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_a9029481638625330691349c45085bf2b}\label{classonnxruntime_1_1logging_1_1LoggingManager_a9029481638625330691349c45085bf2b}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Create\+Logger@{Create\+Logger}}
+\index{Create\+Logger@{Create\+Logger}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Create\+Logger()}{CreateLogger()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} $>$ onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Create\+Logger (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{logger\+\_\+id,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7daeb33e1b0e6a6df8c23d142af78e81}{Severity}}}]{min\+\_\+severity,  }\item[{bool}]{filter\+\_\+user\+\_\+data,  }\item[{int}]{max\+\_\+vlog\+\_\+level = {\ttfamily -\/1} }\end{DoxyParamCaption})}
+
+Creates a new logger instance which will use the provided logger\+\_\+id, severity and vlog levels. 
+\begin{DoxyParams}{Parameters}
+{\em logger\+\_\+id} & The log identifier. \\
+\hline
+{\em min\+\_\+severity} & The minimum severity. Requests to create messages with lower severity will be ignored. \\
+\hline
+{\em filter\+\_\+user\+\_\+data} & \mbox{\hyperlink{classonnxruntime_1_1If}{If}} set to true ignore messages with \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{Data\+Type\+::\+U\+S\+ER}}. \\
+\hline
+{\em max\+\_\+vlog\+\_\+level} & Maximum level for V\+L\+OG messages to be created. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+A new \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance that the caller owns. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}\label{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Default\+Logger@{Default\+Logger}}
+\index{Default\+Logger@{Default\+Logger}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Default\+Logger()}{DefaultLogger()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} \& onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [static]}}
+
+Gets the default logger instance if set. Throws if no default logger is currently registered. \begin{DoxyRemark}{Remarks}
+Creating a \mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager}{Logging\+Manager}} instance with is\+\_\+default\+\_\+instance == true registers a default logger. Note that the default logger is only valid until the Logger\+Manager that registered it is destroyed. 
+\end{DoxyRemark}
+\begin{DoxyReturn}{Returns}
+The default logger if available. 
+\end{DoxyReturn}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_a3aa5d44bfb4df7f535a4cf4478a00248}\label{classonnxruntime_1_1logging_1_1LoggingManager_a3aa5d44bfb4df7f535a4cf4478a00248}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Log@{Log}}
+\index{Log@{Log}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Log()}{Log()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Log (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{logger\+\_\+id,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&}]{message }\end{DoxyParamCaption}) const}
+
+Logs the message using the provided logger id. 
+\begin{DoxyParams}{Parameters}
+{\em logger\+\_\+id} & The log identifier. \\
+\hline
+{\em message} & The log message. \\
+\hline
+\end{DoxyParams}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1LoggingManager_ae0a7438714587b804d34dbc656911216}\label{classonnxruntime_1_1logging_1_1LoggingManager_ae0a7438714587b804d34dbc656911216}} 
+\index{onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}!Log\+Fatal\+And\+Create\+Exception@{Log\+Fatal\+And\+Create\+Exception}}
+\index{Log\+Fatal\+And\+Create\+Exception@{Log\+Fatal\+And\+Create\+Exception}!onnxruntime\+::logging\+::\+Logging\+Manager@{onnxruntime\+::logging\+::\+Logging\+Manager}}
+\subsubsection{\texorpdfstring{Log\+Fatal\+And\+Create\+Exception()}{LogFatalAndCreateException()}}
+{\footnotesize\ttfamily std\+::exception onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Log\+Fatal\+And\+Create\+Exception (\begin{DoxyParamCaption}\item[{const char $\ast$}]{category,  }\item[{const \mbox{\hyperlink{structonnxruntime_1_1CodeLocation}{Code\+Location}} \&}]{location,  }\item[{const char $\ast$}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+Logs a F\+A\+T\+AL level message and creates an exception that can be thrown with error information. 
+\begin{DoxyParams}{Parameters}
+{\em category} & The log category. \\
+\hline
+{\em location} & The location the log message was generated. \\
+\hline
+{\em format\+\_\+str} & The printf format string. \\
+\hline
+{\em ...} & The printf arguments. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+A new \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{Logger}} instance that the caller owns. 
+\end{DoxyReturn}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/logging/\mbox{\hyperlink{logging_8h}{logging.\+h}}\item 
+onnxruntime/onnxruntime/core/common/logging/\mbox{\hyperlink{logging_8cc}{logging.\+cc}}\end{DoxyCompactItemize}

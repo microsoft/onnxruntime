@@ -1,0 +1,37 @@
+\hypertarget{tvm__utils_8cc}{}\section{onnxruntime/onnxruntime/core/codegen/tvm/tvm\+\_\+utils.cc File Reference}
+\label{tvm__utils_8cc}\index{onnxruntime/onnxruntime/core/codegen/tvm/tvm\+\_\+utils.\+cc@{onnxruntime/onnxruntime/core/codegen/tvm/tvm\+\_\+utils.\+cc}}
+{\ttfamily \#include \char`\"{}tvm\+\_\+utils.\+h\char`\"{}}\newline
+Include dependency graph for tvm\+\_\+utils.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1tvm__codegen}{onnxruntime\+::tvm\+\_\+codegen}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{tvm__utils_8cc_adb18555a4cbff99d50270469abc2c114}{R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH}}(type,  type\+\_\+code)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+D\+L\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1tvm__codegen_a3636e29a0ffabd8f6f9960a9d3b089fe}{onnxruntime\+::tvm\+\_\+codegen\+::\+To\+Tvm\+D\+L\+Data\+Type}} (M\+L\+Data\+Type ml\+\_\+type)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{tvm__utils_8cc_adb18555a4cbff99d50270469abc2c114}\label{tvm__utils_8cc_adb18555a4cbff99d50270469abc2c114}} 
+\index{tvm\+\_\+utils.\+cc@{tvm\+\_\+utils.\+cc}!R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH@{R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH}}
+\index{R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH@{R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH}!tvm\+\_\+utils.\+cc@{tvm\+\_\+utils.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH}{RETURN\_DLDATATYPE\_IF\_MATCH}}
+{\footnotesize\ttfamily \#define R\+E\+T\+U\+R\+N\+\_\+\+D\+L\+D\+A\+T\+A\+T\+Y\+P\+E\+\_\+\+I\+F\+\_\+\+M\+A\+T\+CH(\begin{DoxyParamCaption}\item[{}]{type,  }\item[{}]{type\+\_\+code }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} (ml\_type == DataTypeImpl::GetType<type>()) \{   \(\backslash\)
+    return \{type\_code, \textcolor{keyword}{sizeof}(type) * 8, 1\};        \(\backslash\)
+  \}
+\end{DoxyCode}

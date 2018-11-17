@@ -1,0 +1,154 @@
+\hypertarget{classonnxruntime_1_1BFCArena}{}\section{onnxruntime\+:\+:B\+F\+C\+Arena Class Reference}
+\label{classonnxruntime_1_1BFCArena}\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+
+
+{\ttfamily \#include $<$bfc\+\_\+arena.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:B\+F\+C\+Arena\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:B\+F\+C\+Arena\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1BFCArena_aa8ed4d9dbe83542b0d1a97050edc9fe5}{B\+F\+C\+Arena}} (std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator}{I\+Device\+Allocator}} $>$ resource\+\_\+allocator, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} total\+\_\+memory)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1BFCArena_ac4d8fcafd40fdc8bbb211cbb8fdd1521}{$\sim$\+B\+F\+C\+Arena}} () override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a1e4bda05da04e05e5a9a58c3839e2a14}{Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a92b868aa0f335eafb2ae3542aa87b569}{Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a3c5f633150f1f2f4003ee57757c10f11}{Reserve}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a4e6bd70a40977a1c9db618daa937f9f8}{Used}} () const override
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a86661567f79140806c715e5abe56040a}{Max}} () const override
+\item 
+const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1BFCArena_acf4fc8182c636a16d62e80cf051da0e2}{Info}} () const override
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a2933ac1d2a3db5b2b4f242eb12d64721}{Create\+Fence}} (const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$session\+\_\+state) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a3ca0c91d197bf7f3f2ee0859c62a44e5}{Get\+Stats}} (\mbox{\hyperlink{structonnxruntime_1_1AllocatorStats}{Allocator\+Stats}} $\ast$stats)
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_aca9445e29fe31c6a715b249021f9a296}{Requested\+Size}} (const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ptr)
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1BFCArena_a290c11e641ab3a5af5bb8c6c1c06008a}{Allocated\+Size}} (const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ptr)
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_aa8ed4d9dbe83542b0d1a97050edc9fe5}\label{classonnxruntime_1_1BFCArena_aa8ed4d9dbe83542b0d1a97050edc9fe5}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!B\+F\+C\+Arena@{B\+F\+C\+Arena}}
+\index{B\+F\+C\+Arena@{B\+F\+C\+Arena}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{B\+F\+C\+Arena()}{BFCArena()}}
+{\footnotesize\ttfamily onnxruntime\+::\+B\+F\+C\+Arena\+::\+B\+F\+C\+Arena (\begin{DoxyParamCaption}\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator}{I\+Device\+Allocator}} $>$}]{resource\+\_\+allocator,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{total\+\_\+memory }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_ac4d8fcafd40fdc8bbb211cbb8fdd1521}\label{classonnxruntime_1_1BFCArena_ac4d8fcafd40fdc8bbb211cbb8fdd1521}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!````~B\+F\+C\+Arena@{$\sim$\+B\+F\+C\+Arena}}
+\index{````~B\+F\+C\+Arena@{$\sim$\+B\+F\+C\+Arena}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{$\sim$\+B\+F\+C\+Arena()}{~BFCArena()}}
+{\footnotesize\ttfamily onnxruntime\+::\+B\+F\+C\+Arena\+::$\sim$\+B\+F\+C\+Arena (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a1e4bda05da04e05e5a9a58c3839e2a14}\label{classonnxruntime_1_1BFCArena_a1e4bda05da04e05e5a9a58c3839e2a14}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Alloc@{Alloc}}
+\index{Alloc@{Alloc}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Alloc()}{Alloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ onnxruntime\+::\+B\+F\+C\+Arena\+::\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a879507b0ec3b184d9bb60281191b8cd6}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a290c11e641ab3a5af5bb8c6c1c06008a}\label{classonnxruntime_1_1BFCArena_a290c11e641ab3a5af5bb8c6c1c06008a}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Allocated\+Size@{Allocated\+Size}}
+\index{Allocated\+Size@{Allocated\+Size}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Allocated\+Size()}{AllocatedSize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Allocated\+Size (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a2933ac1d2a3db5b2b4f242eb12d64721}\label{classonnxruntime_1_1BFCArena_a2933ac1d2a3db5b2b4f242eb12d64721}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Create\+Fence@{Create\+Fence}}
+\index{Create\+Fence@{Create\+Fence}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Create\+Fence()}{CreateFence()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a42d52aa37e4dba8c02178f81eda99eeb}{Fence\+Ptr}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Create\+Fence (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} $\ast$}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+optional Create\+Fence interface, as provider like D\+ML has its own fence 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IAllocator_aac50b97886138b30cd0b7b3506fea459}{onnxruntime\+::\+I\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a92b868aa0f335eafb2ae3542aa87b569}\label{classonnxruntime_1_1BFCArena_a92b868aa0f335eafb2ae3542aa87b569}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Free@{Free}}
+\index{Free@{Free}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Free()}{Free()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a3341fde74c8461678359fb903fe78df3}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a3ca0c91d197bf7f3f2ee0859c62a44e5}\label{classonnxruntime_1_1BFCArena_a3ca0c91d197bf7f3f2ee0859c62a44e5}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Get\+Stats@{Get\+Stats}}
+\index{Get\+Stats@{Get\+Stats}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Get\+Stats()}{GetStats()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Get\+Stats (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structonnxruntime_1_1AllocatorStats}{Allocator\+Stats}} $\ast$}]{stats }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_acf4fc8182c636a16d62e80cf051da0e2}\label{classonnxruntime_1_1BFCArena_acf4fc8182c636a16d62e80cf051da0e2}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Info@{Info}}
+\index{Info@{Info}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Info()}{Info()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}\& onnxruntime\+::\+B\+F\+C\+Arena\+::\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a4eb52bb1236cf59aec91161156286ba0}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a86661567f79140806c715e5abe56040a}\label{classonnxruntime_1_1BFCArena_a86661567f79140806c715e5abe56040a}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Max@{Max}}
+\index{Max@{Max}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Max()}{Max()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Max (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_a09710487a52f42135ee804b7d2e2ed71}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_aca9445e29fe31c6a715b249021f9a296}\label{classonnxruntime_1_1BFCArena_aca9445e29fe31c6a715b249021f9a296}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Requested\+Size@{Requested\+Size}}
+\index{Requested\+Size@{Requested\+Size}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Requested\+Size()}{RequestedSize()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Requested\+Size (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a3c5f633150f1f2f4003ee57757c10f11}\label{classonnxruntime_1_1BFCArena_a3c5f633150f1f2f4003ee57757c10f11}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Reserve@{Reserve}}
+\index{Reserve@{Reserve}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Reserve()}{Reserve()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ onnxruntime\+::\+B\+F\+C\+Arena\+::\+Reserve (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_ae39a9a84e17eb83bb779149fb212004a}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1BFCArena_a4e6bd70a40977a1c9db618daa937f9f8}\label{classonnxruntime_1_1BFCArena_a4e6bd70a40977a1c9db618daa937f9f8}} 
+\index{onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}!Used@{Used}}
+\index{Used@{Used}!onnxruntime\+::\+B\+F\+C\+Arena@{onnxruntime\+::\+B\+F\+C\+Arena}}
+\subsubsection{\texorpdfstring{Used()}{Used()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+B\+F\+C\+Arena\+::\+Used (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IArenaAllocator_aa6b6994640f86749998ffd0c5da4dd83}{onnxruntime\+::\+I\+Arena\+Allocator}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{bfc__arena_8h}{bfc\+\_\+arena.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{bfc__arena_8cc}{bfc\+\_\+arena.\+cc}}\end{DoxyCompactItemize}

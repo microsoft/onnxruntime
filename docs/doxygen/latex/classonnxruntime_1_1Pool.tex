@@ -1,0 +1,78 @@
+\hypertarget{classonnxruntime_1_1Pool}{}\section{onnxruntime\+:\+:Pool$<$ T, Pool\+Type $>$ Class Template Reference}
+\label{classonnxruntime_1_1Pool}\index{onnxruntime\+::\+Pool$<$ T, Pool\+Type $>$@{onnxruntime\+::\+Pool$<$ T, Pool\+Type $>$}}
+
+
+{\ttfamily \#include $<$pool.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:Pool$<$ T, Pool\+Type $>$\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Pool$<$ T, Pool\+Type $>$\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Pool_acac53fc4ac4307d7b3bcd162015efcb4}{Pool}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1Pool_a66cabaed967e0f1f6f5e716d3100ca44}{$\sim$\+Pool}} () override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Pool_afc168d47c3d4a0a67c40bd3e14bd1431}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const override
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Pool_a10f34e111b6792c1e543610c4c91765e}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$context) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Pool_acac53fc4ac4307d7b3bcd162015efcb4}\label{classonnxruntime_1_1Pool_acac53fc4ac4307d7b3bcd162015efcb4}} 
+\index{onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}!Pool@{Pool}}
+\index{Pool@{Pool}!onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}}
+\subsubsection{\texorpdfstring{Pool()}{Pool()}}
+{\footnotesize\ttfamily template$<$typename T , typename Pool\+Type $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1Pool}{onnxruntime\+::\+Pool}}$<$ T, \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} $>$\+::\mbox{\hyperlink{classonnxruntime_1_1Pool}{Pool}} (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1Pool_a66cabaed967e0f1f6f5e716d3100ca44}\label{classonnxruntime_1_1Pool_a66cabaed967e0f1f6f5e716d3100ca44}} 
+\index{onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}!````~Pool@{$\sim$\+Pool}}
+\index{````~Pool@{$\sim$\+Pool}!onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}}
+\subsubsection{\texorpdfstring{$\sim$\+Pool()}{~Pool()}}
+{\footnotesize\ttfamily template$<$typename T , typename Pool\+Type $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1Pool}{onnxruntime\+::\+Pool}}$<$ T, \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} $>$\+::$\sim$\mbox{\hyperlink{classonnxruntime_1_1Pool}{Pool}} (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1Pool_afc168d47c3d4a0a67c40bd3e14bd1431}\label{classonnxruntime_1_1Pool_afc168d47c3d4a0a67c40bd3e14bd1431}} 
+\index{onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T , typename Pool\+Type $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Pool}{onnxruntime\+::\+Pool}}$<$ T, \mbox{\hyperlink{namespaceonnxruntime_aa4ff52f19ea8c4d3e4ce3ffbabbc7060}{Pool\+Type}} $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+Reimplemented in \mbox{\hyperlink{classonnxruntime_1_1mkl__dnn_1_1Pool_aff8a05a3aec92d9e68b366ead56de08f}{onnxruntime\+::mkl\+\_\+dnn\+::\+Pool$<$ T, Pool\+Type $>$}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1Pool_a10f34e111b6792c1e543610c4c91765e}\label{classonnxruntime_1_1Pool_a10f34e111b6792c1e543610c4c91765e}} 
+\index{onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::\+Pool@{onnxruntime\+::\+Pool}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1Pool}{onnxruntime\+::\+Pool}}$<$ float, \mbox{\hyperlink{classonnxruntime_1_1MaxPool}{Max\+Pool}}$<$ 8 $>$ $>$\+::Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{cpu_2nn_2pool_8h}{pool.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cpu/nn/\mbox{\hyperlink{cpu_2nn_2pool_8cc}{pool.\+cc}}\end{DoxyCompactItemize}

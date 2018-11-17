@@ -1,0 +1,65 @@
+\hypertarget{unary__elementwise__ops__impl_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops\+\_\+impl.h File Reference}
+\label{unary__elementwise__ops__impl_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{onnxruntime/onnxruntime/core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+This graph shows which files directly or indirectly include this file\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops__impl_8h_af5d12692eb84f7b6c04d7e1e1b2cc08a}{U\+N\+A\+R\+Y\+\_\+\+O\+PS}}()
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops__impl_8h_aab6d99ef5794694e06db62fa24ea42b6}{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name)
+\item 
+\#define \mbox{\hyperlink{unary__elementwise__ops__impl_8h_a2ef52a9f82cfe108ba8255bf0909ee6d}{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}}(name,  expr)~\mbox{\hyperlink{unary__elementwise__ops__impl_8h_aab6d99ef5794694e06db62fa24ea42b6}{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name);
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename InT , typename OutT $>$ }\\\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a5ec73c46b242d6ea59dd9965bc34e13f}{onnxruntime\+::cuda\+::\+Impl\+\_\+\+Cast}} (const InT $\ast$input\+\_\+data, OutT $\ast$output\+\_\+data, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{unary__elementwise__ops__impl_8h_aab6d99ef5794694e06db62fa24ea42b6}\label{unary__elementwise__ops__impl_8h_aab6d99ef5794694e06db62fa24ea42b6}} 
+\index{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}!U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON@{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}
+\index{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON@{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}!unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}{UNARY\_ELEMENTWISE\_IMPL\_DECLARATION}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON(\begin{DoxyParamCaption}\item[{}]{name }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{template} <\textcolor{keyword}{typename} T>                          \(\backslash\)
+  void Impl\_##name(                              \(\backslash\)
+      \textcolor{keyword}{const} T* input\_data,                       \(\backslash\)
+      T* output\_data,                            \(\backslash\)
+      \textcolor{keywordtype}{size\_t} count)
+\end{DoxyCode}
+\mbox{\Hypertarget{unary__elementwise__ops__impl_8h_a2ef52a9f82cfe108ba8255bf0909ee6d}\label{unary__elementwise__ops__impl_8h_a2ef52a9f82cfe108ba8255bf0909ee6d}} 
+\index{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}!U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}}
+\index{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR@{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}!unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR}{UNARY\_OP\_NAME\_EXPR}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+O\+P\+\_\+\+N\+A\+M\+E\+\_\+\+E\+X\+PR(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{expr }\end{DoxyParamCaption})~\mbox{\hyperlink{unary__elementwise__ops__impl_8h_aab6d99ef5794694e06db62fa24ea42b6}{U\+N\+A\+R\+Y\+\_\+\+E\+L\+E\+M\+E\+N\+T\+W\+I\+S\+E\+\_\+\+I\+M\+P\+L\+\_\+\+D\+E\+C\+L\+A\+R\+A\+T\+I\+ON}}(name);}
+
+\mbox{\Hypertarget{unary__elementwise__ops__impl_8h_af5d12692eb84f7b6c04d7e1e1b2cc08a}\label{unary__elementwise__ops__impl_8h_af5d12692eb84f7b6c04d7e1e1b2cc08a}} 
+\index{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}!U\+N\+A\+R\+Y\+\_\+\+O\+PS@{U\+N\+A\+R\+Y\+\_\+\+O\+PS}}
+\index{U\+N\+A\+R\+Y\+\_\+\+O\+PS@{U\+N\+A\+R\+Y\+\_\+\+O\+PS}!unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h@{unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h}}
+\subsubsection{\texorpdfstring{U\+N\+A\+R\+Y\+\_\+\+O\+PS}{UNARY\_OPS}}
+{\footnotesize\ttfamily \#define U\+N\+A\+R\+Y\+\_\+\+O\+PS(\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{unary__elementwise__ops__impl_8h_a2ef52a9f82cfe108ba8255bf0909ee6d}{UNARY\_OP\_NAME\_EXPR}}(\mbox{\hyperlink{namespaceonnxruntime_1_1math_a8988cb42d57c2365657e6a803b16ec7d}{Abs}}, \_Abs(a))         \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(Neg, -a)              \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(Ceil, \_Ceil(a))       \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(Floor, \_Floor(a))     \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(Reciprocal, T(1) / a) \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(\mbox{\hyperlink{namespaceonnxruntime_1_1math_abadd1cdbc69d0aed1bf8a188dac24759}{Sqrt}}, \_Sqrt(a))       \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(\mbox{\hyperlink{namespaceonnxruntime_1_1math_ae77fccf2943859c29b77038e543a0801}{Exp}}, \_Exp(a))         \(\backslash\)
+  UNARY\_OP\_NAME\_EXPR(\mbox{\hyperlink{namespaceonnxruntime_1_1math_a4ef818f7b843cea1431240a6751d01a0}{Log}}, \_Log(a))
+\end{DoxyCode}

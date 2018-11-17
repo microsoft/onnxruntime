@@ -1,0 +1,80 @@
+\hypertarget{classonnxruntime_1_1IFence}{}\section{onnxruntime\+:\+:I\+Fence Class Reference}
+\label{classonnxruntime_1_1IFence}\index{onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}}
+
+
+{\ttfamily \#include $<$fence.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:I\+Fence\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1IFence_a837fce8da35142b2c6a419da00b66759}{$\sim$\+I\+Fence}} ()=default
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1IFence_aff95503bc94e36334887b7c8dbc1d14c}{Before\+Using\+As\+Input}} (\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} provider\+\_\+type, int queue\+\_\+id)=0
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1IFence_a0d93955cc57accb1a5e81b820fc9a7d5}{Before\+Using\+As\+Output}} (\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}} provider\+\_\+type, int queue\+\_\+id)=0
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1IFence_af35eb555df9118afd4686e55f41b62a2}{After\+Used\+As\+Input}} (int queue\+\_\+id)=0
+\item 
+virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1IFence_aa0d10e238e95cd8b7fed01c8c70fa1cd}{After\+Used\+As\+Output}} (int queue\+\_\+id)=0
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1IFence_a837fce8da35142b2c6a419da00b66759}\label{classonnxruntime_1_1IFence_a837fce8da35142b2c6a419da00b66759}} 
+\index{onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}!````~I\+Fence@{$\sim$\+I\+Fence}}
+\index{````~I\+Fence@{$\sim$\+I\+Fence}!onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}}
+\subsubsection{\texorpdfstring{$\sim$\+I\+Fence()}{~IFence()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::\+I\+Fence\+::$\sim$\+I\+Fence (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1IFence_af35eb555df9118afd4686e55f41b62a2}\label{classonnxruntime_1_1IFence_af35eb555df9118afd4686e55f41b62a2}} 
+\index{onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}!After\+Used\+As\+Input@{After\+Used\+As\+Input}}
+\index{After\+Used\+As\+Input@{After\+Used\+As\+Input}!onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}}
+\subsubsection{\texorpdfstring{After\+Used\+As\+Input()}{AfterUsedAsInput()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+I\+Fence\+::\+After\+Used\+As\+Input (\begin{DoxyParamCaption}\item[{int}]{queue\+\_\+id }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+Called by executor after \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} is used as input in a compute kernel in provider\+\_\+type and exec queue\+\_\+id This should update the read fence of the \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} 
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CUDAFence_a21849fcb69441a710decac8f8c7c4145}{onnxruntime\+::\+C\+U\+D\+A\+Fence}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IFence_aa0d10e238e95cd8b7fed01c8c70fa1cd}\label{classonnxruntime_1_1IFence_aa0d10e238e95cd8b7fed01c8c70fa1cd}} 
+\index{onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}!After\+Used\+As\+Output@{After\+Used\+As\+Output}}
+\index{After\+Used\+As\+Output@{After\+Used\+As\+Output}!onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}}
+\subsubsection{\texorpdfstring{After\+Used\+As\+Output()}{AfterUsedAsOutput()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+I\+Fence\+::\+After\+Used\+As\+Output (\begin{DoxyParamCaption}\item[{int}]{queue\+\_\+id }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+Called by executor after \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} is used as output in a compute kernel in provider\+\_\+type and exec queue\+\_\+id This should update the write fence of the \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} 
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CUDAFence_aa28331c001ce365edb1aca7e8c801c3f}{onnxruntime\+::\+C\+U\+D\+A\+Fence}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IFence_aff95503bc94e36334887b7c8dbc1d14c}\label{classonnxruntime_1_1IFence_aff95503bc94e36334887b7c8dbc1d14c}} 
+\index{onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}!Before\+Using\+As\+Input@{Before\+Using\+As\+Input}}
+\index{Before\+Using\+As\+Input@{Before\+Using\+As\+Input}!onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}}
+\subsubsection{\texorpdfstring{Before\+Using\+As\+Input()}{BeforeUsingAsInput()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+I\+Fence\+::\+Before\+Using\+As\+Input (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{provider\+\_\+type,  }\item[{int}]{queue\+\_\+id }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+Called by executor before \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} is used as input in a compute kernel in provider\+\_\+type and exec queue\+\_\+id This should wait in the specified provider\textquotesingle{}s exec queue for previous write to \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} to finish 
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CUDAFence_ae696393f88e06ad9e8c8576f6f306c32}{onnxruntime\+::\+C\+U\+D\+A\+Fence}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1IFence_a0d93955cc57accb1a5e81b820fc9a7d5}\label{classonnxruntime_1_1IFence_a0d93955cc57accb1a5e81b820fc9a7d5}} 
+\index{onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}!Before\+Using\+As\+Output@{Before\+Using\+As\+Output}}
+\index{Before\+Using\+As\+Output@{Before\+Using\+As\+Output}!onnxruntime\+::\+I\+Fence@{onnxruntime\+::\+I\+Fence}}
+\subsubsection{\texorpdfstring{Before\+Using\+As\+Output()}{BeforeUsingAsOutput()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+I\+Fence\+::\+Before\+Using\+As\+Output (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{namespaceonnxruntime_a863e2227cbf32aab76aad35fdadff4bb}{onnxruntime\+::\+Provider\+Type}}}]{provider\+\_\+type,  }\item[{int}]{queue\+\_\+id }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+Called by executor before \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} is used as output in a compute kernel in provider\+\_\+type and exec queue\+\_\+id This should wait in the specified provider\textquotesingle{}s exec queue for previous read to \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} to finish 
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1CUDAFence_a93950e06048ab9d52523beaa5b89d481}{onnxruntime\+::\+C\+U\+D\+A\+Fence}}.
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{fence_8h}{fence.\+h}}\end{DoxyCompactItemize}

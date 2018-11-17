@@ -1,0 +1,63 @@
+\hypertarget{cuda_2tensor_2gather_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/tensor/gather.cc File Reference}
+\label{cuda_2tensor_2gather_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/tensor/gather.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/tensor/gather.\+cc}}
+{\ttfamily \#include \char`\"{}gather.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}gather\+\_\+impl.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/utils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/common.\+h\char`\"{}}\newline
+Include dependency graph for gather.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda_2tensor_2gather_8cc_a49d9db80c7f57fb3bb5579c76fa84071}{T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}}(T)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1cuda_a8a1b12ce4d3413ef590aec8e1a2d6d96}{onnxruntime\+::cuda\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}} (Gather, k\+Onnx\+Domain, 1, k\+Cuda\+Execution\+Provider, Kernel\+Def\+Builder() .Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+All\+Fixed\+Size\+Tensor\+Types()) .Type\+Constraint(\char`\"{}Tind\char`\"{}, std\+::vector$<$ M\+L\+Data\+Type $>$\{ Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()\}), Gather)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda_2tensor_2gather_8cc_a49d9db80c7f57fb3bb5579c76fa84071}\label{cuda_2tensor_2gather_8cc_a49d9db80c7f57fb3bb5579c76fa84071}} 
+\index{cuda/tensor/gather.\+cc@{cuda/tensor/gather.\+cc}!T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL@{T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}}
+\index{T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL@{T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}!cuda/tensor/gather.\+cc@{cuda/tensor/gather.\+cc}}
+\subsubsection{\texorpdfstring{T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}{TYPED\_FUNCTION\_CALL}}
+{\footnotesize\ttfamily \#define T\+Y\+P\+E\+D\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} (T\_type == DataTypeImpl::GetType<T>()) \{                                 \(\backslash\)
+    T* output\_data = p.output\_tensor->template MutableData<T>();              \(\backslash\)
+    const T* input\_data = p.input\_tensor->template Data<T>();                 \(\backslash\)
+    if (Tin\_type == DataTypeImpl::GetType<int32\_t>()) \{                       \(\backslash\)
+      GatherImpl(                                                             \(\backslash\)
+          input\_block\_size,                                                   \(\backslash\)
+          indices\_max,                                                        \(\backslash\)
+          p.indices\_tensor->template Data<int32\_t>(),                         \(\backslash\)
+          div\_strides.GpuPtr(),                                               \(\backslash\)
+          reinterpret\_cast<\textcolor{keyword}{const} ToCudaType<T>::MappedType*>(input\_data),     \(\backslash\)
+          \textcolor{keyword}{reinterpret\_cast<}typename ToCudaType<T>::MappedType*\textcolor{keyword}{>}(output\_data), \(\backslash\)
+          p.output\_tensor->Shape().Size());                                   \(\backslash\)
+      return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                    \(\backslash\)
+    \}                                                                         \(\backslash\)
+    if (Tin\_type == DataTypeImpl::GetType<int64\_t>()) \{                       \(\backslash\)
+      GatherImpl(                                                             \(\backslash\)
+          input\_block\_size,                                                   \(\backslash\)
+          indices\_max,                                                        \(\backslash\)
+          p.indices\_tensor->template Data<int64\_t>(),                         \(\backslash\)
+          div\_strides.GpuPtr(),                                               \(\backslash\)
+          reinterpret\_cast<\textcolor{keyword}{const} ToCudaType<T>::MappedType*>(input\_data),     \(\backslash\)
+          \textcolor{keyword}{reinterpret\_cast<}typename ToCudaType<T>::MappedType*\textcolor{keyword}{>}(output\_data), \(\backslash\)
+          p.output\_tensor->Shape().Size());                                   \(\backslash\)
+      return \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{Status::OK}}();                                                    \(\backslash\)
+    \}                                                                         \(\backslash\)
+  \}
+\end{DoxyCode}

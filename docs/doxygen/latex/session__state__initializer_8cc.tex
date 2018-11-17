@@ -1,0 +1,41 @@
+\hypertarget{session__state__initializer_8cc}{}\section{onnxruntime/onnxruntime/core/framework/session\+\_\+state\+\_\+initializer.cc File Reference}
+\label{session__state__initializer_8cc}\index{onnxruntime/onnxruntime/core/framework/session\+\_\+state\+\_\+initializer.\+cc@{onnxruntime/onnxruntime/core/framework/session\+\_\+state\+\_\+initializer.\+cc}}
+{\ttfamily \#include \char`\"{}core/framework/session\+\_\+state\+\_\+initializer.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$functional$>$}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph\+\_\+transformer.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph\+\_\+transformer\+\_\+mgr.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/graph\+\_\+partitioner.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/insert\+\_\+cast\+\_\+transformer.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/ml\+\_\+value.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/ml\+\_\+value\+\_\+patterns\+\_\+planner.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/mlvalue\+\_\+name\+\_\+idx\+\_\+map.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/sequential\+\_\+execution\+\_\+plan.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/session\+\_\+state.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensorutils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensorprotoutils.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/transformer\+\_\+memcpy.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/utils.\+h\char`\"{}}\newline
+Include dependency graph for session\+\_\+state\+\_\+initializer.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_a5fae67d87ce801a6093492d9af44a5bc}{onnxruntime\+::\+Save\+Tensor\+Func}} = std\+::function$<$ \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}(int idx, const \mbox{\hyperlink{classonnxruntime_1_1MLValue}{onnxruntime\+::\+M\+L\+Value}} \&)$>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_a02d8f3bdb99228347b5c3357def17284}{onnxruntime\+::\+Deserialize\+Tensor\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&alloc\+\_\+info, const Execution\+Providers \&exec\+\_\+providers, M\+L\+Value \&mlvalue, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_ad7943db98c4dc8d2bfbe46f4ecfbb874}{onnxruntime\+::\+Save\+Initialized\+Tensors\+With\+Mem\+Pattern}} (const Graph \&graph, const Sequential\+Execution\+Plan \&execution\+\_\+plan, const Execution\+Providers \&exec\+\_\+providers, const M\+L\+Value\+Name\+Idx\+Map \&mlvalue\+\_\+name\+\_\+idx\+\_\+map, std\+::map$<$ \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}, Buffer\+Unique\+Ptr $>$ \&weights\+\_\+buffers, const Save\+Tensor\+Func \&save\+\_\+tensor\+\_\+func, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger)
+\item 
+common\+::\+Status \mbox{\hyperlink{namespaceonnxruntime_ac10ac6d7290c51ba8c501fa53a835255}{onnxruntime\+::\+Save\+Initialized\+Tensors\+With\+Seperate\+Buffer}} (const \mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&graph, const Sequential\+Execution\+Plan \&execution\+\_\+plan, const Execution\+Providers \&exec\+\_\+providers, const M\+L\+Value\+Name\+Idx\+Map \&mlvalue\+\_\+name\+\_\+idx\+\_\+map, const Save\+Tensor\+Func \&save\+\_\+tensor\+\_\+func, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Logger}{logging\+::\+Logger}} \&logger)
+\end{DoxyCompactItemize}

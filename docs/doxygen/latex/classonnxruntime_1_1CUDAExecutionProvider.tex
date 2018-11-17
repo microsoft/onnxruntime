@@ -1,0 +1,225 @@
+\hypertarget{classonnxruntime_1_1CUDAExecutionProvider}{}\section{onnxruntime\+:\+:C\+U\+D\+A\+Execution\+Provider Class Reference}
+\label{classonnxruntime_1_1CUDAExecutionProvider}\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+
+
+{\ttfamily \#include $<$cuda\+\_\+execution\+\_\+provider.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:C\+U\+D\+A\+Execution\+Provider\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:C\+U\+D\+A\+Execution\+Provider\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a72cfc3ceddf32a30387296364cc3ea35}{C\+U\+D\+A\+Execution\+Provider}} (const \mbox{\hyperlink{structonnxruntime_1_1CUDAExecutionProviderInfo}{C\+U\+D\+A\+Execution\+Provider\+Info}} \&info)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a98fd8afe88815ad4c423edb8e39f7885}{$\sim$\+C\+U\+D\+A\+Execution\+Provider}} ()
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a01469a525b621ce14a85fcc8187847c4}{Get\+Allocator}} (int id, \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} mem\+\_\+type=\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a232271cbf46c229ed40272a63af7a204}{O\+N\+N\+X\+Runtime\+Mem\+Type\+Default}}) const override
+\item 
+std\+::string \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_aba2225328bd739b5e6ef4be06557985b}{Type}} () const override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a4f3479126d1191bb1074c4b953b3ef87}{Sync}} () const override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_abf7e482aba687b89fcbd6586271ca753}{On\+Run\+Start}} () override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_aad4464387bb09d2337e334d5a7325e5d}{On\+Run\+End}} () override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a6f2ec2e4082683b6de03eeb48acbf546}{Copy\+Tensor}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&src, \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&dst) const override
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a7238cead30fe69540b3df62e6913d579}{Copy\+Tensor}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&src, \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&dst, int exec\+\_\+queue\+\_\+id) const override
+\item 
+const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a1cf09f277e0559c0e864fa6b0d39c898}{Get\+Execution\+Handle}} () const noexcept override
+\item 
+cublas\+Handle\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a3f8178414579cf4207dd34afc75438f6}{Per\+Thread\+Cublas\+Handle}} ()
+\item 
+cudnn\+Handle\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a9e4e2ca076bb0fa560eac0bd88ab27fa}{Per\+Thread\+Cudnn\+Handle}} ()
+\item 
+cuda\+Stream\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_ac97b455cec41500ac347f375ece13c1e}{Get\+Stream}} (int queue\+\_\+id) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a76dc7ab7a7a58043697a83cb6c69be2e}{Get\+Const\+Ones}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a37a6f28d78d81de1c903464b78a8744a}{Add\+Deferred\+Release\+C\+P\+U\+Ptr}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a850dd443cf0b9e0d280fd342ef399696}{Get\+Scratch\+Buffer}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count\+\_\+or\+\_\+bytes) const
+\item 
+virtual std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $>$ \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a771c4dbe04b51b0c019e8b0e4648f61c}{Get\+Kernel\+Registry}} () const override
+\item 
+virtual std\+::vector$<$ std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{structonnxruntime_1_1ComputationCapacity}{Computation\+Capacity}} $>$ $>$ \mbox{\hyperlink{classonnxruntime_1_1CUDAExecutionProvider_a1bb04dae34303befc1db6b487dc4c7c5}{Get\+Capability}} (const \mbox{\hyperlink{classonnxruntime_1_1GraphViewer}{onnxruntime\+::\+Graph\+Viewer}} \&graph, const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $\ast$$>$ \&kernel\+\_\+registries) const override
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a72cfc3ceddf32a30387296364cc3ea35}\label{classonnxruntime_1_1CUDAExecutionProvider_a72cfc3ceddf32a30387296364cc3ea35}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!C\+U\+D\+A\+Execution\+Provider@{C\+U\+D\+A\+Execution\+Provider}}
+\index{C\+U\+D\+A\+Execution\+Provider@{C\+U\+D\+A\+Execution\+Provider}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{C\+U\+D\+A\+Execution\+Provider()}{CUDAExecutionProvider()}}
+{\footnotesize\ttfamily onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+C\+U\+D\+A\+Execution\+Provider (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{structonnxruntime_1_1CUDAExecutionProviderInfo}{C\+U\+D\+A\+Execution\+Provider\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [explicit]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a98fd8afe88815ad4c423edb8e39f7885}\label{classonnxruntime_1_1CUDAExecutionProvider_a98fd8afe88815ad4c423edb8e39f7885}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!````~C\+U\+D\+A\+Execution\+Provider@{$\sim$\+C\+U\+D\+A\+Execution\+Provider}}
+\index{````~C\+U\+D\+A\+Execution\+Provider@{$\sim$\+C\+U\+D\+A\+Execution\+Provider}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{$\sim$\+C\+U\+D\+A\+Execution\+Provider()}{~CUDAExecutionProvider()}}
+{\footnotesize\ttfamily onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::$\sim$\+C\+U\+D\+A\+Execution\+Provider (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a37a6f28d78d81de1c903464b78a8744a}\label{classonnxruntime_1_1CUDAExecutionProvider_a37a6f28d78d81de1c903464b78a8744a}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Add\+Deferred\+Release\+C\+P\+U\+Ptr@{Add\+Deferred\+Release\+C\+P\+U\+Ptr}}
+\index{Add\+Deferred\+Release\+C\+P\+U\+Ptr@{Add\+Deferred\+Release\+C\+P\+U\+Ptr}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Add\+Deferred\+Release\+C\+P\+U\+Ptr()}{AddDeferredReleaseCPUPtr()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Add\+Deferred\+Release\+C\+P\+U\+Ptr (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a6f2ec2e4082683b6de03eeb48acbf546}\label{classonnxruntime_1_1CUDAExecutionProvider_a6f2ec2e4082683b6de03eeb48acbf546}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Copy\+Tensor@{Copy\+Tensor}}
+\index{Copy\+Tensor@{Copy\+Tensor}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Copy\+Tensor()}{CopyTensor()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Copy\+Tensor (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{src,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{dst }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Copy tensor between execution providers 
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a2b9bb47c0d2d72598ceb381688adfe26}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a7238cead30fe69540b3df62e6913d579}\label{classonnxruntime_1_1CUDAExecutionProvider_a7238cead30fe69540b3df62e6913d579}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Copy\+Tensor@{Copy\+Tensor}}
+\index{Copy\+Tensor@{Copy\+Tensor}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Copy\+Tensor()}{CopyTensor()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Copy\+Tensor (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{src,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{dst,  }\item[{int}]{exec\+\_\+queue\+\_\+id }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Copy tensor between execution providers on specified exec queue 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_ac72d136c6a46bb4f33c9a877e01cccaa}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a01469a525b621ce14a85fcc8187847c4}\label{classonnxruntime_1_1CUDAExecutionProvider_a01469a525b621ce14a85fcc8187847c4}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Allocator@{Get\+Allocator}}
+\index{Get\+Allocator@{Get\+Allocator}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Allocator()}{GetAllocator()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Allocator (\begin{DoxyParamCaption}\item[{int}]{id,  }\item[{\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}]{mem\+\_\+type = {\ttfamily \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a232271cbf46c229ed40272a63af7a204}{O\+N\+N\+X\+Runtime\+Mem\+Type\+Default}}} }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Get allocator with specified Mem\+Type 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_ab4911f5441a3bd940b0384bc5a334b92}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a1bb04dae34303befc1db6b487dc4c7c5}\label{classonnxruntime_1_1CUDAExecutionProvider_a1bb04dae34303befc1db6b487dc4c7c5}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Capability@{Get\+Capability}}
+\index{Get\+Capability@{Get\+Capability}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Capability()}{GetCapability()}}
+{\footnotesize\ttfamily std\+::vector$<$ std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{structonnxruntime_1_1ComputationCapacity}{Computation\+Capacity}} $>$ $>$ onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Capability (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1GraphViewer}{onnxruntime\+::\+Graph\+Viewer}} \&}]{graph\+\_\+viewer,  }\item[{const std\+::vector$<$ const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $\ast$$>$ \&}]{kernel\+\_\+registries }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Get execution provider\textquotesingle{}s capability for the specified $<$graph$>$. Return a bunch of Indexed\+Sub\+Graphs $<$$\ast$this$>$ execution provider can run if the sub-\/graph contains only one node or can fuse to run if the sub-\/graph contains more than one node. The node indexes contained in sub-\/graphs may have overlap, and it\textquotesingle{}s O\+N\+N\+X\+Runtime\textquotesingle{}s responsibility to do the partition and decide whether a node will be assigned to $<$$\ast$this$>$ execution provider. 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a6f17ba64b2355b26293a4cfc3fac376f}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a76dc7ab7a7a58043697a83cb6c69be2e}\label{classonnxruntime_1_1CUDAExecutionProvider_a76dc7ab7a7a58043697a83cb6c69be2e}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Const\+Ones@{Get\+Const\+Ones}}
+\index{Get\+Const\+Ones@{Get\+Const\+Ones}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Const\+Ones()}{GetConstOnes()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Const\+Ones (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a1cf09f277e0559c0e864fa6b0d39c898}\label{classonnxruntime_1_1CUDAExecutionProvider_a1cf09f277e0559c0e864fa6b0d39c898}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Execution\+Handle@{Get\+Execution\+Handle}}
+\index{Get\+Execution\+Handle@{Get\+Execution\+Handle}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Execution\+Handle()}{GetExecutionHandle()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}}$\ast$ onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Execution\+Handle (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}, {\ttfamily [noexcept]}}
+
+Returns an opaque handle whose exact type varies based on the provider and is interpreted accordingly by the corresponding kernel implementation. For Direct3D operator kernels, this may return an I\+Unknown supporting Query\+Interface to I\+D3\+D12\+Graphics\+Command\+List1. 
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_aebaeab04945539bc5db5942b63684ccb}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a771c4dbe04b51b0c019e8b0e4648f61c}\label{classonnxruntime_1_1CUDAExecutionProvider_a771c4dbe04b51b0c019e8b0e4648f61c}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Kernel\+Registry@{Get\+Kernel\+Registry}}
+\index{Get\+Kernel\+Registry@{Get\+Kernel\+Registry}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Kernel\+Registry()}{GetKernelRegistry()}}
+{\footnotesize\ttfamily std\+::shared\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} $>$ onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Kernel\+Registry (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Get kernel registry per execution provider type. The \mbox{\hyperlink{classonnxruntime_1_1KernelRegistry}{Kernel\+Registry}} share pointer returned is shared across sessions.
+
+N\+O\+TE\+: this is a tricky but final solution to achieve following goals,
+\begin{DoxyEnumerate}
+\item The execution provider type based kernel registry should be shared across sessions. Only one copy of this kind of kernel registry exists in O\+N\+N\+X\+Runtime with multiple sessions/models.
+\item Adding an execution provider into O\+N\+N\+X\+Runtime does not need to touch O\+N\+N\+X\+Runtime frameowrk/session code.
+\item onnxruntime runtime (framework/session) does not depend on any specific execution provider lib. 
+\end{DoxyEnumerate}
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a83caf9a8da9fcbc4e7fdc891055d664d}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a850dd443cf0b9e0d280fd342ef399696}\label{classonnxruntime_1_1CUDAExecutionProvider_a850dd443cf0b9e0d280fd342ef399696}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Scratch\+Buffer@{Get\+Scratch\+Buffer}}
+\index{Get\+Scratch\+Buffer@{Get\+Scratch\+Buffer}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Scratch\+Buffer()}{GetScratchBuffer()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$T$>$ onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Scratch\+Buffer (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count\+\_\+or\+\_\+bytes }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_ac97b455cec41500ac347f375ece13c1e}\label{classonnxruntime_1_1CUDAExecutionProvider_ac97b455cec41500ac347f375ece13c1e}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Get\+Stream@{Get\+Stream}}
+\index{Get\+Stream@{Get\+Stream}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Get\+Stream()}{GetStream()}}
+{\footnotesize\ttfamily cuda\+Stream\+\_\+t onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Get\+Stream (\begin{DoxyParamCaption}\item[{int}]{queue\+\_\+id }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_aad4464387bb09d2337e334d5a7325e5d}\label{classonnxruntime_1_1CUDAExecutionProvider_aad4464387bb09d2337e334d5a7325e5d}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!On\+Run\+End@{On\+Run\+End}}
+\index{On\+Run\+End@{On\+Run\+End}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{On\+Run\+End()}{OnRunEnd()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+On\+Run\+End (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Called when \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}{Inference\+Session\+::\+Run}} ended N\+O\+TE that due to async execution in provider, the actual work of this Run may not be finished on device This function should be regarded as the point that all commands of current Run has been submmited by C\+PU 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a2a4b49018ff2509a01c1dd73b5cbb811}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_abf7e482aba687b89fcbd6586271ca753}\label{classonnxruntime_1_1CUDAExecutionProvider_abf7e482aba687b89fcbd6586271ca753}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!On\+Run\+Start@{On\+Run\+Start}}
+\index{On\+Run\+Start@{On\+Run\+Start}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{On\+Run\+Start()}{OnRunStart()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+On\+Run\+Start (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Called when \mbox{\hyperlink{classonnxruntime_1_1InferenceSession_a90aa8b5fdc2638c4d2c45afc9c3ed222}{Inference\+Session\+::\+Run}} started N\+O\+TE that due to async execution in provider, the actual work of previous Run may not be finished on device This function should be regarded as the point after which a new Run would start to submit commands from C\+PU 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a0d724b727c4518125b5b154b481bccb3}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a3f8178414579cf4207dd34afc75438f6}\label{classonnxruntime_1_1CUDAExecutionProvider_a3f8178414579cf4207dd34afc75438f6}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Per\+Thread\+Cublas\+Handle@{Per\+Thread\+Cublas\+Handle}}
+\index{Per\+Thread\+Cublas\+Handle@{Per\+Thread\+Cublas\+Handle}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Per\+Thread\+Cublas\+Handle()}{PerThreadCublasHandle()}}
+{\footnotesize\ttfamily cublas\+Handle\+\_\+t onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Per\+Thread\+Cublas\+Handle (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a9e4e2ca076bb0fa560eac0bd88ab27fa}\label{classonnxruntime_1_1CUDAExecutionProvider_a9e4e2ca076bb0fa560eac0bd88ab27fa}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Per\+Thread\+Cudnn\+Handle@{Per\+Thread\+Cudnn\+Handle}}
+\index{Per\+Thread\+Cudnn\+Handle@{Per\+Thread\+Cudnn\+Handle}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Per\+Thread\+Cudnn\+Handle()}{PerThreadCudnnHandle()}}
+{\footnotesize\ttfamily cudnn\+Handle\+\_\+t onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Per\+Thread\+Cudnn\+Handle (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_a4f3479126d1191bb1074c4b953b3ef87}\label{classonnxruntime_1_1CUDAExecutionProvider_a4f3479126d1191bb1074c4b953b3ef87}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Sync@{Sync}}
+\index{Sync@{Sync}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Sync()}{Sync()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Sync (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+Blocks until the device has completed all preceding requested tasks. Currently this is primarily used by the \mbox{\hyperlink{classonnxruntime_1_1IOBinding}{I\+O\+Binding}} object to ensure that all inputs have been copied to the device before execution begins. 
+
+Reimplemented from \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a3657d5ed274547507a7b99d466fa13ef}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CUDAExecutionProvider_aba2225328bd739b5e6ef4be06557985b}\label{classonnxruntime_1_1CUDAExecutionProvider_aba2225328bd739b5e6ef4be06557985b}} 
+\index{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}!Type@{Type}}
+\index{Type@{Type}!onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider@{onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider}}
+\subsubsection{\texorpdfstring{Type()}{Type()}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+C\+U\+D\+A\+Execution\+Provider\+::\+Type (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+\begin{DoxyReturn}{Returns}
+type of the execution provider; should match that set in the node through the Set\+Execution\+Provider A\+PI. Example valid return values are\+: k\+Cpu\+Execution\+Provider, k\+Cuda\+Execution\+Provider 
+\end{DoxyReturn}
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IExecutionProvider_a6bfeb7af172299bcc6083a418b01fac1}{onnxruntime\+::\+I\+Execution\+Provider}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cuda__execution__provider_8h}{cuda\+\_\+execution\+\_\+provider.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cuda__execution__provider_8cc}{cuda\+\_\+execution\+\_\+provider.\+cc}}\end{DoxyCompactItemize}

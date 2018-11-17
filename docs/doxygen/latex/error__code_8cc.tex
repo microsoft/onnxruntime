@@ -1,0 +1,45 @@
+\hypertarget{error__code_8cc}{}\section{onnxruntime/onnxruntime/core/framework/error\+\_\+code.cc File Reference}
+\label{error__code_8cc}\index{onnxruntime/onnxruntime/core/framework/error\+\_\+code.\+cc@{onnxruntime/onnxruntime/core/framework/error\+\_\+code.\+cc}}
+{\ttfamily \#include \char`\"{}core/framework/error\+\_\+code.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/status.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/error\+\_\+code\+\_\+helper.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$cassert$>$}\newline
+Include dependency graph for error\+\_\+code.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{error__code_8cc_a207f685fd79719677b6f668d7f2d39df}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (\mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}}, Create\+O\+N\+N\+X\+Status, \mbox{\hyperlink{error__code_8h_a97fa06862c9bfff1acd8ef05ac32db8e}{O\+N\+N\+X\+Runtime\+Error\+Code}} code, const char $\ast$msg)
+\item 
+\mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_ae6aaf438a588ef975745708b6e0b8896}{onnxruntime\+::\+To\+O\+N\+N\+X\+Status}} (const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&st)
+\item 
+\mbox{\hyperlink{error__code_8cc_a57bbda8437b4b522475d77eb6eff8432}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (\mbox{\hyperlink{error__code_8h_a97fa06862c9bfff1acd8ef05ac32db8e}{O\+N\+N\+X\+Runtime\+Error\+Code}}, O\+N\+N\+X\+Runtime\+Get\+Error\+Code, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const \mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}} status)
+\item 
+\mbox{\hyperlink{error__code_8cc_a1deb920484432419cb39dbe1061772e5}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (const char $\ast$, O\+N\+N\+X\+Runtime\+Get\+Error\+Message, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const \mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}} status)
+\end{DoxyCompactItemize}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{error__code_8cc_a207f685fd79719677b6f668d7f2d39df}\label{error__code_8cc_a207f685fd79719677b6f668d7f2d39df}} 
+\index{error\+\_\+code.\+cc@{error\+\_\+code.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!error\+\_\+code.\+cc@{error\+\_\+code.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}}}]{,  }\item[{Create\+O\+N\+N\+X\+Status}]{,  }\item[{\mbox{\hyperlink{error__code_8h_a97fa06862c9bfff1acd8ef05ac32db8e}{O\+N\+N\+X\+Runtime\+Error\+Code}}}]{code,  }\item[{const char $\ast$}]{msg }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{error__code_8cc_a57bbda8437b4b522475d77eb6eff8432}\label{error__code_8cc_a57bbda8437b4b522475d77eb6eff8432}} 
+\index{error\+\_\+code.\+cc@{error\+\_\+code.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!error\+\_\+code.\+cc@{error\+\_\+code.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{error__code_8h_a97fa06862c9bfff1acd8ef05ac32db8e}{O\+N\+N\+X\+Runtime\+Error\+Code}}}]{,  }\item[{O\+N\+N\+X\+Runtime\+Get\+Error\+Code}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const \mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}}}]{status }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{error__code_8cc_a1deb920484432419cb39dbe1061772e5}\label{error__code_8cc_a1deb920484432419cb39dbe1061772e5}} 
+\index{error\+\_\+code.\+cc@{error\+\_\+code.\+cc}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!error\+\_\+code.\+cc@{error\+\_\+code.\+cc}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{const char $\ast$}]{,  }\item[{O\+N\+N\+X\+Runtime\+Get\+Error\+Message}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const \mbox{\hyperlink{error__code_8h_aaabad62930bcf4bf7267c2f3de0413cb}{O\+N\+N\+X\+Status\+Ptr}}}]{status }\end{DoxyParamCaption})}
+

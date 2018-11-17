@@ -1,0 +1,129 @@
+\hypertarget{graph_8cc}{}\section{onnxruntime/onnxruntime/core/graph/graph.cc File Reference}
+\label{graph_8cc}\index{onnxruntime/onnxruntime/core/graph/graph.\+cc@{onnxruntime/onnxruntime/core/graph/graph.\+cc}}
+{\ttfamily \#include $<$fstream$>$}\newline
+{\ttfamily \#include $<$iostream$>$}\newline
+{\ttfamily \#include $<$numeric$>$}\newline
+{\ttfamily \#include $<$stack$>$}\newline
+{\ttfamily \#include \char`\"{}gsl/pointers\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/function.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/function\+\_\+impl.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/graph.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/indexed\+\_\+sub\+\_\+graph.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/op.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}onnx/checker.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/schema\+\_\+registry.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/graph/function\+\_\+container.\+h\char`\"{}}\newline
+Include dependency graph for graph.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1GraphInferencerImpl}{onnxruntime\+::\+Graph\+Inferencer\+Impl}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl}{onnxruntime\+::\+Inference\+Context\+Impl}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{graph_8cc_aadb9ff77d698eee8c69df62e347011cf}{N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG}}(...)
+\item 
+\#define \mbox{\hyperlink{graph_8cc_ae197aae57382cfb7cb8ce678606b8a07}{A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}}(type,  enum\+Type,  field)
+\item 
+\#define \mbox{\hyperlink{graph_8cc_af040b78b049386d52bd4edaca6518f6f}{A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}}(type,  enum\+Type,  field)
+\item 
+\#define \mbox{\hyperlink{graph_8cc_acfd5078e9e89b73568b0f25c70961c62}{A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}}(type,  enum\+Type,  field)
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{onnxruntime\+::\+Subgraph\+Inferencing\+Func}} = std\+::function$<$ Status(const Node \&, Graph \&, const std\+::vector$<$ const Type\+Proto $\ast$ $>$ \&, std\+::vector$<$ const Type\+Proto $\ast$ $>$ \&)$>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_aee5ac8920a6950bfe9a4ba1de9cfc05c}{onnxruntime\+::\+G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS}} (es .\+84) Status Graph
+\item 
+bool \mbox{\hyperlink{namespaceonnxruntime_ad42ffb3c5f8a1b05226583d23cefe2fb}{onnxruntime\+::\+Fully\+Defined\+Type}} (const Type\+Proto \&type\+\_\+proto)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a55b92eaf2da89b6eefb149bb6dbba21d}{onnxruntime\+::\+G\+S\+L\+\_\+\+S\+U\+P\+P\+R\+E\+SS}} (f .\+23) Status Graph
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{graph_8cc_af040b78b049386d52bd4edaca6518f6f}\label{graph_8cc_af040b78b049386d52bd4edaca6518f6f}} 
+\index{graph.\+cc@{graph.\+cc}!A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL@{A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}}
+\index{A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL@{A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}!graph.\+cc@{graph.\+cc}}
+\subsubsection{\texorpdfstring{A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}{ADD\_ATTR\_IMPL}}
+{\footnotesize\ttfamily \#define A\+D\+D\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL(\begin{DoxyParamCaption}\item[{}]{type,  }\item[{}]{enum\+Type,  }\item[{}]{field }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordtype}{void} Node::AddAttribute(\textcolor{keyword}{const} std::string& attr\_name, \textcolor{keyword}{const} type& value) \{ \(\backslash\)
+    graph\_->SetGraphResolveNeeded();                                         \(\backslash\)
+    graph\_->SetGraphProtoSyncNeeded();                                       \(\backslash\)
+    AttributeProto a;                                                        \(\backslash\)
+    a.set\_name(attr\_name);                                                   \(\backslash\)
+    a.set\_type(enumType);                                                    \(\backslash\)
+    *(a.mutable\_##field()) = value;                                          \(\backslash\)
+    attributes\_[attr\_name] = a;                                              \(\backslash\)
+  \};
+\end{DoxyCode}
+\mbox{\Hypertarget{graph_8cc_ae197aae57382cfb7cb8ce678606b8a07}\label{graph_8cc_ae197aae57382cfb7cb8ce678606b8a07}} 
+\index{graph.\+cc@{graph.\+cc}!A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL@{A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}}
+\index{A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL@{A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}!graph.\+cc@{graph.\+cc}}
+\subsubsection{\texorpdfstring{A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}{ADD\_BASIC\_ATTR\_IMPL}}
+{\footnotesize\ttfamily \#define A\+D\+D\+\_\+\+B\+A\+S\+I\+C\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL(\begin{DoxyParamCaption}\item[{}]{type,  }\item[{}]{enum\+Type,  }\item[{}]{field }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordtype}{void} Node::AddAttribute(\textcolor{keyword}{const} std::string& attr\_name, \textcolor{keyword}{const} type& value) \{ \(\backslash\)
+    graph\_->SetGraphResolveNeeded();                                         \(\backslash\)
+    graph\_->SetGraphProtoSyncNeeded();                                       \(\backslash\)
+    AttributeProto a;                                                        \(\backslash\)
+    a.set\_name(attr\_name);                                                   \(\backslash\)
+    a.set\_type(enumType);                                                    \(\backslash\)
+    a.set\_##field(value);                                                    \(\backslash\)
+    attributes\_[attr\_name] = a;                                              \(\backslash\)
+  \};
+\end{DoxyCode}
+\mbox{\Hypertarget{graph_8cc_acfd5078e9e89b73568b0f25c70961c62}\label{graph_8cc_acfd5078e9e89b73568b0f25c70961c62}} 
+\index{graph.\+cc@{graph.\+cc}!A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL@{A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}}
+\index{A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL@{A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}!graph.\+cc@{graph.\+cc}}
+\subsubsection{\texorpdfstring{A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL}{ADD\_LIST\_ATTR\_IMPL}}
+{\footnotesize\ttfamily \#define A\+D\+D\+\_\+\+L\+I\+S\+T\+\_\+\+A\+T\+T\+R\+\_\+\+I\+M\+PL(\begin{DoxyParamCaption}\item[{}]{type,  }\item[{}]{enum\+Type,  }\item[{}]{field }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordtype}{void} Node::AddAttribute(\textcolor{keyword}{const} std::string& attr\_name,      \(\backslash\)
+                          \textcolor{keyword}{const} std::vector<type>& values) \{ \(\backslash\)
+    graph\_->SetGraphResolveNeeded();                         \(\backslash\)
+    graph\_->SetGraphProtoSyncNeeded();                       \(\backslash\)
+    AttributeProto a;                                        \(\backslash\)
+    a.set\_name(attr\_name);                                   \(\backslash\)
+    a.set\_type(enumType);                                    \(\backslash\)
+    for (\textcolor{keyword}{const} \textcolor{keyword}{auto}& val : values) \{                         \(\backslash\)
+      *(a.mutable\_##field()->Add()) = val;                   \(\backslash\)
+    \}                                                        \(\backslash\)
+    attributes\_[attr\_name] = a;                              \(\backslash\)
+  \};
+\end{DoxyCode}
+\mbox{\Hypertarget{graph_8cc_aadb9ff77d698eee8c69df62e347011cf}\label{graph_8cc_aadb9ff77d698eee8c69df62e347011cf}} 
+\index{graph.\+cc@{graph.\+cc}!N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG@{N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG}}
+\index{N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG@{N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG}!graph.\+cc@{graph.\+cc}}
+\subsubsection{\texorpdfstring{N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG}{NO\_CHANGE\_ON\_SYNC\_FLAG}}
+{\footnotesize\ttfamily \#define N\+O\+\_\+\+C\+H\+A\+N\+G\+E\+\_\+\+O\+N\+\_\+\+S\+Y\+N\+C\+\_\+\+F\+L\+AG(\begin{DoxyParamCaption}\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{do} \{                                               \(\backslash\)
+    const \textcolor{keywordtype}{bool} sync\_needed = GraphProtoSyncNeeded(); \(\backslash\)
+    \{ \_\_VA\_ARGS\_\_; \}                                 \(\backslash\)
+    GraphProtoSyncNeeded(sync\_needed);               \(\backslash\)
+  \} \textcolor{keywordflow}{while} (0)
+\end{DoxyCode}

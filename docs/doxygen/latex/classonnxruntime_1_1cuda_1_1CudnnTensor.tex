@@ -1,0 +1,73 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor}{}\section{onnxruntime\+:\+:cuda\+:\+:Cudnn\+Tensor Class Reference}
+\label{classonnxruntime_1_1cuda_1_1CudnnTensor}\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+
+
+{\ttfamily \#include $<$cudnn\+\_\+common.\+h$>$}
+
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor_ab12ccc3b849f360a0a37909df6940b3c}{Cudnn\+Tensor}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor_a6e299260485ab16bc3d93b54b60c6e67}{$\sim$\+Cudnn\+Tensor}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor_a04f694f3b72ff6ac06511008d97c451d}{Set}} (const std\+::vector$<$ int64\+\_\+t $>$ \&input\+\_\+dims, cudnn\+Data\+Type\+\_\+t data\+Type)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor_ac362e34636ab4f8828e578e632b4fbe8}{Set}} (const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \&x\+\_\+desc, cudnn\+Batch\+Norm\+Mode\+\_\+t mode)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor_ad3505f7bba117518557c347875f4f209}{operator cudnn\+Tensor\+Descriptor\+\_\+t}} () const
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\static cudnn\+Data\+Type\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor_ac7de44b522d7278beedcaac83ef5da4b}{Get\+Data\+Type}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor_ab12ccc3b849f360a0a37909df6940b3c}\label{classonnxruntime_1_1cuda_1_1CudnnTensor_ab12ccc3b849f360a0a37909df6940b3c}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}!Cudnn\+Tensor@{Cudnn\+Tensor}}
+\index{Cudnn\+Tensor@{Cudnn\+Tensor}!onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+\subsubsection{\texorpdfstring{Cudnn\+Tensor()}{CudnnTensor()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cudnn\+Tensor\+::\+Cudnn\+Tensor (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor_a6e299260485ab16bc3d93b54b60c6e67}\label{classonnxruntime_1_1cuda_1_1CudnnTensor_a6e299260485ab16bc3d93b54b60c6e67}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}!````~Cudnn\+Tensor@{$\sim$\+Cudnn\+Tensor}}
+\index{````~Cudnn\+Tensor@{$\sim$\+Cudnn\+Tensor}!onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+\subsubsection{\texorpdfstring{$\sim$\+Cudnn\+Tensor()}{~CudnnTensor()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cudnn\+Tensor\+::$\sim$\+Cudnn\+Tensor (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor_ac7de44b522d7278beedcaac83ef5da4b}\label{classonnxruntime_1_1cuda_1_1CudnnTensor_ac7de44b522d7278beedcaac83ef5da4b}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}!Get\+Data\+Type@{Get\+Data\+Type}}
+\index{Get\+Data\+Type@{Get\+Data\+Type}!onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+\subsubsection{\texorpdfstring{Get\+Data\+Type()}{GetDataType()}}
+{\footnotesize\ttfamily template$<$typename Elem\+Type $>$ \\
+template cudnn\+Data\+Type\+\_\+t onnxruntime\+::cuda\+::\+Cudnn\+Tensor\+::\+Get\+Data\+Type$<$ half $>$ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [static]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor_ad3505f7bba117518557c347875f4f209}\label{classonnxruntime_1_1cuda_1_1CudnnTensor_ad3505f7bba117518557c347875f4f209}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}!operator cudnn\+Tensor\+Descriptor\+\_\+t@{operator cudnn\+Tensor\+Descriptor\+\_\+t}}
+\index{operator cudnn\+Tensor\+Descriptor\+\_\+t@{operator cudnn\+Tensor\+Descriptor\+\_\+t}!onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+\subsubsection{\texorpdfstring{operator cudnn\+Tensor\+Descriptor\+\_\+t()}{operator cudnnTensorDescriptor\_t()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cudnn\+Tensor\+::operator cudnn\+Tensor\+Descriptor\+\_\+t (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor_a04f694f3b72ff6ac06511008d97c451d}\label{classonnxruntime_1_1cuda_1_1CudnnTensor_a04f694f3b72ff6ac06511008d97c451d}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}!Set@{Set}}
+\index{Set@{Set}!onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+\subsubsection{\texorpdfstring{Set()}{Set()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Cudnn\+Tensor\+::\+Set (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ int64\+\_\+t $>$ \&}]{input\+\_\+dims,  }\item[{cudnn\+Data\+Type\+\_\+t}]{data\+Type }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudnnTensor_ac362e34636ab4f8828e578e632b4fbe8}\label{classonnxruntime_1_1cuda_1_1CudnnTensor_ac362e34636ab4f8828e578e632b4fbe8}} 
+\index{onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}!Set@{Set}}
+\index{Set@{Set}!onnxruntime\+::cuda\+::\+Cudnn\+Tensor@{onnxruntime\+::cuda\+::\+Cudnn\+Tensor}}
+\subsubsection{\texorpdfstring{Set()}{Set()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Cudnn\+Tensor\+::\+Set (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnTensor}{Cudnn\+Tensor}} \&}]{x\+\_\+desc,  }\item[{cudnn\+Batch\+Norm\+Mode\+\_\+t}]{mode }\end{DoxyParamCaption})}
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cudnn__common_8h}{cudnn\+\_\+common.\+h}}\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cudnn__common_8cc}{cudnn\+\_\+common.\+cc}}\end{DoxyCompactItemize}

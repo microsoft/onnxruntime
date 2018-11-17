@@ -1,0 +1,22 @@
+digraph "onnxruntime/onnxruntime/core/graph/op.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node24 [label="onnxruntime/onnxruntime\l/core/graph/op.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node24 -> Node25 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node25 [label="onnxruntime/onnxruntime\l/contrib_ops/contrib_ops.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$contrib__ops_8cc.html"];
+  Node24 -> Node26 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node26 [label="onnxruntime/onnxruntime\l/contrib_ops/cpu/attnlstm\l/attn_lstm_schema_defs.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$attn__lstm__schema__defs_8cc.html"];
+  Node24 -> Node27 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node27 [label="onnxruntime/onnxruntime\l/core/framework/environment.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$environment_8cc.html"];
+  Node24 -> Node28 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node28 [label="onnxruntime/onnxruntime\l/core/framework/op_kernel.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$op__kernel_8cc.html"];
+  Node24 -> Node29 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node29 [label="onnxruntime/onnxruntime\l/core/framework/op_node\l_proto_helper.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$op__node__proto__helper_8cc.html"];
+  Node24 -> Node30 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node30 [label="onnxruntime/onnxruntime\l/core/graph/graph.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$graph_8cc.html"];
+  Node24 -> Node31 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node31 [label="onnxruntime/onnxruntime\l/core/graph/identity_elimination.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$identity__elimination_8cc.html"];
+  Node24 -> Node32 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node32 [label="onnxruntime/onnxruntime\l/core/graph/op.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$op_8cc.html"];
+}

@@ -1,0 +1,63 @@
+\hypertarget{cuda_2reduction_2reduction__ops_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cuda/reduction/reduction\+\_\+ops.cc File Reference}
+\label{cuda_2reduction_2reduction__ops_8cc}\index{onnxruntime/onnxruntime/core/providers/cuda/reduction/reduction\+\_\+ops.\+cc@{onnxruntime/onnxruntime/core/providers/cuda/reduction/reduction\+\_\+ops.\+cc}}
+{\ttfamily \#include \char`\"{}reduction\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/cudnn\+\_\+common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/math/unary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops\+\_\+impl.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cuda/math/binary\+\_\+elementwise\+\_\+ops.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/providers/cpu/tensor/utils.\+h\char`\"{}}\newline
+Include dependency graph for reduction\+\_\+ops.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnReduceDescriptor}{onnxruntime\+::cuda\+::\+Cudnn\+Reduce\+Descriptor}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1cuda}{onnxruntime\+::cuda}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{cuda_2reduction_2reduction__ops_8cc_ab6492a337600a9dd58a67d8aff72044e}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}(name,  T)
+\item 
+\#define \mbox{\hyperlink{cuda_2reduction_2reduction__ops_8cc_ad731417355cb6d127a12c1a9d35cb32f}{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD}}(name)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{cuda_2reduction_2reduction__ops_8cc_ad731417355cb6d127a12c1a9d35cb32f}\label{cuda_2reduction_2reduction__ops_8cc_ad731417355cb6d127a12c1a9d35cb32f}} 
+\index{cuda/reduction/reduction\+\_\+ops.\+cc@{cuda/reduction/reduction\+\_\+ops.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD}!cuda/reduction/reduction\+\_\+ops.\+cc@{cuda/reduction/reduction\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD}{REGISTER\_KERNEL\_HFD}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+H\+FD(\begin{DoxyParamCaption}\item[{}]{name }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{cuda_2reduction_2reduction__ops_8cc_ab6492a337600a9dd58a67d8aff72044e}{REGISTER\_KERNEL\_TYPED}}(name, MLFloat16) \(\backslash\)
+  REGISTER\_KERNEL\_TYPED(name, \textcolor{keywordtype}{float})     \(\backslash\)
+  REGISTER\_KERNEL\_TYPED(name, \textcolor{keywordtype}{double})
+\end{DoxyCode}
+\mbox{\Hypertarget{cuda_2reduction_2reduction__ops_8cc_ab6492a337600a9dd58a67d8aff72044e}\label{cuda_2reduction_2reduction__ops_8cc_ab6492a337600a9dd58a67d8aff72044e}} 
+\index{cuda/reduction/reduction\+\_\+ops.\+cc@{cuda/reduction/reduction\+\_\+ops.\+cc}!R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}}
+\index{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED@{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}!cuda/reduction/reduction\+\_\+ops.\+cc@{cuda/reduction/reduction\+\_\+ops.\+cc}}
+\subsubsection{\texorpdfstring{R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED}{REGISTER\_KERNEL\_TYPED}}
+{\footnotesize\ttfamily \#define R\+E\+G\+I\+S\+T\+E\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+T\+Y\+P\+ED(\begin{DoxyParamCaption}\item[{}]{name,  }\item[{}]{T }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{op__kernel_8h_a6c3f921186dff980566ee7f9889011b7}{ONNX\_OPERATOR\_TYPED\_KERNEL\_EX}}(                                                
+      \(\backslash\)
+      name,                                                                     \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_ac0e7c0c106a2c9e9594560a3ab289fa0}{kOnnxDomain}},                                                              \(\backslash\)
+      1,                                                                        \(\backslash\)
+      T,                                                                        \(\backslash\)
+      \mbox{\hyperlink{namespaceonnxruntime_a73ebc64887ddd1968e3cef47ffefe35b}{kCudaExecutionProvider}},                                                   \(\backslash\)
+      KernelDefBuilder().TypeConstraint(\textcolor{stringliteral}{"T"}, DataTypeImpl::GetTensorType<T>()), \(\backslash\)
+      name<T>);
+\end{DoxyCode}

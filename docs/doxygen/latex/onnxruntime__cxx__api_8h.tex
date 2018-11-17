@@ -1,0 +1,129 @@
+\hypertarget{onnxruntime__cxx__api_8h}{}\section{onnxruntime/include/onnxruntime/core/session/onnxruntime\+\_\+cxx\+\_\+api.h File Reference}
+\label{onnxruntime__cxx__api_8h}\index{onnxruntime/include/onnxruntime/core/session/onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime/include/onnxruntime/core/session/onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+{\ttfamily \#include \char`\"{}onnxruntime\+\_\+c\+\_\+api.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$vector$>$}\newline
+{\ttfamily \#include $<$string$>$}\newline
+{\ttfamily \#include $<$stdexcept$>$}\newline
+{\ttfamily \#include $<$memory$>$}\newline
+Include dependency graph for onnxruntime\+\_\+cxx\+\_\+api.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1SessionOptionsWrapper}{onnxruntime\+::\+Session\+Options\+Wrapper}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{onnxruntime__cxx__api_8h_a43f0935d00d829bb6dc1e08fd616f2b5}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR}}(expr)
+\item 
+\#define \mbox{\hyperlink{onnxruntime__cxx__api_8h_ae59ea4452811761e52f9523e3ad1ac56}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}}(N\+A\+ME)
+\item 
+\#define \mbox{\hyperlink{onnxruntime__cxx__api_8h_a7dab8ec5f9076f581d25fe87ecd9d019}{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}(T\+Y\+P\+E\+\_\+\+N\+A\+ME)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+O\+N\+N\+X\+Value\+Ptr \mbox{\hyperlink{namespaceonnxruntime_a2b7951372d06d39431033e6036bb06a9}{onnxruntime\+::\+O\+N\+N\+X\+Runtime\+Create\+Tensor\+As\+O\+N\+N\+X\+Value}} (\mbox{\hyperlink{visibility__macros_8h_a198d136b8176ee5824b09c7bd8b7beb0}{\+\_\+\+Inout\+\_\+}} \mbox{\hyperlink{session_2allocator_8h_a9eb4a70849a17d41aca1955b07cdfaca}{O\+N\+N\+X\+Runtime\+Allocator}} $\ast$env, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&shape, \mbox{\hyperlink{tensor__type__and__shape__c__api_8h_acc48f6a9c9e4d7071352e45ce13324b3}{Onnx\+Runtime\+Tensor\+Element\+Data\+Type}} type)
+\item 
+O\+N\+N\+X\+Value\+Ptr \mbox{\hyperlink{namespaceonnxruntime_a9ef7df1ce928bb454ae46bd4a0cad005}{onnxruntime\+::\+O\+N\+N\+X\+Runtime\+Create\+Tensor\+With\+Data\+As\+O\+N\+N\+X\+Value}} (\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$info, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p\+\_\+data, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} p\+\_\+data\+\_\+len, const std\+::vector$<$ \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $>$ \&shape, \mbox{\hyperlink{tensor__type__and__shape__c__api_8h_acc48f6a9c9e4d7071352e45ce13324b3}{Onnx\+Runtime\+Tensor\+Element\+Data\+Type}} type)
+\item 
+\mbox{\hyperlink{onnxruntime__cxx__api_8h_a18ec1ef0db06d8eee5c46cf69c414b3e}{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}} (Allocator)
+\item 
+\mbox{\hyperlink{onnxruntime__cxx__api_8h_a5dea8b9485e51352dfb95b70e871a638}{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}} (Tensor\+Type\+And\+Shape\+Info)
+\item 
+\mbox{\hyperlink{onnxruntime__cxx__api_8h_a3dc9ca4af4f7946ea0aa3bf0e9229860}{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}} (Run\+Options)
+\item 
+\mbox{\hyperlink{onnxruntime__cxx__api_8h_ad7f855dde544e465e6bfab94bee34029}{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}} (Session\+Options)
+\item 
+\mbox{\hyperlink{onnxruntime__cxx__api_8h_a7a742b3bf63d27f78daae0248e6f600d}{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}} (Provider\+Factory\+Ptr)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_a7dab8ec5f9076f581d25fe87ecd9d019}\label{onnxruntime__cxx__api_8h_a7dab8ec5f9076f581d25fe87ecd9d019}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}
+\index{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}{DECLEAR\_DEFAULT\_DELETER\_FOR\_ONNX\_OBJECT}}
+{\footnotesize\ttfamily \#define D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT(\begin{DoxyParamCaption}\item[{}]{T\+Y\+P\+E\+\_\+\+N\+A\+ME }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keyword}{namespace }\mbox{\hyperlink{namespacestd}{std}} \{                                           \(\backslash\)
+  template <>                                               \(\backslash\)
+  struct default\_delete<ONNXRuntime##TYPE\_NAME> \{           \(\backslash\)
+    void operator()(ONNXRuntime##TYPE\_NAME* ptr) \{          \(\backslash\)
+      (*\textcolor{keyword}{reinterpret\_cast<}\mbox{\hyperlink{structONNXObject}{ONNXObject}}**\textcolor{keyword}{>}(ptr))->Release(ptr); \(\backslash\)
+    \}                                                       \(\backslash\)
+  \};                                                        \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_ae59ea4452811761e52f9523e3ad1ac56}\label{onnxruntime__cxx__api_8h_ae59ea4452811761e52f9523e3ad1ac56}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL}{ONNXRUNTIME\_REDIRECT\_SIMPLE\_FUNCTION\_CALL}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+R\+E\+D\+I\+R\+E\+C\+T\+\_\+\+S\+I\+M\+P\+L\+E\+\_\+\+F\+U\+N\+C\+T\+I\+O\+N\+\_\+\+C\+A\+LL(\begin{DoxyParamCaption}\item[{}]{N\+A\+ME }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+decltype(ONNXRuntime##NAME(value.get())) NAME() \{ \(\backslash\)
+    return ONNXRuntime##NAME(value.get());          \(\backslash\)
+  \}
+\end{DoxyCode}
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_a43f0935d00d829bb6dc1e08fd616f2b5}\label{onnxruntime__cxx__api_8h_a43f0935d00d829bb6dc1e08fd616f2b5}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR}{ONNXRUNTIME\_THROW\_ON\_ERROR}}
+{\footnotesize\ttfamily \#define O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+T\+H\+R\+O\+W\+\_\+\+O\+N\+\_\+\+E\+R\+R\+OR(\begin{DoxyParamCaption}\item[{}]{expr }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{do} \{                                                                                  \(\backslash\)
+    ONNXStatusPtr onnx\_status = (expr);                                                 \(\backslash\)
+    if (onnx\_status != \textcolor{keyword}{nullptr}) \{                                                       \(\backslash\)
+      std::string onnx\_runtime\_error\_message = ONNXRuntimeGetErrorMessage(onnx\_status); \(\backslash\)
+      ReleaseONNXStatus(onnx\_status);                                                   \(\backslash\)
+      throw std::runtime\_error(onnx\_runtime\_error\_message);                             \(\backslash\)
+    \}                                                                                   \(\backslash\)
+  \} \textcolor{keywordflow}{while} (0);
+\end{DoxyCode}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_a18ec1ef0db06d8eee5c46cf69c414b3e}\label{onnxruntime__cxx__api_8h_a18ec1ef0db06d8eee5c46cf69c414b3e}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}
+\index{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+C\+T()}{DECLEAR\_DEFAULT\_DELETER\_FOR\_ONNX\_OBJECT()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT (\begin{DoxyParamCaption}\item[{Allocator}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_a5dea8b9485e51352dfb95b70e871a638}\label{onnxruntime__cxx__api_8h_a5dea8b9485e51352dfb95b70e871a638}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}
+\index{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+C\+T()}{DECLEAR\_DEFAULT\_DELETER\_FOR\_ONNX\_OBJECT()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT (\begin{DoxyParamCaption}\item[{Tensor\+Type\+And\+Shape\+Info}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_a3dc9ca4af4f7946ea0aa3bf0e9229860}\label{onnxruntime__cxx__api_8h_a3dc9ca4af4f7946ea0aa3bf0e9229860}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}
+\index{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+C\+T()}{DECLEAR\_DEFAULT\_DELETER\_FOR\_ONNX\_OBJECT()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT (\begin{DoxyParamCaption}\item[{Run\+Options}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_ad7f855dde544e465e6bfab94bee34029}\label{onnxruntime__cxx__api_8h_ad7f855dde544e465e6bfab94bee34029}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}
+\index{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+C\+T()}{DECLEAR\_DEFAULT\_DELETER\_FOR\_ONNX\_OBJECT()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT (\begin{DoxyParamCaption}\item[{Session\+Options}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{onnxruntime__cxx__api_8h_a7a742b3bf63d27f78daae0248e6f600d}\label{onnxruntime__cxx__api_8h_a7a742b3bf63d27f78daae0248e6f600d}} 
+\index{onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}!D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}}
+\index{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT@{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT}!onnxruntime\+\_\+cxx\+\_\+api.\+h@{onnxruntime\+\_\+cxx\+\_\+api.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+C\+T()}{DECLEAR\_DEFAULT\_DELETER\_FOR\_ONNX\_OBJECT()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily D\+E\+C\+L\+E\+A\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+D\+E\+L\+E\+T\+E\+R\+\_\+\+F\+O\+R\+\_\+\+O\+N\+N\+X\+\_\+\+O\+B\+J\+E\+CT (\begin{DoxyParamCaption}\item[{Provider\+Factory\+Ptr}]{ }\end{DoxyParamCaption})}
+

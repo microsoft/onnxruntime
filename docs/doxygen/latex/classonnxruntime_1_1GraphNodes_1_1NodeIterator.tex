@@ -1,0 +1,143 @@
+\hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{}\section{onnxruntime\+:\+:Graph\+Nodes\+:\+:Node\+Iterator$<$ T\+Iterator $>$ Class Template Reference}
+\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator}\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator$<$ T\+Iterator $>$@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator$<$ T\+Iterator $>$}}
+
+
+{\ttfamily \#include $<$graph\+\_\+nodes.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a3debcf3ca756298db3bc63b741516fb8}{iterator\+\_\+category}} = std\+::input\+\_\+iterator\+\_\+tag
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ace084d92e9afa50a4e42e40832255a4e}{value\+\_\+type}} = T
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a583f317796564f91b8d1cd11a8b8a74f}{difference\+\_\+type}} = typename T\+Iterator\+::difference\+\_\+type
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a66c0579aa9dea456843a9017aeae3600}{pointer}} = T $\ast$
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}{reference}} = T \&
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac0484990a78d9725abe1adfa1b4eb476}{const\+\_\+reference}} = std\+::add\+\_\+const\+\_\+t$<$ \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}{reference}} $>$
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a038d87fb128b4326e5e8cdf95409aa55}{Node\+Iterator}} (T\+Iterator current, const T\+Iterator \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_aa9426cdcde9482961f8bae49278990ad}{end}}) noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a6223f57dd3c6ccda92a9961f2e70a1a9}{operator==}} (const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Iterator $>$ \&other) const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a42301307247fac7a7888c863f734ab21}{operator!=}} (const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Iterator $>$ \&other) const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac8f1faed80f39d6f8ce45d4797957cde}{operator++}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Iterator $>$ \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ae00a08e5632b7cad420182579b3df2a6}{operator++}} (int)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}{reference}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a40cd12025be279ba688d4eb372af0d03}{operator$\ast$}} ()
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a66c0579aa9dea456843a9017aeae3600}{pointer}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_adf6975e6a3a930c724f603b16f203630}{operator-\/$>$}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac0484990a78d9725abe1adfa1b4eb476}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac0484990a78d9725abe1adfa1b4eb476}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!const\+\_\+reference@{const\+\_\+reference}}
+\index{const\+\_\+reference@{const\+\_\+reference}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{const\+\_\+reference}{const\_reference}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac0484990a78d9725abe1adfa1b4eb476}{const\+\_\+reference}} =  std\+::add\+\_\+const\+\_\+t$<$\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}{reference}}$>$}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a583f317796564f91b8d1cd11a8b8a74f}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a583f317796564f91b8d1cd11a8b8a74f}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!difference\+\_\+type@{difference\+\_\+type}}
+\index{difference\+\_\+type@{difference\+\_\+type}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{difference\+\_\+type}{difference\_type}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a583f317796564f91b8d1cd11a8b8a74f}{difference\+\_\+type}} =  typename T\+Iterator\+::difference\+\_\+type}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a3debcf3ca756298db3bc63b741516fb8}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a3debcf3ca756298db3bc63b741516fb8}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!iterator\+\_\+category@{iterator\+\_\+category}}
+\index{iterator\+\_\+category@{iterator\+\_\+category}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{iterator\+\_\+category}{iterator\_category}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a3debcf3ca756298db3bc63b741516fb8}{iterator\+\_\+category}} =  std\+::input\+\_\+iterator\+\_\+tag}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a66c0579aa9dea456843a9017aeae3600}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a66c0579aa9dea456843a9017aeae3600}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!pointer@{pointer}}
+\index{pointer@{pointer}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{pointer}{pointer}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a66c0579aa9dea456843a9017aeae3600}{pointer}} =  T$\ast$}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!reference@{reference}}
+\index{reference@{reference}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{reference}{reference}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}{reference}} =  T\&}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ace084d92e9afa50a4e42e40832255a4e}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ace084d92e9afa50a4e42e40832255a4e}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!value\+\_\+type@{value\+\_\+type}}
+\index{value\+\_\+type@{value\+\_\+type}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{value\+\_\+type}{value\_type}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ace084d92e9afa50a4e42e40832255a4e}{value\+\_\+type}} =  T}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a038d87fb128b4326e5e8cdf95409aa55}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a038d87fb128b4326e5e8cdf95409aa55}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!Node\+Iterator@{Node\+Iterator}}
+\index{Node\+Iterator@{Node\+Iterator}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{Node\+Iterator()}{NodeIterator()}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}} (\begin{DoxyParamCaption}\item[{T\+Iterator}]{current,  }\item[{const T\+Iterator}]{end }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a42301307247fac7a7888c863f734ab21}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a42301307247fac7a7888c863f734ab21}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!operator"!=@{operator"!=}}
+\index{operator"!=@{operator"!=}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{operator"!=()}{operator!=()}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::operator!= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Iterator $>$ \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a40cd12025be279ba688d4eb372af0d03}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a40cd12025be279ba688d4eb372af0d03}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!operator$\ast$@{operator$\ast$}}
+\index{operator$\ast$@{operator$\ast$}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{operator$\ast$()}{operator*()}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ad66278df7151f4ed78d6191f3483e435}{reference}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::operator$\ast$ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac8f1faed80f39d6f8ce45d4797957cde}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ac8f1faed80f39d6f8ce45d4797957cde}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!operator++@{operator++}}
+\index{operator++@{operator++}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{operator++()}{operator++()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::operator++ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ae00a08e5632b7cad420182579b3df2a6}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_ae00a08e5632b7cad420182579b3df2a6}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!operator++@{operator++}}
+\index{operator++@{operator++}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{operator++()}{operator++()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$T\+Iterator$>$ \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::operator++ (\begin{DoxyParamCaption}\item[{int}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_adf6975e6a3a930c724f603b16f203630}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_adf6975e6a3a930c724f603b16f203630}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!operator-\/$>$@{operator-\/$>$}}
+\index{operator-\/$>$@{operator-\/$>$}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{operator-\/$>$()}{operator->()}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a66c0579aa9dea456843a9017aeae3600}{pointer}} \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::operator-\/$>$ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a6223f57dd3c6ccda92a9961f2e70a1a9}\label{classonnxruntime_1_1GraphNodes_1_1NodeIterator_a6223f57dd3c6ccda92a9961f2e70a1a9}} 
+\index{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}!operator==@{operator==}}
+\index{operator==@{operator==}!onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator@{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}
+\subsubsection{\texorpdfstring{operator==()}{operator==()}}
+{\footnotesize\ttfamily template$<$typename T\+Iterator $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{onnxruntime\+::\+Graph\+Nodes\+::\+Node\+Iterator}}$<$ T\+Iterator $>$\+::operator== (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1GraphNodes_1_1NodeIterator}{Node\+Iterator}}$<$ T\+Iterator $>$ \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/graph/\mbox{\hyperlink{graph__nodes_8h}{graph\+\_\+nodes.\+h}}\end{DoxyCompactItemize}

@@ -1,0 +1,11 @@
+digraph "onnxruntime/include/onnxruntime/core/providers/cuda" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_430679522f5f99c93276ff28b0dda849 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="providers" fontname="Helvetica", fontsize="10", URL="dir_430679522f5f99c93276ff28b0dda849.html"]
+  dir_4dedf0c0e9f3e548eeae22606e64c265 [shape=box, label="cuda", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_4dedf0c0e9f3e548eeae22606e64c265.html"];
+  }
+  dir_260d19548b962cb3f7f53e55140fd4e8 [shape=box label="session" URL="dir_260d19548b962cb3f7f53e55140fd4e8.html"];
+  dir_4dedf0c0e9f3e548eeae22606e64c265->dir_260d19548b962cb3f7f53e55140fd4e8 [headlabel="1", labeldistance=1.5 headhref="dir_000017_000013.html"];
+}

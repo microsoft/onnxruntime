@@ -1,0 +1,38 @@
+\hypertarget{deep__cpu__attn__lstm_8cc}{}\section{onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/deep\+\_\+cpu\+\_\+attn\+\_\+lstm.cc File Reference}
+\label{deep__cpu__attn__lstm_8cc}\index{onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc@{onnxruntime/onnxruntime/contrib\+\_\+ops/cpu/attnlstm/deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc}}
+{\ttfamily \#include \char`\"{}deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}activation\+\_\+info.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}bahdanau\+\_\+attention.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}uni\+\_\+dir\+\_\+attn\+\_\+lstm.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/logging/logging.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/task\+\_\+thread\+\_\+pool.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/allocator.\+h\char`\"{}}\newline
+Include dependency graph for deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc\+:
+% FIG 0
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1contrib}{onnxruntime\+::contrib}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{deep__cpu__attn__lstm_8cc_a50e374595b7e52f46cf24f4260bccf2b}{Dump\+Matrix}}(...)~((\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}})0)
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1contrib_a3a0c927922725b88d8918e87a47ff48b}{onnxruntime\+::contrib\+::\+O\+N\+N\+X\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+E\+L\+\_\+\+EX}} (Attn\+L\+S\+TM, k\+M\+S\+Domain, 1, k\+Cpu\+Execution\+Provider, Kernel\+Def\+Builder() .Type\+Constraint(\char`\"{}T\char`\"{}, \{Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$(), Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ double $>$()\}) .Type\+Constraint(\char`\"{}T1\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int32\+\_\+t $>$()), Deep\+Cpu\+Attn\+Lstm\+Op)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{deep__cpu__attn__lstm_8cc_a50e374595b7e52f46cf24f4260bccf2b}\label{deep__cpu__attn__lstm_8cc_a50e374595b7e52f46cf24f4260bccf2b}} 
+\index{deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc@{deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc}!Dump\+Matrix@{Dump\+Matrix}}
+\index{Dump\+Matrix@{Dump\+Matrix}!deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc@{deep\+\_\+cpu\+\_\+attn\+\_\+lstm.\+cc}}
+\subsubsection{\texorpdfstring{Dump\+Matrix}{DumpMatrix}}
+{\footnotesize\ttfamily \#define Dump\+Matrix(\begin{DoxyParamCaption}\item[{}]{... }\end{DoxyParamCaption})~((\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}})0)}
+

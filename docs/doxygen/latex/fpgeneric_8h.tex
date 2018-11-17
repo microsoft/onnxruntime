@@ -1,0 +1,325 @@
+\hypertarget{fpgeneric_8h}{}\section{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/fpgeneric.h File Reference}
+\label{fpgeneric_8h}\index{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/fpgeneric.\+h@{onnxruntime/onnxruntime/core/providers/cuda/shared\+\_\+inc/fpgeneric.\+h}}
+{\ttfamily \#include \char`\"{}core/providers/cuda/cuda\+\_\+common.\+h\char`\"{}}\newline
+Include dependency graph for fpgeneric.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ae536b4d435cc6527b33834fcd711027a}{cublas\+Gemm\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, int k, const float $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float $\ast$A, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const float $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const float $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, float $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_aa8de22bd826bf73543764c36b9d1c066}{cublas\+Gemm\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, int k, const double $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const double $\ast$A, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const double $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const double $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, double $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a641d9c41374702640823338a6f8756e6}{cublas\+Gemm\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, int k, const half $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const half $\ast$A, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const half $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const half $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, half $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a9b2397910ff60d261b7d321a808765b5}{cublas\+Gemm\+Batched\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, int k, const float $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float $\ast$Aarray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const float $\ast$Barray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const float $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, float $\ast$Carray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}}, int batch\+Count)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ab72f52e701613af4e2e4b882bfa68fe2}{cublas\+Gemm\+Batched\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, int k, const double $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const double $\ast$Aarray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const double $\ast$Barray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const double $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, double $\ast$Carray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}}, int batch\+Count)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a67b6d9aab1e0a71a8fc094c2500ce289}{cublas\+Gemm\+Batched\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, int k, const half $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const half $\ast$Aarray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, const half $\ast$Barray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, const half $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, half $\ast$Carray\mbox{[}$\,$\mbox{]}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}}, int batch\+Count)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a8038f937e6d6b237bc4df320e1a3d4cb}{cublas\+Axpy\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const float $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const float $\ast$x, int incx, float $\ast$y, int incy)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ad53f75454d96326555ef7d08df46e3a4}{cublas\+Axpy\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const double $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const double $\ast$x, int incx, double $\ast$y, int incy)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_adfb23dc3553289dbee6d5ac1490dfe35}{cublas\+Axpy\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const half $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, const half $\ast$x, int incx, half $\ast$y, int incy)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a6c9b105b576aa2f9bda67ab957bfa325}{cublas\+Transpose\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, float $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, float $\ast$A, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, float $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, float $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, float $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a5577b64ce250f1fd2e9ffe0005e168d8}{cublas\+Transpose\+Helper}} (cublas\+Handle\+\_\+t handle, cublas\+Operation\+\_\+t transa, cublas\+Operation\+\_\+t transb, int m, int n, double $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, double $\ast$A, int \mbox{\hyperlink{mlasi_8h_a38dd84f17dbd65aaf9f618e5c3ec496f}{lda}}, double $\ast$\mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}}, double $\ast$\mbox{\hyperlink{mlasi_8h_a472f4360dfbf830e5135980ff43484b9}{B}}, int \mbox{\hyperlink{mlasi_8h_a4431ce68ee01016a66896cedd34a57db}{ldb}}, double $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, int \mbox{\hyperlink{mlasi_8h_ab55e28f894e92d01896d7dfc5e3cfa86}{ldc}})
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_aeec7677a4e519723aebbda92f66d3852}{cublas\+Transpose\+Helper}} (cublas\+Handle\+\_\+t, cublas\+Operation\+\_\+t, cublas\+Operation\+\_\+t, int m, int n, half $\ast$, half $\ast$A, int, half $\ast$, half $\ast$, int, half $\ast$\mbox{\hyperlink{mlasi_8h_a5693f8b3559ce97985de5239fdcf6006}{C}}, int)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a3a1fa62d93b35857b1f77a96eae6e405}{cublas\+Asum\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const float $\ast$x, int incx, float $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a68975372eb973ac20ce97ccb00a751b9}{cublas\+Asum\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const double $\ast$x, int incx, double $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a7e17ff61dce268cc678add158dccbdeb}{cublas\+Asum\+Helper}} (cublas\+Handle\+\_\+t, int n, const half $\ast$x, int incx, half $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a4779d00247ebc796fb5e29e867330eea}{cublas\+Amax\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const float $\ast$x, int incx, int $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ae21c654cee01120e59185462a2ca95d7}{cublas\+Amax\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const double $\ast$x, int incx, int $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a42c157991bc6da0b42618412e6a1c89f}{cublas\+Amax\+Helper}} (cublas\+Handle\+\_\+t, int n, const half $\ast$x, int incx, int $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_af103288ed8f8103e961dc1ab596c658c}{cublas\+Scal\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const float $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, float $\ast$x, int incx)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a4802a677acf736398c2ccc803cc4ed13}{cublas\+Scal\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const double $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, double $\ast$x, int incx)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ae052ff7b34e2b69e8a2fcb412f9ff00e}{cublas\+Scal\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const half $\ast$\mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, half $\ast$x, int incx)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a1c88362275ef16ade78c9f18bd2ef971}{cublas\+Scal\+Helper}} (cublas\+Handle\+\_\+t, int, const char $\ast$, char $\ast$, int)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_acbd13d0c0e8f5f2d1fd901fc9b24531d}{cublas\+Scal\+Helper}} (cublas\+Handle\+\_\+t, int, const short $\ast$, short $\ast$, int)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_abfafcc655d2ac98187f888fc47ff4c04}{cublas\+Dot\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const float $\ast$x, int incx, const float $\ast$y, int incy, float $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ac85567b5858d404748d6ec55da944333}{cublas\+Dot\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const double $\ast$x, int incx, const double $\ast$y, int incy, double $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a0ef92af0d04ae77040828d31cb3c6d88}{cublas\+Dot\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const half $\ast$x, int incx, const half $\ast$y, int incy, half $\ast$result)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a159486bd0b1877e6c0039389e5e4b04a}{cublas\+Copy\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const float $\ast$x, int incx, float $\ast$y, int incy)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a04362c49b95dd7c28234bd4a28edd22c}{cublas\+Copy\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const double $\ast$x, int incx, double $\ast$y, int incy)
+\item 
+cublas\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ae85f6ce6327c671cb73354a492323e16}{cublas\+Copy\+Helper}} (cublas\+Handle\+\_\+t handle, int n, const half $\ast$x, int incx, half $\ast$y, int incy)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a0c6e85e9589fff4c974c5f0e7aecfdbf}{curand\+Generate\+Uniform\+Helper}} (curand\+Generator\+\_\+t generator, float $\ast$output\+Ptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_ae1c554b1e104f364d5fbdfd5e4b9b1af}{curand\+Generate\+Uniform\+Helper}} (curand\+Generator\+\_\+t generator, double $\ast$output\+Ptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a39036ba112cdf5b020c7d16717ff7e9d}{curand\+Generate\+Uniform\+Helper}} (curand\+Generator\+\_\+t, half $\ast$output\+Ptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} num)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a2651d4c430ee39b08201e9f156ef8ff7}{curand\+Generate\+Uniform\+Helper}} (curand\+Generator\+\_\+t, char $\ast$, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}})
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a75e7f42d341fa929ece4f47726667653}{curand\+Generate\+Uniform\+Helper}} (curand\+Generator\+\_\+t, short $\ast$, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}})
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a419acc9dc87f90556e27f0a4c573500e}{curand\+Generate\+Normal\+Helper}} (curand\+Generator\+\_\+t generator, float $\ast$output\+Ptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} n, float mean, float stddev)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_af59a6f8208aa8552055fbd6ced20da84}{curand\+Generate\+Normal\+Helper}} (curand\+Generator\+\_\+t generator, double $\ast$output\+Ptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} n, double mean, double stddev)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_adcdb6118a2e85bd9d6ad569311f8186d}{curand\+Generate\+Normal\+Helper}} (curand\+Generator\+\_\+t, half $\ast$output\+Ptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} n, half mean, half stddev)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_a12066d38b1117147c7f94e09efa63417}{curand\+Generate\+Normal\+Helper}} (curand\+Generator\+\_\+t, char $\ast$, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}, char, char)
+\item 
+curand\+Status\+\_\+t \mbox{\hyperlink{fpgeneric_8h_aefb4ea1ed0f9ee7802d20642515dd384}{curand\+Generate\+Normal\+Helper}} (curand\+Generator\+\_\+t, short $\ast$, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}, short, short)
+\end{DoxyCompactItemize}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{fpgeneric_8h_a4779d00247ebc796fb5e29e867330eea}\label{fpgeneric_8h_a4779d00247ebc796fb5e29e867330eea}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Amax\+Helper@{cublas\+Amax\+Helper}}
+\index{cublas\+Amax\+Helper@{cublas\+Amax\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Amax\+Helper()}{cublasAmaxHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Amax\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const float $\ast$}]{x,  }\item[{int}]{incx,  }\item[{int $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ae21c654cee01120e59185462a2ca95d7}\label{fpgeneric_8h_ae21c654cee01120e59185462a2ca95d7}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Amax\+Helper@{cublas\+Amax\+Helper}}
+\index{cublas\+Amax\+Helper@{cublas\+Amax\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Amax\+Helper()}{cublasAmaxHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Amax\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const double $\ast$}]{x,  }\item[{int}]{incx,  }\item[{int $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a42c157991bc6da0b42618412e6a1c89f}\label{fpgeneric_8h_a42c157991bc6da0b42618412e6a1c89f}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Amax\+Helper@{cublas\+Amax\+Helper}}
+\index{cublas\+Amax\+Helper@{cublas\+Amax\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Amax\+Helper()}{cublasAmaxHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Amax\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{,  }\item[{int}]{n,  }\item[{const half $\ast$}]{x,  }\item[{int}]{incx,  }\item[{int $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a3a1fa62d93b35857b1f77a96eae6e405}\label{fpgeneric_8h_a3a1fa62d93b35857b1f77a96eae6e405}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Asum\+Helper@{cublas\+Asum\+Helper}}
+\index{cublas\+Asum\+Helper@{cublas\+Asum\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Asum\+Helper()}{cublasAsumHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Asum\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const float $\ast$}]{x,  }\item[{int}]{incx,  }\item[{float $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a68975372eb973ac20ce97ccb00a751b9}\label{fpgeneric_8h_a68975372eb973ac20ce97ccb00a751b9}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Asum\+Helper@{cublas\+Asum\+Helper}}
+\index{cublas\+Asum\+Helper@{cublas\+Asum\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Asum\+Helper()}{cublasAsumHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Asum\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const double $\ast$}]{x,  }\item[{int}]{incx,  }\item[{double $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a7e17ff61dce268cc678add158dccbdeb}\label{fpgeneric_8h_a7e17ff61dce268cc678add158dccbdeb}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Asum\+Helper@{cublas\+Asum\+Helper}}
+\index{cublas\+Asum\+Helper@{cublas\+Asum\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Asum\+Helper()}{cublasAsumHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Asum\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{,  }\item[{int}]{n,  }\item[{const half $\ast$}]{x,  }\item[{int}]{incx,  }\item[{half $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a8038f937e6d6b237bc4df320e1a3d4cb}\label{fpgeneric_8h_a8038f937e6d6b237bc4df320e1a3d4cb}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Axpy\+Helper@{cublas\+Axpy\+Helper}}
+\index{cublas\+Axpy\+Helper@{cublas\+Axpy\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Axpy\+Helper()}{cublasAxpyHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Axpy\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const float $\ast$}]{alpha,  }\item[{const float $\ast$}]{x,  }\item[{int}]{incx,  }\item[{float $\ast$}]{y,  }\item[{int}]{incy }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ad53f75454d96326555ef7d08df46e3a4}\label{fpgeneric_8h_ad53f75454d96326555ef7d08df46e3a4}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Axpy\+Helper@{cublas\+Axpy\+Helper}}
+\index{cublas\+Axpy\+Helper@{cublas\+Axpy\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Axpy\+Helper()}{cublasAxpyHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Axpy\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const double $\ast$}]{alpha,  }\item[{const double $\ast$}]{x,  }\item[{int}]{incx,  }\item[{double $\ast$}]{y,  }\item[{int}]{incy }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_adfb23dc3553289dbee6d5ac1490dfe35}\label{fpgeneric_8h_adfb23dc3553289dbee6d5ac1490dfe35}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Axpy\+Helper@{cublas\+Axpy\+Helper}}
+\index{cublas\+Axpy\+Helper@{cublas\+Axpy\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Axpy\+Helper()}{cublasAxpyHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Axpy\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const half $\ast$}]{alpha,  }\item[{const half $\ast$}]{x,  }\item[{int}]{incx,  }\item[{half $\ast$}]{y,  }\item[{int}]{incy }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a159486bd0b1877e6c0039389e5e4b04a}\label{fpgeneric_8h_a159486bd0b1877e6c0039389e5e4b04a}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Copy\+Helper@{cublas\+Copy\+Helper}}
+\index{cublas\+Copy\+Helper@{cublas\+Copy\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Copy\+Helper()}{cublasCopyHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Copy\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const float $\ast$}]{x,  }\item[{int}]{incx,  }\item[{float $\ast$}]{y,  }\item[{int}]{incy }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a04362c49b95dd7c28234bd4a28edd22c}\label{fpgeneric_8h_a04362c49b95dd7c28234bd4a28edd22c}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Copy\+Helper@{cublas\+Copy\+Helper}}
+\index{cublas\+Copy\+Helper@{cublas\+Copy\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Copy\+Helper()}{cublasCopyHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Copy\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const double $\ast$}]{x,  }\item[{int}]{incx,  }\item[{double $\ast$}]{y,  }\item[{int}]{incy }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ae85f6ce6327c671cb73354a492323e16}\label{fpgeneric_8h_ae85f6ce6327c671cb73354a492323e16}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Copy\+Helper@{cublas\+Copy\+Helper}}
+\index{cublas\+Copy\+Helper@{cublas\+Copy\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Copy\+Helper()}{cublasCopyHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Copy\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const half $\ast$}]{x,  }\item[{int}]{incx,  }\item[{half $\ast$}]{y,  }\item[{int}]{incy }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{fpgeneric_8h_abfafcc655d2ac98187f888fc47ff4c04}\label{fpgeneric_8h_abfafcc655d2ac98187f888fc47ff4c04}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Dot\+Helper@{cublas\+Dot\+Helper}}
+\index{cublas\+Dot\+Helper@{cublas\+Dot\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Dot\+Helper()}{cublasDotHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Dot\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const float $\ast$}]{x,  }\item[{int}]{incx,  }\item[{const float $\ast$}]{y,  }\item[{int}]{incy,  }\item[{float $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ac85567b5858d404748d6ec55da944333}\label{fpgeneric_8h_ac85567b5858d404748d6ec55da944333}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Dot\+Helper@{cublas\+Dot\+Helper}}
+\index{cublas\+Dot\+Helper@{cublas\+Dot\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Dot\+Helper()}{cublasDotHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Dot\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const double $\ast$}]{x,  }\item[{int}]{incx,  }\item[{const double $\ast$}]{y,  }\item[{int}]{incy,  }\item[{double $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a0ef92af0d04ae77040828d31cb3c6d88}\label{fpgeneric_8h_a0ef92af0d04ae77040828d31cb3c6d88}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Dot\+Helper@{cublas\+Dot\+Helper}}
+\index{cublas\+Dot\+Helper@{cublas\+Dot\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Dot\+Helper()}{cublasDotHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Dot\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const half $\ast$}]{x,  }\item[{int}]{incx,  }\item[{const half $\ast$}]{y,  }\item[{int}]{incy,  }\item[{half $\ast$}]{result }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a9b2397910ff60d261b7d321a808765b5}\label{fpgeneric_8h_a9b2397910ff60d261b7d321a808765b5}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Gemm\+Batched\+Helper@{cublas\+Gemm\+Batched\+Helper}}
+\index{cublas\+Gemm\+Batched\+Helper@{cublas\+Gemm\+Batched\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Gemm\+Batched\+Helper()}{cublasGemmBatchedHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Gemm\+Batched\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{int}]{k,  }\item[{const float $\ast$}]{alpha,  }\item[{const float $\ast$}]{Aarray\mbox{[}$\,$\mbox{]},  }\item[{int}]{lda,  }\item[{const float $\ast$}]{Barray\mbox{[}$\,$\mbox{]},  }\item[{int}]{ldb,  }\item[{const float $\ast$}]{beta,  }\item[{float $\ast$}]{Carray\mbox{[}$\,$\mbox{]},  }\item[{int}]{ldc,  }\item[{int}]{batch\+Count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ab72f52e701613af4e2e4b882bfa68fe2}\label{fpgeneric_8h_ab72f52e701613af4e2e4b882bfa68fe2}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Gemm\+Batched\+Helper@{cublas\+Gemm\+Batched\+Helper}}
+\index{cublas\+Gemm\+Batched\+Helper@{cublas\+Gemm\+Batched\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Gemm\+Batched\+Helper()}{cublasGemmBatchedHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Gemm\+Batched\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{int}]{k,  }\item[{const double $\ast$}]{alpha,  }\item[{const double $\ast$}]{Aarray\mbox{[}$\,$\mbox{]},  }\item[{int}]{lda,  }\item[{const double $\ast$}]{Barray\mbox{[}$\,$\mbox{]},  }\item[{int}]{ldb,  }\item[{const double $\ast$}]{beta,  }\item[{double $\ast$}]{Carray\mbox{[}$\,$\mbox{]},  }\item[{int}]{ldc,  }\item[{int}]{batch\+Count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a67b6d9aab1e0a71a8fc094c2500ce289}\label{fpgeneric_8h_a67b6d9aab1e0a71a8fc094c2500ce289}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Gemm\+Batched\+Helper@{cublas\+Gemm\+Batched\+Helper}}
+\index{cublas\+Gemm\+Batched\+Helper@{cublas\+Gemm\+Batched\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Gemm\+Batched\+Helper()}{cublasGemmBatchedHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Gemm\+Batched\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{int}]{k,  }\item[{const half $\ast$}]{alpha,  }\item[{const half $\ast$}]{Aarray\mbox{[}$\,$\mbox{]},  }\item[{int}]{lda,  }\item[{const half $\ast$}]{Barray\mbox{[}$\,$\mbox{]},  }\item[{int}]{ldb,  }\item[{const half $\ast$}]{beta,  }\item[{half $\ast$}]{Carray\mbox{[}$\,$\mbox{]},  }\item[{int}]{ldc,  }\item[{int}]{batch\+Count }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ae536b4d435cc6527b33834fcd711027a}\label{fpgeneric_8h_ae536b4d435cc6527b33834fcd711027a}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Gemm\+Helper@{cublas\+Gemm\+Helper}}
+\index{cublas\+Gemm\+Helper@{cublas\+Gemm\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Gemm\+Helper()}{cublasGemmHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Gemm\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{int}]{k,  }\item[{const float $\ast$}]{alpha,  }\item[{const float $\ast$}]{A,  }\item[{int}]{lda,  }\item[{const float $\ast$}]{B,  }\item[{int}]{ldb,  }\item[{const float $\ast$}]{beta,  }\item[{float $\ast$}]{C,  }\item[{int}]{ldc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_aa8de22bd826bf73543764c36b9d1c066}\label{fpgeneric_8h_aa8de22bd826bf73543764c36b9d1c066}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Gemm\+Helper@{cublas\+Gemm\+Helper}}
+\index{cublas\+Gemm\+Helper@{cublas\+Gemm\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Gemm\+Helper()}{cublasGemmHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Gemm\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{int}]{k,  }\item[{const double $\ast$}]{alpha,  }\item[{const double $\ast$}]{A,  }\item[{int}]{lda,  }\item[{const double $\ast$}]{B,  }\item[{int}]{ldb,  }\item[{const double $\ast$}]{beta,  }\item[{double $\ast$}]{C,  }\item[{int}]{ldc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a641d9c41374702640823338a6f8756e6}\label{fpgeneric_8h_a641d9c41374702640823338a6f8756e6}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Gemm\+Helper@{cublas\+Gemm\+Helper}}
+\index{cublas\+Gemm\+Helper@{cublas\+Gemm\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Gemm\+Helper()}{cublasGemmHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Gemm\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{int}]{k,  }\item[{const half $\ast$}]{alpha,  }\item[{const half $\ast$}]{A,  }\item[{int}]{lda,  }\item[{const half $\ast$}]{B,  }\item[{int}]{ldb,  }\item[{const half $\ast$}]{beta,  }\item[{half $\ast$}]{C,  }\item[{int}]{ldc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_af103288ed8f8103e961dc1ab596c658c}\label{fpgeneric_8h_af103288ed8f8103e961dc1ab596c658c}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Scal\+Helper@{cublas\+Scal\+Helper}}
+\index{cublas\+Scal\+Helper@{cublas\+Scal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Scal\+Helper()}{cublasScalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Scal\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const float $\ast$}]{alpha,  }\item[{float $\ast$}]{x,  }\item[{int}]{incx }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a4802a677acf736398c2ccc803cc4ed13}\label{fpgeneric_8h_a4802a677acf736398c2ccc803cc4ed13}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Scal\+Helper@{cublas\+Scal\+Helper}}
+\index{cublas\+Scal\+Helper@{cublas\+Scal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Scal\+Helper()}{cublasScalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Scal\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const double $\ast$}]{alpha,  }\item[{double $\ast$}]{x,  }\item[{int}]{incx }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ae052ff7b34e2b69e8a2fcb412f9ff00e}\label{fpgeneric_8h_ae052ff7b34e2b69e8a2fcb412f9ff00e}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Scal\+Helper@{cublas\+Scal\+Helper}}
+\index{cublas\+Scal\+Helper@{cublas\+Scal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Scal\+Helper()}{cublasScalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Scal\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{int}]{n,  }\item[{const half $\ast$}]{alpha,  }\item[{half $\ast$}]{x,  }\item[{int}]{incx }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a1c88362275ef16ade78c9f18bd2ef971}\label{fpgeneric_8h_a1c88362275ef16ade78c9f18bd2ef971}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Scal\+Helper@{cublas\+Scal\+Helper}}
+\index{cublas\+Scal\+Helper@{cublas\+Scal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Scal\+Helper()}{cublasScalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Scal\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{,  }\item[{int}]{,  }\item[{const char $\ast$}]{,  }\item[{char $\ast$}]{,  }\item[{int}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_acbd13d0c0e8f5f2d1fd901fc9b24531d}\label{fpgeneric_8h_acbd13d0c0e8f5f2d1fd901fc9b24531d}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Scal\+Helper@{cublas\+Scal\+Helper}}
+\index{cublas\+Scal\+Helper@{cublas\+Scal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Scal\+Helper()}{cublasScalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Scal\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{,  }\item[{int}]{,  }\item[{const short $\ast$}]{,  }\item[{short $\ast$}]{,  }\item[{int}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a6c9b105b576aa2f9bda67ab957bfa325}\label{fpgeneric_8h_a6c9b105b576aa2f9bda67ab957bfa325}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Transpose\+Helper@{cublas\+Transpose\+Helper}}
+\index{cublas\+Transpose\+Helper@{cublas\+Transpose\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Transpose\+Helper()}{cublasTransposeHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Transpose\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{float $\ast$}]{alpha,  }\item[{float $\ast$}]{A,  }\item[{int}]{lda,  }\item[{float $\ast$}]{beta,  }\item[{float $\ast$}]{B,  }\item[{int}]{ldb,  }\item[{float $\ast$}]{C,  }\item[{int}]{ldc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a5577b64ce250f1fd2e9ffe0005e168d8}\label{fpgeneric_8h_a5577b64ce250f1fd2e9ffe0005e168d8}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Transpose\+Helper@{cublas\+Transpose\+Helper}}
+\index{cublas\+Transpose\+Helper@{cublas\+Transpose\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Transpose\+Helper()}{cublasTransposeHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Transpose\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{handle,  }\item[{cublas\+Operation\+\_\+t}]{transa,  }\item[{cublas\+Operation\+\_\+t}]{transb,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{double $\ast$}]{alpha,  }\item[{double $\ast$}]{A,  }\item[{int}]{lda,  }\item[{double $\ast$}]{beta,  }\item[{double $\ast$}]{B,  }\item[{int}]{ldb,  }\item[{double $\ast$}]{C,  }\item[{int}]{ldc }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_aeec7677a4e519723aebbda92f66d3852}\label{fpgeneric_8h_aeec7677a4e519723aebbda92f66d3852}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!cublas\+Transpose\+Helper@{cublas\+Transpose\+Helper}}
+\index{cublas\+Transpose\+Helper@{cublas\+Transpose\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{cublas\+Transpose\+Helper()}{cublasTransposeHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/3]}}
+{\footnotesize\ttfamily cublas\+Status\+\_\+t cublas\+Transpose\+Helper (\begin{DoxyParamCaption}\item[{cublas\+Handle\+\_\+t}]{,  }\item[{cublas\+Operation\+\_\+t}]{,  }\item[{cublas\+Operation\+\_\+t}]{,  }\item[{int}]{m,  }\item[{int}]{n,  }\item[{half $\ast$}]{,  }\item[{half $\ast$}]{A,  }\item[{int}]{,  }\item[{half $\ast$}]{,  }\item[{half $\ast$}]{,  }\item[{int}]{,  }\item[{half $\ast$}]{C,  }\item[{int}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{fpgeneric_8h_a419acc9dc87f90556e27f0a4c573500e}\label{fpgeneric_8h_a419acc9dc87f90556e27f0a4c573500e}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}}
+\index{curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Normal\+Helper()}{curandGenerateNormalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Normal\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{generator,  }\item[{float $\ast$}]{output\+Ptr,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{n,  }\item[{float}]{mean,  }\item[{float}]{stddev }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_af59a6f8208aa8552055fbd6ced20da84}\label{fpgeneric_8h_af59a6f8208aa8552055fbd6ced20da84}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}}
+\index{curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Normal\+Helper()}{curandGenerateNormalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Normal\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{generator,  }\item[{double $\ast$}]{output\+Ptr,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{n,  }\item[{double}]{mean,  }\item[{double}]{stddev }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_adcdb6118a2e85bd9d6ad569311f8186d}\label{fpgeneric_8h_adcdb6118a2e85bd9d6ad569311f8186d}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}}
+\index{curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Normal\+Helper()}{curandGenerateNormalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Normal\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{,  }\item[{half $\ast$}]{output\+Ptr,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{n,  }\item[{half}]{mean,  }\item[{half}]{stddev }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{fpgeneric_8h_a12066d38b1117147c7f94e09efa63417}\label{fpgeneric_8h_a12066d38b1117147c7f94e09efa63417}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}}
+\index{curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Normal\+Helper()}{curandGenerateNormalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Normal\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{,  }\item[{char $\ast$}]{,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{,  }\item[{char}]{,  }\item[{char}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_aefb4ea1ed0f9ee7802d20642515dd384}\label{fpgeneric_8h_aefb4ea1ed0f9ee7802d20642515dd384}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}}
+\index{curand\+Generate\+Normal\+Helper@{curand\+Generate\+Normal\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Normal\+Helper()}{curandGenerateNormalHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Normal\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{,  }\item[{short $\ast$}]{,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{,  }\item[{short}]{,  }\item[{short}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a0c6e85e9589fff4c974c5f0e7aecfdbf}\label{fpgeneric_8h_a0c6e85e9589fff4c974c5f0e7aecfdbf}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}}
+\index{curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Uniform\+Helper()}{curandGenerateUniformHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [1/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Uniform\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{generator,  }\item[{float $\ast$}]{output\+Ptr,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{num }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_ae1c554b1e104f364d5fbdfd5e4b9b1af}\label{fpgeneric_8h_ae1c554b1e104f364d5fbdfd5e4b9b1af}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}}
+\index{curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Uniform\+Helper()}{curandGenerateUniformHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [2/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Uniform\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{generator,  }\item[{double $\ast$}]{output\+Ptr,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{num }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a39036ba112cdf5b020c7d16717ff7e9d}\label{fpgeneric_8h_a39036ba112cdf5b020c7d16717ff7e9d}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}}
+\index{curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Uniform\+Helper()}{curandGenerateUniformHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [3/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Uniform\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{,  }\item[{half $\ast$}]{output\+Ptr,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{num }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{fpgeneric_8h_a2651d4c430ee39b08201e9f156ef8ff7}\label{fpgeneric_8h_a2651d4c430ee39b08201e9f156ef8ff7}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}}
+\index{curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Uniform\+Helper()}{curandGenerateUniformHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [4/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Uniform\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{,  }\item[{char $\ast$}]{,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{fpgeneric_8h_a75e7f42d341fa929ece4f47726667653}\label{fpgeneric_8h_a75e7f42d341fa929ece4f47726667653}} 
+\index{fpgeneric.\+h@{fpgeneric.\+h}!curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}}
+\index{curand\+Generate\+Uniform\+Helper@{curand\+Generate\+Uniform\+Helper}!fpgeneric.\+h@{fpgeneric.\+h}}
+\subsubsection{\texorpdfstring{curand\+Generate\+Uniform\+Helper()}{curandGenerateUniformHelper()}\hspace{0.1cm}{\footnotesize\ttfamily [5/5]}}
+{\footnotesize\ttfamily curand\+Status\+\_\+t curand\+Generate\+Uniform\+Helper (\begin{DoxyParamCaption}\item[{curand\+Generator\+\_\+t}]{,  }\item[{short $\ast$}]{,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+

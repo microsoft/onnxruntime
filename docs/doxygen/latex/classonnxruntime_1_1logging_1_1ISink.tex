@@ -1,0 +1,57 @@
+\hypertarget{classonnxruntime_1_1logging_1_1ISink}{}\section{onnxruntime\+:\+:logging\+:\+:I\+Sink Class Reference}
+\label{classonnxruntime_1_1logging_1_1ISink}\index{onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}}
+
+
+{\ttfamily \#include $<$isink.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:logging\+:\+:I\+Sink\+:
+% FIG 0
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink_a3b5949b3a4ab6a7050648a842d34d54d}{I\+Sink}} ()=default
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink_a9460947ff02092785dbb4ee7ddddcb4a}{Send}} (const \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{Timestamp}} \&timestamp, const std\+::string \&logger\+\_\+id, const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&message)
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1logging_1_1ISink_a30082194671f1a1a612ff29d10e00d42}{$\sim$\+I\+Sink}} ()=default
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1ISink_a3b5949b3a4ab6a7050648a842d34d54d}\label{classonnxruntime_1_1logging_1_1ISink_a3b5949b3a4ab6a7050648a842d34d54d}} 
+\index{onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}!I\+Sink@{I\+Sink}}
+\index{I\+Sink@{I\+Sink}!onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}}
+\subsubsection{\texorpdfstring{I\+Sink()}{ISink()}}
+{\footnotesize\ttfamily onnxruntime\+::logging\+::\+I\+Sink\+::\+I\+Sink (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1ISink_a30082194671f1a1a612ff29d10e00d42}\label{classonnxruntime_1_1logging_1_1ISink_a30082194671f1a1a612ff29d10e00d42}} 
+\index{onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}!````~I\+Sink@{$\sim$\+I\+Sink}}
+\index{````~I\+Sink@{$\sim$\+I\+Sink}!onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}}
+\subsubsection{\texorpdfstring{$\sim$\+I\+Sink()}{~ISink()}}
+{\footnotesize\ttfamily virtual onnxruntime\+::logging\+::\+I\+Sink\+::$\sim$\+I\+Sink (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [virtual]}, {\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1logging_1_1ISink_a9460947ff02092785dbb4ee7ddddcb4a}\label{classonnxruntime_1_1logging_1_1ISink_a9460947ff02092785dbb4ee7ddddcb4a}} 
+\index{onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}!Send@{Send}}
+\index{Send@{Send}!onnxruntime\+::logging\+::\+I\+Sink@{onnxruntime\+::logging\+::\+I\+Sink}}
+\subsubsection{\texorpdfstring{Send()}{Send()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::logging\+::\+I\+Sink\+::\+Send (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{namespaceonnxruntime_1_1logging_ae7a2a84f622a028e2ad495a74289012d}{Timestamp}} \&}]{timestamp,  }\item[{const std\+::string \&}]{logger\+\_\+id,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{Capture}} \&}]{message }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Sends the message to the sink. 
+\begin{DoxyParams}{Parameters}
+{\em timestamp} & The timestamp. \\
+\hline
+{\em logger\+\_\+id} & The logger identifier. \\
+\hline
+{\em message} & The captured message. \\
+\hline
+\end{DoxyParams}
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/logging/\mbox{\hyperlink{isink_8h}{isink.\+h}}\end{DoxyCompactItemize}

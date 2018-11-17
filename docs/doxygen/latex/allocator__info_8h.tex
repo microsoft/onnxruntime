@@ -1,0 +1,156 @@
+\hypertarget{allocator__info_8h}{}\section{onnxruntime/include/onnxruntime/core/framework/allocator\+\_\+info.h File Reference}
+\label{allocator__info_8h}\index{onnxruntime/include/onnxruntime/core/framework/allocator\+\_\+info.\+h@{onnxruntime/include/onnxruntime/core/framework/allocator\+\_\+info.\+h}}
+{\ttfamily \#include \char`\"{}core/framework/error\+\_\+code.\+h\char`\"{}}\newline
+Include dependency graph for allocator\+\_\+info.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}} \mbox{\hyperlink{allocator__info_8h_a9a2e1f76c0cdede275bbdf05d80b8ab9}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}
+\item 
+typedef enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} \mbox{\hyperlink{allocator__info_8h_a8836287439ef116b5921bece40da90c2}{O\+N\+N\+X\+Runtime\+Mem\+Type}}
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}} \{ \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677a78858641ca726665b7651780fc67e2dd}{O\+N\+N\+X\+Runtime\+Device\+Allocator}} = 0, 
+\mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677a7f2fdd9a29ad95faa6c39647956caf8a}{O\+N\+N\+X\+Runtime\+Arena\+Allocator}} = 1
+ \}
+\item 
+enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} \{ \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a3127507f1d160fd6348370cc7bd42245}{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input}} = -\/2, 
+\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a59888d12290735245a1b8afb40f64331}{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output}} = -\/1, 
+\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a7109c9d0762473f14c3f61b895349781}{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+PU}} = O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output, 
+\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a232271cbf46c229ed40272a63af7a204}{O\+N\+N\+X\+Runtime\+Mem\+Type\+Default}} = 0
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{allocator__info_8h_aa1f77fde6eab8b6f585bc57cde9166a7}{D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+SS}} (\mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}})
+\item 
+\mbox{\hyperlink{allocator__info_8h_a826ecb2b5ec169510b6b8655225d5a7b}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}} (O\+N\+N\+X\+Runtime\+Create\+Allocator\+Info, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$name1, enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}} type, int id1, enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}} mem\+\_\+type1, \mbox{\hyperlink{visibility__macros_8h_a9c50bd6a6ca6e0be76a0f3a79379b90e}{\+\_\+\+Out\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$$\ast$out)
+\item 
+\mbox{\hyperlink{allocator__info_8h_aac15877eb12f8f4903ee353f6c754bb8}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (const char $\ast$, O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Name, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$ptr)
+\item 
+\mbox{\hyperlink{allocator__info_8h_abf063f46593e667d7e90129a2a371346}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (int, O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Id, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$ptr)
+\item 
+\mbox{\hyperlink{allocator__info_8h_a53710a7e1cc9fd9270cf02af8a88c379}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}, O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Mem\+Type, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$ptr)
+\item 
+\mbox{\hyperlink{allocator__info_8h_aa949716d5d2c7d74dcb6b597207affd4}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (\mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}, O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Type, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$ptr)
+\end{DoxyCompactItemize}
+\subsection*{Variables}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{allocator__info_8h_aa13edcc70b50f99fabbc19d043d668fe}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL}}
+\end{DoxyCompactItemize}
+
+
+\subsection{Typedef Documentation}
+\mbox{\Hypertarget{allocator__info_8h_a9a2e1f76c0cdede275bbdf05d80b8ab9}\label{allocator__info_8h_a9a2e1f76c0cdede275bbdf05d80b8ab9}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Allocator\+Type@{O\+N\+N\+X\+Runtime\+Allocator\+Type}}
+\index{O\+N\+N\+X\+Runtime\+Allocator\+Type@{O\+N\+N\+X\+Runtime\+Allocator\+Type}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Allocator\+Type}{ONNXRuntimeAllocatorType}}
+{\footnotesize\ttfamily typedef enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}  \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}}
+
+\mbox{\Hypertarget{allocator__info_8h_a8836287439ef116b5921bece40da90c2}\label{allocator__info_8h_a8836287439ef116b5921bece40da90c2}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Mem\+Type@{O\+N\+N\+X\+Runtime\+Mem\+Type}}
+\index{O\+N\+N\+X\+Runtime\+Mem\+Type@{O\+N\+N\+X\+Runtime\+Mem\+Type}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Mem\+Type}{ONNXRuntimeMemType}}
+{\footnotesize\ttfamily typedef enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}  \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}
+
+memory types for allocator, exec provider specific types should be extended in each provider 
+
+\subsection{Enumeration Type Documentation}
+\mbox{\Hypertarget{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}\label{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Allocator\+Type@{O\+N\+N\+X\+Runtime\+Allocator\+Type}}
+\index{O\+N\+N\+X\+Runtime\+Allocator\+Type@{O\+N\+N\+X\+Runtime\+Allocator\+Type}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Allocator\+Type}{ONNXRuntimeAllocatorType}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+Runtime\+Device\+Allocator@{O\+N\+N\+X\+Runtime\+Device\+Allocator}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Device\+Allocator@{O\+N\+N\+X\+Runtime\+Device\+Allocator}}}\mbox{\Hypertarget{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677a78858641ca726665b7651780fc67e2dd}\label{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677a78858641ca726665b7651780fc67e2dd}} 
+O\+N\+N\+X\+Runtime\+Device\+Allocator&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+Runtime\+Arena\+Allocator@{O\+N\+N\+X\+Runtime\+Arena\+Allocator}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Arena\+Allocator@{O\+N\+N\+X\+Runtime\+Arena\+Allocator}}}\mbox{\Hypertarget{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677a7f2fdd9a29ad95faa6c39647956caf8a}\label{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677a7f2fdd9a29ad95faa6c39647956caf8a}} 
+O\+N\+N\+X\+Runtime\+Arena\+Allocator&\\
+\hline
+
+\end{DoxyEnumFields}
+\mbox{\Hypertarget{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}\label{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Mem\+Type@{O\+N\+N\+X\+Runtime\+Mem\+Type}}
+\index{O\+N\+N\+X\+Runtime\+Mem\+Type@{O\+N\+N\+X\+Runtime\+Mem\+Type}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Runtime\+Mem\+Type}{ONNXRuntimeMemType}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}
+
+memory types for allocator, exec provider specific types should be extended in each provider \begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input@{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input@{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input}}}\mbox{\Hypertarget{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a3127507f1d160fd6348370cc7bd42245}\label{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a3127507f1d160fd6348370cc7bd42245}} 
+O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Input&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output@{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output@{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output}}}\mbox{\Hypertarget{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a59888d12290735245a1b8afb40f64331}\label{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a59888d12290735245a1b8afb40f64331}} 
+O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+P\+U\+Output&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+PU@{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+PU}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+PU@{O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+PU}}}\mbox{\Hypertarget{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a7109c9d0762473f14c3f61b895349781}\label{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a7109c9d0762473f14c3f61b895349781}} 
+O\+N\+N\+X\+Runtime\+Mem\+Type\+C\+PU&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+Runtime\+Mem\+Type\+Default@{O\+N\+N\+X\+Runtime\+Mem\+Type\+Default}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+Runtime\+Mem\+Type\+Default@{O\+N\+N\+X\+Runtime\+Mem\+Type\+Default}}}\mbox{\Hypertarget{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a232271cbf46c229ed40272a63af7a204}\label{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18a232271cbf46c229ed40272a63af7a204}} 
+O\+N\+N\+X\+Runtime\+Mem\+Type\+Default&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{allocator__info_8h_aa1f77fde6eab8b6f585bc57cde9166a7}\label{allocator__info_8h_aa1f77fde6eab8b6f585bc57cde9166a7}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+SS@{D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+SS}}
+\index{D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+SS@{D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+SS}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+S\+S()}{DEFINE\_RUNTIME\_CLASS()}}
+{\footnotesize\ttfamily D\+E\+F\+I\+N\+E\+\_\+\+R\+U\+N\+T\+I\+M\+E\+\_\+\+C\+L\+A\+SS (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}}}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{allocator__info_8h_aac15877eb12f8f4903ee353f6c754bb8}\label{allocator__info_8h_aac15877eb12f8f4903ee353f6c754bb8}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [1/4]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{const char $\ast$}]{,  }\item[{O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Name}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+Do not free the returned value \mbox{\Hypertarget{allocator__info_8h_abf063f46593e667d7e90129a2a371346}\label{allocator__info_8h_abf063f46593e667d7e90129a2a371346}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [2/4]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{int}]{,  }\item[{O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Id}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{allocator__info_8h_a53710a7e1cc9fd9270cf02af8a88c379}\label{allocator__info_8h_a53710a7e1cc9fd9270cf02af8a88c379}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [3/4]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}]{,  }\item[{O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Mem\+Type}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{allocator__info_8h_aa949716d5d2c7d74dcb6b597207affd4}\label{allocator__info_8h_aa949716d5d2c7d74dcb6b597207affd4}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [4/4]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}}]{,  }\item[{O\+N\+N\+X\+Runtime\+Allocator\+Info\+Get\+Type}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{allocator__info_8h_a826ecb2b5ec169510b6b8655225d5a7b}\label{allocator__info_8h_a826ecb2b5ec169510b6b8655225d5a7b}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+U\+S()}{ONNXRUNTIME\_API\_STATUS()}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I\+\_\+\+S\+T\+A\+T\+US (\begin{DoxyParamCaption}\item[{O\+N\+N\+X\+Runtime\+Create\+Allocator\+Info}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} const char $\ast$}]{name1,  }\item[{enum \mbox{\hyperlink{allocator__info_8h_a2c2bd010ef8b74c81553f74c5eeb2677}{O\+N\+N\+X\+Runtime\+Allocator\+Type}}}]{type,  }\item[{int}]{id1,  }\item[{enum \mbox{\hyperlink{allocator__info_8h_add3f8ee3ff93395704abae71c30cab18}{O\+N\+N\+X\+Runtime\+Mem\+Type}}}]{mem\+\_\+type1,  }\item[{\mbox{\hyperlink{visibility__macros_8h_a9c50bd6a6ca6e0be76a0f3a79379b90e}{\+\_\+\+Out\+\_\+}} \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} $\ast$$\ast$}]{out }\end{DoxyParamCaption})}
+
+
+
+\subsection{Variable Documentation}
+\mbox{\Hypertarget{allocator__info_8h_aa13edcc70b50f99fabbc19d043d668fe}\label{allocator__info_8h_aa13edcc70b50f99fabbc19d043d668fe}} 
+\index{allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL}!allocator\+\_\+info.\+h@{allocator\+\_\+info.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL}{ONNXRUNTIME\_ALL\_ARGS\_NONNULL}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+L\+L\+\_\+\+A\+R\+G\+S\+\_\+\+N\+O\+N\+N\+U\+LL}
+
+Test if two allocation info are equal \begin{DoxyReturn}{Returns}
+0, equal. zero, not equal 
+\end{DoxyReturn}

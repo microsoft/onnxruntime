@@ -1,0 +1,33 @@
+\hypertarget{top__k_8cc}{}\section{onnxruntime/onnxruntime/core/providers/cpu/math/top\+\_\+k.cc File Reference}
+\label{top__k_8cc}\index{onnxruntime/onnxruntime/core/providers/cpu/math/top\+\_\+k.\+cc@{onnxruntime/onnxruntime/core/providers/cpu/math/top\+\_\+k.\+cc}}
+{\ttfamily \#include \char`\"{}core/providers/cpu/math/top\+\_\+k.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/common.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/common/exceptions.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/op\+\_\+kernel.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/framework/tensor.\+h\char`\"{}}\newline
+{\ttfamily \#include \char`\"{}core/util/math\+\_\+cpuonly.\+h\char`\"{}}\newline
+{\ttfamily \#include $<$queue$>$}\newline
+Include dependency graph for top\+\_\+k.\+cc\+:
+% FIG 0
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1ValueCmp}{onnxruntime\+::\+Value\+Cmp$<$ T $>$}}
+\end{DoxyCompactItemize}
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\using \mbox{\hyperlink{namespaceonnxruntime_a658732aef7feb5d0ba351a926a9c8b31}{onnxruntime\+::\+Eigen\+Matrix\+Map\+Row\+Major}} = Eigen\+::\+Map$<$ Eigen\+::\+Matrix$<$ T, Eigen\+::\+Dynamic, Eigen\+::\+Dynamic, Eigen\+::\+Row\+Major $>$ $>$
+\item 
+{\footnotesize template$<$typename T $>$ }\\using \mbox{\hyperlink{namespaceonnxruntime_ab8ec943c43d4f1616dd0631f0087b982}{onnxruntime\+::\+Const\+Eigen\+Matrix\+Map\+Row\+Major}} = Eigen\+::\+Map$<$ const Eigen\+::\+Matrix$<$ T, Eigen\+::\+Dynamic, Eigen\+::\+Dynamic, Eigen\+::\+Row\+Major $>$ $>$
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a11e940c8ffc83cf8821276d8eccf1133}{onnxruntime\+::\+O\+N\+N\+X\+\_\+\+C\+P\+U\+\_\+\+O\+P\+E\+R\+A\+T\+O\+R\+\_\+\+K\+E\+R\+N\+EL}} (TopK, 1, Kernel\+Def\+Builder().Type\+Constraint(\char`\"{}T\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ float $>$()).Type\+Constraint(\char`\"{}I\char`\"{}, Data\+Type\+Impl\+::\+Get\+Tensor\+Type$<$ int64\+\_\+t $>$()), TopK$<$ float $>$)
+\end{DoxyCompactItemize}

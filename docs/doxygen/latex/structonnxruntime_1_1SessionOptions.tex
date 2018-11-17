@@ -1,0 +1,100 @@
+\hypertarget{structonnxruntime_1_1SessionOptions}{}\section{onnxruntime\+:\+:Session\+Options Struct Reference}
+\label{structonnxruntime_1_1SessionOptions}\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+
+
+{\ttfamily \#include $<$inference\+\_\+session.\+h$>$}
+
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+bool \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_a3b1010935bafa414ddc0c6cc30d38dd4}{enable\+\_\+sequential\+\_\+execution}} = true
+\item 
+bool \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_a8dad44784c94dffeb5e6b0ad8ae71217}{enable\+\_\+profiling}} = false
+\item 
+bool \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_a6a09a03545e143ba21ef53043501cf89}{enable\+\_\+mem\+\_\+pattern}} = true
+\item 
+bool \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_a2d87c73d16cf7385cf290655ad302d5c}{enable\+\_\+cpu\+\_\+mem\+\_\+arena}} = true
+\item 
+std\+::string \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_a91dc2f3e2998613a5feb54194f840aa2}{profile\+\_\+file\+\_\+prefix}} = \char`\"{}onnxruntime\+\_\+profile\+\_\+\char`\"{}
+\item 
+std\+::string \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_acd8193655bc7085dc4bb5c935f945954}{session\+\_\+logid}}
+\begin{DoxyCompactList}\small\item\em logger id to use for session output \end{DoxyCompactList}\item 
+unsigned \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_aecd03e5fa985dbf78eaecd1a3076ed8c}{session\+\_\+log\+\_\+verbosity\+\_\+level}} = 0
+\begin{DoxyCompactList}\small\item\em applies to session load, initialization, etc \end{DoxyCompactList}\item 
+unsigned \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_addc80c19c8806fddbfa19eb1141af609}{max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps}} = 5
+\item 
+int \mbox{\hyperlink{structonnxruntime_1_1SessionOptions_a2d9c6354bb5c16a22d9b27929da5d8b6}{session\+\_\+thread\+\_\+pool\+\_\+size}} = 0
+\end{DoxyCompactItemize}
+
+
+\subsection{Detailed Description}
+Configuration information for a session. 
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_a2d87c73d16cf7385cf290655ad302d5c}\label{structonnxruntime_1_1SessionOptions_a2d87c73d16cf7385cf290655ad302d5c}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!enable\+\_\+cpu\+\_\+mem\+\_\+arena@{enable\+\_\+cpu\+\_\+mem\+\_\+arena}}
+\index{enable\+\_\+cpu\+\_\+mem\+\_\+arena@{enable\+\_\+cpu\+\_\+mem\+\_\+arena}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{enable\+\_\+cpu\+\_\+mem\+\_\+arena}{enable\_cpu\_mem\_arena}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Session\+Options\+::enable\+\_\+cpu\+\_\+mem\+\_\+arena = true}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_a6a09a03545e143ba21ef53043501cf89}\label{structonnxruntime_1_1SessionOptions_a6a09a03545e143ba21ef53043501cf89}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!enable\+\_\+mem\+\_\+pattern@{enable\+\_\+mem\+\_\+pattern}}
+\index{enable\+\_\+mem\+\_\+pattern@{enable\+\_\+mem\+\_\+pattern}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{enable\+\_\+mem\+\_\+pattern}{enable\_mem\_pattern}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Session\+Options\+::enable\+\_\+mem\+\_\+pattern = true}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_a8dad44784c94dffeb5e6b0ad8ae71217}\label{structonnxruntime_1_1SessionOptions_a8dad44784c94dffeb5e6b0ad8ae71217}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!enable\+\_\+profiling@{enable\+\_\+profiling}}
+\index{enable\+\_\+profiling@{enable\+\_\+profiling}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{enable\+\_\+profiling}{enable\_profiling}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Session\+Options\+::enable\+\_\+profiling = false}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_a3b1010935bafa414ddc0c6cc30d38dd4}\label{structonnxruntime_1_1SessionOptions_a3b1010935bafa414ddc0c6cc30d38dd4}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!enable\+\_\+sequential\+\_\+execution@{enable\+\_\+sequential\+\_\+execution}}
+\index{enable\+\_\+sequential\+\_\+execution@{enable\+\_\+sequential\+\_\+execution}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{enable\+\_\+sequential\+\_\+execution}{enable\_sequential\_execution}}
+{\footnotesize\ttfamily bool onnxruntime\+::\+Session\+Options\+::enable\+\_\+sequential\+\_\+execution = true}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_addc80c19c8806fddbfa19eb1141af609}\label{structonnxruntime_1_1SessionOptions_addc80c19c8806fddbfa19eb1141af609}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps@{max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps}}
+\index{max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps@{max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps}{max\_num\_graph\_transformation\_steps}}
+{\footnotesize\ttfamily unsigned onnxruntime\+::\+Session\+Options\+::max\+\_\+num\+\_\+graph\+\_\+transformation\+\_\+steps = 5}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_a91dc2f3e2998613a5feb54194f840aa2}\label{structonnxruntime_1_1SessionOptions_a91dc2f3e2998613a5feb54194f840aa2}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!profile\+\_\+file\+\_\+prefix@{profile\+\_\+file\+\_\+prefix}}
+\index{profile\+\_\+file\+\_\+prefix@{profile\+\_\+file\+\_\+prefix}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{profile\+\_\+file\+\_\+prefix}{profile\_file\_prefix}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Session\+Options\+::profile\+\_\+file\+\_\+prefix = \char`\"{}onnxruntime\+\_\+profile\+\_\+\char`\"{}}
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_aecd03e5fa985dbf78eaecd1a3076ed8c}\label{structonnxruntime_1_1SessionOptions_aecd03e5fa985dbf78eaecd1a3076ed8c}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!session\+\_\+log\+\_\+verbosity\+\_\+level@{session\+\_\+log\+\_\+verbosity\+\_\+level}}
+\index{session\+\_\+log\+\_\+verbosity\+\_\+level@{session\+\_\+log\+\_\+verbosity\+\_\+level}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{session\+\_\+log\+\_\+verbosity\+\_\+level}{session\_log\_verbosity\_level}}
+{\footnotesize\ttfamily unsigned onnxruntime\+::\+Session\+Options\+::session\+\_\+log\+\_\+verbosity\+\_\+level = 0}
+
+
+
+applies to session load, initialization, etc 
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_acd8193655bc7085dc4bb5c935f945954}\label{structonnxruntime_1_1SessionOptions_acd8193655bc7085dc4bb5c935f945954}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!session\+\_\+logid@{session\+\_\+logid}}
+\index{session\+\_\+logid@{session\+\_\+logid}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{session\+\_\+logid}{session\_logid}}
+{\footnotesize\ttfamily std\+::string onnxruntime\+::\+Session\+Options\+::session\+\_\+logid}
+
+
+
+logger id to use for session output 
+
+\mbox{\Hypertarget{structonnxruntime_1_1SessionOptions_a2d9c6354bb5c16a22d9b27929da5d8b6}\label{structonnxruntime_1_1SessionOptions_a2d9c6354bb5c16a22d9b27929da5d8b6}} 
+\index{onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}!session\+\_\+thread\+\_\+pool\+\_\+size@{session\+\_\+thread\+\_\+pool\+\_\+size}}
+\index{session\+\_\+thread\+\_\+pool\+\_\+size@{session\+\_\+thread\+\_\+pool\+\_\+size}!onnxruntime\+::\+Session\+Options@{onnxruntime\+::\+Session\+Options}}
+\subsubsection{\texorpdfstring{session\+\_\+thread\+\_\+pool\+\_\+size}{session\_thread\_pool\_size}}
+{\footnotesize\ttfamily int onnxruntime\+::\+Session\+Options\+::session\+\_\+thread\+\_\+pool\+\_\+size = 0}
+
+
+
+The documentation for this struct was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/session/\mbox{\hyperlink{inference__session_8h}{inference\+\_\+session.\+h}}\end{DoxyCompactItemize}

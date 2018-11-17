@@ -1,0 +1,153 @@
+\hypertarget{namespaceonnxruntime_1_1utils}{}\section{onnxruntime\+:\+:utils Namespace Reference}
+\label{namespaceonnxruntime_1_1utils}\index{onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1utils_1_1TensorUtils}{Tensor\+Utils}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_ab22ac0ad2ec6d6529d6bacc19f7d7093}{Get\+M\+L\+Data\+Type}} (const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} \&arg)
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a058a261f33e28422b7563ae84f71f55b}{Get\+Tensor\+Shape\+From\+Tensor\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto)
+\item 
+std\+::vector$<$ int64\+\_\+t $>$ \mbox{\hyperlink{namespaceonnxruntime_1_1utils_aa06bea787e7bab1d7a773107fa1f8862}{Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Shape\+Proto \&tensor\+\_\+shape\+\_\+proto)
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a4b262f6da83860e920ce90279a3fb400}{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto}} (const Tensor\+Proto \&tensor\+\_\+proto, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&tensor\+\_\+shape, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$p\+\_\+tensor, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} alloc, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a732845e9a1ac398d4fd4d8968e3ebc1e}{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$}} (const Tensor\+Proto \&tensor\+\_\+proto, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&tensor\+\_\+shape, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$p\+\_\+tensor, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} alloc, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+{\footnotesize template$<$$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a969c0e118d0d6c6ef5d023abadaad937}{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$}} (const Tensor\+Proto \&tensor\+\_\+proto, const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&tensor\+\_\+shape, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$p\+\_\+tensor, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} alloc, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_af3f247a91aa48e3f4c056314b0c69501}{Tensor\+Proto\+To\+M\+L\+Value}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&input, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} allocator, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size, \mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&value)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a37c9ecf5c17ff148a413861223e1b450}{Get\+Tensor\+From\+Tensor\+Proto}} (const Tensor\+Proto \&tensor\+\_\+proto, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$p\+\_\+tensor, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} allocator, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size)
+\item 
+Tensor\+Proto\+::\+Data\+Type \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a58bc30bc1665255748d3e98960193ab2}{Get\+Tensor\+Proto\+Type}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&tensor)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a39b6f54f084a54bef83148d27bc50e30}{Get\+Tensor\+From\+Tensor\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto, std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$p\+\_\+tensor, \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} allocator, \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$preallocated=nullptr, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} preallocated\+\_\+size=0)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_1_1utils_ad84e1a43162347e3dc2540869adfc10b}{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}} (double, O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type\+\_\+\+D\+O\+U\+B\+LE, double\+\_\+data, double\+\_\+data\+\_\+size)
+\item 
+{\footnotesize template$<$size\+\_\+t alignment$>$ }\\\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a2d84b5cf8a44b5c9ac8acdc0fd605544}{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$out)
+\item 
+template \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a1fd4746352c986ccbda401da7459ba60}{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$}} (const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&tensor\+\_\+proto, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$out)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a7cc8827cc590f48e3cc3ef8eaa6c4f56}{Get\+Kernel\+Def}} (const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistryManager}{Kernel\+Registry\+Manager}} \&kernel\+\_\+registry, const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&node)
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} $\ast$ \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a7588af1ad0ff65f7922537f1e8b76ee6}{Get\+Kernel\+Def}} (const \mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&graph, const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistryManager}{Kernel\+Registry\+Manager}} \&kernel\+\_\+registry, const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}} node\+\_\+id)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a06318e643d42f85829d91db93306ea68}{Get\+Allocator}} (const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \&exec\+\_\+providers, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&allocator\+\_\+info)
+\item 
+\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a1929d3a08af5b86f2040d95ea0f7a7ce}{Get\+Allocator}} (const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&session\+\_\+state, const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&allocator\+\_\+info)
+\end{DoxyCompactItemize}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_ad84e1a43162347e3dc2540869adfc10b}\label{namespaceonnxruntime_1_1utils_ad84e1a43162347e3dc2540869adfc10b}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR@{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}}
+\index{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR@{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+O\+R()}{DEFINE\_UNPACK\_TENSOR()}}
+{\footnotesize\ttfamily onnxruntime\+::utils\+::\+D\+E\+F\+I\+N\+E\+\_\+\+U\+N\+P\+A\+C\+K\+\_\+\+T\+E\+N\+S\+OR (\begin{DoxyParamCaption}\item[{double}]{,  }\item[{O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+\_\+\+Data\+Type\+\_\+\+D\+O\+U\+B\+LE}]{,  }\item[{double\+\_\+data}]{,  }\item[{double\+\_\+data\+\_\+size}]{ }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a06318e643d42f85829d91db93306ea68}\label{namespaceonnxruntime_1_1utils_a06318e643d42f85829d91db93306ea68}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Allocator@{Get\+Allocator}}
+\index{Get\+Allocator@{Get\+Allocator}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Allocator()}{GetAllocator()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} onnxruntime\+::utils\+::\+Get\+Allocator (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1ExecutionProviders}{Execution\+Providers}} \&}]{exec\+\_\+providers,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{allocator\+\_\+info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a1929d3a08af5b86f2040d95ea0f7a7ce}\label{namespaceonnxruntime_1_1utils_a1929d3a08af5b86f2040d95ea0f7a7ce}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Allocator@{Get\+Allocator}}
+\index{Get\+Allocator@{Get\+Allocator}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Allocator()}{GetAllocator()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}} onnxruntime\+::utils\+::\+Get\+Allocator (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1SessionState}{Session\+State}} \&}]{session\+\_\+state,  }\item[{const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \&}]{allocator\+\_\+info }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a7cc8827cc590f48e3cc3ef8eaa6c4f56}\label{namespaceonnxruntime_1_1utils_a7cc8827cc590f48e3cc3ef8eaa6c4f56}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Kernel\+Def@{Get\+Kernel\+Def}}
+\index{Get\+Kernel\+Def@{Get\+Kernel\+Def}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Kernel\+Def()}{GetKernelDef()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} $\ast$ onnxruntime\+::utils\+::\+Get\+Kernel\+Def (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistryManager}{Kernel\+Registry\+Manager}} \&}]{kernel\+\_\+registry,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1Node}{onnxruntime\+::\+Node}} \&}]{node }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a7588af1ad0ff65f7922537f1e8b76ee6}\label{namespaceonnxruntime_1_1utils_a7588af1ad0ff65f7922537f1e8b76ee6}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Kernel\+Def@{Get\+Kernel\+Def}}
+\index{Get\+Kernel\+Def@{Get\+Kernel\+Def}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Kernel\+Def()}{GetKernelDef()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{classonnxruntime_1_1KernelDef}{Kernel\+Def}} $\ast$ onnxruntime\+::utils\+::\+Get\+Kernel\+Def (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Graph}{onnxruntime\+::\+Graph}} \&}]{graph,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1KernelRegistryManager}{Kernel\+Registry\+Manager}} \&}]{kernel\+\_\+registry,  }\item[{const \mbox{\hyperlink{namespaceonnxruntime_af8773b5c12b5d8fd9292eb2e268df760}{onnxruntime\+::\+Node\+Index}}}]{node\+\_\+id }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_ab22ac0ad2ec6d6529d6bacc19f7d7093}\label{namespaceonnxruntime_1_1utils_ab22ac0ad2ec6d6529d6bacc19f7d7093}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+M\+L\+Data\+Type@{Get\+M\+L\+Data\+Type}}
+\index{Get\+M\+L\+Data\+Type@{Get\+M\+L\+Data\+Type}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+M\+L\+Data\+Type()}{GetMLDataType()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{namespaceonnxruntime_ad77d0a6e838ec7da5dc35fed5ee66b49}{M\+L\+Data\+Type}} onnxruntime\+::utils\+::\+Get\+M\+L\+Data\+Type (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1NodeArg}{onnxruntime\+::\+Node\+Arg}} \&}]{arg }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a2d84b5cf8a44b5c9ac8acdc0fd605544}\label{namespaceonnxruntime_1_1utils_a2d84b5cf8a44b5c9ac8acdc0fd605544}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Size\+In\+Bytes\+From\+Tensor\+Proto@{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto}}
+\index{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto@{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto()}{GetSizeInBytesFromTensorProto()}}
+{\footnotesize\ttfamily template$<$size\+\_\+t alignment$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::utils\+::\+Get\+Size\+In\+Bytes\+From\+Tensor\+Proto (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$}]{out }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a1fd4746352c986ccbda401da7459ba60}\label{namespaceonnxruntime_1_1utils_a1fd4746352c986ccbda401da7459ba60}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$@{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$}}
+\index{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$@{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Size\+In\+Bytes\+From\+Tensor\+Proto$<$ 256 $>$()}{GetSizeInBytesFromTensorProto< 256 >()}}
+{\footnotesize\ttfamily template \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a2d84b5cf8a44b5c9ac8acdc0fd605544}{onnxruntime\+::utils\+::\+Get\+Size\+In\+Bytes\+From\+Tensor\+Proto}}$<$ 256 $>$ (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} $\ast$}]{out }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a4b262f6da83860e920ce90279a3fb400}\label{namespaceonnxruntime_1_1utils_a4b262f6da83860e920ce90279a3fb400}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+By\+Type\+From\+Tensor\+Proto@{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto}}
+\index{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto@{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto()}{GetTensorByTypeFromTensorProto()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::utils\+::\+Get\+Tensor\+By\+Type\+From\+Tensor\+Proto (\begin{DoxyParamCaption}\item[{const Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{tensor\+\_\+shape,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$}]{p\+\_\+tensor,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{alloc,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{preallocated,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{preallocated\+\_\+size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a969c0e118d0d6c6ef5d023abadaad937}\label{namespaceonnxruntime_1_1utils_a969c0e118d0d6c6ef5d023abadaad937}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$@{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$}}
+\index{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$@{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ M\+L\+Float16 $>$()}{GetTensorByTypeFromTensorProto< MLFloat16 >()}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a4b262f6da83860e920ce90279a3fb400}{onnxruntime\+::utils\+::\+Get\+Tensor\+By\+Type\+From\+Tensor\+Proto}}$<$ \mbox{\hyperlink{uniononnxruntime_1_1MLFloat16}{M\+L\+Float16}} $>$ (\begin{DoxyParamCaption}\item[{const Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{tensor\+\_\+shape,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$}]{p\+\_\+tensor,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{alloc,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{preallocated,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{preallocated\+\_\+size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a732845e9a1ac398d4fd4d8968e3ebc1e}\label{namespaceonnxruntime_1_1utils_a732845e9a1ac398d4fd4d8968e3ebc1e}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$@{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$}}
+\index{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$@{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+By\+Type\+From\+Tensor\+Proto$<$ std\+::string $>$()}{GetTensorByTypeFromTensorProto< std::string >()}}
+{\footnotesize\ttfamily template$<$$>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} \mbox{\hyperlink{namespaceonnxruntime_1_1utils_a4b262f6da83860e920ce90279a3fb400}{onnxruntime\+::utils\+::\+Get\+Tensor\+By\+Type\+From\+Tensor\+Proto}}$<$ std\+::string $>$ (\begin{DoxyParamCaption}\item[{const Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1TensorShape}{Tensor\+Shape}} \&}]{tensor\+\_\+shape,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$}]{p\+\_\+tensor,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{alloc,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{preallocated,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{preallocated\+\_\+size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a39b6f54f084a54bef83148d27bc50e30}\label{namespaceonnxruntime_1_1utils_a39b6f54f084a54bef83148d27bc50e30}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+From\+Tensor\+Proto@{Get\+Tensor\+From\+Tensor\+Proto}}
+\index{Get\+Tensor\+From\+Tensor\+Proto@{Get\+Tensor\+From\+Tensor\+Proto}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+From\+Tensor\+Proto()}{GetTensorFromTensorProto()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::utils\+::\+Get\+Tensor\+From\+Tensor\+Proto (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$}]{p\+\_\+tensor,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{allocator,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{preallocated = {\ttfamily nullptr},  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{preallocated\+\_\+size = {\ttfamily 0} }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a37c9ecf5c17ff148a413861223e1b450}\label{namespaceonnxruntime_1_1utils_a37c9ecf5c17ff148a413861223e1b450}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+From\+Tensor\+Proto@{Get\+Tensor\+From\+Tensor\+Proto}}
+\index{Get\+Tensor\+From\+Tensor\+Proto@{Get\+Tensor\+From\+Tensor\+Proto}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+From\+Tensor\+Proto()}{GetTensorFromTensorProto()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::utils\+::\+Get\+Tensor\+From\+Tensor\+Proto (\begin{DoxyParamCaption}\item[{const Tensor\+Proto \&}]{tensor\+\_\+proto,  }\item[{std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} $>$ $\ast$}]{p\+\_\+tensor,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{allocator,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{preallocated,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{preallocated\+\_\+size }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a58bc30bc1665255748d3e98960193ab2}\label{namespaceonnxruntime_1_1utils_a58bc30bc1665255748d3e98960193ab2}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+Proto\+Type@{Get\+Tensor\+Proto\+Type}}
+\index{Get\+Tensor\+Proto\+Type@{Get\+Tensor\+Proto\+Type}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+Proto\+Type()}{GetTensorProtoType()}}
+{\footnotesize\ttfamily O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto\+::\+Data\+Type onnxruntime\+::utils\+::\+Get\+Tensor\+Proto\+Type (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{tensor }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_a058a261f33e28422b7563ae84f71f55b}\label{namespaceonnxruntime_1_1utils_a058a261f33e28422b7563ae84f71f55b}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+Shape\+From\+Tensor\+Proto@{Get\+Tensor\+Shape\+From\+Tensor\+Proto}}
+\index{Get\+Tensor\+Shape\+From\+Tensor\+Proto@{Get\+Tensor\+Shape\+From\+Tensor\+Proto}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+Shape\+From\+Tensor\+Proto()}{GetTensorShapeFromTensorProto()}}
+{\footnotesize\ttfamily std\+::vector$<$ int64\+\_\+t $>$ onnxruntime\+::utils\+::\+Get\+Tensor\+Shape\+From\+Tensor\+Proto (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{tensor\+\_\+proto }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_aa06bea787e7bab1d7a773107fa1f8862}\label{namespaceonnxruntime_1_1utils_aa06bea787e7bab1d7a773107fa1f8862}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto@{Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto}}
+\index{Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto@{Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto()}{GetTensorShapeFromTensorShapeProto()}}
+{\footnotesize\ttfamily std\+::vector$<$ int64\+\_\+t $>$ onnxruntime\+::utils\+::\+Get\+Tensor\+Shape\+From\+Tensor\+Shape\+Proto (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Shape\+Proto \&}]{tensor\+\_\+shape\+\_\+proto }\end{DoxyParamCaption})}
+
+\mbox{\Hypertarget{namespaceonnxruntime_1_1utils_af3f247a91aa48e3f4c056314b0c69501}\label{namespaceonnxruntime_1_1utils_af3f247a91aa48e3f4c056314b0c69501}} 
+\index{onnxruntime\+::utils@{onnxruntime\+::utils}!Tensor\+Proto\+To\+M\+L\+Value@{Tensor\+Proto\+To\+M\+L\+Value}}
+\index{Tensor\+Proto\+To\+M\+L\+Value@{Tensor\+Proto\+To\+M\+L\+Value}!onnxruntime\+::utils@{onnxruntime\+::utils}}
+\subsubsection{\texorpdfstring{Tensor\+Proto\+To\+M\+L\+Value()}{TensorProtoToMLValue()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{common\+::\+Status}} onnxruntime\+::utils\+::\+Tensor\+Proto\+To\+M\+L\+Value (\begin{DoxyParamCaption}\item[{const O\+N\+N\+X\+\_\+\+N\+A\+M\+E\+S\+P\+A\+C\+E\+::\+Tensor\+Proto \&}]{input,  }\item[{\mbox{\hyperlink{namespaceonnxruntime_a6cdac724c5dcefded3a63f08dae58fda}{Allocator\+Ptr}}}]{allocator,  }\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{preallocated,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{preallocated\+\_\+size,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1MLValue}{M\+L\+Value}} \&}]{value }\end{DoxyParamCaption})}
+

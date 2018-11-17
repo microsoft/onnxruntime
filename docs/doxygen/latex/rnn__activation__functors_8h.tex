@@ -1,0 +1,61 @@
+\hypertarget{rnn__activation__functors_8h}{}\section{onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn\+\_\+activation\+\_\+functors.h File Reference}
+\label{rnn__activation__functors_8h}\index{onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn\+\_\+activation\+\_\+functors.\+h@{onnxruntime/onnxruntime/core/providers/cpu/rnn/rnn\+\_\+activation\+\_\+functors.\+h}}
+{\ttfamily \#include $<$cmath$>$}\newline
+Include dependency graph for rnn\+\_\+activation\+\_\+functors.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Namespaces}
+\begin{DoxyCompactItemize}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime}{onnxruntime}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn}{onnxruntime\+::rnn}}
+\item 
+ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail}{onnxruntime\+::rnn\+::detail}}
+\end{DoxyCompactItemize}
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}} = 0
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_acee1bdb20af93bee27f5abad6459b3b6}{onnxruntime\+::rnn\+::detail\+::\+Affine}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a7339c2c8e1979ae1963c881aeb76ac1f}{onnxruntime\+::rnn\+::detail\+::\+Relu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9f41ca5475b0bbf5ee96bcbce50dd4e5}{onnxruntime\+::rnn\+::detail\+::\+Leaky\+Relu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a14c14ab8f759d0122eede02498ddb8ef}{onnxruntime\+::rnn\+::detail\+::\+Thresholded\+Relu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a56295ec3957f0ec0aa90b43ee8faaaae}{onnxruntime\+::rnn\+::detail\+::\+Sigmoid}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a85c6f09d8c78bdc30e1edf2cec3a1eae}{onnxruntime\+::rnn\+::detail\+::\+Tanh}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a0bdc679e113bdd5ababfbf3875c713da}{onnxruntime\+::rnn\+::detail\+::\+Scaled\+Tanh}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_afe98724eebce57469762e7bbbc4312ae}{onnxruntime\+::rnn\+::detail\+::\+Hard\+Sigmoid}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a8ee9d7ee665498c10ffcc34b97e3aa4e}{onnxruntime\+::rnn\+::detail\+::\+Elu}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a9612484323d785817381cc5d42a8ca2d}{onnxruntime\+::rnn\+::detail\+::\+Softsign}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}})
+\item 
+{\footnotesize template$<$$>$ }\\float \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a18e66157fedc94adca78a7ba550e092d}{onnxruntime\+::rnn\+::detail\+::\+Softsign$<$ float $>$}} (float x, float \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}}, float \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}})
+\item 
+{\footnotesize template$<$$>$ }\\double \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a44c6b5376a9c12cc3467fcf01243e69c}{onnxruntime\+::rnn\+::detail\+::\+Softsign$<$ double $>$}} (double x, double \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}}, double \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\T \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_aaa951c5057c58b7aede3ebb4b2e78866}{onnxruntime\+::rnn\+::detail\+::\+Softplus}} (T x, T \mbox{\hyperlink{mlasi_8h_a1763355f32e1812e5cb3a0080e7cca12}{alpha}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}, T \mbox{\hyperlink{mlasi_8h_a5fd37d216981b4cd9a19e29b5acd48d4}{beta}} \mbox{\hyperlink{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}})
+\item 
+{\footnotesize template$<$typename T $>$ }\\std\+::function$<$ T(T, T, T)$>$ \mbox{\hyperlink{namespaceonnxruntime_1_1rnn_1_1detail_a96884543f73215f0ac3aa5d6d9a62853}{onnxruntime\+::rnn\+::detail\+::\+Get\+Func\+By\+Name}} (const std\+::string \&name, const std\+::string \&default\+\_\+name)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}\label{rnn__activation__functors_8h_a2f7cd9def0156219f0b79c6ed32a1d22}} 
+\index{rnn\+\_\+activation\+\_\+functors.\+h@{rnn\+\_\+activation\+\_\+functors.\+h}!R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER@{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}}
+\index{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER@{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}!rnn\+\_\+activation\+\_\+functors.\+h@{rnn\+\_\+activation\+\_\+functors.\+h}}
+\subsubsection{\texorpdfstring{R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER}{RNN\_UNUSED\_PARAMETER}}
+{\footnotesize\ttfamily \#define R\+N\+N\+\_\+\+U\+N\+U\+S\+E\+D\+\_\+\+P\+A\+R\+A\+M\+E\+T\+ER~\mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_a61142a7de4b478dbe3fe741dd928c211}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+T\+T\+R\+I\+B\+U\+T\+E\+\_\+\+U\+N\+U\+S\+ED}} = 0}
+

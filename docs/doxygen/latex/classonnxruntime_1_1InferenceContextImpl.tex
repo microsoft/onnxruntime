@@ -1,0 +1,104 @@
+\hypertarget{classonnxruntime_1_1InferenceContextImpl}{}\section{onnxruntime\+:\+:Inference\+Context\+Impl Class Reference}
+\label{classonnxruntime_1_1InferenceContextImpl}\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+
+
+Inheritance diagram for onnxruntime\+:\+:Inference\+Context\+Impl\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:Inference\+Context\+Impl\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_ac39d7cacfaebe411651b9cef1d3b16a2}{Inference\+Context\+Impl}} (\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&node, const Attribute\+Graph\+Map $\ast$subgraphs=nullptr, \mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{Subgraph\+Inferencing\+Func}} $\ast$subgraph\+\_\+inferencing\+\_\+func=nullptr) noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_a03867e44217366769507abf47d0a237d}{Run\+Inferencing}} ()
+\item 
+const std\+::vector$<$ Type\+Proto $>$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_a676796a4ac3f6c6fb523d39b4945c4a1}{Inferred\+Output\+Types}} () const
+\item 
+const Attribute\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_ae88965a10d7827fc364d9ca3717c4754}{get\+Attribute}} (const std\+::string \&name) const override
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_a746e9bef7556f5396035691aee180fe1}{get\+Num\+Inputs}} () const noexcept override
+\item 
+const Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_af2af6aa91a8dbdb477866da91856cbca}{get\+Input\+Type}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) const override
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_ab596294613aa17dac5621de5662dccb3}{get\+Num\+Outputs}} () const noexcept override
+\item 
+Type\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_aed6ee0c15da7b2a1ceac5e6ee2186905}{get\+Output\+Type}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} index) override
+\item 
+const Tensor\+Proto $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_aea78080572e98d85f312099836f15c02}{get\+Input\+Data}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}) const override
+\item 
+Graph\+Inferencer $\ast$ \mbox{\hyperlink{classonnxruntime_1_1InferenceContextImpl_ad3a8cd7b05d6d7ea7ccf957aafcebb50}{get\+Graph\+Attribute\+Inferencer}} (const std\+::string \&attribute\+\_\+name) override
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_ac39d7cacfaebe411651b9cef1d3b16a2}\label{classonnxruntime_1_1InferenceContextImpl_ac39d7cacfaebe411651b9cef1d3b16a2}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!Inference\+Context\+Impl@{Inference\+Context\+Impl}}
+\index{Inference\+Context\+Impl@{Inference\+Context\+Impl}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{Inference\+Context\+Impl()}{InferenceContextImpl()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Inference\+Context\+Impl\+::\+Inference\+Context\+Impl (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1Node}{Node}} \&}]{node,  }\item[{const Attribute\+Graph\+Map $\ast$}]{subgraphs = {\ttfamily nullptr},  }\item[{\mbox{\hyperlink{namespaceonnxruntime_ae184f68a858158d9595f3fe260b05dfb}{Subgraph\+Inferencing\+Func}} $\ast$}]{subgraph\+\_\+inferencing\+\_\+func = {\ttfamily nullptr} }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_ae88965a10d7827fc364d9ca3717c4754}\label{classonnxruntime_1_1InferenceContextImpl_ae88965a10d7827fc364d9ca3717c4754}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Attribute@{get\+Attribute}}
+\index{get\+Attribute@{get\+Attribute}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Attribute()}{getAttribute()}}
+{\footnotesize\ttfamily const Attribute\+Proto$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Attribute (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{name }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_ad3a8cd7b05d6d7ea7ccf957aafcebb50}\label{classonnxruntime_1_1InferenceContextImpl_ad3a8cd7b05d6d7ea7ccf957aafcebb50}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Graph\+Attribute\+Inferencer@{get\+Graph\+Attribute\+Inferencer}}
+\index{get\+Graph\+Attribute\+Inferencer@{get\+Graph\+Attribute\+Inferencer}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Graph\+Attribute\+Inferencer()}{getGraphAttributeInferencer()}}
+{\footnotesize\ttfamily Graph\+Inferencer$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Graph\+Attribute\+Inferencer (\begin{DoxyParamCaption}\item[{const std\+::string \&}]{attribute\+\_\+name }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_aea78080572e98d85f312099836f15c02}\label{classonnxruntime_1_1InferenceContextImpl_aea78080572e98d85f312099836f15c02}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Input\+Data@{get\+Input\+Data}}
+\index{get\+Input\+Data@{get\+Input\+Data}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Input\+Data()}{getInputData()}}
+{\footnotesize\ttfamily const Tensor\+Proto$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Input\+Data (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_af2af6aa91a8dbdb477866da91856cbca}\label{classonnxruntime_1_1InferenceContextImpl_af2af6aa91a8dbdb477866da91856cbca}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Input\+Type@{get\+Input\+Type}}
+\index{get\+Input\+Type@{get\+Input\+Type}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Input\+Type()}{getInputType()}}
+{\footnotesize\ttfamily const Type\+Proto$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Input\+Type (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_a746e9bef7556f5396035691aee180fe1}\label{classonnxruntime_1_1InferenceContextImpl_a746e9bef7556f5396035691aee180fe1}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Num\+Inputs@{get\+Num\+Inputs}}
+\index{get\+Num\+Inputs@{get\+Num\+Inputs}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Num\+Inputs()}{getNumInputs()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Num\+Inputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_ab596294613aa17dac5621de5662dccb3}\label{classonnxruntime_1_1InferenceContextImpl_ab596294613aa17dac5621de5662dccb3}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Num\+Outputs@{get\+Num\+Outputs}}
+\index{get\+Num\+Outputs@{get\+Num\+Outputs}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Num\+Outputs()}{getNumOutputs()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Num\+Outputs (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_aed6ee0c15da7b2a1ceac5e6ee2186905}\label{classonnxruntime_1_1InferenceContextImpl_aed6ee0c15da7b2a1ceac5e6ee2186905}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!get\+Output\+Type@{get\+Output\+Type}}
+\index{get\+Output\+Type@{get\+Output\+Type}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{get\+Output\+Type()}{getOutputType()}}
+{\footnotesize\ttfamily Type\+Proto$\ast$ onnxruntime\+::\+Inference\+Context\+Impl\+::get\+Output\+Type (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_a676796a4ac3f6c6fb523d39b4945c4a1}\label{classonnxruntime_1_1InferenceContextImpl_a676796a4ac3f6c6fb523d39b4945c4a1}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!Inferred\+Output\+Types@{Inferred\+Output\+Types}}
+\index{Inferred\+Output\+Types@{Inferred\+Output\+Types}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{Inferred\+Output\+Types()}{InferredOutputTypes()}}
+{\footnotesize\ttfamily const std\+::vector$<$Type\+Proto$>$ onnxruntime\+::\+Inference\+Context\+Impl\+::\+Inferred\+Output\+Types (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1InferenceContextImpl_a03867e44217366769507abf47d0a237d}\label{classonnxruntime_1_1InferenceContextImpl_a03867e44217366769507abf47d0a237d}} 
+\index{onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}!Run\+Inferencing@{Run\+Inferencing}}
+\index{Run\+Inferencing@{Run\+Inferencing}!onnxruntime\+::\+Inference\+Context\+Impl@{onnxruntime\+::\+Inference\+Context\+Impl}}
+\subsubsection{\texorpdfstring{Run\+Inferencing()}{RunInferencing()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Inference\+Context\+Impl\+::\+Run\+Inferencing (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/graph/\mbox{\hyperlink{graph_8cc}{graph.\+cc}}\end{DoxyCompactItemize}

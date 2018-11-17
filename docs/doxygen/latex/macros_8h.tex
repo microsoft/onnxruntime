@@ -1,0 +1,400 @@
+\hypertarget{macros_8h}{}\section{onnxruntime/include/onnxruntime/core/common/logging/macros.h File Reference}
+\label{macros_8h}\index{onnxruntime/include/onnxruntime/core/common/logging/macros.\+h@{onnxruntime/include/onnxruntime/core/common/logging/macros.\+h}}
+This graph shows which files directly or indirectly include this file\+:
+% FIG 0
+\subsection*{Macros}
+\begin{DoxyCompactItemize}
+\item 
+\#define \mbox{\hyperlink{macros_8h_a361a611e86b3c19aa8a4f6134a9175cf}{C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE}}(logger,  severity,  category,  datatype)~\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{onnxruntime\+::logging\+::\+Capture}}(logger, \+::onnxruntime\+::logging\+::\+Severity\+::k\#\#severity, category, datatype, \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_ae0b2e589ed1ef689e27798c128cbc5b3}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+W\+H\+E\+RE}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger,  severity,  category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger,  severity,  category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger,  severity,  category,  format\+\_\+str, ...)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger,  severity,  category,  format\+\_\+str, ...)
+\item 
+\#define \mbox{\hyperlink{macros_8h_abc712c8abda0c92586181ec0fd640d1a}{L\+O\+GS}}(logger,  severity)~\mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_abc5c2e81d5b0c38e7c283455ae35b07c}{L\+O\+G\+S\+\_\+\+U\+S\+ER}}(logger,  severity)~\mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_aa497085c102976e7f63268cdddf2fa7f}{L\+O\+GF}}(logger,  severity,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a593cb7b2c3511ab24f161a7e70ffcd81}{L\+O\+G\+F\+\_\+\+U\+S\+ER}}(logger,  severity,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a75d063acb26545657b002c26af288260}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity,  category)~\mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity,  category)~\mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity,  category,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a2c502e72324646d4c8176455531e8719}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity,  category,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a838aa6de9ca35a75f61121232b47c5b2}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}}(severity)~\mbox{\hyperlink{macros_8h_a75d063acb26545657b002c26af288260}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_ae95f883335c4efbcc8a3548419638cc1}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}(severity)~\mbox{\hyperlink{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_a421be6e4c0209a538fcdf8ee6a92a6d6}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}}(severity,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a5869943fcdf0c2509278a9d89acde0e1}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}(severity,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a2c502e72324646d4c8176455531e8719}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_aa54b9dbcae8dded85da1d951876fd3de}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity,  category)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_ad6b174a8bbf299e352117667772dacca}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  severity,  category)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a75d063acb26545657b002c26af288260}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a23649a98ce45972a82ee24313e864151}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity,  category)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a07d46c42181edcb232318cbeba2f5a82}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  severity,  category)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a5359719799ef070086cff0c1cabb0178}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity,  category,  format\+\_\+str, ...)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a5052f3ebfd578ba94ba0b954a4ad214d}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  severity,  category,  format\+\_\+str, ...)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_aa18226430c1ac59a38c6fbf2837dd364}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity,  category,  format\+\_\+str, ...)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a532d6da2b37cec3ac436c1003e9b258a}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression,  severity,  category,  format\+\_\+str, ...)~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a2c502e72324646d4c8176455531e8719}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_af8b16fef2d4c726409d85dd99b66771f}{L\+O\+G\+S\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity)~\mbox{\hyperlink{macros_8h_aa54b9dbcae8dded85da1d951876fd3de}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_aee7d345e6638d905f221b8bbe0e759b5}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}(boolean\+\_\+expression,  severity)~\mbox{\hyperlink{macros_8h_ad6b174a8bbf299e352117667772dacca}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_a05ffb3982c0052e92d1959a315192020}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity)~\mbox{\hyperlink{macros_8h_a23649a98ce45972a82ee24313e864151}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_a2e442972af3881ad8c14188843174060}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}(boolean\+\_\+expression,  severity)~\mbox{\hyperlink{macros_8h_a07d46c42181edcb232318cbeba2f5a82}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})
+\item 
+\#define \mbox{\hyperlink{macros_8h_a36ad51bc11184909a26e2cd75fd9b930}{L\+O\+G\+F\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a5359719799ef070086cff0c1cabb0178}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_aa3817cc66ce33b4a784753ca6b0974fd}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}(boolean\+\_\+expression,  severity,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a5052f3ebfd578ba94ba0b954a4ad214d}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a608c44bb79fe9d1be5c552e65cd2ade6}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF}}(boolean\+\_\+expression,  logger,  severity,  format\+\_\+str, ...)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a54a2e2dba7b004e6162b3baf54d4fd96}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}(boolean\+\_\+expression,  severity,  format\+\_\+str, ...)
+\item 
+\#define \mbox{\hyperlink{macros_8h_aaa39c6d9a06267391d42781b9411c914}{V\+L\+O\+GS}}(logger,  level)
+\item 
+\#define \mbox{\hyperlink{macros_8h_adbcc7bd920d9237c6f06b60e1b0b0804}{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER}}(logger,  level)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a23daad5150b5de5ff36f123060da1b12}{V\+L\+O\+GF}}(logger,  level,  format\+\_\+str, ...)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a1b4a4c03ca1fd90c3770513d7eff477f}{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER}}(logger,  level,  format\+\_\+str, ...)
+\item 
+\#define \mbox{\hyperlink{macros_8h_ace7936c848c2f74d593e3c4a81a93e6b}{V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}}(level)~\mbox{\hyperlink{macros_8h_aaa39c6d9a06267391d42781b9411c914}{V\+L\+O\+GS}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a0ab5250d09b63775e0f81641a5cb7700}{V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}(level)~\mbox{\hyperlink{macros_8h_adbcc7bd920d9237c6f06b60e1b0b0804}{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level)
+\item 
+\#define \mbox{\hyperlink{macros_8h_a020fa7af923eee4d37f68771aea8df33}{V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}}(level,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a23daad5150b5de5ff36f123060da1b12}{V\+L\+O\+GF}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\item 
+\#define \mbox{\hyperlink{macros_8h_adc2929ae026534ed7eeee41cf6d33009}{V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}(level,  format\+\_\+str, ...)~\mbox{\hyperlink{macros_8h_a1b4a4c03ca1fd90c3770513d7eff477f}{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)
+\end{DoxyCompactItemize}
+
+
+\subsection{Macro Definition Documentation}
+\mbox{\Hypertarget{macros_8h_a361a611e86b3c19aa8a4f6134a9175cf}\label{macros_8h_a361a611e86b3c19aa8a4f6134a9175cf}} 
+\index{macros.\+h@{macros.\+h}!C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE@{C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE}}
+\index{C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE@{C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE}{CREATE\_MESSAGE}}
+{\footnotesize\ttfamily \#define C\+R\+E\+A\+T\+E\+\_\+\+M\+E\+S\+S\+A\+GE(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{datatype }\end{DoxyParamCaption})~\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1Capture}{onnxruntime\+::logging\+::\+Capture}}(logger, \+::onnxruntime\+::logging\+::\+Severity\+::k\#\#severity, category, datatype, \mbox{\hyperlink{include_2onnxruntime_2core_2common_2common_8h_ae0b2e589ed1ef689e27798c128cbc5b3}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+W\+H\+E\+RE}})}
+
+\mbox{\Hypertarget{macros_8h_aa497085c102976e7f63268cdddf2fa7f}\label{macros_8h_aa497085c102976e7f63268cdddf2fa7f}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+GF@{L\+O\+GF}}
+\index{L\+O\+GF@{L\+O\+GF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+GF}{LOGF}}
+{\footnotesize\ttfamily \#define L\+O\+GF(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a197c70fc2308db84f9d9250a01df8747}\label{macros_8h_a197c70fc2308db84f9d9250a01df8747}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGF\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}{onnxruntime::logging::DataType::SYSTEM}})) \(\backslash\)
+      CREATE\_MESSAGE(logger, severity, category, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}{onnxruntime::logging::DataType::SYSTEM}}).CapturePrintf(format\_str, ##
+      \_\_VA\_ARGS\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_a5359719799ef070086cff0c1cabb0178}\label{macros_8h_a5359719799ef070086cff0c1cabb0178}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGF\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a421be6e4c0209a538fcdf8ee6a92a6d6}\label{macros_8h_a421be6e4c0209a538fcdf8ee6a92a6d6}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}{LOGF\_DEFAULT}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}\label{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGF\_DEFAULT\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a197c70fc2308db84f9d9250a01df8747}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a5052f3ebfd578ba94ba0b954a4ad214d}\label{macros_8h_a5052f3ebfd578ba94ba0b954a4ad214d}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGF\_DEFAULT\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_aed5d5150daa3becd83f1c6afebfc7c23}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_aa3817cc66ce33b4a784753ca6b0974fd}\label{macros_8h_aa3817cc66ce33b4a784753ca6b0974fd}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}{LOGF\_DEFAULT\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a5052f3ebfd578ba94ba0b954a4ad214d}{L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a36ad51bc11184909a26e2cd75fd9b930}\label{macros_8h_a36ad51bc11184909a26e2cd75fd9b930}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+IF}{LOGF\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a5359719799ef070086cff0c1cabb0178}{L\+O\+G\+F\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a593cb7b2c3511ab24f161a7e70ffcd81}\label{macros_8h_a593cb7b2c3511ab24f161a7e70ffcd81}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+ER@{L\+O\+G\+F\+\_\+\+U\+S\+ER}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+ER@{L\+O\+G\+F\+\_\+\+U\+S\+ER}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+ER}{LOGF\_USER}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+ER(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a367da7a9a484de3b1e840df98b488a4c}\label{macros_8h_a367da7a9a484de3b1e840df98b488a4c}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGF\_USER\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{onnxruntime::logging::DataType::USER}})) \(\backslash\)
+      CREATE\_MESSAGE(logger, severity, category, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{onnxruntime::logging::DataType::USER}}).CapturePrintf(format\_str, ##
+      \_\_VA\_ARGS\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_aa18226430c1ac59a38c6fbf2837dd364}\label{macros_8h_aa18226430c1ac59a38c6fbf2837dd364}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGF\_USER\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a5869943fcdf0c2509278a9d89acde0e1}\label{macros_8h_a5869943fcdf0c2509278a9d89acde0e1}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}{LOGF\_USER\_DEFAULT}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a2c502e72324646d4c8176455531e8719}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}}, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a2c502e72324646d4c8176455531e8719}\label{macros_8h_a2c502e72324646d4c8176455531e8719}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGF\_USER\_DEFAULT\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a367da7a9a484de3b1e840df98b488a4c}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a532d6da2b37cec3ac436c1003e9b258a}\label{macros_8h_a532d6da2b37cec3ac436c1003e9b258a}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGF\_USER\_DEFAULT\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity,  }\item[{}]{category,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a2c502e72324646d4c8176455531e8719}{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a54a2e2dba7b004e6162b3baf54d4fd96}\label{macros_8h_a54a2e2dba7b004e6162b3baf54d4fd96}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}{LOGF\_USER\_DEFAULT\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{macros_8h_a532d6da2b37cec3ac436c1003e9b258a}{LOGF\_USER\_DEFAULT\_CATEGORY\_IF}}(boolean\_expression, severity, ::
+      \mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime::logging::Category::onnxruntime}}, \(\backslash\)
+                                format\_str, ##\_\_VA\_ARGS\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_a608c44bb79fe9d1be5c552e65cd2ade6}\label{macros_8h_a608c44bb79fe9d1be5c552e65cd2ade6}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF}}
+\index{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF@{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF}{LOGF\_USER\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\mbox{\hyperlink{macros_8h_aa18226430c1ac59a38c6fbf2837dd364}{LOGF\_USER\_CATEGORY\_IF}}(boolean\_expression, logger, severity, ::
+      \mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime::logging::Category::onnxruntime}}, \(\backslash\)
+                          format\_str, ##\_\_VA\_ARGS\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_abc712c8abda0c92586181ec0fd640d1a}\label{macros_8h_abc712c8abda0c92586181ec0fd640d1a}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+GS@{L\+O\+GS}}
+\index{L\+O\+GS@{L\+O\+GS}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+GS}{LOGS}}
+{\footnotesize\ttfamily \#define L\+O\+GS(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_a15f44967044d9e6b69aad3d403838872}\label{macros_8h_a15f44967044d9e6b69aad3d403838872}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGS\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}{onnxruntime::logging::DataType::SYSTEM}})) \(\backslash\)
+    CREATE\_MESSAGE(logger, severity, category, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951afa177138f94a7ea01f549b1aa7893d03}{onnxruntime::logging::DataType::SYSTEM}}).Stream()
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_aa54b9dbcae8dded85da1d951876fd3de}\label{macros_8h_aa54b9dbcae8dded85da1d951876fd3de}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGS\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category)}
+
+\mbox{\Hypertarget{macros_8h_a838aa6de9ca35a75f61121232b47c5b2}\label{macros_8h_a838aa6de9ca35a75f61121232b47c5b2}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}{LOGS\_DEFAULT}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a75d063acb26545657b002c26af288260}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_a75d063acb26545657b002c26af288260}\label{macros_8h_a75d063acb26545657b002c26af288260}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGS\_DEFAULT\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a15f44967044d9e6b69aad3d403838872}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category)}
+
+\mbox{\Hypertarget{macros_8h_ad6b174a8bbf299e352117667772dacca}\label{macros_8h_ad6b174a8bbf299e352117667772dacca}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGS\_DEFAULT\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a75d063acb26545657b002c26af288260}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category)}
+
+\mbox{\Hypertarget{macros_8h_aee7d345e6638d905f221b8bbe0e759b5}\label{macros_8h_aee7d345e6638d905f221b8bbe0e759b5}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}{LOGS\_DEFAULT\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_ad6b174a8bbf299e352117667772dacca}{L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_af8b16fef2d4c726409d85dd99b66771f}\label{macros_8h_af8b16fef2d4c726409d85dd99b66771f}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+IF}{LOGS\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_aa54b9dbcae8dded85da1d951876fd3de}{L\+O\+G\+S\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_abc5c2e81d5b0c38e7c283455ae35b07c}\label{macros_8h_abc5c2e81d5b0c38e7c283455ae35b07c}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+ER@{L\+O\+G\+S\+\_\+\+U\+S\+ER}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+ER@{L\+O\+G\+S\+\_\+\+U\+S\+ER}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+ER}{LOGS\_USER}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+ER(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_a75e826c01cf666633e8a80f08ea23e06}\label{macros_8h_a75e826c01cf666633e8a80f08ea23e06}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGS\_USER\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} ((logger).OutputIsEnabled(::onnxruntime::logging::Severity::k##severity, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{onnxruntime::logging::DataType::USER}})) \(\backslash\)
+      CREATE\_MESSAGE(logger, severity, category, ::
+      \mbox{\hyperlink{namespaceonnxruntime_1_1logging_a7342198e47b8ad2717a5d6e28cf68951a2e40ad879e955201df4dedbf8d479a12}{onnxruntime::logging::DataType::USER}}).Stream()
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_a23649a98ce45972a82ee24313e864151}\label{macros_8h_a23649a98ce45972a82ee24313e864151}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGS\_USER\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(logger, severity, category)}
+
+\mbox{\Hypertarget{macros_8h_ae95f883335c4efbcc8a3548419638cc1}\label{macros_8h_ae95f883335c4efbcc8a3548419638cc1}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}{LOGS\_USER\_DEFAULT}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}\label{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}{LOGS\_USER\_DEFAULT\_CATEGORY}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY(\begin{DoxyParamCaption}\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a75e826c01cf666633e8a80f08ea23e06}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), severity, category)}
+
+\mbox{\Hypertarget{macros_8h_a07d46c42181edcb232318cbeba2f5a82}\label{macros_8h_a07d46c42181edcb232318cbeba2f5a82}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}{LOGS\_USER\_DEFAULT\_CATEGORY\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity,  }\item[{}]{category }\end{DoxyParamCaption})~if ((boolean\+\_\+expression) == true) \mbox{\hyperlink{macros_8h_a4cfb43d502f5e72c9df72f602089ebab}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+RY}}(severity, category)}
+
+\mbox{\Hypertarget{macros_8h_a2e442972af3881ad8c14188843174060}\label{macros_8h_a2e442972af3881ad8c14188843174060}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF}{LOGS\_USER\_DEFAULT\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a07d46c42181edcb232318cbeba2f5a82}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+L\+T\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_a05ffb3982c0052e92d1959a315192020}\label{macros_8h_a05ffb3982c0052e92d1959a315192020}} 
+\index{macros.\+h@{macros.\+h}!L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF}}
+\index{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF@{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF}{LOGS\_USER\_IF}}
+{\footnotesize\ttfamily \#define L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+IF(\begin{DoxyParamCaption}\item[{}]{boolean\+\_\+expression,  }\item[{}]{logger,  }\item[{}]{severity }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a23649a98ce45972a82ee24313e864151}{L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+C\+A\+T\+E\+G\+O\+R\+Y\+\_\+\+IF}}(boolean\+\_\+expression, logger, severity, \+::\mbox{\hyperlink{structonnxruntime_1_1logging_1_1Category_acf8465d214f4b51ab0b99f6195f81369}{onnxruntime\+::logging\+::\+Category\+::onnxruntime}})}
+
+\mbox{\Hypertarget{macros_8h_a23daad5150b5de5ff36f123060da1b12}\label{macros_8h_a23daad5150b5de5ff36f123060da1b12}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+GF@{V\+L\+O\+GF}}
+\index{V\+L\+O\+GF@{V\+L\+O\+GF}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+GF}{VLOGF}}
+{\footnotesize\ttfamily \#define V\+L\+O\+GF(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{level,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} (::onnxruntime::logging::vlog\_enabled && level <= (logger).VLOGMaxLevel()) \(\backslash\)
+    LOGF\_CATEGORY(logger, VERBOSE, \textcolor{stringliteral}{"VLOG"} #level, format\_str, ##\_\_VA\_ARGS\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_a020fa7af923eee4d37f68771aea8df33}\label{macros_8h_a020fa7af923eee4d37f68771aea8df33}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT}{VLOGF\_DEFAULT}}
+{\footnotesize\ttfamily \#define V\+L\+O\+G\+F\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{level,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a23daad5150b5de5ff36f123060da1b12}{V\+L\+O\+GF}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_a1b4a4c03ca1fd90c3770513d7eff477f}\label{macros_8h_a1b4a4c03ca1fd90c3770513d7eff477f}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+G\+F\+\_\+\+U\+S\+ER@{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER}}
+\index{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER@{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER}{VLOGF\_USER}}
+{\footnotesize\ttfamily \#define V\+L\+O\+G\+F\+\_\+\+U\+S\+ER(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{level,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} (::onnxruntime::logging::vlog\_enabled && level <= (logger).VLOGMaxLevel()) \(\backslash\)
+      LOGF\_USER\_CATEGORY(logger, VERBOSE, \textcolor{stringliteral}{"VLOG"} #level, format\_str, ##\_\_VA\_ARGS\_\_)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_adc2929ae026534ed7eeee41cf6d33009}\label{macros_8h_adc2929ae026534ed7eeee41cf6d33009}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}{VLOGF\_USER\_DEFAULT}}
+{\footnotesize\ttfamily \#define V\+L\+O\+G\+F\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{level,  }\item[{}]{format\+\_\+str,  }\item[{}]{... }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_a1b4a4c03ca1fd90c3770513d7eff477f}{V\+L\+O\+G\+F\+\_\+\+U\+S\+ER}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level, format\+\_\+str, \#\#\+\_\+\+\_\+\+V\+A\+\_\+\+A\+R\+G\+S\+\_\+\+\_\+)}
+
+\mbox{\Hypertarget{macros_8h_aaa39c6d9a06267391d42781b9411c914}\label{macros_8h_aaa39c6d9a06267391d42781b9411c914}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+GS@{V\+L\+O\+GS}}
+\index{V\+L\+O\+GS@{V\+L\+O\+GS}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+GS}{VLOGS}}
+{\footnotesize\ttfamily \#define V\+L\+O\+GS(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{level }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} (::onnxruntime::logging::vlog\_enabled && level <= (logger).VLOGMaxLevel()) \(\backslash\)
+    LOGS\_CATEGORY(logger, VERBOSE, \textcolor{stringliteral}{"VLOG"} #level)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_ace7936c848c2f74d593e3c4a81a93e6b}\label{macros_8h_ace7936c848c2f74d593e3c4a81a93e6b}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT}{VLOGS\_DEFAULT}}
+{\footnotesize\ttfamily \#define V\+L\+O\+G\+S\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{level }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_aaa39c6d9a06267391d42781b9411c914}{V\+L\+O\+GS}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level)}
+
+\mbox{\Hypertarget{macros_8h_adbcc7bd920d9237c6f06b60e1b0b0804}\label{macros_8h_adbcc7bd920d9237c6f06b60e1b0b0804}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+G\+S\+\_\+\+U\+S\+ER@{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER}}
+\index{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER@{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER}{VLOGS\_USER}}
+{\footnotesize\ttfamily \#define V\+L\+O\+G\+S\+\_\+\+U\+S\+ER(\begin{DoxyParamCaption}\item[{}]{logger,  }\item[{}]{level }\end{DoxyParamCaption})}
+
+{\bfseries Value\+:}
+\begin{DoxyCode}
+\textcolor{keywordflow}{if} (::onnxruntime::logging::vlog\_enabled && level <= (logger).VLOGMaxLevel()) \(\backslash\)
+    LOGS\_USER\_CATEGORY(logger, VERBOSE, \textcolor{stringliteral}{"VLOG"} #level)
+\end{DoxyCode}
+\mbox{\Hypertarget{macros_8h_a0ab5250d09b63775e0f81641a5cb7700}\label{macros_8h_a0ab5250d09b63775e0f81641a5cb7700}} 
+\index{macros.\+h@{macros.\+h}!V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}}
+\index{V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT@{V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}!macros.\+h@{macros.\+h}}
+\subsubsection{\texorpdfstring{V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT}{VLOGS\_USER\_DEFAULT}}
+{\footnotesize\ttfamily \#define V\+L\+O\+G\+S\+\_\+\+U\+S\+E\+R\+\_\+\+D\+E\+F\+A\+U\+LT(\begin{DoxyParamCaption}\item[{}]{level }\end{DoxyParamCaption})~\mbox{\hyperlink{macros_8h_adbcc7bd920d9237c6f06b60e1b0b0804}{V\+L\+O\+G\+S\+\_\+\+U\+S\+ER}}(\+::\mbox{\hyperlink{classonnxruntime_1_1logging_1_1LoggingManager_a8b2e364282876c313a953e4f81647cc2}{onnxruntime\+::logging\+::\+Logging\+Manager\+::\+Default\+Logger}}(), level)}
+

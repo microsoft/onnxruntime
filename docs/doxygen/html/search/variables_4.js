@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['d_5f',['d_',['../classonnxruntime_1_1cuda_1_1fast__divmod.html#a340c9941ff6f111eb0147600d19e20fd',1,'onnxruntime::cuda::fast_divmod']]],
+  ['deltas_5f',['deltas_',['../structonnxruntime_1_1BroadcastIterator.html#adf8f2de98dcec6f6dafb1e035a895a75',1,'onnxruntime::BroadcastIterator']]],
+  ['description',['description',['../structonnxruntime_1_1ModelMetadata.html#a874b9c93a100e0aa74533014185a5fd2',1,'onnxruntime::ModelMetadata']]],
+  ['device_5fid',['device_id',['../structonnxruntime_1_1CUDAExecutionProviderInfo.html#a90d6796b0ed9e2d17773fbc96521d025',1,'onnxruntime::CUDAExecutionProviderInfo']]],
+  ['dilations',['dilations',['../structonnxruntime_1_1ConvTransposeBase_1_1Prepare.html#ad0d3fe2089862725cd0985dad54bb30e',1,'onnxruntime::ConvTransposeBase::Prepare::dilations()'],['../mkldnn_2nn_2conv_8cc.html#a57cdc76062a8d113d8204fa0b160836b',1,'dilations():&#160;conv.cc']]],
+  ['dilations_5f',['dilations_',['../classonnxruntime_1_1ConvBase.html#abf0a7ade410cb557b5acf3e524eecf93',1,'onnxruntime::ConvBase']]],
+  ['dilationshape',['DilationShape',['../structMLAS__CONV__PARAMETERS.html#a6eff8d568bbb9394b6b12bac7affe640',1,'MLAS_CONV_PARAMETERS']]],
+  ['dimensions',['Dimensions',['../structMLAS__CONV__PARAMETERS.html#adda1854a0e3049ff00e890ed4b9dace8',1,'MLAS_CONV_PARAMETERS']]],
+  ['dims_5f',['dims_',['../mkldnn_2nn_2lrn_8cc.html#a61bb6519fc5f8a75c313866dbb2fa74a',1,'lrn.cc']]],
+  ['dl_5ftensors_5f',['dl_tensors_',['../classonnxruntime_1_1TVMKernel.html#a095b6b8267de061752bf8407ab7af364',1,'onnxruntime::TVMKernel']]],
+  ['doc_5fstring',['doc_string',['../structonnxruntime_1_1IndexedSubGraph_1_1MetaDef.html#afb2298bfac3544dca07c3bf72f476817',1,'onnxruntime::IndexedSubGraph::MetaDef']]],
+  ['domain',['domain',['../structSchemasContainer.html#a3cd5134e2bf9e13e97927f4ea6f4196f',1,'SchemasContainer::domain()'],['../structonnxruntime_1_1IndexedSubGraph_1_1MetaDef.html#a93c5fe6a6a15c4c36501fa88f5b8fbae',1,'onnxruntime::IndexedSubGraph::MetaDef::domain()'],['../structONNXOpaqueTypeInfo.html#ac63e40eef2da65b51f81c5aff98a0218',1,'ONNXOpaqueTypeInfo::domain()'],['../structonnxruntime_1_1ModelMetadata.html#ab1fc358916d021b147ff2390dba22b69',1,'onnxruntime::ModelMetadata::domain()']]],
+  ['dst',['dst',['../structonnxruntime_1_1mkl__dnn_1_1MemoryReorderParams.html#a866c8e2da6caab689ec70df804157fbe',1,'onnxruntime::mkl_dnn::MemoryReorderParams']]],
+  ['dst_5fdims',['dst_dims',['../mkldnn_2nn_2conv_8cc.html#affbe3a8ff496dc3413d4c11e7759b962',1,'dst_dims():&#160;conv.cc'],['../mkldnn_2nn_2pool_8cc.html#affbe3a8ff496dc3413d4c11e7759b962',1,'dst_dims():&#160;pool.cc']]],
+  ['dst_5ffmt',['dst_fmt',['../mkldnn_2nn_2conv_8cc.html#af16916bf8be298fe16d55c36a9ccaf01',1,'dst_fmt():&#160;conv.cc'],['../mkldnn_2nn_2pool_8cc.html#af16916bf8be298fe16d55c36a9ccaf01',1,'dst_fmt():&#160;pool.cc']]],
+  ['dst_5fmd',['dst_md',['../mkldnn_2nn_2conv_8cc.html#a4a900f27a02665296368001e75d4b87c',1,'dst_md():&#160;conv.cc'],['../mkldnn_2nn_2pool_8cc.html#a4a900f27a02665296368001e75d4b87c',1,'dst_md():&#160;pool.cc']]],
+  ['dst_5fmem',['dst_mem',['../mkldnn_2nn_2conv_8cc.html#ae463fb99d336659d042cff1652317662',1,'dst_mem():&#160;conv.cc'],['../mkldnn_2nn_2lrn_8cc.html#ae463fb99d336659d042cff1652317662',1,'dst_mem():&#160;lrn.cc'],['../mkldnn_2nn_2pool_8cc.html#ae463fb99d336659d042cff1652317662',1,'dst_mem():&#160;pool.cc']]],
+  ['dtype_5f',['dtype_',['../structonnxruntime_1_1TVMGraph_1_1TensorDescriptor.html#ae64b6b5fd35fd790bcfa1058ac2ae118',1,'onnxruntime::TVMGraph::TensorDescriptor']]],
+  ['dur',['dur',['../structonnxruntime_1_1profiling_1_1EventRecord.html#aaed3bbfc663c4ea4c0130dd422a871ca',1,'onnxruntime::profiling::EventRecord']]]
+];

@@ -1,0 +1,11 @@
+digraph "onnxruntime/onnxruntime/core/platform/posix" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_ea1fec5adcbc89be8516c79ccb696972 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="platform" fontname="Helvetica", fontsize="10", URL="dir_ea1fec5adcbc89be8516c79ccb696972.html"]
+  dir_6105f614d5ca2a0d7dba2519d8f35059 [shape=box, label="posix", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_6105f614d5ca2a0d7dba2519d8f35059.html"];
+  }
+  dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
+  dir_6105f614d5ca2a0d7dba2519d8f35059->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="2", labeldistance=1.5 headhref="dir_000038_000004.html"];
+}

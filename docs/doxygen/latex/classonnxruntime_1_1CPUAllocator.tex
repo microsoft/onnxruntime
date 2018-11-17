@@ -1,0 +1,67 @@
+\hypertarget{classonnxruntime_1_1CPUAllocator}{}\section{onnxruntime\+:\+:C\+P\+U\+Allocator Class Reference}
+\label{classonnxruntime_1_1CPUAllocator}\index{onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}}
+
+
+{\ttfamily \#include $<$allocator.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:C\+P\+U\+Allocator\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:C\+P\+U\+Allocator\+:
+% FIG 1
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1CPUAllocator_a682cac57e48712c5c09506c21d92905c}{Alloc}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size) override
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1CPUAllocator_affe0e58d7fc048fb2cef9fc6704fdd91}{Free}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) override
+\item 
+const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& \mbox{\hyperlink{classonnxruntime_1_1CPUAllocator_a5eda291e0b728ea21d1f6893b5108020}{Info}} () const override
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1CPUAllocator_a682cac57e48712c5c09506c21d92905c}\label{classonnxruntime_1_1CPUAllocator_a682cac57e48712c5c09506c21d92905c}} 
+\index{onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}!Alloc@{Alloc}}
+\index{Alloc@{Alloc}!onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}}
+\subsubsection{\texorpdfstring{Alloc()}{Alloc()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ onnxruntime\+::\+C\+P\+U\+Allocator\+::\+Alloc (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_aa703af32705cabad8c9f69e60efcfb6b}{onnxruntime\+::\+I\+Device\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CPUAllocator_affe0e58d7fc048fb2cef9fc6704fdd91}\label{classonnxruntime_1_1CPUAllocator_affe0e58d7fc048fb2cef9fc6704fdd91}} 
+\index{onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}!Free@{Free}}
+\index{Free@{Free}!onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}}
+\subsubsection{\texorpdfstring{Free()}{Free()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+C\+P\+U\+Allocator\+::\+Free (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_aeabef1862123ae6d9478199db974e32a}{onnxruntime\+::\+I\+Device\+Allocator}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1CPUAllocator_a5eda291e0b728ea21d1f6893b5108020}\label{classonnxruntime_1_1CPUAllocator_a5eda291e0b728ea21d1f6893b5108020}} 
+\index{onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}!Info@{Info}}
+\index{Info@{Info}!onnxruntime\+::\+C\+P\+U\+Allocator@{onnxruntime\+::\+C\+P\+U\+Allocator}}
+\subsubsection{\texorpdfstring{Info()}{Info()}}
+{\footnotesize\ttfamily const \mbox{\hyperlink{structONNXRuntimeAllocatorInfo}{O\+N\+N\+X\+Runtime\+Allocator\+Info}} \& onnxruntime\+::\+C\+P\+U\+Allocator\+::\+Info (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1IDeviceAllocator_a46b848cd863bcd50d1e63d48ad96c63c}{onnxruntime\+::\+I\+Device\+Allocator}}.
+
+
+
+Reimplemented in \mbox{\hyperlink{classonnxruntime_1_1MKLDNNCPUAllocator_ab5ed702febdae0ac4d7d6f17c3534cc7}{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+C\+P\+U\+Allocator}}, and \mbox{\hyperlink{classonnxruntime_1_1MKLDNNAllocator_ad8e51ea2f30a5bf719c47b5d96de41c1}{onnxruntime\+::\+M\+K\+L\+D\+N\+N\+Allocator}}.
+
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/framework/\mbox{\hyperlink{framework_2allocator_8h}{allocator.\+h}}\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{allocator_8cc}{allocator.\+cc}}\end{DoxyCompactItemize}

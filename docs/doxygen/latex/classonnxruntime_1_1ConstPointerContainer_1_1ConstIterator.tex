@@ -1,0 +1,80 @@
+\hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{}\section{onnxruntime\+:\+:Const\+Pointer\+Container$<$ Container $>$\+:\+:Const\+Iterator Class Reference}
+\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}\index{onnxruntime\+::\+Const\+Pointer\+Container$<$ Container $>$\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container$<$ Container $>$\+::\+Const\+Iterator}}
+
+
+{\ttfamily \#include $<$const\+\_\+pointer\+\_\+container.\+h$>$}
+
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+using \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a54fdc540cf44e6b2c2ec0b2478e52f10}{const\+\_\+iterator}} = typename Container\+::const\+\_\+iterator
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a79c39a6fb33f40020a711f8b6b334038}{Const\+Iterator}} (\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a54fdc540cf44e6b2c2ec0b2478e52f10}{const\+\_\+iterator}} position) noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a3ac7e9a7176851d89f4d2b0269cf473f}{operator==}} (const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \&other) const noexcept
+\item 
+bool \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a4ade631f17f370b56698548c32ed6ff1}{operator!=}} (const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \&other) const noexcept
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_abc80097bc9eb5285206a5820d833b259}{operator++}} ()
+\item 
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}} $\ast$ \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_aa3c479fb00b11f22de339109fd5f0bec}{operator$\ast$}} ()
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Typedef Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a54fdc540cf44e6b2c2ec0b2478e52f10}\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a54fdc540cf44e6b2c2ec0b2478e52f10}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}!const\+\_\+iterator@{const\+\_\+iterator}}
+\index{const\+\_\+iterator@{const\+\_\+iterator}!onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}}
+\subsubsection{\texorpdfstring{const\+\_\+iterator}{const\_iterator}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+using \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a54fdc540cf44e6b2c2ec0b2478e52f10}{Const\+Iterator\+::const\+\_\+iterator}} =  typename Container\+::const\+\_\+iterator}
+
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a79c39a6fb33f40020a711f8b6b334038}\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a79c39a6fb33f40020a711f8b6b334038}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}!Const\+Iterator@{Const\+Iterator}}
+\index{Const\+Iterator@{Const\+Iterator}!onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}}
+\subsubsection{\texorpdfstring{Const\+Iterator()}{ConstIterator()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::Const\+Iterator\+::\+Const\+Iterator (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a54fdc540cf44e6b2c2ec0b2478e52f10}{const\+\_\+iterator}}}]{position }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}, {\ttfamily [noexcept]}}
+
+Construct iterator for container that will return const T$\ast$ entries. 
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a4ade631f17f370b56698548c32ed6ff1}\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a4ade631f17f370b56698548c32ed6ff1}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}!operator"!=@{operator"!=}}
+\index{operator"!=@{operator"!=}!onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}}
+\subsubsection{\texorpdfstring{operator"!=()}{operator!=()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::Const\+Iterator\+::operator!= (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_aa3c479fb00b11f22de339109fd5f0bec}\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_aa3c479fb00b11f22de339109fd5f0bec}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}!operator$\ast$@{operator$\ast$}}
+\index{operator$\ast$@{operator$\ast$}!onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}}
+\subsubsection{\texorpdfstring{operator$\ast$()}{operator*()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_ae78936c3220735b7dba8004b7d5c9888}{T}}$\ast$ \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::Const\+Iterator\+::operator$\ast$ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_abc80097bc9eb5285206a5820d833b259}\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_abc80097bc9eb5285206a5820d833b259}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}!operator++@{operator++}}
+\index{operator++@{operator++}!onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}}
+\subsubsection{\texorpdfstring{operator++()}{operator++()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::Const\+Iterator\+::operator++ (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a3ac7e9a7176851d89f4d2b0269cf473f}\label{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator_a3ac7e9a7176851d89f4d2b0269cf473f}} 
+\index{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}!operator==@{operator==}}
+\index{operator==@{operator==}!onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator@{onnxruntime\+::\+Const\+Pointer\+Container\+::\+Const\+Iterator}}
+\subsubsection{\texorpdfstring{operator==()}{operator==()}}
+{\footnotesize\ttfamily template$<$typename Container $>$ \\
+bool \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer}{onnxruntime\+::\+Const\+Pointer\+Container}}$<$ Container $>$\+::Const\+Iterator\+::operator== (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1ConstPointerContainer_1_1ConstIterator}{Const\+Iterator}} \&}]{other }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [noexcept]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/include/onnxruntime/core/common/\mbox{\hyperlink{const__pointer__container_8h}{const\+\_\+pointer\+\_\+container.\+h}}\end{DoxyCompactItemize}

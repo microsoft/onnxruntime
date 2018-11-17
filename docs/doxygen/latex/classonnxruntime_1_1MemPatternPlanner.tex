@@ -1,0 +1,87 @@
+\hypertarget{classonnxruntime_1_1MemPatternPlanner}{}\section{onnxruntime\+:\+:Mem\+Pattern\+Planner Class Reference}
+\label{classonnxruntime_1_1MemPatternPlanner}\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+
+
+{\ttfamily \#include $<$mem\+\_\+pattern\+\_\+planner.\+h$>$}
+
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structonnxruntime_1_1MemPatternPlanner_1_1MLValueAllocationBlock}{M\+L\+Value\+Allocation\+Block}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_a331275f6172142627b52ecc09ef5c8d4}{Mem\+Pattern\+Planner}} ()=default
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_a024ca843effacf25fa1fe730c2be73a3}{Trace\+Allocation}} (int ml\+\_\+value\+\_\+idx, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} size)
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_a5ec1e13a1d5b467ccce1582b114edc8a}{Trace\+Free}} (int ml\+\_\+value\+\_\+index)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_a0bfd9cf766b9735859210c381856a357}{Generate\+Mem\+Pattern}} ()
+\end{DoxyCompactItemize}
+\subsection*{Protected Attributes}
+\begin{DoxyCompactItemize}
+\item 
+std\+::vector$<$ \mbox{\hyperlink{structonnxruntime_1_1MemPatternPlanner_1_1MLValueAllocationBlock}{M\+L\+Value\+Allocation\+Block}} $>$ \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_af1e6887a98645ea63af44d98279d7b7b}{allocs\+\_\+}}
+\item 
+std\+::list$<$ int $>$ \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_a31d6add32bbd81db6d3174ef6e187e6f}{blocks\+\_\+}}
+\item 
+\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} \mbox{\hyperlink{classonnxruntime_1_1MemPatternPlanner_adc47283af8c8a28ec80e3931988e4903}{buffer\+\_\+size}} \{0\}
+\end{DoxyCompactItemize}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_a331275f6172142627b52ecc09ef5c8d4}\label{classonnxruntime_1_1MemPatternPlanner_a331275f6172142627b52ecc09ef5c8d4}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!Mem\+Pattern\+Planner@{Mem\+Pattern\+Planner}}
+\index{Mem\+Pattern\+Planner@{Mem\+Pattern\+Planner}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Mem\+Pattern\+Planner()}{MemPatternPlanner()}}
+{\footnotesize\ttfamily onnxruntime\+::\+Mem\+Pattern\+Planner\+::\+Mem\+Pattern\+Planner (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [default]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_a0bfd9cf766b9735859210c381856a357}\label{classonnxruntime_1_1MemPatternPlanner_a0bfd9cf766b9735859210c381856a357}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!Generate\+Mem\+Pattern@{Generate\+Mem\+Pattern}}
+\index{Generate\+Mem\+Pattern@{Generate\+Mem\+Pattern}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Generate\+Mem\+Pattern()}{GenerateMemPattern()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1MemoryPattern}{Memory\+Pattern}} onnxruntime\+::\+Mem\+Pattern\+Planner\+::\+Generate\+Mem\+Pattern (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_a024ca843effacf25fa1fe730c2be73a3}\label{classonnxruntime_1_1MemPatternPlanner_a024ca843effacf25fa1fe730c2be73a3}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!Trace\+Allocation@{Trace\+Allocation}}
+\index{Trace\+Allocation@{Trace\+Allocation}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Trace\+Allocation()}{TraceAllocation()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Mem\+Pattern\+Planner\+::\+Trace\+Allocation (\begin{DoxyParamCaption}\item[{int}]{ml\+\_\+value\+\_\+idx,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{size }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_a5ec1e13a1d5b467ccce1582b114edc8a}\label{classonnxruntime_1_1MemPatternPlanner_a5ec1e13a1d5b467ccce1582b114edc8a}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!Trace\+Free@{Trace\+Free}}
+\index{Trace\+Free@{Trace\+Free}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{Trace\+Free()}{TraceFree()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::\+Mem\+Pattern\+Planner\+::\+Trace\+Free (\begin{DoxyParamCaption}\item[{int}]{ml\+\_\+value\+\_\+index }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+\subsection{Member Data Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_af1e6887a98645ea63af44d98279d7b7b}\label{classonnxruntime_1_1MemPatternPlanner_af1e6887a98645ea63af44d98279d7b7b}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!allocs\+\_\+@{allocs\+\_\+}}
+\index{allocs\+\_\+@{allocs\+\_\+}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{allocs\+\_\+}{allocs\_}}
+{\footnotesize\ttfamily std\+::vector$<$\mbox{\hyperlink{structonnxruntime_1_1MemPatternPlanner_1_1MLValueAllocationBlock}{M\+L\+Value\+Allocation\+Block}}$>$ onnxruntime\+::\+Mem\+Pattern\+Planner\+::allocs\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_a31d6add32bbd81db6d3174ef6e187e6f}\label{classonnxruntime_1_1MemPatternPlanner_a31d6add32bbd81db6d3174ef6e187e6f}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!blocks\+\_\+@{blocks\+\_\+}}
+\index{blocks\+\_\+@{blocks\+\_\+}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{blocks\+\_\+}{blocks\_}}
+{\footnotesize\ttfamily std\+::list$<$int$>$ onnxruntime\+::\+Mem\+Pattern\+Planner\+::blocks\+\_\+\hspace{0.3cm}{\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1MemPatternPlanner_adc47283af8c8a28ec80e3931988e4903}\label{classonnxruntime_1_1MemPatternPlanner_adc47283af8c8a28ec80e3931988e4903}} 
+\index{onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}!buffer\+\_\+size@{buffer\+\_\+size}}
+\index{buffer\+\_\+size@{buffer\+\_\+size}!onnxruntime\+::\+Mem\+Pattern\+Planner@{onnxruntime\+::\+Mem\+Pattern\+Planner}}
+\subsubsection{\texorpdfstring{buffer\+\_\+size}{buffer\_size}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} onnxruntime\+::\+Mem\+Pattern\+Planner\+::buffer\+\_\+size \{0\}\hspace{0.3cm}{\ttfamily [protected]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/framework/\mbox{\hyperlink{mem__pattern__planner_8h}{mem\+\_\+pattern\+\_\+planner.\+h}}\end{DoxyCompactItemize}

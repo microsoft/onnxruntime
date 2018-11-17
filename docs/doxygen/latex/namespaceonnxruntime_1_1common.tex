@@ -1,0 +1,133 @@
+\hypertarget{namespaceonnxruntime_1_1common}{}\section{onnxruntime\+:\+:common Namespace Reference}
+\label{namespaceonnxruntime_1_1common}\index{onnxruntime\+::common@{onnxruntime\+::common}}
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1common_1_1Record}{Record}}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}}
+\end{DoxyCompactItemize}
+\subsection*{Enumerations}
+\begin{DoxyCompactItemize}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{Status\+Category}} \{ \mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a179f5946c56d4adf760171c2ed41d840}{N\+O\+NE}} = 0, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5ac06d8e95b2651b308d2651f8b015c33c}{S\+Y\+S\+T\+EM}} = 1, 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}{O\+N\+N\+X\+R\+U\+N\+T\+I\+ME}} = 2
+ \}
+\item 
+enum \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2b}{Status\+Code}} \{ \newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}{OK}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:OK), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}{F\+A\+IL}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:F\+A\+IL), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baec184a24eab4bb684bef28cc8da22201}{I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bab645e761fdc0c0855fb85f61dcf6976f}{N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE), 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bacf7d62164020462883a9dc15007708e4}{N\+O\+\_\+\+M\+O\+D\+EL}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:N\+O\+\_\+\+M\+O\+D\+EL), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bad59aa2f945cfdbdfbbfb84f3fcaaf10c}{E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba70ab5e827b7fecf587452ca2b5665a6d}{R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba29227b10a2986e5dba2ecdb7ddbbd0ca}{I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF), 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba0cbb22e2ce1301c7b76364eecc72ee6d}{M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba90df21990fe0afe17ae348264825babb}{N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2badde3cc9ff31c0b963beb617b40432638}{I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH), 
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baa543dbaa2002e6d511a0730d11150c81}{S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED), 
+\newline
+\mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba63262ca46a0d3fd276c728a02e91d7ba}{R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}} = static\+\_\+cast$<$unsigned int$>$(M\+L\+Status\+:\+:R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED)
+ \}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+std\+::ostream \& \mbox{\hyperlink{namespaceonnxruntime_1_1common_afdb6e3abd4b0273234996893794c5c64}{operator$<$$<$}} (std\+::ostream \&out, const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&status)
+\end{DoxyCompactItemize}
+
+
+\subsection{Enumeration Type Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}\label{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}} 
+\index{onnxruntime\+::common@{onnxruntime\+::common}!Status\+Category@{Status\+Category}}
+\index{Status\+Category@{Status\+Category}!onnxruntime\+::common@{onnxruntime\+::common}}
+\subsubsection{\texorpdfstring{Status\+Category}{StatusCategory}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5}{onnxruntime\+::common\+::\+Status\+Category}}}
+
+\begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{N\+O\+NE@{N\+O\+NE}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!N\+O\+NE@{N\+O\+NE}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a179f5946c56d4adf760171c2ed41d840}\label{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a179f5946c56d4adf760171c2ed41d840}} 
+N\+O\+NE&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{S\+Y\+S\+T\+EM@{S\+Y\+S\+T\+EM}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!S\+Y\+S\+T\+EM@{S\+Y\+S\+T\+EM}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5ac06d8e95b2651b308d2651f8b015c33c}\label{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5ac06d8e95b2651b308d2651f8b015c33c}} 
+S\+Y\+S\+T\+EM&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+ME@{O\+N\+N\+X\+R\+U\+N\+T\+I\+ME}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!O\+N\+N\+X\+R\+U\+N\+T\+I\+ME@{O\+N\+N\+X\+R\+U\+N\+T\+I\+ME}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}\label{namespaceonnxruntime_1_1common_afab40a94a5b6b651a1c24921d4e5c4d5a553a760b1723d320685acd762bfd7372}} 
+O\+N\+N\+X\+R\+U\+N\+T\+I\+ME&\\
+\hline
+
+\end{DoxyEnumFields}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2b}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2b}} 
+\index{onnxruntime\+::common@{onnxruntime\+::common}!Status\+Code@{Status\+Code}}
+\index{Status\+Code@{Status\+Code}!onnxruntime\+::common@{onnxruntime\+::common}}
+\subsubsection{\texorpdfstring{Status\+Code}{StatusCode}}
+{\footnotesize\ttfamily enum \mbox{\hyperlink{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2b}{onnxruntime\+::common\+::\+Status\+Code}}}
+
+Error code for O\+N\+N\+X\+Runtime. \begin{DoxyEnumFields}{Enumerator}
+\raisebox{\heightof{T}}[0pt][0pt]{\index{OK@{OK}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!OK@{OK}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baaae015c2d386f5181df610537a83ba8e}} 
+OK&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{F\+A\+IL@{F\+A\+IL}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!F\+A\+IL@{F\+A\+IL}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba8c06735b7a9475ff93c7bc2e41e62f93}} 
+F\+A\+IL&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT@{I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT@{I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baec184a24eab4bb684bef28cc8da22201}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baec184a24eab4bb684bef28cc8da22201}} 
+I\+N\+V\+A\+L\+I\+D\+\_\+\+A\+R\+G\+U\+M\+E\+NT&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE@{N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE@{N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bab645e761fdc0c0855fb85f61dcf6976f}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bab645e761fdc0c0855fb85f61dcf6976f}} 
+N\+O\+\_\+\+S\+U\+C\+H\+F\+I\+LE&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{N\+O\+\_\+\+M\+O\+D\+EL@{N\+O\+\_\+\+M\+O\+D\+EL}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!N\+O\+\_\+\+M\+O\+D\+EL@{N\+O\+\_\+\+M\+O\+D\+EL}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bacf7d62164020462883a9dc15007708e4}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bacf7d62164020462883a9dc15007708e4}} 
+N\+O\+\_\+\+M\+O\+D\+EL&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR@{E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR@{E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bad59aa2f945cfdbdfbbfb84f3fcaaf10c}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2bad59aa2f945cfdbdfbbfb84f3fcaaf10c}} 
+E\+N\+G\+I\+N\+E\+\_\+\+E\+R\+R\+OR&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON@{R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON@{R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba70ab5e827b7fecf587452ca2b5665a6d}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba70ab5e827b7fecf587452ca2b5665a6d}} 
+R\+U\+N\+T\+I\+M\+E\+\_\+\+E\+X\+C\+E\+P\+T\+I\+ON&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF@{I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF@{I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba29227b10a2986e5dba2ecdb7ddbbd0ca}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba29227b10a2986e5dba2ecdb7ddbbd0ca}} 
+I\+N\+V\+A\+L\+I\+D\+\_\+\+P\+R\+O\+T\+O\+B\+UF&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED@{M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED@{M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba0cbb22e2ce1301c7b76364eecc72ee6d}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba0cbb22e2ce1301c7b76364eecc72ee6d}} 
+M\+O\+D\+E\+L\+\_\+\+L\+O\+A\+D\+ED&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED@{N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED@{N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba90df21990fe0afe17ae348264825babb}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba90df21990fe0afe17ae348264825babb}} 
+N\+O\+T\+\_\+\+I\+M\+P\+L\+E\+M\+E\+N\+T\+ED&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH@{I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH@{I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2badde3cc9ff31c0b963beb617b40432638}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2badde3cc9ff31c0b963beb617b40432638}} 
+I\+N\+V\+A\+L\+I\+D\+\_\+\+G\+R\+A\+PH&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED@{S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED@{S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baa543dbaa2002e6d511a0730d11150c81}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2baa543dbaa2002e6d511a0730d11150c81}} 
+S\+H\+A\+P\+E\+\_\+\+I\+N\+F\+E\+R\+E\+N\+C\+E\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED&\\
+\hline
+
+\raisebox{\heightof{T}}[0pt][0pt]{\index{R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED@{R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}!onnxruntime\+::common@{onnxruntime\+::common}}\index{onnxruntime\+::common@{onnxruntime\+::common}!R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED@{R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED}}}\mbox{\Hypertarget{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba63262ca46a0d3fd276c728a02e91d7ba}\label{namespaceonnxruntime_1_1common_a9dd72ac7df927aa93801eceb7e06fd2ba63262ca46a0d3fd276c728a02e91d7ba}} 
+R\+E\+Q\+U\+I\+R\+E\+M\+E\+N\+T\+\_\+\+N\+O\+T\+\_\+\+R\+E\+G\+I\+S\+T\+E\+R\+ED&\\
+\hline
+
+\end{DoxyEnumFields}
+
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{namespaceonnxruntime_1_1common_afdb6e3abd4b0273234996893794c5c64}\label{namespaceonnxruntime_1_1common_afdb6e3abd4b0273234996893794c5c64}} 
+\index{onnxruntime\+::common@{onnxruntime\+::common}!operator$<$$<$@{operator$<$$<$}}
+\index{operator$<$$<$@{operator$<$$<$}!onnxruntime\+::common@{onnxruntime\+::common}}
+\subsubsection{\texorpdfstring{operator$<$$<$()}{operator<<()}}
+{\footnotesize\ttfamily std\+::ostream\& onnxruntime\+::common\+::operator$<$$<$ (\begin{DoxyParamCaption}\item[{std\+::ostream \&}]{out,  }\item[{const \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \&}]{status }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+

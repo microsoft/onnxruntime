@@ -1,0 +1,128 @@
+\hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel}{}\section{onnxruntime\+:\+:cuda\+:\+:Cuda\+Kernel Class Reference}
+\label{classonnxruntime_1_1cuda_1_1CudaKernel}\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+
+
+{\ttfamily \#include $<$cuda\+\_\+common.\+h$>$}
+
+
+
+Inheritance diagram for onnxruntime\+:\+:cuda\+:\+:Cuda\+Kernel\+:
+% FIG 0
+
+
+Collaboration diagram for onnxruntime\+:\+:cuda\+:\+:Cuda\+Kernel\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+class \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_1_1CudaAsyncBuffer}{Cuda\+Async\+Buffer}}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_a93fd220303820a25d350f9e336239056}{Cuda\+Kernel}} (const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&info)
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_ad0c6a6779d1fa5cc12c7437b01051405}{Compute}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$p\+\_\+op\+\_\+kernel\+\_\+context) const override
+\item 
+virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_aca7af04ae448017d6023d30bba231ebb}{Compute\+Internal}} (\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$p\+\_\+op\+\_\+kernel\+\_\+context) const =0
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_aa44b8fb4000256df5b257da1356d25f9}{Allocate\+Buffer\+On\+C\+P\+U\+Pinned}} (int id, \mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count\+\_\+or\+\_\+bytes) const
+\item 
+{\footnotesize template$<$typename T $>$ }\\\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$ T $>$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_ac9edde9eb3d36bdeb937f058a2e3ef57}{Get\+Scratch\+Buffer}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count\+\_\+or\+\_\+bytes) const
+\item 
+\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_a408371d09df4c116a8076ec40260d202}{Add\+Deferred\+Release\+C\+P\+U\+Ptr}} (\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$p) const
+\end{DoxyCompactItemize}
+\subsection*{Protected Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+cublas\+Handle\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_a7720970f9afec128e98318aee7274c0a}{Cublas\+Handle}} () const
+\item 
+cudnn\+Handle\+\_\+t \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_afc186873ab2730857320c8aa3150abb1}{Cudnn\+Handle}} () const
+\item 
+{\footnotesize template$<$typename T $>$ }\\const T $\ast$ \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_a7361d9eae9cec4835d86d0fc094c42ce}{Get\+Const\+Ones}} (\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}} count) const
+\item 
+\mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudaKernel_a045d2367220e7756805c0079a3165925}{Copy\+Tensor}} (const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&src, \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&dst) const
+\end{DoxyCompactItemize}
+\subsection*{Additional Inherited Members}
+
+
+\subsection{Constructor \& Destructor Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_a93fd220303820a25d350f9e336239056}\label{classonnxruntime_1_1cuda_1_1CudaKernel_a93fd220303820a25d350f9e336239056}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Cuda\+Kernel@{Cuda\+Kernel}}
+\index{Cuda\+Kernel@{Cuda\+Kernel}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Cuda\+Kernel()}{CudaKernel()}}
+{\footnotesize\ttfamily onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cuda\+Kernel (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1OpKernelInfo}{Op\+Kernel\+Info}} \&}]{info }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [explicit]}}
+
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_a408371d09df4c116a8076ec40260d202}\label{classonnxruntime_1_1cuda_1_1CudaKernel_a408371d09df4c116a8076ec40260d202}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Add\+Deferred\+Release\+C\+P\+U\+Ptr@{Add\+Deferred\+Release\+C\+P\+U\+Ptr}}
+\index{Add\+Deferred\+Release\+C\+P\+U\+Ptr@{Add\+Deferred\+Release\+C\+P\+U\+Ptr}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Add\+Deferred\+Release\+C\+P\+U\+Ptr()}{AddDeferredReleaseCPUPtr()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Add\+Deferred\+Release\+C\+P\+U\+Ptr (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{p }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_aa44b8fb4000256df5b257da1356d25f9}\label{classonnxruntime_1_1cuda_1_1CudaKernel_aa44b8fb4000256df5b257da1356d25f9}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Allocate\+Buffer\+On\+C\+P\+U\+Pinned@{Allocate\+Buffer\+On\+C\+P\+U\+Pinned}}
+\index{Allocate\+Buffer\+On\+C\+P\+U\+Pinned@{Allocate\+Buffer\+On\+C\+P\+U\+Pinned}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Allocate\+Buffer\+On\+C\+P\+U\+Pinned()}{AllocateBufferOnCPUPinned()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$T$>$ onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Allocate\+Buffer\+On\+C\+P\+U\+Pinned (\begin{DoxyParamCaption}\item[{int}]{id,  }\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count\+\_\+or\+\_\+bytes }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_ad0c6a6779d1fa5cc12c7437b01051405}\label{classonnxruntime_1_1cuda_1_1CudaKernel_ad0c6a6779d1fa5cc12c7437b01051405}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Compute@{Compute}}
+\index{Compute@{Compute}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Compute()}{Compute()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Compute (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{p\+\_\+op\+\_\+kernel\+\_\+context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [override]}, {\ttfamily [virtual]}}
+
+
+
+Implements \mbox{\hyperlink{classonnxruntime_1_1OpKernel_a9eca8656a78b1b3ab9d3351a12798650}{onnxruntime\+::\+Op\+Kernel}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_aca7af04ae448017d6023d30bba231ebb}\label{classonnxruntime_1_1cuda_1_1CudaKernel_aca7af04ae448017d6023d30bba231ebb}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Compute\+Internal@{Compute\+Internal}}
+\index{Compute\+Internal@{Compute\+Internal}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Compute\+Internal()}{ComputeInternal()}}
+{\footnotesize\ttfamily virtual \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Compute\+Internal (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{classonnxruntime_1_1OpKernelContext}{Op\+Kernel\+Context}} $\ast$}]{p\+\_\+op\+\_\+kernel\+\_\+context }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [pure virtual]}}
+
+
+
+Implemented in \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ThresholdedRelu_a867604561536f8e8b095b2ab5f676ba8}{onnxruntime\+::cuda\+::\+Thresholded\+Relu$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Tanh_a7e741dd0d0ef94247a60a3d66db5857f}{onnxruntime\+::cuda\+::\+Tanh$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Sum_a07a1e4385aad90a558f83fc7abf5e93b}{onnxruntime\+::cuda\+::\+Sum$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Softsign_ac204135f17eff36f24431c9c9593f7e7}{onnxruntime\+::cuda\+::\+Softsign$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1PRelu_ac22e96f904703a1dd13dc6748a67f2ae}{onnxruntime\+::cuda\+::\+P\+Relu$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Softplus_a3ad8048f5c23f4edb87db9f86e419db8}{onnxruntime\+::cuda\+::\+Softplus$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Xor_ab631fd2ac34805590ed062a4dfea8bdc}{onnxruntime\+::cuda\+::\+Xor$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Sigmoid_a0ffe8b56e588d6132241e59515dbdff6}{onnxruntime\+::cuda\+::\+Sigmoid$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Or_ad39062a46531e065f5e124e60f45baa8}{onnxruntime\+::cuda\+::\+Or$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1And_a691b266d0442b0d513fe433c2e0c04d8}{onnxruntime\+::cuda\+::\+And$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Selu_aa7d48c140b4f549b220a6493d1c53be9}{onnxruntime\+::cuda\+::\+Selu$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Pow_a8d0954d35262ed182961ca491c4ffee7}{onnxruntime\+::cuda\+::\+Pow$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceLogSumExp_a409c23ca08af097ab4af96a222548735}{onnxruntime\+::cuda\+::\+Reduce\+Log\+Sum\+Exp$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Div_af4080aced91c8ce3ce2e9a31f08b4f05}{onnxruntime\+::cuda\+::\+Div$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ScaledTanh_ae1ad07730687c6f16f28c496dddf9490}{onnxruntime\+::cuda\+::\+Scaled\+Tanh$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Mul_acad0d0361e14828dec11252cbd07fead}{onnxruntime\+::cuda\+::\+Mul$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceSumSquare_ab6630541532a2665c0144113198c0c60}{onnxruntime\+::cuda\+::\+Reduce\+Sum\+Square$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Sub_aeb5dd41089760e5498a11583933a7976}{onnxruntime\+::cuda\+::\+Sub$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Relu_af1f9bdff79823d67d48c40e18d16c0ce}{onnxruntime\+::cuda\+::\+Relu$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Add_a34f68019a69cf99cbc2bf9adf96cbbe6}{onnxruntime\+::cuda\+::\+Add$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceLogSum_ac4051b87fd92e041fc6a4ef367565203}{onnxruntime\+::cuda\+::\+Reduce\+Log\+Sum$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a63654a27650f1b9d96d6b97d40c8ba54}{onnxruntime\+::cuda\+::\+Binary\+Elementwise$<$ Broadcast\+Trait $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BinaryElementwise_a63654a27650f1b9d96d6b97d40c8ba54}{onnxruntime\+::cuda\+::\+Binary\+Elementwise$<$ Should\+Broadcast $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceSum_a4921d463701f4ad89256532b402e77ca}{onnxruntime\+::cuda\+::\+Reduce\+Sum$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ParametricSoftplus_a54e8cfd42bcdef992b1a3418d5a4df2d}{onnxruntime\+::cuda\+::\+Parametric\+Softplus$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1CudnnRnnBase_ab7e2e0912ffc9b23069b9a2fee25aa2b}{onnxruntime\+::cuda\+::\+Cudnn\+Rnn\+Base$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceProd_a730e4b8b638b52810b8e50ed11e7d7fe}{onnxruntime\+::cuda\+::\+Reduce\+Prod$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1LeakyRelu_ab643554299b83ba95f722bd92193f2a4}{onnxruntime\+::cuda\+::\+Leaky\+Relu$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceMin_a7834ec2b546591eb67744c2a09091fd6}{onnxruntime\+::cuda\+::\+Reduce\+Min$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceMean_a8a8901b51c3f9861ae02318744b246af}{onnxruntime\+::cuda\+::\+Reduce\+Mean$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1HardSigmoid_a7b94a8b92e87ff5eac2d37561b13bdc9}{onnxruntime\+::cuda\+::\+Hard\+Sigmoid$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Exp_a311efdccc5969833cb43fa07058186d0}{onnxruntime\+::cuda\+::\+Exp$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceMax_ac33cd3745a6dd041abdb98b1e0fb43d4}{onnxruntime\+::cuda\+::\+Reduce\+Max$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Log_a857314aeb210d599f086e8109e6324d4}{onnxruntime\+::cuda\+::\+Log$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Conv_a01a9b9a3a511fe197e7bb92685f50e8e}{onnxruntime\+::cuda\+::\+Conv$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Elu_aa40f277b34ac1ff53dffe20aabc695b3}{onnxruntime\+::cuda\+::\+Elu$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceL2_a4891c57ba263b1d3926d273eb18f64af}{onnxruntime\+::cuda\+::\+Reduce\+L2$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Sqrt_a8bc2beeaa3b9aecd40e1ad87a118b723}{onnxruntime\+::cuda\+::\+Sqrt$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Reciprocal_aa4aef164f01dedd8969d326ab2f37a0d}{onnxruntime\+::cuda\+::\+Reciprocal$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ReduceL1_ad0f25c4efdb6681cec851e6415498150}{onnxruntime\+::cuda\+::\+Reduce\+L1$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Reshape__1_ae2c8570939f5fb4640bda8f4961fff42}{onnxruntime\+::cuda\+::\+Reshape\+\_\+1}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Affine_a4827c81adfbb36f9f48367e7928961ce}{onnxruntime\+::cuda\+::\+Affine$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Ceil_a9126a17817969afaf0c4bcf827907782}{onnxruntime\+::cuda\+::\+Ceil$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ArgMin_a2284dff807b92224f079e97210383b64}{onnxruntime\+::cuda\+::\+Arg\+Min$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Floor_ad9062f3bb265d435c16206fa28ba4f4f}{onnxruntime\+::cuda\+::\+Floor$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ArgMax_a0c5c20fc8c137945fa12b53005374c87}{onnxruntime\+::cuda\+::\+Arg\+Max$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Neg_a7ff46cf8e38f3a9e57a428d33ef00e9e}{onnxruntime\+::cuda\+::\+Neg$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1BatchNorm_a6ded0b7a7aa66e3fcc133c5e1883cf27}{onnxruntime\+::cuda\+::\+Batch\+Norm$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Abs_a1bf2979c1a4933cd6155c2952c1dc772}{onnxruntime\+::cuda\+::\+Abs$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Gemm_a932d9e5843b6350ad6d97247d4a162e0}{onnxruntime\+::cuda\+::\+Gemm$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1LRN_a89f6b059658b713b1e3f7a05ddf19712}{onnxruntime\+::cuda\+::\+L\+R\+N$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Pool_3_01T_00_01MaxPool_3_018_01_4_01_4_a1f0b209299a68e00ff1187ad7eea3b72}{onnxruntime\+::cuda\+::\+Pool$<$ T, Max\+Pool$<$ 8 $>$ $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Cast_a3f827c1fa734b18897b0b06c53161efd}{onnxruntime\+::cuda\+::\+Cast$<$ Src\+T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Upsample_a78a79ebb66c859d3c6f97dde1e7ec4f0}{onnxruntime\+::cuda\+::\+Upsample$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Reshape_a110bf34bdeed233d0e614d168ff438c3}{onnxruntime\+::cuda\+::\+Reshape}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Transpose_a02f1e4c35b31f521b2bcafdc2a81128b}{onnxruntime\+::cuda\+::\+Transpose$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1MatMul_a78ef9bfa2814c487d9ef0a726601b6dc}{onnxruntime\+::cuda\+::\+Mat\+Mul$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Softmax_a729140e052a2639582dc42fd2ac915b0}{onnxruntime\+::cuda\+::\+Softmax$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Pool_a682669ecd41f68812a68dc19c820d5be}{onnxruntime\+::cuda\+::\+Pool$<$ T, Pool\+Type $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Pool_a682669ecd41f68812a68dc19c820d5be}{onnxruntime\+::cuda\+::\+Pool$<$ T, Max\+Pool$<$ 1 $>$ $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1UnaryElementwise_abbbcb29c3937e2ac9e2ad768d9c69fca}{onnxruntime\+::cuda\+::\+Unary\+Elementwise}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Crop_a7a73bc65e6c7d7b71cfe0443f5576145}{onnxruntime\+::cuda\+::\+Crop$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1IdentityOp_aebedebb3ee26d00443c2c6d8b6f8e3c3}{onnxruntime\+::cuda\+::\+Identity\+Op$<$ is\+\_\+dropout $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ConvTranspose_a90953955a478cce3bc4e2992cb0e32d8}{onnxruntime\+::cuda\+::\+Conv\+Transpose$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Flatten_a823c3704fe7024e37a3c590c3adc3bf8}{onnxruntime\+::cuda\+::\+Flatten}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1ImageScaler_a151b80890690ab2caeb3285593a09e0e}{onnxruntime\+::cuda\+::\+Image\+Scaler$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Pad_a32053f849d81904ceecb64f8adc82db8}{onnxruntime\+::cuda\+::\+Pad$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1InstanceNorm_aa3ec73604290fef52d70f27ba0db097a}{onnxruntime\+::cuda\+::\+Instance\+Norm$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Concat_aa94176487c440385c1248b6ca04772ea}{onnxruntime\+::cuda\+::\+Concat}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Gather_a515b0ccbd69b82dc830ed1b1f0dadfe2}{onnxruntime\+::cuda\+::\+Gather}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Squeeze_a73b6b12616870d3b63a35b4c9854b4ad}{onnxruntime\+::cuda\+::\+Squeeze}}, \mbox{\hyperlink{structonnxruntime_1_1cuda_1_1Tile_ad8a7d4e9aef2faec8891579f188ae6dd}{onnxruntime\+::cuda\+::\+Tile$<$ T $>$}}, \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Unsqueeze_acb3d90ba25a9dbc3c4feb1af6ec4664a}{onnxruntime\+::cuda\+::\+Unsqueeze}}, and \mbox{\hyperlink{classonnxruntime_1_1cuda_1_1Slice_a2726a33736da2c094d5f7eec39f86abc}{onnxruntime\+::cuda\+::\+Slice}}.
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_a045d2367220e7756805c0079a3165925}\label{classonnxruntime_1_1cuda_1_1CudaKernel_a045d2367220e7756805c0079a3165925}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Copy\+Tensor@{Copy\+Tensor}}
+\index{Copy\+Tensor@{Copy\+Tensor}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Copy\+Tensor()}{CopyTensor()}}
+{\footnotesize\ttfamily \mbox{\hyperlink{classonnxruntime_1_1common_1_1Status}{Status}} onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Copy\+Tensor (\begin{DoxyParamCaption}\item[{const \mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{src,  }\item[{\mbox{\hyperlink{classonnxruntime_1_1Tensor}{Tensor}} \&}]{dst }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_a7720970f9afec128e98318aee7274c0a}\label{classonnxruntime_1_1cuda_1_1CudaKernel_a7720970f9afec128e98318aee7274c0a}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Cublas\+Handle@{Cublas\+Handle}}
+\index{Cublas\+Handle@{Cublas\+Handle}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Cublas\+Handle()}{CublasHandle()}}
+{\footnotesize\ttfamily cublas\+Handle\+\_\+t onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cublas\+Handle (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_afc186873ab2730857320c8aa3150abb1}\label{classonnxruntime_1_1cuda_1_1CudaKernel_afc186873ab2730857320c8aa3150abb1}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Cudnn\+Handle@{Cudnn\+Handle}}
+\index{Cudnn\+Handle@{Cudnn\+Handle}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Cudnn\+Handle()}{CudnnHandle()}}
+{\footnotesize\ttfamily cudnn\+Handle\+\_\+t onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Cudnn\+Handle (\begin{DoxyParamCaption}{ }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_a7361d9eae9cec4835d86d0fc094c42ce}\label{classonnxruntime_1_1cuda_1_1CudaKernel_a7361d9eae9cec4835d86d0fc094c42ce}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Get\+Const\+Ones@{Get\+Const\+Ones}}
+\index{Get\+Const\+Ones@{Get\+Const\+Ones}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Get\+Const\+Ones()}{GetConstOnes()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+const T$\ast$ onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Get\+Const\+Ones (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [protected]}}
+
+\mbox{\Hypertarget{classonnxruntime_1_1cuda_1_1CudaKernel_ac9edde9eb3d36bdeb937f058a2e3ef57}\label{classonnxruntime_1_1cuda_1_1CudaKernel_ac9edde9eb3d36bdeb937f058a2e3ef57}} 
+\index{onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}!Get\+Scratch\+Buffer@{Get\+Scratch\+Buffer}}
+\index{Get\+Scratch\+Buffer@{Get\+Scratch\+Buffer}!onnxruntime\+::cuda\+::\+Cuda\+Kernel@{onnxruntime\+::cuda\+::\+Cuda\+Kernel}}
+\subsubsection{\texorpdfstring{Get\+Scratch\+Buffer()}{GetScratchBuffer()}}
+{\footnotesize\ttfamily template$<$typename T $>$ \\
+\mbox{\hyperlink{namespaceonnxruntime_a323aace024f171700e4b07b299a178e7}{I\+Allocator\+Unique\+Ptr}}$<$T$>$ onnxruntime\+::cuda\+::\+Cuda\+Kernel\+::\+Get\+Scratch\+Buffer (\begin{DoxyParamCaption}\item[{\mbox{\hyperlink{mlasi_8h_a503efbc1c6e50825320ad909366b78ab}{size\+\_\+t}}}]{count\+\_\+or\+\_\+bytes }\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}}
+
+
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+onnxruntime/onnxruntime/core/providers/cuda/\mbox{\hyperlink{cuda__common_8h}{cuda\+\_\+common.\+h}}\end{DoxyCompactItemize}

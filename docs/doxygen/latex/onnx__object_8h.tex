@@ -1,0 +1,59 @@
+\hypertarget{onnx__object_8h}{}\section{onnxruntime/include/onnxruntime/core/framework/onnx\+\_\+object.h File Reference}
+\label{onnx__object_8h}\index{onnxruntime/include/onnxruntime/core/framework/onnx\+\_\+object.\+h@{onnxruntime/include/onnxruntime/core/framework/onnx\+\_\+object.\+h}}
+{\ttfamily \#include \char`\"{}error\+\_\+code.\+h\char`\"{}}\newline
+Include dependency graph for onnx\+\_\+object.\+h\+:
+% FIG 0
+This graph shows which files directly or indirectly include this file\+:
+% FIG 1
+\subsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}}
+\end{DoxyCompactItemize}
+\subsection*{Typedefs}
+\begin{DoxyCompactItemize}
+\item 
+typedef struct \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}} \mbox{\hyperlink{onnx__object_8h_a3f08b2d7c1a2786c58078f13cf26af37}{O\+N\+N\+X\+Object}}
+\end{DoxyCompactItemize}
+\subsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\hyperlink{onnx__object_8h_a292bae528b365afcd5d89d4f6e979764}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (uint32\+\_\+t, O\+N\+N\+X\+Runtime\+Add\+Ref\+To\+Object, \mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ptr)
+\item 
+\mbox{\hyperlink{onnx__object_8h_a41b0ea748037dc87b1146b70db941e01}{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}} (uint32\+\_\+t, O\+N\+N\+X\+Runtime\+Release\+Object, \mbox{\hyperlink{visibility__macros_8h_a9741e627e14220d0e9a803d9fa222a69}{\+\_\+\+Inout\+\_\+opt\+\_\+}} \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$ptr)
+\end{DoxyCompactItemize}
+
+
+\subsection{Typedef Documentation}
+\mbox{\Hypertarget{onnx__object_8h_a3f08b2d7c1a2786c58078f13cf26af37}\label{onnx__object_8h_a3f08b2d7c1a2786c58078f13cf26af37}} 
+\index{onnx\+\_\+object.\+h@{onnx\+\_\+object.\+h}!O\+N\+N\+X\+Object@{O\+N\+N\+X\+Object}}
+\index{O\+N\+N\+X\+Object@{O\+N\+N\+X\+Object}!onnx\+\_\+object.\+h@{onnx\+\_\+object.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+Object}{ONNXObject}}
+{\footnotesize\ttfamily typedef struct \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}}  \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}}}
+
+Just like the I\+Unknown interface in C\+OM Every type inherented from \mbox{\hyperlink{structONNXObject}{O\+N\+N\+X\+Object}} should be deleted by O\+N\+N\+X\+Runtime\+Release\+Object(...). 
+
+\subsection{Function Documentation}
+\mbox{\Hypertarget{onnx__object_8h_a292bae528b365afcd5d89d4f6e979764}\label{onnx__object_8h_a292bae528b365afcd5d89d4f6e979764}} 
+\index{onnx\+\_\+object.\+h@{onnx\+\_\+object.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!onnx\+\_\+object.\+h@{onnx\+\_\+object.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [1/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{uint32\+\_\+t}]{,  }\item[{O\+N\+N\+X\+Runtime\+Add\+Ref\+To\+Object}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_aa74f89aa7d942f4a79ea12d7c9b763ef}{\+\_\+\+In\+\_\+}} \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+This function is a wrapper to \char`\"{}($\ast$(\+O\+N\+N\+X\+Object$\ast$$\ast$)ptr)-\/$>$\+Add\+Ref(ptr)\char`\"{} W\+A\+R\+N\+I\+NG\+: There is NO type checking in this function. Before calling this function, caller should make sure current ref count $>$ 0 \begin{DoxyReturn}{Returns}
+the new reference count 
+\end{DoxyReturn}
+\mbox{\Hypertarget{onnx__object_8h_a41b0ea748037dc87b1146b70db941e01}\label{onnx__object_8h_a41b0ea748037dc87b1146b70db941e01}} 
+\index{onnx\+\_\+object.\+h@{onnx\+\_\+object.\+h}!O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}}
+\index{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI@{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI}!onnx\+\_\+object.\+h@{onnx\+\_\+object.\+h}}
+\subsubsection{\texorpdfstring{O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+P\+I()}{ONNXRUNTIME\_API()}\hspace{0.1cm}{\footnotesize\ttfamily [2/2]}}
+{\footnotesize\ttfamily O\+N\+N\+X\+R\+U\+N\+T\+I\+M\+E\+\_\+\+A\+PI (\begin{DoxyParamCaption}\item[{uint32\+\_\+t}]{,  }\item[{O\+N\+N\+X\+Runtime\+Release\+Object}]{,  }\item[{\mbox{\hyperlink{visibility__macros_8h_a9741e627e14220d0e9a803d9fa222a69}{\+\_\+\+Inout\+\_\+opt\+\_\+}} \mbox{\hyperlink{mlasi_8h_a88f941d423cb2a819b70a1358982b1a6}{void}} $\ast$}]{ptr }\end{DoxyParamCaption})}
+
+A wrapper to \char`\"{}($\ast$(\+O\+N\+N\+X\+Object$\ast$$\ast$)ptr)-\/$>$\+Release(ptr)\char`\"{} W\+A\+R\+N\+I\+NG\+: There is NO type checking in this function. 
+\begin{DoxyParams}{Parameters}
+{\em ptr} & Can be N\+U\+LL. If it\textquotesingle{}s N\+U\+LL, this function will return zero. \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+the new reference count. 
+\end{DoxyReturn}
