@@ -1,0 +1,136 @@
+diff --git a/src/cpu/gemm/jit_avx2_gemm_f32.cpp b/src/cpu/gemm/jit_avx2_gemm_f32.cpp
+index bf03c57..46793e7 100644
+--- a/src/cpu/gemm/jit_avx2_gemm_f32.cpp
++++ b/src/cpu/gemm/jit_avx2_gemm_f32.cpp
+@@ -2349,13 +2349,18 @@ void jit_avx2_gemm_f32::sgemm(const char *transa, const char *transb,
+ 
+     nthr_mn = nthr_m * nthr_n;
+ 
+-    unsigned int volatile *ompstatus = (unsigned int volatile *)ompstatus_;
+-    if (!ompstatus) return;
++    unsigned int *ompstatus_ = nullptr;
++    unsigned int volatile *ompstatus = nullptr;
+ 
+     float *c_buffers = NULL;
+     float *ws_buffers = NULL;
+ 
+     if (nthr_k > 1) {
++        ompstatus_ = (unsigned int *)malloc(
++            sizeof(unsigned int *) * nthrs_ * CACHE_LINE_SIZE, 64);
++        ompstatus = (unsigned int volatile *)ompstatus_;
++        assert(ompstatus);
++
+         for (int i = 0; i < nthr; i++)
+             ompstatus[i * CACHE_LINE_SIZE] = 0;
+ 
+@@ -2486,8 +2491,10 @@ void jit_avx2_gemm_f32::sgemm(const char *transa, const char *transb,
+         }
+     }
+ 
+-    if (nthr_k > 1)
++    if (nthr_k > 1) {
+         free(c_buffers);
++        free(ompstatus_);
++    }
+     free(ws_buffers);
+ }
+ 
+@@ -2513,9 +2520,6 @@ jit_avx2_gemm_f32::jit_avx2_gemm_f32(
+         ker_b0_ = ker_bn_;
+     }
+     nthrs_ = omp_get_max_threads();
+-    ompstatus_ = (unsigned int *)malloc(
+-        sizeof(unsigned int *) * nthrs_ * CACHE_LINE_SIZE, 64);
+-    assert(ompstatus_);
+ }
+ 
+ jit_avx2_gemm_f32::~jit_avx2_gemm_f32()
+@@ -2525,7 +2529,6 @@ jit_avx2_gemm_f32::~jit_avx2_gemm_f32()
+         delete ker_b1_;
+     if (beta_ != 0.0 || (beta_ == 0.0 && hasBias_))
+         delete ker_b0_;
+-    free(ompstatus_);
+ }
+ 
+ }
+diff --git a/src/cpu/gemm/jit_avx2_gemm_f32.hpp b/src/cpu/gemm/jit_avx2_gemm_f32.hpp
+index 7adb2a2..ebbbde0 100644
+--- a/src/cpu/gemm/jit_avx2_gemm_f32.hpp
++++ b/src/cpu/gemm/jit_avx2_gemm_f32.hpp
+@@ -49,7 +49,6 @@ private:
+     bool hasBias_;
+     struct xbyak_gemm;
+     xbyak_gemm *ker_bn_, *ker_b1_, *ker_b0_;
+-    unsigned int *ompstatus_;
+     int nthrs_;
+ };
+ }
+diff --git a/src/cpu/gemm/jit_avx512_common_gemm_f32.cpp b/src/cpu/gemm/jit_avx512_common_gemm_f32.cpp
+index 7959195..fca14f4 100644
+--- a/src/cpu/gemm/jit_avx512_common_gemm_f32.cpp
++++ b/src/cpu/gemm/jit_avx512_common_gemm_f32.cpp
+@@ -1866,14 +1866,18 @@ void jit_avx512_common_gemm_f32::sgemm(const char *transa, const char *transb,
+         nthr = nthr_m * nthr_n * nthr_k;
+ 
+     nthr_mn = nthr_m * nthr_n;
+-
+-    unsigned int volatile *ompstatus = (unsigned int volatile *)ompstatus_;
+-    if (!ompstatus) return;
++    
++    unsigned int *ompstatus_ = nullptr;
++    unsigned int volatile *ompstatus = nullptr;
+ 
+     float *c_buffers = NULL;
+     float *ws_buffers = NULL;
+ 
+     if (nthr_k > 1) {
++        ompstatus_ = (unsigned int *)malloc(
++        sizeof(unsigned int *) * nthrs_ * CACHE_LINE_SIZE, 64);
++        ompstatus = (unsigned int volatile *)ompstatus_;
++        assert(ompstatus);
+         for (int i = 0; i < nthr; i++)
+             ompstatus[i * CACHE_LINE_SIZE] = 0;
+ 
+@@ -2004,8 +2008,10 @@ void jit_avx512_common_gemm_f32::sgemm(const char *transa, const char *transb,
+         }
+     }
+ 
+-    if (nthr_k > 1)
++    if (nthr_k > 1) {
+         free(c_buffers);
++        free(ompstatus_);
++    }
+     free(ws_buffers);
+ }
+ 
+@@ -2032,10 +2038,6 @@ jit_avx512_common_gemm_f32::jit_avx512_common_gemm_f32(
+     }
+ 
+     nthrs_ = omp_get_max_threads();
+-    ompstatus_ = (unsigned int *)malloc(
+-        sizeof(unsigned int *) * nthrs_ * CACHE_LINE_SIZE, 64);
+-    assert(ompstatus_);
+-
+ }
+ 
+ jit_avx512_common_gemm_f32::~jit_avx512_common_gemm_f32()
+@@ -2045,7 +2047,6 @@ jit_avx512_common_gemm_f32::~jit_avx512_common_gemm_f32()
+         delete ker_b1_;
+     if (beta_ != 0.0 || (beta_ == 0.0 && hasBias_))
+         delete ker_b0_;
+-    free(ompstatus_);
+ }
+ }
+ }
+diff --git a/src/cpu/gemm/jit_avx512_common_gemm_f32.hpp b/src/cpu/gemm/jit_avx512_common_gemm_f32.hpp
+index ede1cf9..c057335 100644
+--- a/src/cpu/gemm/jit_avx512_common_gemm_f32.hpp
++++ b/src/cpu/gemm/jit_avx512_common_gemm_f32.hpp
+@@ -49,7 +49,6 @@ private:
+     bool hasBias_;
+     struct xbyak_gemm;
+     xbyak_gemm *ker_bn_, *ker_b1_, *ker_b0_;
+-    unsigned int *ompstatus_;
+     int nthrs_;
+ };
+ }

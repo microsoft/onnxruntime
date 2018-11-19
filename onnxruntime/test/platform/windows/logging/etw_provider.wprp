@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0" Author="Microsoft Corporation" Copyright="Microsoft Corporation" Company="Microsoft Corporation">
+  <Profiles>
+    <EventCollector Id="EventCollector_SimpleTraceLoggingProvider" Name="ONNXRuntimeTraceLoggingProvider">
+      <BufferSize Value="64" />
+      <Buffers Value="4" />
+    </EventCollector>
+    <EventProvider Id="EventProvider_SimpleTraceLoggingProvider" Name="929DD115-1ECB-4CB5-B060-EBD4983C421D" />
+
+    <Profile Id="ONNXRuntimeTraceLoggingProvider.Verbose.File" Name="ONNXRuntimeTraceLoggingProvider" Description="ONNXRuntimeTraceLoggingProvider" LoggingMode="File" DetailLevel="Verbose">
+      <Collectors>
+        <EventCollectorId Value="EventCollector_SimpleTraceLoggingProvider">
+          <EventProviders>
+            <EventProviderId Value="EventProvider_SimpleTraceLoggingProvider" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+
+    <Profile Id="ONNXRuntimeTraceLoggingProvider.Light.File" Name="ONNXRuntimeTraceLoggingProvider" Description="ONNXRuntimeTraceLoggingProvider" Base="ONNXRuntimeTraceLoggingProvider.Verbose.File" LoggingMode="File" DetailLevel="Light" />
+    <Profile Id="ONNXRuntimeTraceLoggingProvider.Verbose.Memory" Name="ONNXRuntimeTraceLoggingProvider" Description="ONNXRuntimeTraceLoggingProvider" Base="ONNXRuntimeTraceLoggingProvider.Verbose.File" LoggingMode="Memory" DetailLevel="Verbose" />
+    <Profile Id="ONNXRuntimeTraceLoggingProvider.Light.Memory" Name="ONNXRuntimeTraceLoggingProvider" Description="ONNXRuntimeTraceLoggingProvider" Base="ONNXRuntimeTraceLoggingProvider.Verbose.File" LoggingMode="Memory" DetailLevel="Light" />
+
+  </Profiles>
+</WindowsPerformanceRecorder>

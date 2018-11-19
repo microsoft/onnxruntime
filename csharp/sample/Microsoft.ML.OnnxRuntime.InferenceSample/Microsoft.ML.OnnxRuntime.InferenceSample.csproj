@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
+    <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\mkldnn.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(OnnxRuntimeCSharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
+  </ItemGroup>
+
+
+</Project>

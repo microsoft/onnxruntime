@@ -1,0 +1,3 @@
+six
+numpy
+protobuf

@@ -1,0 +1,18 @@
+[submodule "external/protobuf"]
+	path = cmake/external/protobuf
+	url = https://github.com/google/protobuf.git
+[submodule "cmake/external/googletest"]
+	path = cmake/external/googletest
+	url = https://github.com/google/googletest.git
+[submodule "cmake/external/onnx"]
+  path = cmake/external/onnx
+  url = https://github.com/onnx/onnx
+[submodule "cmake/external/tvm"]
+	path = cmake/external/tvm
+	url = https://github.com/dmlc/tvm.git
+[submodule "cmake/external/date"]
+	path = cmake/external/date
+	url = https://github.com/HowardHinnant/date.git
+[submodule "cmake/external/gsl"]
+	path = cmake/external/gsl
+	url = https://github.com/Microsoft/GSL.git
