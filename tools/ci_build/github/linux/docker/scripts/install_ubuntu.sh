@@ -50,7 +50,6 @@ fi
 rm -rf /var/lib/apt/lists/*
 
 mkdir -p /tmp/azcopy
-aria2c -q -d /tmp/azcopy -o azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux
-tar -xf /tmp/azcopy/azcopy.tar.gz --strip 1  -C /tmp/azcopy
-/bin/cp /tmp/azcopy/azcopy /usr/bin/azcopy
-rm -rf /tmp/azcopy
+aria2c -q -d /tmp/azcopy -o azcopy.tar.gz https://aka.ms/downloadazcopylinux64
+tar -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
+/tmp/azcopy/install.sh
