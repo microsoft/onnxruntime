@@ -97,3 +97,17 @@ jobs:
         arguments: '/s /q $(Agent.BuildDirectory)'
       continueOnError: true
       condition: always()
+
+- job: MacOS_CI_Dev
+  pool:
+    vmImage: 'macOS-10.13'
+
+  steps:
+    - script: |
+        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        ./build.sh --skip_submodule_sync --parallel
+      displayName: 'Command Line Script'
+
+    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
+      displayName: 'Clean build folders/files'
+      condition: always()
