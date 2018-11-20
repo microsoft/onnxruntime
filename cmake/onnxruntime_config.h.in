@@ -1,0 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#cmakedefine HAS_UNUSED_BUT_SET_VARIABLE
+#cmakedefine HAS_UNUSED_PARAMETER
+#cmakedefine HAS_CAST_FUNCTION_TYPE
+#cmakedefine HAS_PARENTHESES
+#cmakedefine HAS_NULL_DEREFERENCE
+#cmakedefine HAS_USELESS_CAST
+
+

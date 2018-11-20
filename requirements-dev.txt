@@ -1,0 +1,13 @@
+codecov
+jinja2
+numpy
+onnx
+onnxmltools
+pandas
+protobuf
+pytest
+pytest-cov
+scikit-learn
+scipy
+six
+wheel
