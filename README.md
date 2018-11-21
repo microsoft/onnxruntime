@@ -37,8 +37,8 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
 | [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](TODO)| [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
-| [C#](docs/CSharp_API.md) | [Windows](TODO)| Not available |
-| [C](docs/C_API.md) | [Windows](TODO)<br>[Linux](TODO) | Not available |
+| [C#](docs/CSharp_API.md) | [Windows](TODO)| Coming Soon |
+| [C](docs/C_API.md) | [Windows](TODO)<br>[Linux](TODO) | Coming Soon |
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).
@@ -46,11 +46,16 @@ For details on the build configurations and information on how to create a build
 ## Versioning
 See more details on API and ABI Versioning and ONNX Compatibility in [Versioning](docs/Versioning.md).
 
-# Design
-To learn more about the high level architecture and key decisions in the technical design of ONNX Runtime, see [Engineering Design](docs/HighLevelDesign.md).
+# Design and Key Features
+For an overview of the high level architecture and key decisions in the technical design of ONNX Runtime, see [Engineering Design](docs/HighLevelDesign.md).
 
-## Custom Operators
-If ONNX Runtime does not support an operator that is needed for a model, you can add a custom operator. See more details [here](docs/AddingCustomOp.md).
+ONNX Runtime is built with an extensible design that makes it versatile to support a wide array of models with high performance.
+
+* [Add a custom operator/kernel](AddingCustomOp.md)
+* [Add an execution provider](AddingExecutionProvider.md)
+* [Add a new graph
+transform](../include/onnxruntime/core/graph/graph_transformer.h)
+* [Add a new rewrite rule](../include/onnxruntime/core/graph/rewrite_rule.h)
 
 # Contribute
 We welcome your contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
