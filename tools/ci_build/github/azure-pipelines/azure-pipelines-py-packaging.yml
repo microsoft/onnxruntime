@@ -1,0 +1,182 @@
+jobs:
+- job: Ubuntu1604_py_Wheels
+  pool: Linux-CPU
+  strategy:
+    matrix:
+      Python35:
+        python.version: '3.5'
+      Python36:
+        python.version: '3.6'
+      Python37:
+        python.version: '3.7'
+  steps:
+    - task: ShellScript@2
+      displayName: 'Run build script'
+      inputs:
+        scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
+        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)'
+        Contents: 'Release/dist/onnxruntime-*-manylinux1_x86_64.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime
+
+    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
+      displayName: 'Clean build folders/files'
+      condition: always()
+
+- job: Ubuntu1604_py_GPU_Wheels
+  pool: Linux-GPU
+  strategy:
+    matrix:
+      Python35:
+        python.version: '3.5'
+      Python36:
+        python.version: '3.6'
+  steps:
+    - task: ShellScript@2
+      displayName: 'Run build script'
+      inputs:
+        scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
+        args: '-c Release -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)'
+        Contents: 'Release/dist/onnxruntime*-manylinux1_x86_64.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime_gpu
+
+    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
+      displayName: 'Clean build folders/files'
+      condition: always()
+
+- job: Windows_py_Wheels
+  pool: Win-CPU
+  strategy:
+    matrix:
+      Python35:
+        python.version: '3.5'
+      Python36:
+        python.version: '3.6'
+  variables:
+    buildDirectory: '$(Build.SourcesDirectory)\build'
+  steps:
+    - task: CondaEnvironment@1
+      inputs:
+        createCustomEnvironment: true
+        environmentName: 'py$(python.version)'
+        packageSpecs: 'python=$(python.version)'
+        cleanEnvironment: true
+
+    - task: BatchScript@1
+      displayName: 'Run build script'
+      inputs:
+        filename: 'build.bat'
+        arguments: ' --build_dir $(buildDirectory) --config Release --build_wheel'
+        workingFolder: "$(Build.SourcesDirectory)"
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(buildDirectory)'
+        Contents: '**\dist\onnxruntime-*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime
+
+    - task: CmdLine@1
+      displayName: 'Clean build folders/files'
+      inputs:
+        filename: rd
+        arguments: '/s /q $(Agent.BuildDirectory)'
+      continueOnError: true
+      condition: always()
+
+    - task: CmdLine@1
+      displayName: 'Deactivating Conda Environment'
+      inputs:
+        filename: deactivate
+      continueOnError: true
+      condition: always()
+
+- job:  Windows_py_GPU_Wheels
+  pool: Win-GPU
+  variables:
+    buildDirectory: '$(Build.SourcesDirectory)\build'
+    CUDA_VERSION: '9.1'
+  strategy:
+    matrix:
+      Python35:
+        python.version: '3.5'
+      Python36:
+        python.version: '3.6'
+  steps:
+    - task: CondaEnvironment@1
+      inputs:
+        createCustomEnvironment: true
+        environmentName: 'py$(python.version)'
+        packageSpecs: 'python=$(python.version)'
+        cleanEnvironment: true
+
+    - task: PowerShell@1
+      displayName: 'Set CUDA path'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion $(CUDA_VERSION)'
+
+    - task: BatchScript@1
+      displayName: 'Setup VS2017 env vars'
+      inputs:
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
+        arguments: 'amd64 -vcvars_ver=14.11'
+        modifyEnvironment: true
+
+    - task: BatchScript@1
+      displayName: 'Run build script'
+      inputs:
+        filename: 'build.bat'
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
+        workingFolder: "$(Build.SourcesDirectory)"
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(buildDirectory)'
+        Contents: '**\dist\onnxruntime_gpu-*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime_gpu
+
+    - task: CmdLine@1
+      displayName: 'Clean build folders/files'
+      inputs:
+        filename: rd
+        arguments: '/s /q $(Agent.BuildDirectory)'
+      continueOnError: true
+      condition: always()
+
+    - task: CmdLine@1
+      displayName: 'Deactivating Conda Environment'
+      inputs:
+        filename: deactivate
+      continueOnError: true
+      condition: always()
