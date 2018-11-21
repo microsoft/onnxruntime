@@ -557,7 +557,3 @@ add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
 target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas)
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
-
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_standalone_tests_internal.cmake)
-endif()
