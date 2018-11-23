@@ -24,6 +24,7 @@ Abstract:
 struct MLAS_WORK_BLOCK {
     MLAS_POOLING_KIND PoolingKind;
     size_t InputShape[3];
+    size_t InputSize;
     size_t OutputShape[3];
     int64_t KernelShape[3];
     int64_t Padding[6];
@@ -85,6 +86,22 @@ struct MLAS_MAXIMUM_POOLING
     {
         return MlasMaximumFloat32x4(Reduction, Value);
     }
+
+#if defined(MLAS_NEON64_INTRINSICS)
+
+    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction)
+    {
+        return vmaxvq_f32(Reduction);
+    }
+
+#elif defined(MLAS_NEON32_INTRINSICS)
+
+    static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
+    {
+        return vpmax_f32(Vector0, Vector1);
+    }
+
+#endif
 
     static float AveragePool(float Reduction, float Size)
     {
@@ -151,6 +168,25 @@ struct MLAS_AVERAGE_POOLING
     {
         return MlasAddFloat32x4(Reduction, Value);
     }
+
+#if defined(MLAS_NEON64_INTRINSICS)
+
+    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction)
+    {
+        Reduction = vpaddq_f32(Reduction, Reduction);
+        Reduction = vpaddq_f32(Reduction, Reduction);
+
+        return vgetq_lane_f32(Reduction, 0);
+    }
+
+#elif defined(MLAS_NEON32_INTRINSICS)
+
+    static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
+    {
+        return vpadd_f32(Vector0, Vector1);
+    }
+
+#endif
 
     static float AveragePool(float Reduction, float Size)
     {
@@ -340,6 +376,7 @@ Return Value:
 
     const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
     const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
     const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
     const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
 
@@ -386,7 +423,7 @@ Return Value:
             }
         }
 
-        Input += InputHeight * InputWidth;
+        Input += InputSize;
     }
 }
 
@@ -430,6 +467,7 @@ Return Value:
 
     const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
     const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
     const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
     const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
 
@@ -609,7 +647,7 @@ Return Value:
             } while (OutputWidthRemaining > 0);
         }
 
-        Input += InputHeight * InputWidth;
+        Input += InputSize;
     }
 }
 
@@ -652,6 +690,7 @@ Return Value:
     const size_t InputDepth = WorkBlock->InputShape[DepthShapeIndex];
     const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
     const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
     const size_t OutputDepth = WorkBlock->OutputShape[DepthShapeIndex];
     const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
     const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
@@ -713,7 +752,7 @@ Return Value:
             }
         }
 
-        Input += InputDepth * InputHeight * InputWidth;
+        Input += InputSize;
     }
 }
 
@@ -759,6 +798,7 @@ Return Value:
     const size_t InputDepth = WorkBlock->InputShape[DepthShapeIndex];
     const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
     const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
     const size_t OutputDepth = WorkBlock->OutputShape[DepthShapeIndex];
     const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
     const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
@@ -980,7 +1020,108 @@ Return Value:
             }
         }
 
-        Input += InputDepth * InputHeight * InputWidth;
+        Input += InputSize;
+    }
+}
+
+template<typename PoolingType>
+void
+MlasPoolGlobalKernel(
+    const MLAS_WORK_BLOCK* WorkBlock,
+    size_t ChannelCount,
+    const float* Input,
+    float* Output
+    )
+/*++
+
+Routine Description:
+
+    This routine implements a global pooling operation.
+
+Arguments:
+
+    WorkBlock - Supplies the structure that contains the pooling parameters.
+
+    ChannelCount - Supplies the number of channels to process.
+
+    Input - Supplies the input tensor.
+
+    Output - Supplies the output tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t InputSize = WorkBlock->InputSize;
+    const float InputSizeFloat = float(InputSize);
+
+    //
+    // Apply the pooling operation to each channel.
+    //
+
+    for (size_t c = 0; c < ChannelCount; c++) {
+
+        size_t InputSizeRemaining = InputSize;
+
+        //
+        // Iterate over the input buffer a vector at a time.
+        //
+
+        MLAS_FLOAT32X4 Reduction = PoolingType::InitialVector();
+
+        while (InputSizeRemaining >= 4) {
+            Reduction = PoolingType::Reduce(Reduction, MlasLoadFloat32x4(Input));
+            Input += 4;
+            InputSizeRemaining -= 4;
+        }
+
+        //
+        // Reduce the vector to a single float value.
+        //
+
+#if defined(MLAS_NEON64_INTRINSICS)
+
+        float ReductionValue = PoolingType::ReduceFloat32x4(Reduction);
+
+#elif defined(MLAS_NEON32_INTRINSICS)
+
+        float32x2_t ReductionLow = vget_low_f32(Reduction);
+        float32x2_t ReductionHigh = vget_high_f32(Reduction);
+
+        ReductionLow = PoolingType::ReducePairwise(ReductionLow, ReductionHigh);
+        ReductionLow = PoolingType::ReducePairwise(ReductionLow, ReductionHigh);
+
+        float ReductionValue = vget_lane_f32(ReductionLow, 0);
+
+#elif defined(MLAS_SSE2_INTRINSICS)
+
+        Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(3, 2, 3, 2)));
+        Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(1, 1, 1, 1)));
+
+        float ReductionValue = _mm_cvtss_f32(Reduction);
+
+#else
+#error Unsupported architecture.
+#endif
+
+        //
+        // Iterate over the remaining input buffer an element at a time.
+        //
+
+        while (InputSizeRemaining > 0) {
+            ReductionValue = PoolingType::Reduce(ReductionValue, *Input++);
+            InputSizeRemaining -= 1;
+        }
+
+        //
+        // Apply average pooling if necessary.
+        //
+
+        ReductionValue = PoolingType::AveragePool(ReductionValue, InputSizeFloat);
+
+        *Output++ = ReductionValue;
     }
 }
 
@@ -1005,6 +1146,13 @@ static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGenericKernels[][3] =
         MlasPool2DKernel<MLAS_AVERAGE_POOLING>,
         MlasPool3DKernel<MLAS_AVERAGE_POOLING>,
     },
+};
+
+static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolGlobalKernels[] =
+{
+    MlasPoolGlobalKernel<MLAS_MAXIMUM_POOLING>,
+    MlasPoolGlobalKernel<MLAS_AVERAGE_POOLING>,
+    MlasPoolGlobalKernel<MLAS_AVERAGE_POOLING>,
 };
 
 static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolVectorKernels[][2] =
@@ -1040,7 +1188,7 @@ MlasPool(
 
 Routine Description:
 
-    This routine prepares for a pooling operation by computing required WorkBlock.
+    This routine implements the pooling operation.
 
 Arguments:
 
@@ -1090,6 +1238,9 @@ Return Value:
     size_t InputSize = 1;
     size_t OutputSize = 1;
 
+    bool InputAndKernelShapeMatch = true;
+    bool AllStridesAreOne = true;
+    bool AllPaddingIsZero = true;
     bool AllKernelsAreSmall = true;
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
@@ -1120,8 +1271,13 @@ Return Value:
         InputSize *= WorkBlock.InputShape[dim];
         OutputSize *= WorkBlock.OutputShape[dim];
 
+        InputAndKernelShapeMatch &= (WorkBlock.KernelShape[dim] == int64_t(WorkBlock.InputShape[dim]));
+        AllStridesAreOne &= (WorkBlock.StrideShape[dim] == 1);
+        AllPaddingIsZero &= (WorkBlock.Padding[dim] == 0 && WorkBlock.Padding[dim + Dimensions] == 0);
         AllKernelsAreSmall &= (WorkBlock.KernelShape[dim] <= 32);
     }
+
+    WorkBlock.InputSize = InputSize;
 
     //
     // Determine which pooling kernel routine to use.
@@ -1134,7 +1290,11 @@ Return Value:
 
     PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
 
-    if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
+    if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
+
+        PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
+
+    } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
 
         int64_t ReductionBufferRemaining = MLAS_POOL_REDUCTION_BUFFER_STACK - MLAS_POOL_REDUCTION_BUFFER_PADDING;
 

@@ -10,7 +10,7 @@ file(GLOB onnxruntime_session_srcs
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
 add_library(onnxruntime_session ${onnxruntime_session_srcs})
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/session)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 onnxruntime_add_include_to_target(onnxruntime_session onnx protobuf::libprotobuf)
 target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT})
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})

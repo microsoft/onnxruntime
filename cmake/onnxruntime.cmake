@@ -10,6 +10,10 @@ else()
 endif()
 
 
+#If you want to verify if there is any extra line in symbols.txt, run
+# nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
+# after build
+
 list(APPEND SYMBOL_FILES "${REPO_ROOT}/tools/ci_build/gen_def.py")
 foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")

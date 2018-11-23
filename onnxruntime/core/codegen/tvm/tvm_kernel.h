@@ -101,8 +101,8 @@ class TVMKernel : public OpKernel {
     tvm::TVMRetValue rvalue;
     try {
       evaluate_func_.CallPacked(tvm_args, &rvalue);
-    } catch (std::exception ex) {
-      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "TVM run failed.");
+    } catch (std::exception& ex) {
+      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "TVM run failed:", ex.what());
     }
     if (rvalue.type_code() != kNull) {
       return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "TVM return not null");  // TODO: get error code.

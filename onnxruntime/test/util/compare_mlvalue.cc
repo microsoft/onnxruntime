@@ -12,37 +12,32 @@
 
 using namespace onnxruntime;
 
+#define CASE_TYPE(X)                             \
+  case ONNX_NAMESPACE::TensorProto_DataType_##X: \
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
+
 namespace {
-MLDataType ElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
+
+OnnxRuntimeTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
   switch (type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return DataTypeImpl::GetType<float>();
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      return DataTypeImpl::GetType<bool>();
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return DataTypeImpl::GetType<int>();
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return DataTypeImpl::GetType<double>();
-    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
-      return DataTypeImpl::GetType<std::string>();
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      return DataTypeImpl::GetType<int8_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return DataTypeImpl::GetType<uint8_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      return DataTypeImpl::GetType<uint16_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      return DataTypeImpl::GetType<int16_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return DataTypeImpl::GetType<int64_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      return DataTypeImpl::GetType<uint32_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      return DataTypeImpl::GetType<uint64_t>();
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return DataTypeImpl::GetType<MLFloat16>();
+    CASE_TYPE(FLOAT)
+    CASE_TYPE(UINT8)
+    CASE_TYPE(INT8)
+    CASE_TYPE(UINT16)
+    CASE_TYPE(INT16)
+    CASE_TYPE(INT32)
+    CASE_TYPE(INT64)
+    CASE_TYPE(STRING)
+    CASE_TYPE(BOOL)
+    CASE_TYPE(FLOAT16)
+    CASE_TYPE(DOUBLE)
+    CASE_TYPE(UINT32)
+    CASE_TYPE(UINT64)
+    CASE_TYPE(COMPLEX64)
+    CASE_TYPE(COMPLEX128)
+    CASE_TYPE(BFLOAT16)
     default:
-      ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, ":tensor type ", type, " is not supported");
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
 }
 
@@ -256,21 +251,33 @@ const char* ElementTypeToString(MLDataType type) {
 }
 
 //The expected_shape could contain unknown dimensions, but the real_shape cannot
-bool AreShapesEqual(const TensorShape& real_shape, const ::ONNX_NAMESPACE::TensorShapeProto& expected_shape) {
+bool AreShapesEqual(const std::vector<int64_t>& real_shape, const ::ONNX_NAMESPACE::TensorShapeProto& expected_shape) {
   const int len = expected_shape.dim_size();
-  //because real_shape.NumDimensions() cannot be negative
   if (len < 0) return false;
-  if (real_shape.NumDimensions() != static_cast<size_t>(len)) return false;
+  if (real_shape.size() != static_cast<size_t>(len)) return false;
   for (int i = 0; i != len; ++i) {
     if (!expected_shape.dim(i).has_dim_value()) {
-      //symbolic shape, cannot validate it right now
+      //symbolic shape, cannot validate it right now, assume it matches every thing
       continue;
     }
     ::google::protobuf::int64 d = expected_shape.dim(i).dim_value();
-    //dim value can be zero or negative, in such case, we assume it can match any value
     if (d != real_shape[i]) return false;
   }
   return true;
+}
+
+template <typename T>
+std::ostringstream& VectorToString(const std::vector<T>& input, std::ostringstream& oss) {
+  size_t len = input.size();
+  oss << "[";
+  if (len > 0) {
+    oss << input[0];
+    for (size_t i = 1; i != len; ++i) {
+      oss << ", " << input[i];
+    }
+  }
+  oss << "]";
+  return oss;
 }
 
 }  // namespace
@@ -306,38 +313,46 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
                            per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
 
-std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const MLValue& o) {
-  if (v.has_type()) {
-    if (v.type().has_tensor_type()) {
-      if (o.Type() != DataTypeImpl::GetType<Tensor>()) {
-        return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const ONNXValuePtr o) {
+  if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+  if (v.type().has_tensor_type()) {
+    if (ONNXRuntimeIsTensor(o) == 0) {
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+    }
+
+    ::ONNX_NAMESPACE::TypeProto_Tensor t = v.type().tensor_type();
+    //below code doesn't work
+    //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
+    //	return COMPARE_RESULT::TYPE_MISMATCH;
+    //}
+    std::unique_ptr<ONNXRuntimeTensorTypeAndShapeInfo> info;
+    {
+      ONNXRuntimeTensorTypeAndShapeInfo* t1;
+      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeGetTensorShapeAndType(o, &t1));
+      info.reset(t1);
+    }
+    OnnxRuntimeTensorElementDataType real_type = ONNXRuntimeGetTensorElementType(info.get());
+    OnnxRuntimeTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
+    if (real_type != expected_type) {
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+    }
+    std::vector<int64_t> shape = GetTensorShape(info.get());
+    if (!AreShapesEqual(shape, t.shape())) {
+      std::string result;
+      if (!google::protobuf::TextFormat::PrintToString(t.shape(), &result)) {
+        result = "(unknown)";
       }
-      ::ONNX_NAMESPACE::TypeProto_Tensor t = v.type().tensor_type();
-      //below code doesn't work
-      //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
-      //	return COMPARE_RESULT::TYPE_MISMATCH;
-      //}
-      const Tensor& o1 = o.Get<Tensor>();
-      if (o1.DataType() != ElementTypeFromProto(t.elem_type())) {
-        return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
-      }
-      if (!AreShapesEqual(o1.Shape(), t.shape())) {
-        std::string result;
-        if (!google::protobuf::TextFormat::PrintToString(t.shape(), &result)) {
-          result = "(unknown)";
-        }
-        std::ostringstream oss;
-        oss << "Tensor shape mismatch, model file expects '" << result
-            << "', real output is " << o1.Shape().ToString();
-        return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
-      }
-    } else {
-      //Cannot do this check for tensor type.
-      //For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
-      auto p = DataTypeImpl::TypeFromProto(v.type());
-      if (o.Type() != p) {
-        return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
-      }
+      std::ostringstream oss;
+      oss << "Tensor shape mismatch, model file expects '" << result << "', real output is ";
+      VectorToString(shape, oss);
+      return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
+    }
+  } else {
+    //Cannot do this check for tensor type.
+    //For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
+    auto p = DataTypeImpl::TypeFromProto(v.type());
+    if (((MLValue*)o)->Type() != p) {
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
   }
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");

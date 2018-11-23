@@ -159,9 +159,9 @@ int real_main(int argc, char* argv[]) {
     usage();
     return -1;
   }
-  std::unique_ptr<ONNXEnv, decltype(&ReleaseONNXEnv)> env(nullptr, ReleaseONNXEnv);
+  std::unique_ptr<ONNXRuntimeEnv> env;
   {
-    ONNXEnv* t;
+    ONNXRuntimeEnv* t;
     ONNXStatusPtr ost = ONNXRuntimeInitialize(logging_level, "Default", &t);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", ONNXRuntimeGetErrorMessage(ost));

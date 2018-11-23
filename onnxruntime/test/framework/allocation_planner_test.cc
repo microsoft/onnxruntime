@@ -172,7 +172,7 @@ class PlannerTest : public ::testing::Test {
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
     auto iter = name_to_arg_.find(name);
-    if (name_to_arg_.end() != iter) return iter->second;	
+    if (name_to_arg_.end() != iter) return iter->second;
     return (name_to_arg_[name] = &graph_.GetOrCreateNodeArg(name, &float_type_.value));
   }
 
@@ -210,9 +210,9 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan() {
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
     EXPECT_EQ(graph_.Resolve(), Status::OK());
-	state_.SetGraphViewer(std::make_unique<GraphViewer>(graph_));
+    state_.SetGraphViewer(std::make_unique<GraphViewer>(graph_));
 
     MLValueNameIdxMap& mlvalue_name_idx_map{state_.GetMLValueNameIdxMap()};
 
@@ -234,7 +234,8 @@ class PlannerTest : public ::testing::Test {
 
     SequentialPlannerTestContext test_context(&shape_map_);
     auto status = SequentialPlanner::CreatePlan(
-        graph_, execution_providers, kernel_registry_manager, mlvalue_name_idx_map, test_context, plan_);
+        graph_, outer_scope_node_args, execution_providers, kernel_registry_manager,
+        mlvalue_name_idx_map, test_context, plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
@@ -308,30 +309,39 @@ TEST_F(PlannerTest, ChainTest) {
 
 /* InputOutputTest: Test that:
 (a) All inputs are classified as kPreExisting,
-(b) All outputs are classified as kAllocate (in this example),
-(c) Neither input nor outputs are freed.
+(b) All outer scope node args are classified as kPreExisting,
+(c) All outputs are classified as kAllocate (in this example),
+(d) Neither input nor outputs are freed.
 */
 TEST_F(PlannerTest, InputOutputTest) {
   // tensor variables:
-  std::string X1("X1"), X2("X2"), Y1("Y1"), Y2("Y2");
+  std::string X1("X1"), X2("X2"), Y1("Y1"), Y2("Y2"), Outer1("Outer1"), Y3("Y3");
 
   // graph structure:
   AddNormalNode(X1, Y1);
   AddNormalNode(X2, Y2);
 
+  // add node that consumes an outer scope node arg
+  auto outer_node = AddNormalNode(Outer1, Y3);
+  const NodeArg* outer_scope_node_arg = outer_node->InputDefs().at(0);
+  GetGraph().AddOuterScopeNodeArg(Outer1);
+
   // simulate no shape-inference:
 
-  CreatePlan();
+  CreatePlan({outer_scope_node_arg});
 
-  // X1: kPreExisting, X2: kPreExisting, Y1: kAllocate, Y2: kAllocate
+  // X1: kPreExisting, X2: kPreExisting, Outer1: kPreExisting, Y1: kAllocate, Y2: kAllocate, Y3: kAllocate
   CheckAllocKind(X1, AllocKind::kPreExisting);
   CheckAllocKind(X2, AllocKind::kPreExisting);
+  CheckAllocKind(Outer1, AllocKind::kPreExisting);
   CheckAllocKind(Y1, AllocKind::kAllocateOutput);
   CheckAllocKind(Y2, AllocKind::kAllocateOutput);
+  CheckAllocKind(Y3, AllocKind::kAllocateOutput);
 
   // Nothing should be freed (since they are either inputs or outputs)
   CheckFreed(0, {});
   CheckFreed(1, {});
+  CheckFreed(2, {});
 }
 
 // InPlaceTest: Check that we reuse when Inplace allows us to.
