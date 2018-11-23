@@ -25,12 +25,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.NotNull(session.InputMetadata);
                 Assert.Equal(1, session.InputMetadata.Count); // 1 input node
                 Assert.True(session.InputMetadata.ContainsKey("data_0")); // input node name
+                Assert.Equal(typeof(float), session.InputMetadata["data_0"].Type);
+                var expectedInputDimensions = new int[] { 1, 3, 224, 224 };
+                Assert.Equal(expectedInputDimensions.Length, session.InputMetadata["data_0"].Dimensions.Length);
+                for (int i = 0; i < expectedInputDimensions.Length; i++)
+                {
+                    Assert.Equal(expectedInputDimensions[i], session.InputMetadata["data_0"].Dimensions[i]);
+                }
 
                 Assert.NotNull(session.OutputMetadata);
                 Assert.Equal(1, session.OutputMetadata.Count); // 1 output node
                 Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output node name
-
-                //TODO: verify shape/type of the input/output nodes when API available
+                Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].Type);
+                var expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
+                Assert.Equal(expectedOutputDimensions.Length, session.OutputMetadata["softmaxout_1"].Dimensions.Length);
+                for (int i = 0; i < expectedOutputDimensions.Length; i++)
+                {
+                    Assert.Equal(expectedOutputDimensions[i], session.OutputMetadata["softmaxout_1"].Dimensions[i]);
+                }
             }
         }
 
@@ -42,16 +54,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var session = new InferenceSession(modelPath))
             {
                 var inputMeta = session.InputMetadata;
-
-                // User should be able to detect input name/type/shape from the metadata.
-                // Currently InputMetadata implementation is inclomplete, so assuming Tensor<flot> of predefined dimension.
-
-                var shape0 = new int[] { 1, 3, 224, 224 };
-                float[] inputData0 = LoadTensorFromFile(@"bench.in");
-                var tensor = new DenseTensor<float>(inputData0, shape0);
-
                 var container = new List<NamedOnnxValue>();
-                container.Add(new NamedOnnxValue("data_0", tensor));
+
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].Type);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(new NamedOnnxValue(name, tensor));
+                }
 
                 // Run the inference
                 var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container

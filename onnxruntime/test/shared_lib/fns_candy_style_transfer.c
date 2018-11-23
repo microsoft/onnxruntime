@@ -95,7 +95,7 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
 /**
  * \param tensor should be a float tensor in [N,C,H,W] format
  */
-static int write_tensor_to_png_file(const ONNXValuePtr tensor, const char* output_file) {
+static int write_tensor_to_png_file(ONNXValue* tensor, const char* output_file) {
   struct ONNXRuntimeTensorTypeAndShapeInfo* shape_info;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeGetTensorShapeAndType(tensor, &shape_info));
   size_t dim_count = ONNXRuntimeGetNumOfDimensions(shape_info);
@@ -152,23 +152,23 @@ int run_inference(ONNXSessionPtr session, const char* input_file, const char* ou
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
-  ONNXValuePtr input_tensor[] = {NULL};
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateTensorWithDataAsONNXValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor[0]));
-  assert(input_tensor[0] != NULL);
-  assert(ONNXRuntimeIsTensor(input_tensor[0]) != 0);
+  ONNXValuePtr input_tensor = NULL;
+  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateTensorWithDataAsONNXValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+  assert(input_tensor != NULL);
+  assert(ONNXRuntimeIsTensor(input_tensor) != 0);
   ReleaseONNXRuntimeAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
-  ONNXValuePtr output_tensor[] = {NULL};
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeRunInference(session, input_names, input_tensor, 1, output_names, 1, output_tensor));
-  assert(output_tensor[0] != NULL);
-  assert(ONNXRuntimeIsTensor(output_tensor[0]) != 0);
+  ONNXValuePtr output_tensor = NULL;
+  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeRunInference(session, NULL, input_names, (const ONNXValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+  assert(output_tensor != NULL);
+  assert(ONNXRuntimeIsTensor(output_tensor) != 0);
   int ret = 0;
-  if (write_tensor_to_png_file(output_tensor[0], output_file) != 0) {
+  if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
     ret = -1;
   }
-  ReleaseONNXValue(output_tensor[0]);
-  ReleaseONNXValue(input_tensor[0]);
+  ReleaseONNXValue(output_tensor);
+  ReleaseONNXValue(input_tensor);
   free(model_input);
   return ret;
 }
@@ -198,7 +198,7 @@ int main(int argc, char* argv[]) {
   char* model_path = argv[1];
   char* input_file = argv[2];
   char* output_file = argv[3];
-  ONNXEnv* env;
+  ONNXRuntimeEnv* env;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeInitialize(ONNXRUNTIME_LOGGING_LEVEL_kWARNING, "test", &env));
   ONNXRuntimeSessionOptions* session_option = ONNXRuntimeCreateSessionOptions();
 #ifdef USE_CUDA
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
   int ret = run_inference(session, input_file, output_file);
   ONNXRuntimeReleaseObject(session_option);
   ReleaseONNXSession(session);
-  ReleaseONNXEnv(env);
+  ONNXRuntimeReleaseObject(env);
   if (ret != 0) {
     fprintf(stderr, "fail\n");
   }

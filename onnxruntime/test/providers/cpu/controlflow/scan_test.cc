@@ -34,7 +34,8 @@ class ScanOpTester : public OpTester {
                 std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                 std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                 std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
-    // add outer_scope_0 node
+    // add outer_scope_0 node. push the value through an extra Identity node as a Constant gets lifted into an
+    // initializer which results in different treatment by the allocation planner
     {
       TypeProto float_scalar;
       float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -42,9 +43,9 @@ class ScanOpTester : public OpTester {
       mutable_dim->set_dim_value(1);
 
       {
-        auto& output_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_scalar);
+        auto& outer_scope_constant = graph.GetOrCreateNodeArg("outer_scope_constant", &float_scalar);
         auto* constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue",
-                                       {}, {&output_arg});
+                                       {}, {&outer_scope_constant});
 
         TensorProto value_tensor;
         value_tensor.add_dims(1);
@@ -52,6 +53,10 @@ class ScanOpTester : public OpTester {
         value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
 
         constant->AddAttribute("value", value_tensor);
+
+        auto& outer_scope_node_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_scalar);
+        graph.AddNode("outer_scope_id", "Identity", "Identity for outer_scope_0",
+                      {&outer_scope_constant}, {&outer_scope_node_arg});
       }
     }
 
@@ -179,7 +184,6 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
   if (options.include_outer_scope_add) {
     TypeProto float_scalar;
     float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-    float_scalar.mutable_tensor_type()->mutable_shape();  // create it to make checker happy but don't put any dims in it
 
     auto& outer_scope_input_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_scalar);
 
