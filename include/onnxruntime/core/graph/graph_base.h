@@ -206,6 +206,16 @@ class Node {
   // Get node attributes.
   const NodeAttributes& GetAttributes() const noexcept;
 
+  // get the Graph instance that is instantiated from a GraphProto attribute
+  // when the main Graph is resolved. returns nullptr if the Graph instance
+  // has not been instantiated.
+  const Graph* GetGraphAttribute(const std::string& attr_name) const;
+
+  // get the Graph instance that is instantiated from a GraphProto attribute
+  // when the main Graph is resolved. returns nullptr if the Graph instance
+  // has not been instantiated.
+  Graph* GetMutableGraphAttribute(const std::string& attr_name);
+
   // Indicates on which we will run this node in runtime.
   // Executor will decide which device that this node will run against
   // and set it properly.
@@ -305,6 +315,9 @@ class Node {
             const NodeAttributes* attributes,
             const std::string& domain);
 
+  // create a Graph instance for an attribute that contains a GraphProto
+  void CreateSubgraph(const std::string& attr_name);
+
   // internal only method to allow selected classes to directly alter
   // the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
@@ -312,6 +325,8 @@ class Node {
   // internal only method to allow selected classes to directly alter
   // the links between nodes.
   Relationships& MutableRelationships() noexcept;
+
+  const std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
 
   const Definitions& GetDefinitions() const noexcept { return definitions_; }
   const Relationships& GetRelationships() const noexcept { return relationships_; }
@@ -355,7 +370,11 @@ class Node {
   // This allows attribute adding and removing.
   NodeAttributes attributes_;
 
+  // Graph that contains this Node
   Graph* graph_;
+
+  std::unordered_map<std::string, Graph*> attr_to_subgraph_map_;
+  std::vector<std::unique_ptr<Graph>> subgraphs_;
 };
 
 #ifdef _MSC_VER
@@ -537,13 +556,6 @@ class Graph {
 
   Status InlineFunction(Node& node);
 
-  // Get the Graph instance for a node that contains a GraphProto attribute in attribute_name.
-  // Non-const as the Graph instance returned for the subgraph is mutable and owned by this Graph instance.
-  Graph* GetMutableSubgraph(const NodeIndex index, const std::string& attribute_name);
-
-  // Const version for the above
-  const Graph* GetSubgraph(const NodeIndex index, const std::string& attribute_name) const;
-
   // when creating a subgraph, record that a NodeArg will come from the outer scope.
   // This prevents it from being added to the graph inputs.
   void AddOuterScopeNodeArg(const std::string& name) {
@@ -561,6 +573,9 @@ class Graph {
   void SetOutputOrder(const std::vector<const NodeArg*> outputs) {
     graph_output_order_ = outputs;
   }
+
+  // Construct a Graph instance for a subgraph. Inherits some properties from the parent graph.
+  Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
   virtual ~Graph();
 
@@ -580,9 +595,6 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
-
-  // Construct a Graph instance for a subgraph. Inherits some properties from the parent graph.
-  Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
   // internal use only
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
@@ -621,14 +633,14 @@ class Graph {
     std::unordered_set<std::string> inputs_and_initializers;
     std::unordered_set<std::string> outer_scope_node_args;
     std::unordered_map<std::string, NodeIndex> node_name_to_index;
-    std::unordered_map<NodeIndex, std::vector<Graph*>> node_to_subgraphs_map;
+    std::unordered_set<Node*> nodes_with_subgraphs;
 
     void Clear() {
       output_args.clear();
       inputs_and_initializers.clear();
       outer_scope_node_args.clear();
       node_name_to_index.clear();
-      node_to_subgraphs_map.clear();
+      nodes_with_subgraphs.clear();
     }
 
    private:
@@ -668,10 +680,11 @@ class Graph {
 
   common::Status Resolve(bool no_proto_sync_required);
 
-  common::Status CreateSubgraphs();
+  // Recursively find all subgraphs including nested subgraphs
+  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
 
   // Iterate this Graph instance and all subgraphs, calling the provided function for each.
-  common::Status ForThisAndAllSubgraphs(std::function<Status(Graph&)> func);
+  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
 
   common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op);
 
@@ -786,14 +799,6 @@ class Graph {
 
   // the parent graph if this is a subgraph.
   Graph* parent_graph_;
-
-  // entry for node containing subgraph, with value containing attribute_name:Graph pair
-  // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
-  using AttributeGraphMap = std::unordered_map<std::string, Graph*>;
-  using SubgraphMap = std::unordered_map<onnxruntime::NodeIndex, AttributeGraphMap>;
-
-  SubgraphMap subgraph_map_;
-  std::vector<std::unique_ptr<Graph>> subgraphs_;
 
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.

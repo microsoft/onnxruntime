@@ -11,13 +11,9 @@ using System.Linq;
 namespace Microsoft.ML.OnnxRuntime
 {
 
-    public struct RunOptions
-    {
-        // placeholder for RunOptions
-    }
 
     /// <summary>
-    /// Represents an Inference Session against an ONNX Model
+    /// Represents an Inference Session on an ONNX Model
     /// </summary>
     public class InferenceSession: IDisposable
     {
@@ -56,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // get all the output names
                 for (ulong i = 0; i < inputCount; i++)
                 {
-                    _inputMetadata[GetInputName(i)] = new NodeMetadata();  //TODO: fill the shape/type when C-api available
+                    _inputMetadata[GetInputName(i)] = GetInputMetadata(i);
                 }
 
                 // get output count
@@ -66,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // get all the output names
                 for (ulong i = 0; i < outputCount; i++)
                 {
-                    _outputMetadata[GetOutputName(i)] = new NodeMetadata();  //TODO: fill the shape/type when C-api available
+                    _outputMetadata[GetOutputName(i)] = GetOutputMetadata(i);
                 }
             }
             catch (OnnxRuntimeException e)
@@ -104,7 +100,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, RunOptions options = new RunOptions())
+        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
+        {
+            return Run(inputs, RunOptions.Default);
+        }
+
+        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, RunOptions options)
         {
             string[] outputNames = new string[_outputMetadata.Count];
             _outputMetadata.Keys.CopyTo(outputNames, 0);
@@ -118,7 +119,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="outputNames"></param>
         /// <param name="options"></param>
         /// <returns>Output Tensors in a Dictionary</returns>
-        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options = new RunOptions())
+        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
             var inputNames = new string[inputs.Count];
             var inputTensors = new IntPtr[inputs.Count];
@@ -129,7 +130,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 inputNames[offset] = input.Name;
 
-                // create Tensor fromt the input if feasible, else throw notsupported exception for now
+                // create Tensor from the input if feasible, else throw notsupported exception for now
                 input.ToNativeOnnxValue(out inputTensors[offset], out pinnedBufferHandles[offset]);
 
                 offset++;
@@ -140,6 +141,8 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr status = NativeMethods.ONNXRuntimeRunInference(
                                                 this._nativeHandle,
+                                                IntPtr.Zero,  // TODO: use Run options when Run options creation API is available
+                                                              // Passing null uses the default run options in the C-api
                                                 inputNames,
                                                 inputTensors,
                                                 (ulong)(inputTensors.Length),  /* TODO: size_t, make it portable for x86 arm */
@@ -239,9 +242,62 @@ namespace Microsoft.ML.OnnxRuntime
             return str;
         }
 
+
+        private NodeMetadata GetInputMetadata(ulong index)
+        {
+            IntPtr typeInfo = IntPtr.Zero;
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInferenceSessionGetInputTypeInfo(_nativeHandle, index, out typeInfo));
+                return GetMetadataFromTypeInfo(typeInfo);
+            }
+            finally
+            {
+                if (typeInfo != IntPtr.Zero)
+                {
+                    NativeMethods.ONNXRuntimeReleaseObject(typeInfo);
+                }
+            }
+        }
+
+        private NodeMetadata GetOutputMetadata(ulong index)
+        {
+            IntPtr typeInfo = IntPtr.Zero;
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInferenceSessionGetOutputTypeInfo(_nativeHandle, index, out typeInfo));
+                return GetMetadataFromTypeInfo(typeInfo);
+            }
+            finally
+            {
+                if (typeInfo != IntPtr.Zero)
+                {
+                    NativeMethods.ONNXRuntimeReleaseObject(typeInfo);
+                }
+            }
+        }
+
+        private NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
+        {
+            IntPtr tensorInfo = NativeMethods.ONNXRuntimeCastTypeInfoToTensorInfo(typeInfo);
+                    // Convert the newly introduced ONNXRuntimeTypeInfo* to the older ONNXRuntimeTypeAndShapeInfo* 
+
+            TensorElementType type = NativeMethods.ONNXRuntimeGetTensorElementType(tensorInfo);
+            Type dotnetType = null;
+            int width = 0;
+            TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width); 
+            ulong numDimensions = NativeMethods.ONNXRuntimeGetNumOfDimensions(tensorInfo);
+            long[] dimensions = new long[(int)numDimensions];
+            NativeMethods.ONNXRuntimeGetDimensions(tensorInfo, dimensions, numDimensions);
+            int[] intDimensions = new int[(int)numDimensions];
+            for (ulong i = 0; i < numDimensions; i++)
+            {
+                intDimensions[i] = (int)dimensions[i];
+            }
+            return new NodeMetadata(intDimensions, dotnetType);
+        }
+
         #endregion
-
-
 
         #region destructors disposers
 
@@ -275,23 +331,61 @@ namespace Microsoft.ML.OnnxRuntime
 
     }
 
-    public struct NodeMetadata
+
+    /// <summary>
+    /// Resembles type and shape information of session-graph nodes, used for communicating the shape/type of input/output nodes
+    /// </summary>
+    public class NodeMetadata
     {
-        //TODO: currently shape and type is not available in C-api, so this struct may change based on implementation
-        public uint[] Shape
+        private int[] _dimensions;
+        private Type _type;
+
+        internal NodeMetadata(int[] dimensions, Type type)
         {
-            get; internal set;
+            _dimensions = dimensions;
+            _type = type;
+        }
+
+        public int[] Dimensions
+        {
+            get
+            {
+                return _dimensions;
+            }
         }
         public System.Type Type
         {
-            get; internal set;
+            get
+            {
+                return _type;
+            }
         }
     }
 
 
-    public struct ModelMetadata
+    public class ModelMetadata
     {
         //TODO: placeholder for Model metadata. Currently C-API does not expose this
+    }
+
+    /// Sets various runtime options. 
+    /// TODO: currently uses Default options only
+    public class RunOptions
+    {
+        protected static readonly Lazy<RunOptions> _default = new Lazy<RunOptions>(() => new RunOptions());
+
+        public static RunOptions Default
+        {
+            get
+            {
+                return _default.Value;
+            }
+        }
+
+        private void RuntOptions()
+        {
+
+        }
     }
 
 }

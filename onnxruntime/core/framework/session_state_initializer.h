@@ -8,15 +8,13 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
+class ExecutionProviders;
 class Graph;
 class GraphTransformerManager;
-}  // namespace onnxruntime
-
-namespace onnxruntime {
-class SessionState;
-class ExecutionProviders;
-class KernelRegistryManager;
 class InsertCastTransformer;
+class KernelRegistryManager;
+class NodeArg;
+class SessionState;
 
 namespace logging {
 class Logger;
@@ -33,6 +31,7 @@ class SessionStateInitializer {
   // First perform any transformations and create the execution plan
   common::Status CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
                             const InsertCastTransformer& insert_cast_transformer,
+                            const std::vector<const NodeArg*>& outer_scope_node_args,
                             bool enable_sequential_execution);
 
   // initialize tensors, and save. save kernels and input/output node mappings

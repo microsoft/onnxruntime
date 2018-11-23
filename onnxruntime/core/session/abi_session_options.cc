@@ -3,31 +3,14 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include <cstring>
+#include <cassert>
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
 
-uint32_t ONNXRUNTIME_API_STATUSCALL ReleaseCuda(void* this_) {
-  ONNXRuntimeSessionOptions* this_ptr = static_cast<ONNXRuntimeSessionOptions*>(this_);
-  if (--this_ptr->ref_count == 0)
-    delete this_ptr;
-  return 0;
-}
 
-uint32_t ONNXRUNTIME_API_STATUSCALL AddRefCuda(void* this_) {
-  ONNXRuntimeSessionOptions* this_ptr = static_cast<ONNXRuntimeSessionOptions*>(this_);
-  ++this_ptr->ref_count;
-  return 0;
-}
-
-constexpr ONNXObject mkl_cls = {
-    AddRefCuda,
-    ReleaseCuda,
-};
-
-ONNXRuntimeSessionOptions::ONNXRuntimeSessionOptions() : cls(&mkl_cls), ref_count(1) {
-}
 
 ONNXRuntimeSessionOptions::~ONNXRuntimeSessionOptions() {
+  assert(ref_count == 0);
   for (ONNXRuntimeProviderFactoryPtr* p : provider_factories) {
     ONNXRuntimeReleaseObject(p);
   }
@@ -37,7 +20,7 @@ ONNXRuntimeSessionOptions& ONNXRuntimeSessionOptions::operator=(const ONNXRuntim
   throw std::runtime_error("not implemented");
 }
 ONNXRuntimeSessionOptions::ONNXRuntimeSessionOptions(const ONNXRuntimeSessionOptions& other)
-    : cls(&mkl_cls), ref_count(1), value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
+    : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
   for (ONNXRuntimeProviderFactoryPtr* p : other.provider_factories) {
     ONNXRuntimeAddRefToObject(p);
   }

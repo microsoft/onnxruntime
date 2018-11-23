@@ -44,7 +44,7 @@ target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT} ${date
 # logging uses date. threadpool uses eigen
 add_dependencies(onnxruntime_common date eigen gsl)
 
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/common)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 

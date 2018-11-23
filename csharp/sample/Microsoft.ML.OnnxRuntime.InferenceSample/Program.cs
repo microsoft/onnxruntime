@@ -28,16 +28,15 @@ namespace CSharpUsage
             using (var session = new InferenceSession(modelPath))
             {
                 var inputMeta = session.InputMetadata;
-
-                // User should be able to detect input name/type/shape from the metadata.
-                // Currently InputMetadata implementation is inclomplete, so assuming Tensor<flot> of predefined dimension.
-
-                var shape0 = new int[] { 1, 3, 224, 224 };
-                float[] inputData0 = LoadInputsFloat();
-                var tensor = new DenseTensor<float>(inputData0, shape0);
-
                 var container = new List<NamedOnnxValue>();
-                container.Add(new NamedOnnxValue("data_0", tensor));
+
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+                foreach (var name in inputMeta.Keys)
+                {
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(new NamedOnnxValue(name, tensor));
+                }
 
                 // Run the inference
                 var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
@@ -49,40 +48,27 @@ namespace CSharpUsage
                     Console.WriteLine(r.AsTensor<float>().GetArrayString());
                 }
 
-                // Just try some GC collect
-                results = null;
-                container = null;
-
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
             }
         }
 
-        static int[] LoadInputsInt32()
+        static float[] LoadTensorFromFile(string filename)
         {
-            return null;
-        }
-
-        static float[] LoadInputsFloat()
-        {
-            // input: data_0 = float32[1,3,224,224] for squeezenet model
-            // output: softmaxout_1 =  float32[1,1000,1,1]
-            uint size = 1 * 3 * 224 * 224;
-            float[] tensor = new float[size];
+            var tensorData = new List<float>();
 
             // read data from file
-            using (var inputFile = new System.IO.StreamReader(@"bench.in"))
+            using (var inputFile = new System.IO.StreamReader(filename))
             {
                 inputFile.ReadLine(); //skip the input name
                 string[] dataStr = inputFile.ReadLine().Split(new char[] { ',', '[', ']' }, StringSplitOptions.RemoveEmptyEntries);
                 for (int i = 0; i < dataStr.Length; i++)
                 {
-                    tensor[i] = Single.Parse(dataStr[i]);
+                    tensorData.Add(Single.Parse(dataStr[i]));
                 }
             }
 
-           return tensor;
+            return tensorData.ToArray();
         }
+
 
     }
 }
