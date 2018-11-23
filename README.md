@@ -1,6 +1,6 @@
 # ONNX Runtime
 
-[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Microsoft.onnxruntime)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=1)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/onnxruntime%20CI%20Pipelines)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=1)
 
 ONNX Runtime is the runtime for [ONNX](https://github.com/onnx/onnx).
 
