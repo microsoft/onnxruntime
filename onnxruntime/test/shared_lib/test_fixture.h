@@ -5,13 +5,21 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include <gtest/gtest.h>
 
+#ifdef _WIN32
+typedef const wchar_t* PATH_TYPE;
+#define TSTR(X) L##X
+#else
+#define TSTR(X) (X)
+typedef const char* PATH_TYPE;
+#endif
+
 //empty
 static inline void ONNXRUNTIME_API_STATUSCALL MyLoggingFunction(void*, ONNXRuntimeLoggingLevel, const char*, const char*, const char*, const char*) {
 }
 template <bool use_customer_logger>
 class CApiTestImpl : public ::testing::Test {
  protected:
-  ONNXEnv* env;
+  ONNXRuntimeEnv* env = nullptr;
 
   void SetUp() override {
     if (use_customer_logger) {
@@ -22,7 +30,7 @@ class CApiTestImpl : public ::testing::Test {
   }
 
   void TearDown() override {
-    ReleaseONNXEnv(env);
+    if (env) ONNXRuntimeReleaseObject(env);
   }
 
   // Objects declared here can be used by all tests in the test case for Foo.

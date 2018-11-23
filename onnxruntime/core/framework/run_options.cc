@@ -6,26 +6,6 @@
 #include <stdexcept>
 #include <memory>
 
-uint32_t ONNXRUNTIME_API_STATUSCALL ReleaseRunOptions(void* this_) {
-  ONNXRuntimeRunOptions* this_ptr = static_cast<ONNXRuntimeRunOptions*>(this_);
-  if (--this_ptr->ref_count == 0)
-    delete this_ptr;
-  return 0;
-}
-
-uint32_t ONNXRUNTIME_API_STATUSCALL AddRefRunOptions(void* this_) {
-  ONNXRuntimeRunOptions* this_ptr = static_cast<ONNXRuntimeRunOptions*>(this_);
-  ++this_ptr->ref_count;
-  return 0;
-}
-
-constexpr ONNXObject mkl_cls = {
-    AddRefRunOptions,
-    ReleaseRunOptions,
-};
-
-ONNXRuntimeRunOptions::ONNXRuntimeRunOptions() : cls(&mkl_cls), ref_count(1), terminate(false) {
-}
 
 ONNXRUNTIME_API(ONNXRuntimeRunOptions*, ONNXRuntimeCreateRunOptions) {
   std::unique_ptr<ONNXRuntimeRunOptions> options = std::make_unique<ONNXRuntimeRunOptions>();

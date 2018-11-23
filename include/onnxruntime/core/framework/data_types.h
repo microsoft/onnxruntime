@@ -107,6 +107,12 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetTensorType();
 
+  /**
+   * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
+   * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back
+   * Don't pass the returned value to MLValue::MLValue(...) function
+   * \param proto
+   */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
   // Registers ONNX_NAMESPACE::DataType (internalized string) with

@@ -28,13 +28,14 @@ typedef struct ONNXObject {
 ONNXRUNTIME_API(uint32_t, ONNXRuntimeAddRefToObject, _In_ void* ptr);
 
 /**
- * 
+ *
  * A wrapper to "(*(ONNXObject**)ptr)->Release(ptr)"
  * WARNING: There is NO type checking in this function.
  * \param ptr Can be NULL. If it's NULL, this function will return zero.
  * \return the new reference count.
  */
 ONNXRUNTIME_API(uint32_t, ONNXRuntimeReleaseObject, _Inout_opt_ void* ptr);
+
 #ifdef __cplusplus
 }
 #endif

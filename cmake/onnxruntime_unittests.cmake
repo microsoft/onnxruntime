@@ -525,14 +525,17 @@ if (onnxruntime_BUILD_SHARED_LIB)
   # this program shouldn't have direct depedency on CUDA
   # CUDA is part of ${ONNX_DLL}
   set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
-  add_executable(onnxruntime_shared_lib_test
-  ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc
-  ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
-  ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc
-  ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
-  ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
-  ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
-  ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
+  set (onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
+  if(onnxruntime_RUN_ONNX_TESTS)
+    list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
+  endif()
+  add_executable(onnxruntime_shared_lib_test ${onnxruntime_shared_lib_test_SRC})
   onnxruntime_add_include_to_target(onnxruntime_shared_lib_test onnxruntime_test_utils)
   target_include_directories(onnxruntime_shared_lib_test PRIVATE "${TEST_SRC_DIR}/util/include" "${PROJECT_SOURCE_DIR}/include")
   if(WIN32)
@@ -557,7 +560,3 @@ add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
 target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas)
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
-
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_standalone_tests_internal.cmake)
-endif()

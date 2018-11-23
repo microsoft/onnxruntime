@@ -70,31 +70,46 @@ SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
 
 common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
                                                    const InsertCastTransformer& insert_cast_transformer,
+                                                   const std::vector<const NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
   ONNXRUNTIME_RETURN_IF_ERROR(TransformGraph(graph_, graph_transformation_manager,
                                              execution_providers_, kernel_registry_manager_,
                                              insert_cast_transformer));
+
   // After transformation/partitioning, the graph now is fixed and graph viewer is created and set for execution.
   session_state_.SetGraphViewer(std::make_unique<onnxruntime::GraphViewer>(graph_));
+
+  auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
+
   // populate the SessionState MLValueNameIdxMap
-  ONNXRUNTIME_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(graph_,
-                                                          session_state_.GetMLValueNameIdxMap(),
-                                                          logger_));
+  ONNXRUNTIME_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(graph_, mlvalue_name_idx_map, logger_));
+
+  // remove any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
+  std::vector<const NodeArg*> valid_outer_scope_node_args;
+  std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
+                [&mlvalue_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
+                  int idx;
+                  if (mlvalue_name_idx_map.GetIdx(node_arg->Name(), idx).IsOK()) {
+                    valid_outer_scope_node_args.push_back(node_arg);
+                  };
+                });
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
 
   if (enable_sequential_execution) {
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
-    ONNXRUNTIME_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(graph_, execution_providers_, kernel_registry_manager_,
-                                                              session_state_.GetMLValueNameIdxMap(), exec_plan));
+    ONNXRUNTIME_RETURN_IF_ERROR(
+        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+                                      kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
   } else {
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
-    ONNXRUNTIME_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(graph_, execution_providers_, kernel_registry_manager_,
-                                                              session_state_.GetMLValueNameIdxMap(), context, exec_plan));
+    ONNXRUNTIME_RETURN_IF_ERROR(
+        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+                                      kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
   }

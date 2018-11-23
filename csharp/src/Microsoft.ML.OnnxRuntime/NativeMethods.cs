@@ -49,20 +49,10 @@ namespace Microsoft.ML.OnnxRuntime
                                                         IntPtr /* (ONNXRuntimeSessionOptions*) */sessopnOptions,
                                                         out IntPtr /**/ session);
 
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNStatus*)*/ ONNXRuntimeRunInferenceAndFetchAll(
-                                                IntPtr /*(ONNXSessionPtr)*/ session,
-                                                string[] inputNames,
-                                                IntPtr[] /*(ONNXValuePtr[])*/ inputValues,
-                                                ulong inputLength,  // size_t, TODO: make it portable for x86, arm
-                                                out IntPtr /* (ONNXValueListPtr*)*/ outputValues,
-                                                out ulong /* (size_t*) */ outputLength); //TODO: make it portable for x86, arm
-
-
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(ONNStatus*)*/ ONNXRuntimeRunInference(
                                                 IntPtr /*(ONNXSession*)*/ session,
+                                                IntPtr /*(ONNXSessionRunOptions*)*/ runOptions,  // can be null to use the default options
                                                 string[] inputNames,
                                                 IntPtr[] /* (ONNXValue*[])*/ inputValues,
                                                 ulong inputCount,  /* TODO: size_t, make it portable for x86 arm */
@@ -99,6 +89,20 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(ONNXRuntimeAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
 
+        // release the typeinfo using ONNXRuntimeReleaseObject
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeInferenceSessionGetInputTypeInfo(
+                                                IntPtr /*(const ONNXSession*)*/ session, 
+                                                ulong index, //TODO: port for size_t
+                                                out IntPtr /*(struct ONNXRuntimeTypeInfo**)*/ typeInfo);
+
+        // release the typeinfo using ONNXRuntimeReleaseObject
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeInferenceSessionGetOutputTypeInfo(
+                                                IntPtr /*(const ONNXSession*)*/ session, 
+                                                ulong index, //TODO: port for size_t
+                                                out IntPtr /* (struct ONNXRuntimeTypeInfo**)*/ typeInfo);
+
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void ReleaseONNXSession(IntPtr /*(ONNXSession*)*/session);
@@ -106,18 +110,20 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion InferenceSession API
 
         #region SessionOptions API
+
+        //Release using ONNXRuntimeReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*ONNXRuntimeSessionOptions* */ ONNXRuntimeCreateSessionOptions();
 
-        //DEFINE_RUNTIME_CLASS(ONNXRuntimeSessionOptions)
+       
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ReleaseONNXRuntimeSessionOptions(IntPtr /*(ONNXRuntimeSessionOptions*)*/ sessionOptions);
+        public static extern IntPtr /*(ONNXRuntimeSessionOptions*)*/ONNXRuntimeCloneSessionOptions(IntPtr /*(ONNXRuntimeSessionOptions*)*/ sessionOptions);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeEnableSequentialExecution(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void ONNXRuntimeEnableSequentialExecution(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableSequentialExecution(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void ONNXRuntimeDisableSequentialExecution(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void ONNXRuntimeEnableProfiling(IntPtr /* ONNXRuntimeSessionOptions* */ options, string profilePathPrefix);
@@ -146,17 +152,28 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern int ONNXRuntimeSetSessionThreadPoolSize(IntPtr /* ONNXRuntimeSessionOptions* */ options, int sessionThreadPoolSize);
 
+        ///**
+        //  * The order of invocation indicates the preference order as well. In other words call this method
+        //  * on your most preferred execution provider first followed by the less preferred ones.
+        //  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
+        //  */
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern int ONNXRuntimeEnableCudaProvider(IntPtr /* ONNXRuntimeSessionOptions* */ options, int deviceId);
+        public static extern void ONNXRuntimeSessionOptionsAppendExecutionProvider(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options, IntPtr /* (ONNXRuntimeProviderFactoryPtr*)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableCudaProvider(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateCpuExecutionProviderFactory(int use_arena, out IntPtr /*(ONNXRuntimeProviderFactoryPtr*)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern int ONNXRuntimeEnableMklProvider(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateMkldnnExecutionProviderFactory(int use_arena, out IntPtr /*(ONNXRuntimeProviderFactoryPtr**)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableMklProvider(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateCUDAExecutionProviderFactory(int device_id, out IntPtr /*(ONNXRuntimeProviderFactoryPtr**)*/ factory);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateNupharExecutionProviderFactory(int device_id, string target_str, out IntPtr /*(ONNXRuntimeProviderFactoryPtr**)*/ factory);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern void ONNXRuntimeAddCustomOp(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options, string custom_op_path);
 
         #endregion
 
@@ -247,6 +264,10 @@ namespace Microsoft.ML.OnnxRuntime
         //public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeGetTensorShapeElementCount(IntPtr /*(ONNXValue*)*/value, out ulong count);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ 
+                                ONNXRuntimeCastTypeInfoToTensorInfo(IntPtr /*(struct ONNXRuntimeTypeInfo*)*/ typeInfo);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeGetTensorShapeAndType(IntPtr /*(ONNXValue*)*/ value, out IntPtr /*(struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -273,15 +294,8 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern long ONNXRuntimeGetTensorShapeElementCount(IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXValuePtr)*/ ONNXRuntimeONNXValueListGetNthValue(IntPtr /*(ONNXValueListPtr)*/ list, ulong index);  // 0-based index TODO: size_t, make it portable for x86, arm
-
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void ReleaseONNXValue(IntPtr /*(ONNXValue*)*/ value);
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ReleaseONNXValueList(IntPtr /*(ONNXValueList*)*/ valueList);
 
         #endregion
     } //class NativeMethods

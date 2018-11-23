@@ -98,6 +98,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
 class PlannerImpl {
  public:
   PlannerImpl(const onnxruntime::GraphViewer& graph_viewer,
+              const std::vector<const NodeArg*>& outer_scope_node_args,
               const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry,
               const MLValueNameIdxMap& mlvalue_name_idx_map,
@@ -105,7 +106,8 @@ class PlannerImpl {
               SequentialExecutionPlan& plan)
       : context_{context},
         plan_{plan},
-        graph_viewer_(graph_viewer),
+        graph_viewer_{graph_viewer},
+        outer_scope_node_args_{outer_scope_node_args},
         execution_providers_{providers},
         kernel_registry_{kernel_registry},
         mlvalue_name_idx_map_{mlvalue_name_idx_map} {
@@ -118,6 +120,7 @@ class PlannerImpl {
   SequentialExecutionPlan& plan_;
 
   const onnxruntime::GraphViewer& graph_viewer_;
+  const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
 
   const KernelRegistryManager& kernel_registry_;
@@ -335,6 +338,12 @@ class PlannerImpl {
       UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
     }
 
+    for (auto node_arg : outer_scope_node_args_) {
+      MLValueIndex index = Index(node_arg->Name());
+      ProcessDef(index, node_arg);
+      UseCount(index)++;  // ensure will not be re-used as this graph does not own the buffer
+    }
+
     // All initializers should be treated as input
     for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
       const auto& initializer_name = pair.first;
@@ -444,14 +453,23 @@ class PlannerImpl {
 
     // Identify allocation/deallocation plan for every ml-value
 
+    auto setup_preexisting = [this](const NodeArg* node_arg) {
+      auto input_index = Index(node_arg->Name());
+      SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(input_index);
+      thisplan.alloc_kind = AllocKind::kPreExisting;
+      thisplan.value_type = utils::GetMLDataType(*node_arg);
+    };
+
     // inputs of the graph:
     // An input ml-value's data is owned by the caller (of InferenceSession::Run())
     // It must be allocated by the caller, and will not be reused during inference.
     for (auto graph_input : graph_viewer_.GetInputs()) {
-      auto input_index = Index(graph_input->Name());
-      SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(input_index);
-      thisplan.alloc_kind = AllocKind::kPreExisting;
-      thisplan.value_type = utils::GetMLDataType(*graph_input);
+      setup_preexisting(graph_input);
+    }
+
+    // outer scope node args are treated the same as graph inputs
+    for (auto outer_scope_node_arg : outer_scope_node_args_) {
+      setup_preexisting(outer_scope_node_arg);
     }
 
     GeneratePlanForWeights();
@@ -565,7 +583,7 @@ Status PlannerImpl::CreatePlan() {
   // Determine execution order: we use the default topological sort order for now. We can later
   // explore more efficient orderings (from a memory usage perspective).
   for (auto n : p_graph_nodes) {
-      plan_.execution_plan.emplace_back(n);
+    plan_.execution_plan.emplace_back(n);
   }
 
   // compute use counts for all ml-values
@@ -581,6 +599,7 @@ Status PlannerImpl::CreatePlan() {
 }
 
 Status SequentialPlanner::CreatePlan(const onnxruntime::GraphViewer& graph_viewer,
+                                     const std::vector<const NodeArg*>& outer_scope_node_args,
                                      const ExecutionProviders& providers,
                                      const KernelRegistryManager& kernel_registry,
                                      const MLValueNameIdxMap& mlvalue_name_idx_map,
@@ -589,7 +608,8 @@ Status SequentialPlanner::CreatePlan(const onnxruntime::GraphViewer& graph_viewe
   // allocate/reset here so we know it's clean
   plan = std::make_unique<SequentialExecutionPlan>();
 
-  PlannerImpl planner(graph_viewer, providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
+  PlannerImpl planner(graph_viewer, outer_scope_node_args,
+                      providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
 }

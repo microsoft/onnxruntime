@@ -264,6 +264,17 @@ struct MLAS_PLATFORM {
 extern MLAS_PLATFORM MlasPlatform;
 
 //
+// Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
+// cross-compiler support.
+//
+
+#if defined(_M_ARM64)
+#ifndef vmaxvq_f32
+#define vmaxvq_f32(src) neon_fmaxv(src)
+#endif
+#endif
+
+//
 // Cross-platform wrappers for vector intrinsics.
 //
 
