@@ -255,13 +255,13 @@ class Initializer final {
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         for (int i = 0; i < size_; i++) {
-          data<float>()[i] *= other.data<float>()[i];
+          data<float>()[i] *= other.size() == 1 ? other.data<float>()[0] : other.data<float>()[i];
         }
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
         for (int i = 0; i < size_; i++) {
-          data<double>()[i] *= other.data<double>()[i];
+          data<double>()[i] *= other.size() == 1 ? other.data<double>()[0] : other.data<double>()[i];
         }
         break;
       }
