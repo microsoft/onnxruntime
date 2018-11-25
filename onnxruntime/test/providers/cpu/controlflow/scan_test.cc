@@ -665,6 +665,8 @@ TEST(Scan, MixedTypeInputs) {
   test.Run();
 }
 
+// create a subgraph that will have unknown dimensions in both the loop state variable and output
+// after shape inferencing.
 TEST(Scan, UnknownDimInSubgraphOutput) {
   Model model("ScanBody");
   auto& graph = model.MainGraph();
@@ -702,12 +704,13 @@ TEST(Scan, UnknownDimInSubgraphOutput) {
 
   test.AddAttribute("body", scan_body);
   test.AddAttribute<int64_t>("num_scan_inputs", 1);
+  test.AddMissingOptionalInput<int64_t>();
 
-  // we add a symbolic dimension to bot the initial state and the scan input so we test the path that handles loop
-  // state variables (prior to execution) and the path that handles subgraph outputs (post first execution).
+  // we add a symbolic dimension to both the initial state and the scan input so we test
+  // the path that handles loop state variables (OutputIterator::Initialize) and
+  // the path that handles subgraph outputs (OutputIterator::MakeConcrete).
   // Note that we cross the values over in the subgraph, so the symbolic dimension in
   // initial_state_1 affects scan_out_1, and the symbolic dimension in scan_input_1 affects state_out_1.
-  test.AddMissingOptionalInput<int64_t>();
   test.AddShapeToTensorData(true, 1);  // add shape and symbolic dim in dim 1 for initial_state_1
   test.AddInput<float>("initial_state_1", state_shape, {0.0});
   test.AddShapeToTensorData(true, 2);  // add shape and symbolic dim in dim 2 for scan_input_1
