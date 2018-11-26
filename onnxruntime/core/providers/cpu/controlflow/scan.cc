@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
 #include "core/providers/cpu/controlflow/scan.h"
 
 #include "core/framework/framework_common.h"
@@ -11,6 +18,10 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/providers/cpu/tensor/utils.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -156,7 +167,6 @@ class OutputIterator {
 
   OpKernelContextInternal& context_;
   const int output_index_;
-  std::vector<int64_t> dims_;
   TensorShapeProto per_iteration_shape_;
   TensorShape final_shape_;
   bool is_loop_state_var_;
@@ -334,8 +344,8 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                TensorShape final_shape)
     : context_{context},
       output_index_{output_index},
-      is_loop_state_var_{is_loop_state_var},
       final_shape_{final_shape},
+      is_loop_state_var_{is_loop_state_var},
       cur_iteration_{0} {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 
