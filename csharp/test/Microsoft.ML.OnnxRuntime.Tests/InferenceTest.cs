@@ -112,7 +112,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputMeta = session.InputMetadata;
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
-            var ex = Assert.Throws<CoreRuntimeException>(() => session.Run(container));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.Equal("[ErrorCode:InvalidArgument] Invalid Feed Input Names: wrong_name Valid input names are: data_0 ", ex.Message);
             session.Dispose();
         }
@@ -128,7 +128,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int[] inputDataInt = inputData.Select(x => (int)x).ToArray();
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
-            var ex = Assert.Throws<CoreRuntimeException>(() => session.Run(container));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.Equal("[ErrorCode:InvalidArgument] Unexpected input data type. Actual: (class onnxruntime::NonOnnxType<int>) , expected: (class onnxruntime::NonOnnxType<float>)", ex.Message);
             session.Dispose();
         }
@@ -143,7 +143,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = new float[] { 0.1f, 0.2f, 0.3f };
             var tensor = new DenseTensor<float>(inputData, new int[] { 1, 3 });
             container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
-            var ex = Assert.Throws<CoreRuntimeException>(() => session.Run(container));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.Equal("[ErrorCode:Fail] X num_dims does not match W num_dims. X: {1,3} W: {64,3,3,3}", ex.Message);
             session.Dispose();
         }
@@ -160,7 +160,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var nov = NamedOnnxValue.CreateFromTensor<float>("data_0", tensor);
             container.Add(nov);
             container.Add(nov);
-            var ex = Assert.Throws<CoreRuntimeException>(() => session.Run(container));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.Equal("[ErrorCode:InvalidArgument] duplicated input name", ex.Message);
             session.Dispose();
         }
@@ -178,7 +178,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var nov2 = NamedOnnxValue.CreateFromTensor<float>("extra", tensor);
             container.Add(nov1);
             container.Add(nov2);
-            var ex = Assert.Throws<CoreRuntimeException>(() => session.Run(container));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.Equal("[ErrorCode:InvalidArgument] The number of feeds is not same as the number of the model input, expect 1 got 2", ex.Message);
             session.Dispose();
         }
