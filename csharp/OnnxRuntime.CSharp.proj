@@ -46,4 +46,14 @@ CMake creates a target to this project
     <Message Importance="High" Text="Running CSharp tests..." />
     <Exec Command="dotnet test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" />
   </Target>
+
+  <Target Name="CreatePackage" AfterTargets="RunTest">
+    <Message Importance="High" Text="Bundling NuGet package ..." />
+    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+             Targets="ObtainPackageVersion;Pack"
+             Properties="NoBuild=true"
+    />
+  </Target>
+
+  
 </Project>
