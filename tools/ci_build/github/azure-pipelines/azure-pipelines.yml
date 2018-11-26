@@ -44,7 +44,7 @@ jobs:
     - task: BatchScript@1
       inputs:
         filename: build.bat
-        arguments: ' --enable_onnx_tests --build_shared_lib --build_csharp'
+        arguments: ' --enable_onnx_tests --use_mkldnn --use_openmp --build_shared_lib --build_csharp'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CmdLine@1
