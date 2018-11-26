@@ -17,7 +17,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\mkldnn.dll" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
+    <None Include="$(NativeBuildOutputDir)\mkldnn.dll" Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
