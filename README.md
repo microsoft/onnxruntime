@@ -37,7 +37,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
 | [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](TODO)| [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
-| [C#](docs/CSharp_API.md) | [Windows](TODO)| Coming Soon |
+| [C#](docs/CSharp_API.md) | [Windows](TODO)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
 | [C](docs/C_API.md) | [Windows](TODO)<br>[Linux](TODO) | Coming Soon |
 
 ## Build Details
