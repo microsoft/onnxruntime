@@ -516,9 +516,10 @@ static const MLValue& GetSubgraphInputMLValue(const OpKernelContextInternal& con
 // Validate that the subgraph input has valid shapes
 Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var,
                                        const std::vector<const NodeArg*>& graph_inputs) {
-  // first dim is batch size. optional sequence dim. dim/s for the data
+  // first dim is batch size. optional sequence dim. dim/s for the data.
+  // if there is no dim for the data treat it as a scalar.
   bool has_seq_len_dim = !is_loop_state_var;
-  auto min_dims_required = has_seq_len_dim ? 3 : 2;
+  auto min_dims_required = has_seq_len_dim ? 2 : 1;
 
   for (int i = start_input; i < end_input; ++i) {
     auto& input_tensor = GetSubgraphInputTensor(context_, i);
