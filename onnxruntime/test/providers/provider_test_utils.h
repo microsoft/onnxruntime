@@ -91,7 +91,11 @@ struct TTypeProto : ONNX_NAMESPACE::TypeProto {
     if (shape) {
       auto mutable_shape = mutable_tensor_type()->mutable_shape();
       for (auto i : *shape) {
-        mutable_shape->add_dim()->set_dim_value(i);
+        auto* mutable_dim = mutable_shape->add_dim();
+        if (i != -1)
+          mutable_dim->set_dim_value(i);
+        else
+          mutable_dim->set_dim_param("symbolic");
       }
     }
   }
@@ -145,10 +149,11 @@ class OpTester {
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
-  // should validate. Default is to not add.
-  OpTester& AddShapeToTensorData(bool add_shape = true, bool add_symbolic_dim = false) {
+  // should validate. Default is to not add. 
+  // Additionally a symbolic dimension will be added if symbolic_dim matches a dimension in the input. 
+  OpTester& AddShapeToTensorData(bool add_shape = true, int symbolic_dim = -1) {
     add_shape_to_tensor_data_ = add_shape;
-    add_symbolic_dim_to_tensor_data_ = add_symbolic_dim;
+    add_symbolic_dim_to_tensor_data_ = symbolic_dim;
     return *this;
   }
 
@@ -268,7 +273,7 @@ class OpTester {
       ONNXRUNTIME_ENFORCE(shape.Size() == values_count, values_count,
                           " input values doesn't match tensor size of ", shape.Size());
 
-      auto allocator = ::onnxruntime::test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       auto size_in_bytes = values_count * sizeof(T);
       void* buffer = allocator->Alloc(size_in_bytes);
       auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
@@ -283,8 +288,8 @@ class OpTester {
       }
 
       std::vector<int64_t> dims_for_proto{dims};
-      if (add_symbolic_dim_to_tensor_data_ && !dims.empty()) {
-        dims_for_proto[0] = -1;
+      if (add_symbolic_dim_to_tensor_data_ >= 0 && dims.size() > add_symbolic_dim_to_tensor_data_) {
+        dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;
       }
 
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
@@ -302,7 +307,7 @@ class OpTester {
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
-  bool add_symbolic_dim_to_tensor_data_ = false;
+  int add_symbolic_dim_to_tensor_data_ = -1;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
   std::vector<size_t> initializer_index_;
