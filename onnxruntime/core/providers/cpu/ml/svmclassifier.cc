@@ -198,7 +198,6 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
             Y->template MutableData<std::string>()[n] = classlabels_strings_[maxclass];
           } else if (proba_.size() == 0 && post_transform_ == POST_EVAL_TRANSFORM::NONE) {
             Y->template MutableData<std::string>()[n] = classlabels_strings_[maxclass];
-            write_additional_scores = -1;
           } else {
             Y->template MutableData<std::string>()[n] = classlabels_strings_[0];  //negative label
             write_additional_scores = 1;
@@ -220,7 +219,6 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
             Y->template MutableData<int64_t>()[n] = classlabels_ints_[maxclass];
           } else if (proba_.size() == 0 && post_transform_ == POST_EVAL_TRANSFORM::NONE) {
             Y->template MutableData<int64_t>()[n] = classlabels_ints_[maxclass];
-            write_additional_scores = -1;
           } else {
             Y->template MutableData<int64_t>()[n] = classlabels_ints_[0];  //negative label
             write_additional_scores = 1;
