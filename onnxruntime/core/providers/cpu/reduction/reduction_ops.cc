@@ -34,14 +34,20 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 1);
 
+// When all reduce axises located at the tail of the dims, quite general cases, copy could be
+// skip to improve performance, if required by check_no_copy = true;
+// return value: true means transposedInputData is not created/copied, input tensor data could
+//               be direct use as row major matrix [block_size, blocks], where blocks is the
+//               size of each reduce.
 template <typename T>
-void PrepareForReduce(OpKernelContext* ctx,
+bool PrepareForReduce(OpKernelContext* ctx,
                       std::vector<T>& transposedInputData,
                       Tensor** reducedTensor,
                       int64_t& block_size,
                       int64_t& blocks,
                       const std::vector<int64_t>& axes_,
-                      bool keepdims_) {
+                      bool keepdims_,
+                      bool check_no_copy = false) {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
   ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& input = *input_tensor_ptr;
@@ -51,8 +57,6 @@ void PrepareForReduce(OpKernelContext* ctx,
     ONNXRUNTIME_ENFORCE(axe >= 0 && axe < (int64_t)ndim, "Axis attribute out of range");
   }
 
-  transposedInputData.resize(input.Shape().Size(), 0);
-
   std::vector<int64_t> axes = axes_;
   if (axes.empty()) {
     // This is the default case for non-arg kind reductions. Reduce on all dimensions.
@@ -61,6 +65,13 @@ void PrepareForReduce(OpKernelContext* ctx,
   }
 
   std::sort(axes.begin(), axes.end());
+
+  // If all reduced axes are located at the tail of the input shape, then copy could be skipped is required
+  bool need_copy = true;
+  if (axes.size() <= ndim && axes.front() == static_cast<int64_t>(ndim - axes.size()) 
+      && axes.back() == static_cast<int64_t>(ndim) - 1) {
+    need_copy = false;
+  }
 
   vector<bool> keep_axis(ndim, true);
   for (auto i : axes) {
@@ -96,7 +107,6 @@ void PrepareForReduce(OpKernelContext* ctx,
   }
 
   const T* from_data = input.template Data<T>();
-  T* to_data = &transposedInputData[0];
   size_t count = input.Shape().Size();
 
   //set to-be-reduced axes to one. squeeze is keepdims_ is false
@@ -117,9 +127,15 @@ void PrepareForReduce(OpKernelContext* ctx,
   block_size = input.Shape().Size() / first_dim;
   blocks = first_dim;
 
+  if (!need_copy && check_no_copy) {
+    return true;
+  }
+
+  transposedInputData.resize(input.Shape().Size(), 0);
+  T* to_data = &transposedInputData[0];
   if (num_axes < 2 || n_shared_idxs == num_axes) {
     memcpy(to_data, from_data, count * sizeof(T));
-    return;
+    return false;
   }
 
   int itr_axes = num_axes - n_shared_idxs;
@@ -178,6 +194,7 @@ void PrepareForReduce(OpKernelContext* ctx,
       }
     }
   }
+  return false;
 }
 
 template <typename T>
@@ -272,12 +289,22 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   std::vector<T> transposedInputData;
   int64_t block_size, blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+  bool no_copy = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().mean();
+  if (no_copy) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+
+    #pragma omp parallel for
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
+    }
+  }
+  else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().mean();
+  }
 
   return Status::OK();
 }
@@ -317,12 +344,22 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   std::vector<T> transposedInputData;
   int64_t block_size, blocks;
   Tensor* reduced;
-  PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
+  bool no_copy = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  EigenVectorMap<T> out_vec(output_data, block_size);
-  out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();
+  if (no_copy) {
+    const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
+    
+    #pragma omp parallel for
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
+    }
+  }
+  else {
+    EigenVectorMap<T> out_vec(output_data, block_size);
+    out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();
+  }
 
   return Status::OK();
 }
