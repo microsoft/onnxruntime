@@ -348,7 +348,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     for (size_t i = 0; i != output_count; ++i) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
-    auto onnx_status = ONNXRuntimeRunInference(session, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
+    auto onnx_status = ONNXRuntimeRunInference(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
     if (onnx_status != nullptr) {
       std::string onnx_runtime_error_message = ONNXRuntimeGetErrorMessage(onnx_status);
       ReleaseONNXStatus(onnx_status);
@@ -417,7 +417,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const onnx::ValueInfoProto& v = *name_output_value_info_proto[output_name];
-      ret = VerifyValueInfo(v, *(MLValue*)actual_output_value);
+      ret = VerifyValueInfo(v, actual_output_value);
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {
         switch (compare_result) {

@@ -80,22 +80,20 @@ const TypeProto* NodeArg::TypeAsProto() const noexcept {
 }
 
 const TensorShapeProto* NodeArg::Shape() const {
-  if (!node_arg_info_.has_type()) {
-    return nullptr;
-  }
-
-  const auto typeCase = node_arg_info_.type().value_case();
+  const TypeProto* type = TypeAsProto();
+  if (type == nullptr) return nullptr;
+  const auto typeCase = type->value_case();
   switch (typeCase) {
     case TypeProto::kTensorType: {
-      if (node_arg_info_.type().tensor_type().has_shape()) {
-        return &(node_arg_info_.type().tensor_type().shape());
+      if (type->tensor_type().has_shape()) {
+        return &(type->tensor_type().shape());
       } else {
         return nullptr;
       }
     }
     case TypeProto::kSparseTensorType: {
-      if (node_arg_info_.type().sparse_tensor_type().has_shape()) {
-        return &(node_arg_info_.type().sparse_tensor_type().shape());
+      if (type->sparse_tensor_type().has_shape()) {
+        return &(type->sparse_tensor_type().shape());
       } else {
         return nullptr;
       }
@@ -368,6 +366,12 @@ void Node::Init(const std::string& name,
 
   if (attributes) {
     attributes_ = *attributes;
+
+    for (auto& name_to_attr : attributes_) {
+      if (name_to_attr.second.has_g()) {
+        CreateSubgraph(name_to_attr.first);
+      }
+    }
   }
 }
 
@@ -383,6 +387,17 @@ Node::Relationships& Node::MutableRelationships() noexcept {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
   return relationships_;
+}
+
+void Node::CreateSubgraph(const std::string& attr_name) {
+  auto attr = attributes_.find(attr_name);
+
+  if (attr != attributes_.cend() && attr->second.has_g()) {
+    GraphProto& mutable_graph = *attr->second.mutable_g();
+    std::unique_ptr<Graph> subgraph{new Graph(*graph_, mutable_graph)};
+    attr_to_subgraph_map_[attr_name] = subgraph.get();
+    subgraphs_.push_back(std::move(subgraph));
+  }
 }
 
 void Node::AddAttribute(const std::string& attr_name, const AttributeProto& value) {
@@ -427,11 +442,22 @@ void Node::AddAttribute(const std::string& attr_name, const AttributeProto& valu
     attributes_[attr_name] = a;                              \
   };
 
+void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
+  graph_->SetGraphResolveNeeded();
+  graph_->SetGraphProtoSyncNeeded();
+  AttributeProto a;
+  a.set_name(attr_name);
+  a.set_type(AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH);
+  *a.mutable_g() = value;
+  attributes_[attr_name] = a;
+
+  CreateSubgraph(attr_name);
+};
+
 ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT, f)
 ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
 ADD_BASIC_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRING, s)
 ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, g)
 ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
 ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
 ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
@@ -501,6 +527,21 @@ Status Node::UpdateInputArgCount() {
 
 const NodeAttributes& Node::GetAttributes() const noexcept {
   return attributes_;
+}
+
+Graph* Node::GetMutableGraphAttribute(const std::string& attr_name) {
+  Graph* subgraph = nullptr;
+
+  const auto& entry = attr_to_subgraph_map_.find(attr_name);
+  if (entry != attr_to_subgraph_map_.cend()) {
+    subgraph = entry->second;
+  }
+
+  return subgraph;
+}
+
+const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
+  return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg*, bool is_input)> func) const {
@@ -716,7 +757,7 @@ Status Graph::VerifyNoDuplicateName() {
 common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args) {
   resolve_context_.outer_scope_node_args = outer_scope_node_args;
 
-  if (!resolve_context_.node_to_subgraphs_map.empty()) {
+  if (!resolve_context_.nodes_with_subgraphs.empty()) {
     // Build the list of NodeArg's that are valid for a subgraph of this GraphBase instance:
     //   - outer scope for this graph
     //   - any inputs/initializers from this graph
@@ -737,8 +778,8 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
                    std::inserter(node_args_in_scope_for_subgraph, node_args_in_scope_for_subgraph.end()),
                    [](const std::pair<std::string, Node*>& entry) { return entry.first; });
 
-    for (auto node_subgraphs : resolve_context_.node_to_subgraphs_map) {
-      for (auto* subgraph : node_subgraphs.second) {
+    for (auto* node : resolve_context_.nodes_with_subgraphs) {
+      for (auto& subgraph : node->MutableSubgraphs()) {
         auto status = subgraph->SetOuterScopeNodeArgs(node_args_in_scope_for_subgraph);
         ONNXRUNTIME_RETURN_IF_ERROR(status);
       }
@@ -834,13 +875,14 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
   std::unordered_set<Node*> inner_nodes;
 
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
-  if (!resolve_context_.node_to_subgraphs_map.empty()) {
-    for (auto nodeid_to_subgraphs : resolve_context_.node_to_subgraphs_map) {
-      for (auto* subgraph : nodeid_to_subgraphs.second) {
+  if (!resolve_context_.nodes_with_subgraphs.empty()) {
+    for (auto* node : resolve_context_.nodes_with_subgraphs) {
+      for (auto& subgraph : node->MutableSubgraphs()) {
         std::vector<std::string> node_args_consumed;
         subgraph->BuildConnections(node_args_consumed);
 
         for (auto& node_arg_name : node_args_consumed) {
+          bool node_arg_in_parent_graph = false;
           const auto* node_arg = GetNodeArg(node_arg_name);
 
           if (node_arg == nullptr) {
@@ -858,22 +900,30 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
             node_arg = parent_graph_->GetNodeArgIncludingParentGraphs(node_arg_name);
 
+            // make sure the node arg is found in the parent graph/s
             if (!node_arg) {
               return ONNXRUNTIME_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
                   "Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
+
+            node_arg_in_parent_graph = true;
           }
 
           // add it to the Node's list of implicit inputs
-          auto& node = *GetNode(nodeid_to_subgraphs.first);
+          auto& implicit_inputs = node->MutableDefinitions().implicit_input_defs;
+          if (std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg) == implicit_inputs.cend()) {
+            implicit_inputs.push_back(node_arg);
+          }
 
-          node.MutableDefinitions().implicit_input_defs.push_back(node_arg);
+          if (node_arg_in_parent_graph ||
+              resolve_context_.inputs_and_initializers.find(node_arg_name) !=
+                  resolve_context_.inputs_and_initializers.cend()) {
+            // no connection required if it's an input or initializer.
+            // if the node arg is from a parent graph we link the nodes in the parent graph by passing the
+            // node_arg_name back up in outer_scope_node_args_consumed
 
-          if (resolve_context_.inputs_and_initializers.find(node_arg_name) !=
-              resolve_context_.inputs_and_initializers.cend()) {
-            // no connection required
           } else {
             // if it's an output nodearg in this graph we need to create a link to the node the output is coming from
             auto entry = resolve_context_.output_args.find(node_arg_name);
@@ -881,7 +931,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
             // Create relationship between this node (node), and the node providing the output (output_node).
             Node& output_node = *entry->second;
-            AddEdge(output_node.Index(), node.Index(), *node_arg);
+            AddEdge(output_node.Index(), node->Index(), *node_arg);
 
             inner_nodes.insert(&output_node);
           }
@@ -1158,12 +1208,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 
  public:
   InferenceContextImpl(Node& node,
-                       const AttributeGraphMap* subgraphs = nullptr,
-                       SubgraphInferencingFunc* subgraph_inferencing_func = nullptr,
+                       SubgraphInferencingFunc subgraph_inferencing_func,
                        const InitializedTensorSet& initialized_tensor_set = {}) noexcept
       : node_(node),
-        attr_to_subgraph_map_{subgraphs},
-        subgraph_inferencing_func_{subgraph_inferencing_func},
+        subgraph_inferencing_func_(subgraph_inferencing_func),
         initialized_tensor_set_(initialized_tensor_set) {
     node_output_types_.resize(node.OutputDefs().size());
   }
@@ -1223,17 +1271,15 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
     GraphInferencer* graph_inferencer = nullptr;
 
-    if (attr_to_subgraph_map_ && subgraph_inferencing_func_) {
-      auto attr_to_subgraph = attr_to_subgraph_map_->find(attribute_name);
-      if (attr_to_subgraph != attr_to_subgraph_map_->cend()) {
-        auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *attr_to_subgraph->second,
-                                                                *subgraph_inferencing_func_);
-        graph_inferencer = inferencer.get();
-        graph_inferencers_.push_back(std::move(inferencer));
-      } else {
-        fail_type_inference("No Graph instance was found for attribute ",
-                            attribute_name, " in node ", node_.Name());
-      }
+    auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
+
+    if (subgraph) {
+      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_);
+      graph_inferencer = inferencer.get();
+      graph_inferencers_.push_back(std::move(inferencer));
+    } else {
+      fail_type_inference("No Graph instance was found for attribute ",
+                          attribute_name, " in node ", node_.Name());
     }
 
     return graph_inferencer;
@@ -1243,8 +1289,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   Node& node_;
   // node_output_types_ will be populated by the operator-specific shape inference.
   std::vector<TypeProto> node_output_types_;
-  const AttributeGraphMap* attr_to_subgraph_map_;
-  SubgraphInferencingFunc* subgraph_inferencing_func_;
+  SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
   const InitializedTensorSet& initialized_tensor_set_;
 };
@@ -1404,9 +1449,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
   // Once that completes, the outputs from the node containing the subgraph will be updated, and the final values
   // returned here.
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
-  auto node_subgraphs = subgraph_map_.find(node.Index());
-  auto* subgraphs = node_subgraphs != subgraph_map_.cend() ? &node_subgraphs->second : nullptr;
-  InferenceContextImpl context(node, subgraphs, &func, name_to_initial_tensor_);
+  InferenceContextImpl context(node, func, name_to_initial_tensor_);
 
   try {
     context.RunInferencing();
@@ -1572,8 +1615,8 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto& node_name = node.Name();
     auto& domain = node.Domain();
 
-	auto iter = model_functions_.find(node.OpType());
-	if (iter != model_functions_.end()) {
+    auto iter = model_functions_.find(node.OpType());
+    if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
       auto model_func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
       function_container_.emplace_back(std::move(model_func_ptr));
@@ -1647,74 +1690,13 @@ Status Graph::VerifyNodeAndOpMatch() {
   return Status::OK();
 }
 
-Graph* Graph::GetMutableSubgraph(const NodeIndex node_index, const std::string& attribute_name) {
-  const Graph* subgraph = GetSubgraph(node_index, attribute_name);
-  return const_cast<Graph*>(subgraph);
-}
-
-const Graph* Graph::GetSubgraph(const NodeIndex node_index, const std::string& attribute_name) const {
-  Graph* subgraph = nullptr;
-
-  auto entry = subgraph_map_.find(node_index);
-
-  if (entry != subgraph_map_.cend()) {
-    auto& name_to_subgraph_map = entry->second;
-    auto subgraph_iter = name_to_subgraph_map.find(attribute_name);
-    if (subgraph_iter != name_to_subgraph_map.cend()) {
-      subgraph = subgraph_iter->second;
-    }
-  }
-
-  return subgraph;
-}
-
-Status Graph::CreateSubgraphs() {
-  Status status = Status::OK();
-
-  // don't use NodesInTopologicalOrder as we want CreateSubgraphs to recursively create subgraphs with no
-  // dependency on PerformTopologicalSortAndCheckIsAcyclic having been called previously
-  // to populate NodesInTopologicalOrder
+void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
   for (auto& node : Nodes()) {
-    auto node_index = node.Index();
-    if (subgraph_map_.find(node_index) != subgraph_map_.cend()) {
-      // if we have an existing entry we have processed this node previously.
-      // as the subgraph is loaded from a static GraphProto we assume nothing in
-      // it could have changed and there's no point re-creating it.
-      continue;
-    }
-
-    // check attributes of all nodes looking for GraphProto attributes, and create
-    // the Graph instance for the subgraph contained in the GraphProto.
-    for (auto& attr : node.attributes_) {
-      bool has_subgraph = attr.second.has_g();
-      if (has_subgraph) {
-        auto& attr_name = attr.first;
-        auto entry = subgraph_map_.find(node_index);
-
-        // make sure this is new. internal logic error if it is not so using ONNXRUNTIME_ENFORCE.
-        if (entry != subgraph_map_.cend()) {
-          const auto& existing_entries = entry->second;
-          ONNXRUNTIME_ENFORCE(existing_entries.find(attr_name) == existing_entries.cend(),
-                              "Entry exists in node ", node_index, " for attribute ", attr_name);
-        }
-
-        auto& graph_proto = *attr.second.mutable_g();
-
-        // create instance. need to call private ctor so can't use make_unique
-        GSL_SUPPRESS(r .11)
-        std::unique_ptr<Graph> subgraph{new Graph(*this, graph_proto)};
-
-        // Recursively create any further subgraphs
-        status = subgraph->CreateSubgraphs();
-        ONNXRUNTIME_RETURN_IF_ERROR(status);
-
-        subgraph_map_[node_index][attr_name] = subgraph.get();
-        subgraphs_.push_back(std::move(subgraph));
-      }
+    for (auto& subgraph : node.MutableSubgraphs()) {
+      subgraphs.push_back(subgraph.get());
+      subgraph->FindAllSubgraphs(subgraphs);
     }
   }
-
-  return Status::OK();
 }
 
 Status Graph::VerifyInputAndInitializerNames() {
@@ -1750,11 +1732,10 @@ Status Graph::InitInputsInitializersOutputs() {
   }
 
   // add the subgraph pointers to the resolve context.
-  for (auto& nodeid_to_subgraphs : subgraph_map_) {
-    resolve_context_.node_to_subgraphs_map[nodeid_to_subgraphs.first] = {};
-
-    for (auto& attr_name_to_subgraph : nodeid_to_subgraphs.second) {
-      resolve_context_.node_to_subgraphs_map[nodeid_to_subgraphs.first].push_back(attr_name_to_subgraph.second);
+  for (auto& node : Nodes()) {
+    auto& subgraphs = node.MutableSubgraphs();
+    if (!subgraphs.empty()) {
+      resolve_context_.nodes_with_subgraphs.insert(&node);
     }
   }
 
@@ -1785,14 +1766,15 @@ Status Graph::PerformTypeAndShapeInferencing() {
   return Status::OK();
 }
 
-Status Graph::ForThisAndAllSubgraphs(std::function<Status(Graph&)> func) {
+Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
   auto status = func(*this);
   ONNXRUNTIME_RETURN_IF_ERROR(status);
 
-  for (auto& subgraph : subgraphs_) {
+  for (auto& subgraph : subgraphs) {
     status = func(*subgraph);
     ONNXRUNTIME_RETURN_IF_ERROR(status);
   }
+
   return status;
 }
 
@@ -1808,8 +1790,12 @@ Status Graph::Resolve(bool no_proto_sync_required) {
     return status;
   }
 
-  bool subgraphs_need_resolve = std::any_of(subgraphs_.cbegin(), subgraphs_.cend(),
-                                            [](const std::unique_ptr<Graph>& graph) {
+  // find all subgraphs including nested ones.
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+
+  bool subgraphs_need_resolve = std::any_of(all_subgraphs.cbegin(), all_subgraphs.cend(),
+                                            [](const Graph* graph) {
                                               return graph->GraphResolveNeeded();
                                             });
 
@@ -1817,14 +1803,9 @@ Status Graph::Resolve(bool no_proto_sync_required) {
     return Status::OK();
   }
 
-  // Create the Graph instances for the subgraph/s in any nodes containing GraphProto attributes (Scan/If/Loop).
-  // Do this upfront so we can recurse into them when building connections and doing type/shape inferencing.
-  // Recursively creates any nested subgraphs.
-  ONNXRUNTIME_RETURN_IF_ERROR(CreateSubgraphs());
-
   // init all graph/subgraphs. non-recursive.
   auto init_func = [](Graph& graph) { return graph.InitInputsInitializersOutputs(); };
-  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(init_func));
+  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, init_func));
 
   // recursively set the outer scope node args.
   ONNXRUNTIME_RETURN_IF_ERROR(SetOuterScopeNodeArgs(resolve_context_.outer_scope_node_args));
@@ -1838,7 +1819,7 @@ Status Graph::Resolve(bool no_proto_sync_required) {
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
-  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(topo_sort_func));
+  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, topo_sort_func));
 
   // type/shape validation and inferencing on this and any subgraphs
   // recurses into subgraphs via the ONNX checker, which descends into the GraphProto in node attributes
@@ -1858,7 +1839,7 @@ Status Graph::Resolve(bool no_proto_sync_required) {
 
             return Status::OK(); };
 
-  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(finalize_func));
+  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
 
   return Status::OK();
 }
@@ -2166,6 +2147,10 @@ void Graph::CleanUnusedInitializers() {
     node.ForEachInputDef([&used_args](const onnxruntime::NodeArg* def) {
       ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
     });
+
+    for (const auto* def : node.ImplicitInputDefs()) {
+      ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
+    }
   }
 
   std::vector<std::string> erase_list;

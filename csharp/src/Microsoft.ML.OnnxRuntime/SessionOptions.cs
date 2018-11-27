@@ -2,58 +2,83 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Runtime.InteropServices;
+
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    public class SessionOptions : IDisposable
+    public enum ExecutionProvider
     {
-        private static SessionOptions _defaultOptions = new SessionOptions();
-        private IntPtr _nativeHandle;
+        Cpu,
+        MklDnn
+        //TODO: add more providers gradually
+    };
+
+    public class SessionOptions
+    {
+        protected SafeHandle _nativeOption;
+        protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithMklDnnProvider);
 
         public SessionOptions()
         {
-            _nativeHandle = NativeMethods.ONNXRuntimeCreateSessionOptions();
-        }
-
-        internal IntPtr NativeHandle
-        {
-            get
-            {
-                return _nativeHandle;
-            }
+            _nativeOption = new NativeOnnxObjectHandle(NativeMethods.ONNXRuntimeCreateSessionOptions());
         }
 
         public static SessionOptions Default
         {
             get
             {
-                return _defaultOptions;
+                return _default.Value;
             }
         }
 
-        #region destructors disposers
-        ~SessionOptions()
+        public void AppendExecutionProvider(ExecutionProvider provider)
         {
-            Dispose(false);
-        }
-
-        public void Dispose()
-        {
-            GC.SuppressFinalize(this);
-            Dispose(true);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
+            switch (provider)
             {
-                // cleanup managed resources
+                case ExecutionProvider.Cpu:
+                    AppendExecutionProvider(CpuExecutionProviderFactory.Default);
+                    break;
+                case ExecutionProvider.MklDnn:
+                    AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
+                    break;
+                default:
+                    break;
             }
-
-            // cleanup unmanaged resources
         }
-        #endregion
+
+
+        private static SessionOptions MakeSessionOptionWithMklDnnProvider()
+        {
+            SessionOptions options = new SessionOptions();
+            options.AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
+            options.AppendExecutionProvider(CpuExecutionProviderFactory.Default);
+
+            return options;
+        }
+
+
+        internal IntPtr NativeHandle
+        {
+            get
+            {
+                return _nativeOption.DangerousGetHandle(); //Note: this is unsafe, and not ref counted, use with caution
+            }
+        }
+
+        private void AppendExecutionProvider(NativeOnnxObjectHandle providerFactory)
+        {
+            unsafe
+            {
+                bool success = false;
+                providerFactory.DangerousAddRef(ref success);
+                if (success)
+                {
+                    NativeMethods.ONNXRuntimeSessionOptionsAppendExecutionProvider(_nativeOption.DangerousGetHandle(), providerFactory.DangerousGetHandle());
+                    providerFactory.DangerousRelease();
+                }
+
+            }
+        }
     }
 }
