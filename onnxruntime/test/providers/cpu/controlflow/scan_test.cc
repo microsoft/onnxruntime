@@ -44,7 +44,7 @@ class ScanOpTester : public OpTester {
 
       {
         auto& outer_scope_constant = graph.GetOrCreateNodeArg("outer_scope_constant", &float_scalar);
-        auto* constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue",
+        auto& constant = graph.AddNode("outer_scope_constant", "Constant", "Constant with value kOuterNodeAddValue",
                                        {}, {&outer_scope_constant});
 
         TensorProto value_tensor;
@@ -52,7 +52,7 @@ class ScanOpTester : public OpTester {
         value_tensor.add_float_data(kOuterNodeAddValue);
         value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
 
-        constant->AddAttribute("value", value_tensor);
+        constant.AddAttribute("value", value_tensor);
 
         auto& outer_scope_node_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_scalar);
         graph.AddNode("outer_scope_id", "Identity", "Identity for outer_scope_0",
@@ -105,14 +105,14 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
       auto& output_arg = graph.GetOrCreateNodeArg("constant_1", &float_scalar);
       outputs.push_back(&output_arg);
 
-      auto* constant = graph.AddNode("constant", "Constant", "Constant with value 1", inputs, outputs);
+      auto& constant = graph.AddNode("constant", "Constant", "Constant with value 1", inputs, outputs);
 
       TensorProto value_tensor;
       value_tensor.add_dims(1);
       value_tensor.add_float_data(1.f);
       value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
 
-      constant->AddAttribute("value", value_tensor);
+      constant.AddAttribute("value", value_tensor);
     }
 
     inputs = outputs;  // start with output from Constant node
@@ -135,8 +135,7 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
     auto& output_arg = graph.GetOrCreateNodeArg("loop_state_out_1", type_proto);
     outputs.push_back(&output_arg);
 
-    auto* add = graph.AddNode("add", "Add", "Add 1 to the loop state", inputs, outputs);
-    (void)add;
+    graph.AddNode("add", "Add", "Add 1 to the loop state", inputs, outputs);
   }
 
   // subgraph with multiple inputs and outputs to test variadic behaviour.
@@ -175,9 +174,9 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
     auto& output_arg = graph.GetOrCreateNodeArg("concat_out_1", type_proto);
     outputs.push_back(&output_arg);
 
-    auto* concat = graph.AddNode("concat", "Concat", "concat 2 inputs", inputs, outputs);
+    auto& concat = graph.AddNode("concat", "Concat", "concat 2 inputs", inputs, outputs);
 
-    concat->AddAttribute("axis", int64_t{0});
+    concat.AddAttribute("axis", int64_t{0});
   }
 
   // Post-Concat Add Node
@@ -224,9 +223,9 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
       outputs.push_back(&output_arg);
     }
 
-    auto* split = graph.AddNode("split", "Split", "split into 4 outputs", inputs, outputs);
-    split->AddAttribute("axis", int64_t{0});
-    split->AddAttribute("split", std::vector<int64_t>{1, 1, 1, 1});
+    auto& split = graph.AddNode("split", "Split", "split into 4 outputs", inputs, outputs);
+    split.AddAttribute("axis", int64_t{0});
+    split.AddAttribute("split", std::vector<int64_t>{1, 1, 1, 1});
   }
 
   auto status = graph.Resolve();

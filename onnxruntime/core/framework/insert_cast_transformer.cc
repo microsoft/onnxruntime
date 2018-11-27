@@ -44,9 +44,9 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
-  auto cast_node = graph.AddNode(str, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
-  cast_node->AddAttribute("to", to_type);
-  cast_node->SetExecutionProviderType(providerType);
+  auto& cast_node = graph.AddNode(str, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
+  cast_node.AddAttribute("to", to_type);
+  cast_node.SetExecutionProviderType(providerType);
   return new_arg;
 }
 

@@ -1932,19 +1932,19 @@ std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrF
   return results;
 }
 
-Node* Graph::AddNode(const Node& other) {
+Node& Graph::AddNode(const Node& other) {
   const auto& definitions = other.GetDefinitions();
 
-  auto new_node = AddNode(other.Name(), other.OpType(), other.Description(),
-                          definitions.input_defs,
-                          definitions.output_defs,
-                          &other.GetAttributes(),
-                          other.Domain());
+  auto& new_node = AddNode(other.Name(), other.OpType(), other.Description(),
+                           definitions.input_defs,
+                           definitions.output_defs,
+                           &other.GetAttributes(),
+                           other.Domain());
 
   return new_node;
 }
 
-Node* Graph::AddNode(const NodeProto& node_proto,
+Node& Graph::AddNode(const NodeProto& node_proto,
                      const ArgNameToTypeMap& name_to_type_map) {
   auto input_defs = CreateNodeArgs(node_proto.input(), name_to_type_map);
   auto output_defs = CreateNodeArgs(node_proto.output(), name_to_type_map);
@@ -1994,7 +1994,7 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
   return new_name;
 }
 
-Node* Graph::AddNode(const std::string& name,
+Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
                      const std::vector<NodeArg*>& input_args,
@@ -2019,7 +2019,7 @@ Node* Graph::AddNode(const std::string& name,
     graph_proto_sync_needed_ = true;
   }
 
-  return node;
+  return *node;
 }
 
 bool Graph::RemoveNode(NodeIndex p_index) {
@@ -2408,7 +2408,7 @@ IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
   return schema_registry_;
 }
 
-Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,
+Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,
                           const std::string& fused_node_name) {
   ONNXRUNTIME_ENFORCE(nullptr != sub_graph && nullptr != sub_graph->GetMetaDef());
 
@@ -2421,17 +2421,18 @@ Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
   for (auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
   }
-  auto fused_node = AddNode(fused_node_name,
-                            func_meta_def->name,
-                            func_meta_def->doc_string,
-                            input_args,
-                            output_args,
-                            &func_meta_def->attributes,
-                            func_meta_def->domain);
 
-  fused_node->SetNodeType(Node::Type::Fused);
+  auto& fused_node = AddNode(fused_node_name,
+                             func_meta_def->name,
+                             func_meta_def->doc_string,
+                             input_args,
+                             output_args,
+                             &func_meta_def->attributes,
+                             func_meta_def->domain);
+
+  fused_node.SetNodeType(Node::Type::Fused);
   function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph)));
-  fused_node->SetFunctionBody(*(function_container_.back().get()));
+  fused_node.SetFunctionBody(*(function_container_.back().get()));
 
   // Remove nodes fused above.
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();

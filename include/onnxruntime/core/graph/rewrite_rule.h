@@ -14,7 +14,7 @@ class GraphEditor {
   explicit GraphEditor(Graph& graph) noexcept : graph_{graph} {}
 
   // Add a node in <graph_>.
-  Node* AddNode(const std::string& name,
+  Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
                 const std::vector<NodeArg*>& input_args,
@@ -25,7 +25,7 @@ class GraphEditor {
   }
 
   // Copy an existing node into this graph.
-  Node* AddNode(const Node& other) {
+  Node& AddNode(const Node& other) {
     return graph_.AddNode(other);
   }
 

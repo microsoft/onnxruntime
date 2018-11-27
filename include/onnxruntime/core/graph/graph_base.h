@@ -561,11 +561,10 @@ class Graph {
   @param output_args The outputs from this Node.
   @param attributes Optional NodeAttributes to add.
   @param domain The domain for the op_type.
-  @returns Pointer to new Node. Never nullptr. 
+  @returns The new Node.
   @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
-  @todo Should return Node&.
   */
-  Node* AddNode(const std::string& name,
+  Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
                 const std::vector<NodeArg*>& input_args,
@@ -575,11 +574,10 @@ class Graph {
 
   /** Copy a Node and add it to this Graph.
   @param other Node to copy
-  @returns Pointer to Node that was created and added to this Graph. Never nullptr.
+  @returns Reference to the Node that was created and added to this Graph. 
   @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
-  @todo Should return Node&.
   */
-  Node* AddNode(const Node& other);
+  Node& AddNode(const Node& other);
 
   /** Remove a Node from this Graph and free it. 
   @returns true if the node_index was valid
@@ -670,10 +668,9 @@ class Graph {
   Create a single Node that is the result of the a fusion of multiple Nodes in this Graph.
   @param sub_graph A IndexSubGraph instance with details of the Nodes to fuse.
   @param fused_node_name The name for the new Node.
-  @returns Node with fused subgraph. Never nullptr.
-  @todo Should return Node&
+  @returns Node with fused subgraph.
   */
-  Node* FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
+  Node& FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
 
   /**
   Directly insert the Nodes in the function Node provided into this Graph.
@@ -748,7 +745,7 @@ class Graph {
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Add node with specified <node_proto>.
-  Node* AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
+  Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
 
   Version IrVersion() const noexcept {

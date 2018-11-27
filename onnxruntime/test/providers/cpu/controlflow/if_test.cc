@@ -76,12 +76,12 @@ class IfOpTester : public OpTester {
       inputs = {if_cond_input};
       outputs = {graph_output_defs[0]};
 
-      auto if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
+      auto& if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
 
       auto then_proto = CreateSubgraph(true, options_);
       auto else_proto = CreateSubgraph(false, options_);
-      if_node->AddAttribute("then_branch", {then_proto});
-      if_node->AddAttribute("else_branch", {else_proto});
+      if_node.AddAttribute("then_branch", {then_proto});
+      if_node.AddAttribute("else_branch", {else_proto});
     }
 
     // add Identity node so if_graph_input_0 comes from graph inputs
@@ -162,8 +162,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
     inputs = {&split_output, &if_input};
     outputs = {&add_out};
 
-    auto* add = graph.AddNode("add", "Add", "Add two inputs.", inputs, outputs);
-    (void)add;
+    graph.AddNode("add", "Add", "Add two inputs.", inputs, outputs);
   }
 
   auto status = graph.Resolve();

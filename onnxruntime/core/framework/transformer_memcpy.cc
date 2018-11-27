@@ -35,7 +35,7 @@ This transformer does not currently optimize copies between, e.g., two different
 bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_registries) {
   bool modified = false;
   // find defs that require copy
-  for (auto& node : graph_.Nodes()){
+  for (auto& node : graph_.Nodes()) {
     //don't need to do node placement here now, onnxruntime will do it according to registered kernels.
     ProcessDefs(node, kernel_registries);
   }
@@ -121,10 +121,10 @@ void TransformerMemcpyImpl::AddCopyNode(const onnxruntime::NodeArg* arg, bool is
   std::string new_node_name = graph_.GenerateNodeName("Memcpy");
 
   const auto op_name = is_input ? "MemcpyFromHost" : "MemcpyToHost";
-  auto new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory",
-                                 std::vector<onnxruntime::NodeArg*>{src_arg},
-                                 std::vector<onnxruntime::NodeArg*>{dst_arg});
-  new_node->SetExecutionProviderType(provider_);
+  auto& new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory",
+                                  std::vector<onnxruntime::NodeArg*>{src_arg},
+                                  std::vector<onnxruntime::NodeArg*>{dst_arg});
+  new_node.SetExecutionProviderType(provider_);
 
   // only add copy-node here; renaming references happens later
   replacements_.insert(std::make_pair(original_arg, new_arg));

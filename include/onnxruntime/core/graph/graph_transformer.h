@@ -9,7 +9,11 @@
 
 namespace onnxruntime {
 
-// A graph transformer interface. A graph transformer transforms a graph in-place.
+/**
+@class GraphTransformer
+
+The interface for transforming a Graph in-place.
+*/
 class GraphTransformer {
  public:
   GraphTransformer(const std::string& name, const std::string& desc)
@@ -18,20 +22,21 @@ class GraphTransformer {
 
   virtual ~GraphTransformer() = default;
 
-  // The name of this graph transformer.
+  /** Gets the name of this graph transformer. */
   const std::string& Name() const noexcept {
     return name_;
   }
 
-  // An description of this graph transformer.
+  /** Gets the description of this graph transformer. */
   const std::string& Description() const noexcept {
     return desc_;
   }
 
-  // Apply <*this> transformation to a specific graph.
-  // Transformation happens in place.
-  // The return value of "modified" indicates if the graph was modified or not.
-  virtual ::onnxruntime::common::Status Apply(Graph& graph, bool& modified) const = 0;
+  /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
+  @param[out] modified Returns true if the Graph was modified.
+  @returns Status indicating success, or failure with an error message.
+  */
+  virtual common::Status Apply(Graph& graph, bool& modified) const = 0;
 
  private:
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);

@@ -86,13 +86,13 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         // Add fused node into <graph>
         ONNXRUNTIME_ENFORCE(nullptr != capacity->sub_graph_->GetMetaDef());
         std::string node_name = provider->Type() + "_" + capacity->sub_graph_->GetMetaDef()->name + "_" + std::to_string(count++);
-        auto fused_node = graph.FuseSubGraph(std::move(capacity->sub_graph_), node_name);
-        fused_node->SetExecutionProviderType(provider->Type());
+        auto& fused_node = graph.FuseSubGraph(std::move(capacity->sub_graph_), node_name);
+        fused_node.SetExecutionProviderType(provider->Type());
         auto fused_kernel_func = capacity->fuse_kernel_function_;
         if (fused_kernel_func != nullptr) {
           // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
           KernelDefBuilder builder;
-          BuildFusedKernelDef(builder, *fused_node);
+          BuildFusedKernelDef(builder, fused_node);
           fused_kernel_registry->Register(builder, fused_kernel_func);
         }
       }
@@ -114,7 +114,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
       Status inliner_status = graph.InlineFunction(node);
       // If the node has a functionbody with no kernel and cannot be inlined
       // it is a invalid function
-      if(!inliner_status.IsOK()) return inliner_status;
+      if (!inliner_status.IsOK()) return inliner_status;
       // Set the flag for re-run graph partition after successful inlining
       inline_flag = true;
       break;
