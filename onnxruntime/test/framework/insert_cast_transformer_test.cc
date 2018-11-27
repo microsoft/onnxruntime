@@ -48,22 +48,22 @@ TEST(TransformerTest, InsertCastGPUTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 8);
   for (auto it = node1->InputNodesBegin(); it != node1->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
   for (auto it = node1->OutputNodesBegin(); it != node1->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
   for (auto it = node2->InputNodesBegin(); it != node2->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
   for (auto it = node2->OutputNodesBegin(); it != node2->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
   for (auto it = node3->InputNodesBegin(); it != node3->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
   for (auto it = node3->OutputNodesBegin(); it != node3->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
 }
 
@@ -102,19 +102,19 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 7);
   for (auto it = node1->InputNodesBegin(); it != node1->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
   for (auto it = node1->OutputNodesBegin(); it != node1->OutputNodesEnd(); ++it) {
-    EXPECT_NE((*it)->OpType(), "Cast");
+    EXPECT_NE((*it).OpType(), "Cast");
   }
   for (auto it = node2->OutputNodesBegin(); it != node2->OutputNodesEnd(); ++it) {
-    EXPECT_NE((*it)->OpType(), "Cast");
+    EXPECT_NE((*it).OpType(), "Cast");
   }
   for (auto it = node3->InputNodesBegin(); it != node3->InputNodesEnd(); ++it) {
-    EXPECT_NE((*it)->OpType(), "Cast");
+    EXPECT_NE((*it).OpType(), "Cast");
   }
   for (auto it = node3->OutputNodesBegin(); it != node3->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
 }
 }  // namespace test

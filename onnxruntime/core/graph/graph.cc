@@ -259,8 +259,8 @@ void Node::NodeConstIterator::operator--() {
   --m_iter;
 }
 
-const Node* Node::NodeConstIterator::operator*() {
-  return &((*m_iter).GetNode());
+const Node& Node::NodeConstIterator::operator*() {
+  return (*m_iter).GetNode();
 }
 
 NodeIndex Node::Index() const noexcept {
@@ -558,22 +558,6 @@ void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg*, bool is_in
   for (const auto* arg : OutputDefs()) {
     if (arg->Exists())
       func(&*arg, false);
-  }
-};
-
-void Node::ForEachInputDef(std::function<void(const onnxruntime::NodeArg*)> func) const {
-  for (const auto* arg : InputDefs()) {
-    if (!arg->Exists())
-      continue;
-    func(&*arg);
-  }
-};
-
-void Node::ForEachOutputDef(std::function<void(const onnxruntime::NodeArg*)> func) const {
-  for (const auto* arg : OutputDefs()) {
-    if (!arg->Exists())
-      continue;
-    func(&*arg);
   }
 };
 
@@ -1028,7 +1012,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (comp) {
       std::vector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
-        sorted_nodes.push_back((*iter));
+        sorted_nodes.push_back(&(*iter));
       }
       std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
       for (const auto* in : sorted_nodes) {
@@ -1039,7 +1023,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
       }
     } else {
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
-        const NodeIndex idx = (*iter)->Index();
+        const NodeIndex idx = (*iter).Index();
         if (!visited[idx]) {
           stack.emplace_back(GetNode(idx), false);
         }
@@ -1116,7 +1100,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     output_nodes.insert(current);
 
     for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
-      const NodeIndex idx = (*iter)->Index();
+      const NodeIndex idx = (*iter).Index();
       if (output_nodes.find(idx) != output_nodes.end()) {
         Status status(ONNXRUNTIME, FAIL, "Error: the graph is not acyclic.");
         return status;
@@ -2144,9 +2128,9 @@ void Graph::CleanUnusedInitializers() {
   });
 
   for (const auto& node : Nodes()) {
-    node.ForEachInputDef([&used_args](const onnxruntime::NodeArg* def) {
+    for (const auto* def : node.InputDefs()) {
       ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
-    });
+    }
 
     for (const auto* def : node.ImplicitInputDefs()) {
       ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
@@ -2424,7 +2408,8 @@ IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
   return schema_registry_;
 }
 
-Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph, const std::string& fused_node_name) {
+Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,
+                          const std::string& fused_node_name) {
   ONNXRUNTIME_ENFORCE(nullptr != sub_graph && nullptr != sub_graph->GetMetaDef());
 
   auto func_meta_def = sub_graph->GetMetaDef();
@@ -2458,11 +2443,11 @@ Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
 
 Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
-  // maingraph.
+  // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
   RemoveNode(node.Index());
   for (const auto& subgraph_node : subgraph.Nodes()) {
-    this->AddNode(subgraph_node);
+    AddNode(subgraph_node);
   }
   ONNXRUNTIME_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();

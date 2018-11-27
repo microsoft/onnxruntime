@@ -14,9 +14,7 @@ namespace onnxruntime {
 
 /**
 	@class GraphViewer
-
 	Class that provides a read-only view of the Graph.
-
 	@remarks If the underlying Graph is changed GetNodesInTopologicalOrder and GetRootNodes may become invalid.
 */
 class GraphViewer {
@@ -77,13 +75,13 @@ class GraphViewer {
   */
   const GraphNodes& Nodes() const noexcept;
 
-  /// Gets the number of valid nodes in the Graph.
+  /** Gets the number of valid nodes in the Graph. */
   int NumberOfNodes() const noexcept;
 
-  /// Gets the maximum NodeIndex value used by Nodes in the Graph.
+  /** Gets the maximum NodeIndex value used by Nodes in the Graph. */
   int MaxNodeIndex() const noexcept;
 
-  /// Gets the NodeIndex values for the Graph nodes when sorted into topological order.
+  /** Gets the NodeIndex values for the Graph nodes when sorted into topological order. */
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
 
   /** 
@@ -93,11 +91,11 @@ class GraphViewer {
   */
   const std::vector<NodeIndex>& GetRootNodes() const;
 
-  /// Gets all tensors created from initializers.
+  /** Gets all tensors created from initializers. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept;
 
   /**
-  Gets a NodeArg instance for the given name
+  Gets the NodeArg instance for the given name.
   @returns A NodeArg if found, a nullptr if not.
   */
   const NodeArg* GetNodeArg(const std::string& name) const;
@@ -107,7 +105,7 @@ class GraphViewer {
 
   const Graph* graph_;
 
-  // The topological order of node index.
+  // The NodeIndex values of the graph nodes sorted in topological order.
   std::vector<NodeIndex> nodes_in_topological_order_;
   // Graph root nodes.
   std::vector<NodeIndex> root_nodes_;

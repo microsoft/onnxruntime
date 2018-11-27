@@ -23,10 +23,10 @@ void ExpectCopy(const onnxruntime::Node* source, const std::string copy_op,
                 const onnxruntime::Node* target, int argnum) {
   // Check that source's output is consumed by a copy_op;
   for (auto it = source->OutputNodesBegin(); it != source->OutputNodesEnd(); ++it) {
-    auto* copy_node = *it;
-    if (copy_node->OpType() == copy_op) {
+    auto& copy_node = *it;
+    if (copy_node.OpType() == copy_op) {
       // Check that target's argnum-th input comes from the copy node:
-      auto* copy_output = copy_node->OutputDefs()[0];
+      auto* copy_output = copy_node.OutputDefs()[0];
       auto* target_input = target->InputDefs()[argnum];
       EXPECT_EQ(copy_output, target_input);
       return;
@@ -39,12 +39,12 @@ void ExpectCopy(const onnxruntime::NodeArg* source_arg, const std::string copy_o
                 const onnxruntime::Node* target, int argnum) {
   auto* target_input = target->InputDefs()[argnum];
   for (auto it = target->InputNodesBegin(); it != target->InputNodesEnd(); ++it) {
-    auto* copy_node = *it;
+    auto& copy_node = *it;
     // Check if target's argnum-th input comes from this node:
-    auto* copy_output = copy_node->OutputDefs()[0];
+    auto* copy_output = copy_node.OutputDefs()[0];
     if (copy_output == target_input) {
-      EXPECT_EQ(copy_node->OpType(), copy_op);
-      auto* copy_input = copy_node->InputDefs()[0];
+      EXPECT_EQ(copy_node.OpType(), copy_op);
+      auto* copy_input = copy_node.InputDefs()[0];
       EXPECT_EQ(copy_input, source_arg);
       return;
     }
@@ -56,9 +56,9 @@ void ExpectCopy(const onnxruntime::Node* source, const std::string copy_op,
                 const onnxruntime::NodeArg* target_arg) {
   // Check that source's output is consumed by a copy_op;
   for (auto it = source->OutputNodesBegin(); it != source->OutputNodesEnd(); ++it) {
-    auto* copy_node = *it;
-    if (copy_node->OpType() == copy_op) {
-      auto* copy_output = copy_node->OutputDefs()[0];
+    auto& copy_node = *it;
+    if (copy_node.OpType() == copy_op) {
+      auto* copy_output = copy_node.OutputDefs()[0];
       EXPECT_EQ(copy_output, target_arg);
       return;
     }

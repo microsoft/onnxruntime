@@ -17,7 +17,8 @@ Status EliminateIdentity::Apply(GraphEditor* graph_editor, Node* node, bool* mod
 
   // Replace (input) defs of the nodes following the Identity with the input to the Identity.
   for (auto it = node->OutputNodesBegin(), end = node->OutputNodesEnd(); it != end; ++it) {
-    const_cast<Node*>(*it)->ReplaceDefs(replacement_defs);
+    // TODO: Fix the Node API so this operation is supported without resorting to const_cast.
+    const_cast<Node*>(&*it)->ReplaceDefs(replacement_defs);
     *modified = true;
   }
 

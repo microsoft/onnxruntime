@@ -23,6 +23,11 @@ namespace onnxruntime {
 // will fail. Because shape is located in a TypeProto.
 // Thoughts?
 //
+
+/**
+@class NodeArg
+Class representing a data type that is input or output for a Node, including the shape if it is a Tensor.
+*/
 class NodeArg {
  public:
   // Constructor by specifying node arg name and type&shape which is
