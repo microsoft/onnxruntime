@@ -320,4 +320,53 @@ namespace Microsoft.ML.OnnxRuntime
         DataTypeMax = 17
     }
 
+    internal static class TensorElementTypeConverter
+    {
+        public static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        {
+            switch (elemType)
+            {
+                case TensorElementType.Float:
+                    type = typeof(float);
+                    width = sizeof(float);
+                    break;
+                case TensorElementType.Double:
+                    type = typeof(double);
+                    width = sizeof(double);
+                    break;
+                case TensorElementType.Int16:
+                    type = typeof(short);
+                    width = sizeof(short);
+                    break;
+                case TensorElementType.UInt16:
+                    type = typeof(ushort);
+                    width = sizeof(ushort);
+                    break;
+                case TensorElementType.Int32:
+                    type = typeof(int);
+                    width = sizeof(int);
+                    break;
+                case TensorElementType.UInt32:
+                    type = typeof(uint);
+                    width = sizeof(uint);
+                    break;
+                case TensorElementType.Int64:
+                    type = typeof(long);
+                    width = sizeof(long);
+                    break;
+                case TensorElementType.UInt64:
+                    type = typeof(ulong);
+                    width = sizeof(ulong);
+                    break;
+                case TensorElementType.UInt8:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                default:
+                    type = null;
+                    width = 0;
+                    break;
+            }
+        }
+    }
 }

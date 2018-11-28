@@ -64,7 +64,8 @@ class InferenceSession:
         """
         num_required_inputs = len(self._inputs_meta)
         num_inputs = len(input_feed)
-        if num_inputs != num_required_inputs:
+        # the graph may have optional inputs used to override initializers. allow for that.
+        if num_inputs < num_required_inputs:
             raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]

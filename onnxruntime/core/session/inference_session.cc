@@ -261,7 +261,7 @@ class InferenceSession::Impl {
 
         // check if it has a subgraph
         if (proto.has_g()) {
-          Graph* subgraph = graph.GetMutableSubgraph(node.Index(), name);
+          Graph* subgraph = node.GetMutableGraphAttribute(name);
           ONNXRUNTIME_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
           SubgraphMemory subgraph_info;
@@ -273,8 +273,10 @@ class InferenceSession::Impl {
           SessionStateInitializer initializer{*subgraph, *subgraph_info.session_state,
                                               execution_providers_, kernel_registry_manager_, *session_logger_};
 
-          ONNXRUNTIME_RETURN_IF_ERROR(initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                                             session_options_.enable_sequential_execution));
+          ONNXRUNTIME_RETURN_IF_ERROR(
+              initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
+                                     node.ImplicitInputDefs(),
+                                     session_options_.enable_sequential_execution));
 
           ONNXRUNTIME_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
                                                                     subgraph_info.weights_buffers));
@@ -282,6 +284,12 @@ class InferenceSession::Impl {
           // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
           // by Compute() via OpKernelContextInternal.
           session_state.AddSubgraphSessionState(node.Index(), name, *subgraph_info.session_state);
+
+          // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
+          //                                                   &*subgraph_info.session_state);
+
+          // recurse
+          ONNXRUNTIME_RETURN_IF_ERROR(InitializeSubgraphSessions(*subgraph, *subgraph_info.session_state));
 
           // save subgraph_info as InferenceSession owns these so they remain valid
           // for the entire InferenceSession.
@@ -336,7 +344,7 @@ class InferenceSession::Impl {
                                                   kernel_registry_manager_, *session_logger_};
 
       ONNXRUNTIME_RETURN_IF_ERROR(session_initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                                                 session_options_.enable_sequential_execution));
+                                                                 {}, session_options_.enable_sequential_execution));
 
       ONNXRUNTIME_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
                                                                         weights_buffers_));
@@ -445,6 +453,7 @@ class InferenceSession::Impl {
 
   common::Status ValidateInputs(const NameMLValMap& feeds) {
     ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputNames(feeds));
+    //TODO: It should also validate the input shapes?
     ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputTypes(feeds));
     return Status::OK();
   }
@@ -1111,7 +1120,7 @@ void InferenceSession::StartProfiling(const std::string& file_prefix) {
 }
 
 void InferenceSession::StartProfiling(const logging::Logger* custom_logger) {
-    impl_->StartProfiling(custom_logger);
+  impl_->StartProfiling(custom_logger);
 }
 
 std::string InferenceSession::EndProfiling() {

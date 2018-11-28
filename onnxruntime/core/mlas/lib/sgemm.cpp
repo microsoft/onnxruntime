@@ -147,9 +147,9 @@ Arguments:
 
     lda - Supplies the number of elements per row of the source matrix.
 
-    CountY - Supplies the number of rows of the source matrix to transpose.
+    CountY - Supplies the number of columns of the source matrix to transpose.
 
-    CountX - Supplies the number of columns of the source matrix to transpose.
+    CountX - Supplies the number of rows of the source matrix to transpose.
 
 Return Value:
 

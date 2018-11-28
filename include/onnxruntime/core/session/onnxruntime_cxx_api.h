@@ -24,6 +24,26 @@
     return ONNXRuntime##NAME(value.get());          \
   }
 
+#define DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME)  \
+  namespace std {                                           \
+  template <>                                               \
+  struct default_delete<ONNXRuntime##TYPE_NAME> {           \
+    void operator()(ONNXRuntime##TYPE_NAME* ptr) {          \
+      (*reinterpret_cast<ONNXObject**>(ptr))->Release(ptr); \
+    }                                                       \
+  };                                                        \
+  }
+
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Env);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TypeInfo);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Allocator);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryPtr);
+
+#undef DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT
+
 namespace onnxruntime {
 class SessionOptionsWrapper {
  private:
@@ -32,6 +52,7 @@ class SessionOptionsWrapper {
   SessionOptionsWrapper(_In_ ONNXEnvPtr env, ONNXRuntimeSessionOptions* p) : value(p, ONNXRuntimeReleaseObject), env_(env){};
 
  public:
+  //TODO: for the input arg, should we call addref here?
   SessionOptionsWrapper(_In_ ONNXEnvPtr env) : value(ONNXRuntimeCreateSessionOptions(), ONNXRuntimeReleaseObject), env_(env){};
   ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(EnableSequentialExecution)
   ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(DisableSequentialExecution)
@@ -68,14 +89,14 @@ class SessionOptionsWrapper {
     return SessionOptionsWrapper(env_, p);
   }
 #ifdef _WIN32
-  ONNXSessionPtr ONNXRuntimeCreateInferenceSession(_In_ const wchar_t* model_path) {
-    ONNXSessionPtr ret;
+  ONNXSession* ONNXRuntimeCreateInferenceSession(_In_ const wchar_t* model_path) {
+    ONNXSession* ret;
     ONNXRUNTIME_THROW_ON_ERROR(::ONNXRuntimeCreateInferenceSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #else
-  ONNXSessionPtr ONNXRuntimeCreateInferenceSession(_In_ const char* model_path) {
-    ONNXSessionPtr ret;
+  ONNXSession* ONNXRuntimeCreateInferenceSession(_In_ const char* model_path) {
+    ONNXSession* ret;
     ONNXRUNTIME_THROW_ON_ERROR(::ONNXRuntimeCreateInferenceSession(env_, model_path, value.get(), &ret));
     return ret;
   }
@@ -84,35 +105,25 @@ class SessionOptionsWrapper {
     ONNXRuntimeAddCustomOp(value.get(), custom_op_path);
   }
 };
-inline ONNXValuePtr ONNXRuntimeCreateTensorAsONNXValue(_Inout_ ONNXRuntimeAllocator* env, const std::vector<size_t>& shape, OnnxRuntimeTensorElementDataType type) {
-  ONNXValuePtr ret;
+inline ONNXValue* ONNXRuntimeCreateTensorAsONNXValue(_Inout_ ONNXRuntimeAllocator* env, const std::vector<size_t>& shape, OnnxRuntimeTensorElementDataType type) {
+  ONNXValue* ret;
   ONNXRUNTIME_THROW_ON_ERROR(::ONNXRuntimeCreateTensorAsONNXValue(env, shape.data(), shape.size(), type, &ret));
   return ret;
 }
 
-inline ONNXValuePtr ONNXRuntimeCreateTensorWithDataAsONNXValue(_In_ const ONNXRuntimeAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<size_t>& shape, OnnxRuntimeTensorElementDataType type) {
-  ONNXValuePtr ret;
+inline ONNXValue* ONNXRuntimeCreateTensorWithDataAsONNXValue(_In_ const ONNXRuntimeAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<size_t>& shape, OnnxRuntimeTensorElementDataType type) {
+  ONNXValue* ret;
   ONNXRUNTIME_THROW_ON_ERROR(::ONNXRuntimeCreateTensorWithDataAsONNXValue(info, p_data, p_data_len, shape.data(), shape.size(), type, &ret));
   return ret;
 }
 
+inline std::vector<int64_t> GetTensorShape(const ONNXRuntimeTensorTypeAndShapeInfo* info) {
+  size_t dims = ONNXRuntimeGetNumOfDimensions(info);
+  std::vector<int64_t> ret(dims);
+  ONNXRuntimeGetDimensions(info, ret.data(), ret.size());
+  return ret;
+}
 }  // namespace onnxruntime
 
-#define DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME)  \
-  namespace std {                                           \
-  template <>                                               \
-  struct default_delete<ONNXRuntime##TYPE_NAME> {           \
-    void operator()(ONNXRuntime##TYPE_NAME* ptr) {          \
-      (*reinterpret_cast<ONNXObject**>(ptr))->Release(ptr); \
-    }                                                       \
-  };                                                        \
-  }
 
-DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT(Allocator);
-DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
-DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
-DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
-DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryPtr);
-
-#undef DECLEAR_DEFAULT_DELETER_FOR_ONNX_OBJECT
 #undef ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL
