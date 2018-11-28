@@ -21,7 +21,7 @@ ONNX Runtime offers:
 See API documentation and package installation instructions [below](#Installation). 
  
 ## High Performance 
-You can use the ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
+You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
 
 Currently ONNX Runtime supports CUDA, MKL, and MKL-DNN for computation acceleration, with more coming soon. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
  
