@@ -150,7 +150,8 @@ void DebugHeapFree(void* p) noexcept {
 
   g_allocationCount--;
   p = static_cast<BYTE*>(p) - sizeof(MemoryBlock);  // Adjust incoming pointer
-  HeapFree(g_heap, 0, p);
+  if (HeapFree(g_heap, 0, p) == 0)
+    __debugbreak();  // If this hits, we either double deleted memory or we somehow tried to delete main heap memory after the leak checker started
 }
 
 static struct Memory_LeakCheck {
@@ -224,17 +225,19 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     _snprintf_s(buffer, _TRUNCATE, "%d bytes of memory leaked in %d allocations", leaked_bytes, leak_count);
     string.append(buffer);
 
-    // Check if we're running on the build machine, if so just exit(-1)
-    size_t requiredSize;
-    if (getenv_s(&requiredSize, nullptr, 0, "AGENT_BUILDDIRECTORY") == 0 && requiredSize > 0) {
+    // If we're being actively debugged, show a message box to get the dev's attention
+    if (IsDebuggerPresent())
+      MessageBoxA(nullptr, string.c_str(), "Warning", MB_OK | MB_ICONWARNING);
+    else {
+      // If we're on the command line (like on a build machine), output to the console and exit(-1)
       std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
+#if 0
+      // There is currently a memory leak due to a static thread_local variable not being destroyed on exit in mkldnn_common.h
+      // The bug is caused by sync_api.h using the windows thread pool functions instead of C++ std::async libraries.
       exit(-1);
+#endif
     }
 
-    // Otherwise we're running on a dev system, show a message box to get their attention
-    if (IsDebuggerPresent()) {
-      MessageBoxA(nullptr, string.c_str(), "Warning", MB_OK | MB_ICONWARNING);
-    }
   } else {
     OutputDebugStringA("\n----- No memory leaks detected -----\n\n");
   }

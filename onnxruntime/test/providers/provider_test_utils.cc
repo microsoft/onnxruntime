@@ -407,7 +407,9 @@ void OpTester::Run(ExpectResult expect_result,
               const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
               EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
               for (int d = 0; d < inferred_dims.size(); ++d) {
-                EXPECT_EQ(expected_shape[d], inferred_dims[d]);
+                // check equal unless the input involved a symbolic dimension
+                if (inferred_dims[d] != -1)
+                  EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
               }
             }
             Check(expected_data, mlvalue.Get<Tensor>(), provider_type);

@@ -15,8 +15,8 @@ MLValueTensorSlicer<T> MLValueTensorSlicer<T>::Create(T& mlvalue, int64_t slice_
   ONNXRUNTIME_ENFORCE(mlvalue.IsAllocated(), "MLValue has not been allocated so can't be sliced.");
 
   auto& tensor_shape{mlvalue.template Get<Tensor>().Shape()};
-  ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) > slice_dimension,
-              "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
+  ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
+                      "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
   auto dim0_size = tensor_shape[0];
   ONNXRUNTIME_ENFORCE(dim0_offset < dim0_size, "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);

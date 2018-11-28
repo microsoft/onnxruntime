@@ -16,7 +16,7 @@ namespace test {
 
 struct RunOptions {
   bool include_dim_values_in_main_graph = false;
-  bool symbolic_dim_values_in_main_graph = false;
+  int symbolic_dim_value_in_main_graph = -1;
   bool include_dim_values_in_subgraph = true;
 };
 
@@ -180,7 +180,7 @@ void RunTest(bool condition_value,
   IfOpTester test{options};
 
   test.AddShapeToTensorData(options.include_dim_values_in_main_graph,
-                            options.symbolic_dim_values_in_main_graph);
+                            options.symbolic_dim_value_in_main_graph);
 
   // add the main graph inputs and outputs.
   // we will handle the 'If' inputs in the AddNodes override, and as 'If' is the last node
