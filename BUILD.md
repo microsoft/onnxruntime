@@ -49,7 +49,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 | Linux_CI_Dev       | Ubuntu 16.04        | python=3.5                      | Unit tests; ONNXModelZoo | [script](tools/ci_build/github/linux/run_build.sh) |
 | Linux_CI_GPU_Dev   | Ubuntu 16.04        | python=3.5; nvidia-docker       | Unit tests; ONNXModelZoo | [script](tools/ci_build/github/linux/run_build.sh) |
 | Windows_CI_Dev     | Windows Server 2016 | python=3.5                      | Unit tests; ONNXModelZoo | [script](build.bat)                                |
-| Windows_CI_GPU_Dev | Windows Server 2016 | cuda=9.0; cudnn=7.0; python=3.5 | Unit tests; ONNXModelZoo | [script](build.bat)                                |
+| Windows_CI_GPU_Dev | Windows Server 2016 | cuda=9.1; cudnn=7.1; python=3.5 | Unit tests; ONNXModelZoo | [script](build.bat)                                |
 
 ## Additional Build Flavors
 The complete list of build flavors can be seen by running `./build.sh --help` or `./build.bat --help`. Here are some common flavors.
@@ -57,7 +57,7 @@ The complete list of build flavors can be seen by running `./build.sh --help` or
 ### Windows CUDA Build
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
 
-ONNX Runtime is built and tested with CUDA 9.0 and CUDNN 7.0 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
+ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
 CUDA versions up to 9.2 and CUDNN version 7.1 should also work with versions of Visual Studio 2017 up to and including v15.7, however you may need to explicitly install and use the 14.11 toolset due to CUDA and CUDNN only being compatible with earlier versions of Visual Studio 2017.
 
 To install the Visual Studio 2017 14.11 toolset, see <https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/>
