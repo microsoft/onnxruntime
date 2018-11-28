@@ -18,7 +18,7 @@ class OpKernelInfo;
 
 Class containing information about a subgraph of Nodes from a Graph.
 It contains a NodeIndex array of the Nodes covered by the subgraph, 
-and contains meta definition needed for customizing this subgraph as a FunctionProto, 
+and the meta definition needed for representing this subgraph as a FunctionProto, 
 which could be serialized/saved to a model file.
 */
 struct IndexedSubGraph {
@@ -36,17 +36,16 @@ struct IndexedSubGraph {
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
   };
 
-  /** Nodes covered by this subgraph. The NodeIndex values are from parent Graph.*/
+  /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
   std::vector<onnxruntime::NodeIndex> nodes;
 
-  /** Meta definition needed for customizing this subgraph as a FunctionProto, 
-  which could be serialized/saved to a model file. 
+  /** Set the meta definition needed to represent this subgraph as a FunctionProto
   It's needed IF AND ONLY IF there are multiple indexes contained in #nodes. */
   void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) {
     meta_def = std::move(meta_def_);
   }
 
-  /** Gets the MetaDef. 
+  /** Gets the meta definition needed to represent this subgraph as a FunctionProto. 
   @returns MetaDef instance if it has been set. nullptr if not. */
   const MetaDef* GetMetaDef() const {
     return meta_def.get();

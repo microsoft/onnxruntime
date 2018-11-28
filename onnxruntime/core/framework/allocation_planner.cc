@@ -405,8 +405,8 @@ class PlannerImpl {
       // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,
       // in which case create_fence_if_async would be ignored when creating MLValue
       if (p_kernelDef->ExecQueueId() != 0) {
-        pnode->ForEachDef([this](const onnxruntime::NodeArg* arg, bool /*is_input*/) {
-          MLValueIndex index = Index(arg->Name());
+        pnode->ForEachDef([this](const onnxruntime::NodeArg& arg, bool /*is_input*/) {
+          MLValueIndex index = Index(arg.Name());
           AllocPlan(index).create_fence_if_async = true;
         });
       }

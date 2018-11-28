@@ -37,7 +37,7 @@ class Node {
   /** Node types */
   enum class Type {
     Primitive = 0,  ///< The node refers to a primitive operator.
-    Fused = 1,      ///< A node refers to a function.
+    Fused = 1,      ///< The node refers to a function.
   };
 
   ~Node() = default;
@@ -50,11 +50,11 @@ class Node {
   */
   class EdgeEnd {
    public:
-    /**	
+    /**
     Construct an EdgeEnd
     @param node The source node if this is an input edge to the current node, 
     or the destination node if this is an output edge from the current node.
-    @param node_arg The NodeArg that will be passed along the edge.
+    @param node_arg The NodeArg to use for the edge.
     */
     EdgeEnd(const Node& node, const NodeArg& node_arg) noexcept;
 
@@ -75,7 +75,7 @@ class Node {
     const NodeArg* node_arg_;
   };
 
-  /** Gets this Node's NodeIndex. */
+  /** Gets the Node's NodeIndex. */
   NodeIndex Index() const noexcept;
 
   /** Gets the Node's name. */
@@ -94,8 +94,7 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
 
-  /** Gets the function body if the #NodeType is fused.
-  @remarks The function body is owned by this node's parent graph. Node::graph_. */
+  /** Gets the function body if the #NodeType is fused, or nullptr if not. */
   const Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
@@ -135,9 +134,8 @@ class Node {
   const std::vector<int>& InputArgCount() const noexcept { return definitions_.input_arg_count; }
 
   /** Gets a modifiable count of arguments for each of the Node's explicit inputs. 
-  @TODO This should be removed in favor of a method that updates the input args and the count. 
-        Currently these operations are separate which is not a good setup.
-  */
+  @todo This should be removed in favor of a method that updates the input args and the count. 
+        Currently these operations are separate which is not a good setup. */
   std::vector<int>& MutableInputArgsCount() { return definitions_.input_arg_count; }
 
   /** Gets the implicit inputs to this Node.  
@@ -242,32 +240,33 @@ class Node {
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
 
-  /** Gets the node attributes. */
+  /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept;
 
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
-  @returns nullptr if the Graph instance has not been instantiated.
+  @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
   */
   const Graph* GetGraphAttribute(const std::string& attr_name) const;
 
   /** Gets the mutable Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
-  @returns nullptr if the Graph instance has not been instantiated.
+  @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 
-  /** Gets the execution ProviderType that this node will execute on. */
+  /** Gets the execution ProviderType that this node will be executed by. */
   ProviderType GetExecutionProviderType() const noexcept;
 
-  /** Sets the execution ProviderType that this Node will run on. */
+  /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
   /** Gets the NodeProto representation of this Node. */
   void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
 
-  /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node. */
-  void ForEachDef(std::function<void(const onnxruntime::NodeArg*, bool is_input)> func) const;
+  /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
+      If the NodeArg is an explicit or implicit input, is_input will be true when func is called. */
+  void ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const;
 
   /** Replaces any matching definitions in the Node's explicit inputs or explicit outputs. 
   @param replacements Map of current NodeArg to replacement NodeArg.
@@ -296,8 +295,8 @@ class Node {
     /** The Node's output definitions. */
     std::vector<NodeArg*> output_defs;
 
-    /** The Node's implicit input definitions if the Node contains one or more subgraphs (GraphProto attribute) 
-    and the subgraph/s implicitly consumes these values.
+    /** The Node's implicit input definitions if the Node contains one or more subgraphs 
+    (i.e. GraphProto attributes) and the subgraph/s implicitly consume these values.
     @remarks For example, a subgraph in an 'If' node gets all its input values via this mechanism rather than 
     there being explicit inputs to the 'If' node that are passed to the subgraph. 
     They are pseudo-inputs to this Node as it has an implicit dependency on them. */
@@ -321,10 +320,10 @@ class Node {
       control_inputs.clear();
     }
 
-    /** The edges for Node's that provide inputs to this Node. */
+    /** The edges for Nodes that provide inputs to this Node. */
     EdgeSet input_edges;
 
-    /** The edges for Node's that receive outputs from this Node. */
+    /** The edges for Nodes that receive outputs from this Node. */
     EdgeSet output_edges;
 
     /** The Node names of the control inputs to this Node. */
@@ -387,6 +386,8 @@ class Node {
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
   Node::Type node_type_ = Node::Type::Primitive;
+  
+  // The function body is owned by graph_
   const Function* func_body_ = nullptr;
 
   // Node doc string.
@@ -417,7 +418,8 @@ class Node {
 
 /**
 @class Graph
-The Graph representation containing the Node instances and edges connecting them.
+The Graph representation containing the graph inputs and outputs, the Node instances, 
+and the edges connecting the nodes.
 */
 class Graph {
  public:
@@ -430,7 +432,7 @@ class Graph {
       d. Graph is acyclic and sort nodes in topological order.
   2. Check & Setup inner nodes' dependency.
   3. Cleanup function definition lists.
-  @returns common::Status with Status::OK() if successful, or error details if not.
+  @returns common::Status with success or error information.
   */
   common::Status Resolve();
 
@@ -447,7 +449,7 @@ class Graph {
   /** Add an initializer tensor to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
-  /** Remove an initializer tensor with the provided name from the Graph. */
+  /** Remove the initializer tensor with the provided name from the Graph. */
   void RemoveInitializedTensor(const std::string& tensor_name);
 
   /** Gets an initializer tensor with the provided name.
@@ -463,7 +465,7 @@ class Graph {
   void CleanAllInitializedTensors() noexcept;
 
   /** Gets the Graph inputs excluding initializers. 
-  These are the required inputs to the Graph as the initializers can be optionally overridden.
+  These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return graph_inputs_excluding_initializers_; }
 
@@ -478,7 +480,7 @@ class Graph {
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
-  /** Check if a Node output is a Graph output. */
+  /** Returns true if a Node output is a Graph output. */
   bool IsNodeOutputsInGraphOutputs(const Node& node) {
     for (auto output_def : node.OutputDefs()) {
       if (std::find(GetOutputs().cbegin(), GetOutputs().cend(), output_def) != GetOutputs().cend()) {
@@ -534,7 +536,8 @@ class Graph {
   }
 
   /** Gets a mutable NodeArg by name. Creates a new NodeArg that is owned by this Graph if not found.
-  @param[in] p_arg_type TypeProto to use if the NodeArg needs to be created.
+  @param name The NodeArg name.
+  @param[in] p_arg_type Optional TypeProto to use if the NodeArg needs to be created.
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
@@ -547,10 +550,10 @@ class Graph {
     return *(result.first->second);
   }
 
-  /** Creates a unique name for a NodeArg. */
+  /** Generate a unique name.in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
-  /** Creates a unique name for a Node. */
+  /** Generate a unique name.in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
   /** Add a Node to this Graph. 
@@ -561,7 +564,7 @@ class Graph {
   @param output_args The outputs from this Node.
   @param attributes Optional NodeAttributes to add.
   @param domain The domain for the op_type.
-  @returns The new Node.
+  @returns Reference to the new Node.
   @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
   */
   Node& AddNode(const std::string& name,
@@ -588,7 +591,7 @@ class Graph {
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
-  @param node_arg NodeArg for the data type to use for the edge.
+  @param node_arg NodeArg to use for the edge.
   */
   void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
 
@@ -602,7 +605,7 @@ class Graph {
   /**
   Add a control edge between two Nodes in this Graph.
   The source Node does not produce output that is directly consumed by the destination Node, however the 
-  destination Node must execute after the source node. The control edge allows this to ordering to occur.
+  destination Node must execute after the source node. The control edge allows this ordering to occur.
   */
   bool AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
 
@@ -613,18 +616,18 @@ class Graph {
     return *this;
   }
 
-  /** Gets whether Graph::Resolve needs to be called before using the Graph. */
+  /** Gets flag indicating whether Graph::Resolve needs to be called before using the Graph. */
   bool GraphResolveNeeded() const noexcept {
     return graph_resolve_needed_;
   }
 
-  /** Set flag that Graph::graph_proto_ needs to be updated to reflect changes in the Graph. */
+  /** Sets flag that Graph::graph_proto_ needs to be updated to reflect changes in the Graph. */
   Graph& SetGraphProtoSyncNeeded() noexcept {
     graph_proto_sync_needed_ = true;
     return *this;
   }
 
-  /** Gets a flag indicating whether Graph::graph_proto_ needs to be synchronized with this Graph instance. */
+  /** Gets flag indicating whether Graph::graph_proto_ needs to be synchronized with this Graph instance. */
   bool GraphProtoSyncNeeded() const noexcept {
     return graph_proto_sync_needed_;
   }
@@ -658,31 +661,32 @@ class Graph {
     return domain_to_version_;
   }
 
-  /** Serialize the Graph into a GraphProto. */
+  /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
 
   /** 
-  Create a single Node that is the result of the a fusion of multiple Nodes in this Graph.
-  @param sub_graph A IndexSubGraph instance with details of the Nodes to fuse.
+  Create a single Node that is the result of the a fusion of multiple nodes in this Graph.
+  @param sub_graph A IndexSubGraph instance with details of the nodes to fuse.
   @param fused_node_name The name for the new Node.
   @returns Node with fused subgraph.
   */
   Node& FuseSubGraph(std::unique_ptr<IndexedSubGraph> sub_graph, const std::string& fused_node_name);
 
   /**
-  Directly insert the Nodes in the function Node provided into this Graph.
+  Directly insert the nodes in the function Node provided into this Graph.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
   Status InlineFunction(Node& node);
 
-  /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph.
-  When creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to 
+  /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
+  be used as a GraphProto attribute in another Node..
+  e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to 
   define placeholder NodeArgs for outer scope values. This prevents these values from becoming explicit graph inputs
-  when this Graph is resolved.
+  when the Graph is resolved.
   */
   void AddOuterScopeNodeArg(const std::string& name) {
     ONNXRUNTIME_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
@@ -692,7 +696,7 @@ class Graph {
   resolved. 
   This will determine the graph input order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
   @param inputs NodeArgs that represent graph inputs which need to be explicitly ordered. 
-  Any graph inputs not in this list will be added subsequently to the GraphProto, in the order that they were first 
+  Any graph inputs not in this list will be appended to the ordered graph input list, in the order that they were first 
   used by Nodes (i.e. the order of Node creation implicitly determines the ordering). 
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
   void SetInputOrder(const std::vector<const NodeArg*> inputs) {
@@ -703,7 +707,7 @@ class Graph {
   resolved. 
   This will determine the graph output order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
   @param outputs NodeArgs that represent graph outputs which need to be explicitly ordered. 
-  Any graph outputs not in this list will be added subsequently in the GraphProto, in the order that they were first 
+  Any graph outputs not in this list will be appended to the ordered graph output list, in the order that they were first 
   produced by Nodes (i.e. the order of Node creation implicitly determines the ordering). 
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
   void SetOutputOrder(const std::vector<const NodeArg*> outputs) {
@@ -763,7 +767,7 @@ class Graph {
   }
 
   // During the Resolve of a Graph it is necessary to recursively descend into subgraphs (created from GraphProto
-  // attributes in Nodes in the Graph) if present.
+  // Node attributes in the Graph) if present.
   // The ResolveContext holds the collection of values for the current Graph instance, be it the main graph
   // or a subgraph, so that the various operations that are part of the Resolve can work iteratively or
   // recursively as needed.

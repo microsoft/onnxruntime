@@ -13,22 +13,21 @@ struct IndexedSubGraph;
 namespace onnxruntime {
 
 /**
-	@class GraphViewer
-	Class that provides a read-only view of the Graph.
-	@remarks If the underlying Graph is changed GetNodesInTopologicalOrder and GetRootNodes may become invalid.
+@class GraphViewer
+Class that provides a read-only view of the Graph.
+@remarks If the underlying Graph is changed, GetNodesInTopologicalOrder and GetRootNodes may become invalid.
 */
 class GraphViewer {
  public:
   /**
   Construct a GraphViewer from the provided Graph instance.
-  @param graph the Graph 
   */
   GraphViewer(const Graph& graph);
 
-  /// Gets the Graph name.
+  /** Gets the Graph name. */
   const std::string& Name() const noexcept;
 
-  /// Gets the Graph description.
+  /** Gets the Graph description. */
   const std::string& Description() const noexcept;
 
   /**
@@ -60,7 +59,7 @@ class GraphViewer {
   */
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
 
-  /// Gets all ValueInfo NodeArg instances in the Graph.
+  /** Gets all ValueInfo NodeArg instances in the Graph. */
   const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
 
   /**
@@ -70,9 +69,7 @@ class GraphViewer {
   */
   const Node* GetNode(NodeIndex node_index) const;
 
-  /**
-  Gets an iterator over all the valid Nodes in the Graph.  
-  */
+  /**  Gets an iterator over all the valid Nodes in the Graph. */
   const GraphNodes& Nodes() const noexcept;
 
   /** Gets the number of valid nodes in the Graph. */
@@ -81,7 +78,7 @@ class GraphViewer {
   /** Gets the maximum NodeIndex value used by Nodes in the Graph. */
   int MaxNodeIndex() const noexcept;
 
-  /** Gets the NodeIndex values for the Graph nodes when sorted into topological order. */
+  /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
 
   /** 

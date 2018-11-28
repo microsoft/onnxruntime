@@ -544,20 +544,20 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
-void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg*, bool is_input)> func) const {
+void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const {
   for (const auto* arg : InputDefs()) {
     if (arg->Exists())
-      func(&*arg, true);
+      func(*arg, true);
   }
 
   for (const auto* arg : ImplicitInputDefs()) {
     if (arg->Exists())
-      func(&*arg, true);
+      func(*arg, true);
   }
 
   for (const auto* arg : OutputDefs()) {
     if (arg->Exists())
-      func(&*arg, false);
+      func(*arg, false);
   }
 };
 

@@ -54,8 +54,9 @@ class NodeArg {
   @returns TensorShapeProto if shape is set. nullptr if there's no shape specified. */
   const ONNX_NAMESPACE::TensorShapeProto* Shape() const;
 
-  /** Sets the shape. Type must have been previously set.
-  @remarks Shape can only be set after setting type since shape information now is part of TypeProto. */
+  /** Sets the shape.
+  @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
+  as the shape information is stored as part of TypeProto. */
   void SetShape(const ONNX_NAMESPACE::TensorShapeProto& shape);
 
   /** Validate and merge type [and shape] info from input_type.

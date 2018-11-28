@@ -23,7 +23,7 @@ class GraphNodes {
 
   /**
   Construct a GraphNodes instance to provide iteration over all valid nodes in the Graph
-  @param[in] nodes Nodes to iterate and skip invalid entries.
+  @param[in] nodes Nodes to iterate, skipping invalid entries.
   */
   explicit GraphNodes(TNodesContainer& nodes) noexcept : nodes_(nodes) {}
 

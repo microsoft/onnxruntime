@@ -33,8 +33,8 @@ class GraphTransformer {
   }
 
   /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
-  @param[out] modified Returns true if the Graph was modified.
-  @returns Status indicating success, or failure with an error message.
+  @param[out] modified Set to true if the Graph was modified.
+  @returns Status with success or error information.
   */
   virtual common::Status Apply(Graph& graph, bool& modified) const = 0;
 
@@ -49,7 +49,7 @@ class GraphTransformer {
 @class RuleBasedGraphTransformer
 
 Rule based graph transformer that provides an API to register rewrite rules, 
-and an API to apply all applicable rules against a Graph.
+and an API to apply all applicable rules to a Graph.
 
 Represents an IGraphTransformer determined by a set of rewrite-rules.
 The transformer will apply all the rewrite-rules iteratively as determined by the underlying rewriting-strategy.
@@ -83,8 +83,8 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   }
 
   /**
-  Get the rewrite rules for the given op_type.
-  @returns a pointer to the vector that contains all rewrite rules registered for this operator if found. nullptr
+  Gets the rewrite rules for the given op_type.
+  @returns a pointer to the vector containing all the rewrite rules registered for op_type if found. nullptr
   otherwise.
   */
   const std::vector<std::unique_ptr<RewriteRule>>* GetRewriteRules(const std::string& op_type) const {

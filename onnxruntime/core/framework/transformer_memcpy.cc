@@ -95,11 +95,11 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider && !node.GetExecutionProviderType().empty()) {
       ONNXRUNTIME_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
     }
-    node.ForEachDef([this](const onnxruntime::NodeArg* arg, bool is_input) {
+    node.ForEachDef([this](const onnxruntime::NodeArg& arg, bool is_input) {
       if (is_input)
-        non_provider_input_defs_.insert(arg);
+        non_provider_input_defs_.insert(&arg);
       else
-        non_provider_output_defs_.insert(arg);
+        non_provider_output_defs_.insert(&arg);
     });
   }
 }

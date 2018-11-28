@@ -27,17 +27,17 @@ class GraphEditor {
                           input_args, output_args, nullptr, domain);
   }
 
-  /** Copy an existing node into this Graph. */
+  /** Copy an existing node into the Graph. */
   Node& AddNode(const Node& other) {
     return graph_.AddNode(other);
   }
 
-  /** Remove a node from this Graph. */
+  /** Remove a node from the Graph. */
   bool RemoveNode(NodeIndex node_index) {
     return graph_.RemoveNode(node_index);
   }
 
-  /** Add a control edge between two Nodes in this Graph
+  /** Add a control edge between two Nodes in the Graph
   The <dst> node does not consume any data output by <src>, so there is no input/output edge between them, 
   but dst must executed after src so a control edge is required.
   @param src NodeIndex from the Graph of the Node which must execute first.
@@ -48,7 +48,7 @@ class GraphEditor {
   }
 
   /** Resolve the Graph.
-  @returns Status indicating success or providing error information.
+  @returns Status with success or error information.
   @remarks Resolve must be called after modifying the Graph is completed. */
   common::Status Resolve() {
     return graph_.Resolve();
@@ -90,8 +90,8 @@ class RewriteRule {
   }
 
   /** Checks if the condition of the rule is satisfied, and if so applies the rule.
-  @param graph_editor The GraphEditor.
-  @param node The Node to apply the rewrite to.
+  @param[in] graph_editor The GraphEditor.
+  @param[in] node The Node to apply the rewrite to.
   @param[out] modified Set to indicate whether the node was modified or not.
   @returns Status indicating success or providing error information */
   common::Status CheckConditionAndApply(GraphEditor& graph_editor, Node& node, bool& modified) {
