@@ -44,7 +44,7 @@ jobs:
     - task: BatchScript@1
       inputs:
         filename: build.bat
-        arguments: ' --enable_onnx_tests'
+        arguments: ' --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CmdLine@1

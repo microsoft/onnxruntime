@@ -6,7 +6,77 @@
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile>   
+
+    <!--- packaging properties -->
+    <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
+    <Authors>Microsoft Corporation</Authors>
+    <Description>This package contains Microsoft's implementation of ONNX runtime, usable in .Net platforms</Description>
+    <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
+    <Copyright>Microsoft Corporation</Copyright>
+    <IncludeSymbols>true</IncludeSymbols>
+    <PackageLicenseUrl>https://github.com/Microsoft/onnxruntime/blob/master/LICENSE</PackageLicenseUrl>
+    <RepositoryUrl>https://github.com/Microsoft/onnxruntime.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!--internal build related properties-->
+    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
+    <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
+
+  <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
+  <!--TODO: Find a way to bundle the native symbol files properly -->
+  <ItemGroup>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
+          PackagePath="\runtimes\win10-x64\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
+          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
+          PackagePath="\runtimes\win10-x64\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\mkldnn.dll" 
+          Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
+          PackagePath="\runtimes\win10-x64\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt"
+          PackagePath="\"
+          Pack="true"
+          Visible="false"
+    />
+
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\docs\CSharp_API.md"
+          PackagePath="\README.md"
+          Pack="true"
+          Visible="false"
+    />
+  </ItemGroup>
+
+  <Target Name="ObtainPackageVersion" BeforeTargets="Build;Pack">
+    <ReadLinesFromFile File="$(OnnxRuntimeCsharpRoot)\..\VERSION_NUMBER">
+      <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
+    </ReadLinesFromFile>
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
+    </Exec>
+    
+    <PropertyGroup>
+      <RepositoryCommit>$(GitCommitHash)</RepositoryCommit>
+      <PackageVersion>@(MajorVersionNumber)</PackageVersion>
+      <Version>$(PackageVersion)</Version>
+      <PackageVersion Condition="'$(IsReleaseBuild)'==''">$(PackageVersion)-dev-$(GitCommitHash)</PackageVersion>
+    </PropertyGroup>
+    <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="System.Numerics.Tensors" Version="0.1.0" />

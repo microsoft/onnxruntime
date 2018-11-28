@@ -16,10 +16,15 @@ namespace Microsoft.ML.OnnxRuntime
         protected Object _value;
         protected string _name;
 
-        public NamedOnnxValue(string name, Object value)
+        protected NamedOnnxValue(string name, Object value)
         {
             _name = name;
             _value = value;
+        }
+
+        public static NamedOnnxValue CreateFromTensor<T>(string name, Tensor<T> value)
+        {
+            return new NamedOnnxValue(name, value); 
         }
 
         public string Name { get { return _name; } }

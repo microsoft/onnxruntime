@@ -14,7 +14,8 @@ git commit -m "my changes"
 git push origin HEAD
 ```
 To request merge into master send a pull request from the web ui
-https://github.com/Microsoft/onnxruntime
+https://github.com/Microsoft/onnxruntime and add 'Microsoft/onnxruntime' as a reviewer.
+
 New code *must* be accompanied by unit tests.
 
 # Build
