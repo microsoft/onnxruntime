@@ -23,20 +23,20 @@ See API documentation and package installation instructions [below](#Installatio
 ## High Performance 
 You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
 
-Currently ONNX Runtime supports CUDA, MKL, and MKL-DNN for computation acceleration, with more coming soon. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
+Currently ONNX Runtime supports CUDA and MKL-DNN (with option to build with MKL) for computation acceleration, with more coming soon. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
  
 # Getting Started 
 If you need a model:  
 * Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models. 
 * To get an ONNX model by exporting from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials).
 
-If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See a how-to guide [here](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx). 
+If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See detailed instructions [here](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx). 
 
 # Installation
 ## APIs and Official Builds
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
-| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](TODO)| [Windows](TODO)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
+| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime/)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](https://pypi.org/project/onnxruntime/)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
 | [C#](docs/CSharp_API.md) | [Windows](TODO)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
 | [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
 
