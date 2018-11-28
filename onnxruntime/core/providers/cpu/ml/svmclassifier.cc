@@ -75,8 +75,28 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
   }
 }
 
+#define SETSCORESVM(typlabels, classlabels, posclass, negclass)                     \
+  if (classlabels.size() == 2) {                                                    \
+    write_additional_scores = post_transform_ == POST_EVAL_TRANSFORM::NONE ? 2 : 0; \
+    if (proba_.size() == 0) {                                                       \
+      if (weights_are_all_positive_ && maxweight >= 0.5)                            \
+        Y->template MutableData<typlabels>()[n] = classlabels[1];                   \
+      else if (maxweight > 0 && !weights_are_all_positive_)                         \
+        Y->template MutableData<typlabels>()[n] = classlabels[1];                   \
+      else                                                                          \
+        Y->template MutableData<typlabels>()[n] = classlabels[maxclass];            \
+    } else {                                                                        \
+      Y->template MutableData<typlabels>()[n] = classlabels[maxclass];              \
+    }                                                                               \
+  } else if (maxweight > 0) {                                                       \
+    Y->template MutableData<typlabels>()[n] = posclass;                             \
+  } else {                                                                          \
+    Y->template MutableData<typlabels>()[n] = negclass;                             \
+  }
+
 template <typename T>
 Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
+  std::cout << "compute SVM\n";
   const Tensor* X = ctx->Input<Tensor>(0);
 
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
@@ -86,10 +106,15 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   Tensor* Z;
 
   std::vector<int64_t> dims;
-  if (mode_ == SVM_TYPE::SVM_SVC && proba_.size() == 0)
-    dims = {static_cast<int64_t>(N), static_cast<int64_t>(class_count_ * (class_count_ - 1) / 2)};
-  else
-    dims = {static_cast<int64_t>(N), static_cast<int64_t>(class_count_)};
+
+#define OVR
+#if defined(OVR)
+  auto nc = class_count_;
+#else
+  auto nc = (proba_.size() > 0 || class_count_ == 2) ? class_count_ : (class_count_ * (class_count_ - 1) / 2);
+#endif
+
+  dims = {static_cast<int64_t>(N), static_cast<int64_t>(nc)};
   Z = ctx->Output(1, TensorShape(dims));
 
   const auto* x_data = X->template Data<T>();
@@ -103,17 +128,28 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     std::vector<float> scores;
     std::vector<float> kernels;
     std::vector<int64_t> votes;
+    float sum;
 
-    if (mode_ == SVM_TYPE::SVM_SVC) {
+    if ((int64_t)rho_.size() == 1 && mode_ == SVM_TYPE::SVM_LINEAR) {
+      // This was in the original code but it does not appear in libsvm or scikit-learn.
+      for (int64_t j = 0; j < class_count_; j++) {  //for each class
+        float val = kernel_dot(x_data, current_weight_0, coefficients_, feature_count_ * j,
+                               feature_count_, get_kernel_type());
+        val += rho_[0];
+        scores.push_back(val);
+      }
+    } else {
+      int evals = 0;
+
       for (int64_t j = 0; j < vector_count_; j++) {
-        float val = kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j, feature_count_, get_kernel_type());
+        float val = kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j,
+                               feature_count_, get_kernel_type());
         kernels.push_back(val);
       }
       votes.resize(class_count_, 0);
-      int evals = 0;
-      for (int64_t i = 0; i < class_count_; i++) {        //for each class
-        for (int64_t j = i + 1; j < class_count_; j++) {  //for each class
-          float sum = 0;
+      for (int64_t i = 0; i < class_count_; i++) {        // for each class
+        for (int64_t j = i + 1; j < class_count_; j++) {  // for each class
+          sum = 0;
           int64_t start_index_i = starting_vector_[i];  // *feature_count_;
           int64_t start_index_j = starting_vector_[j];  // *feature_count_;
 
@@ -126,6 +162,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
           float* val2 = (float*)&(kernels[start_index_i]);
           for (int64_t m = 0; m < class_i_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
+
           val1 = (float*)&(coefficients_[pos2 + start_index_j]);
           val2 = (float*)&(kernels[start_index_j]);
           for (int64_t m = 0; m < class_j_support_count; ++m, ++val1, ++val2)
@@ -136,13 +173,6 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
           ++(votes[sum > 0 ? i : j]);
           ++evals;  //index into rho
         }
-      }
-    } else if (mode_ == SVM_TYPE::SVM_LINEAR) {     //liblinear
-      for (int64_t j = 0; j < class_count_; j++) {  //for each class
-        float val = kernel_dot(x_data, current_weight_0, coefficients_, feature_count_ * j,
-                               feature_count_, get_kernel_type());
-        val += rho_[0];
-        scores.push_back(val);
       }
     }
 
@@ -170,7 +200,63 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       //copy probabilities back into scores
       scores.resize(estimates.size());
       std::copy(estimates.begin(), estimates.end(), scores.begin());
+#if defined(OVR)
+    } else if (proba_.size() == 0) {
+      // Applies function first part of _ovr_decision_function (scikit-learn).
+      // ONNX specs imposes one column per class. Libsvm does not do it, scikit-learn does.
+      // If OVR_NORM is defined the function also applies normalisation as
+      // scikit-learn would do in function _ovr_decision_function.
+      // This method has a major drawback because the scores depends on the other observations
+      // due to a rescaling based on a maximum obtained for all predictions
+      // (observations are not independant).
+      /*
+      for i in range(n_classes):
+        for j in range(i + 1, n_classes):
+            sum_of_confidences[:, i] -= confidences[:, k]
+            sum_of_confidences[:, j] += confidences[:, k]
+            k += 1 
+
+        max_confidences = sum_of_confidences.max()
+        min_confidences = sum_of_confidences.min()
+
+        if max_confidences == min_confidences:
+            return votes
+
+        eps = np.finfo(sum_of_confidences.dtype).eps
+        max_abs_confidence = max(abs(max_confidences), abs(min_confidences))
+        scale = (0.5 - eps) / max_abs_confidence
+        return votes + sum_of_confidences * scale
+      */
+      std::vector<float> conf(class_count_, 0.f);
+      float* ps = &(scores[0]);
+      for (int64_t i = 0; i < class_count_; ++i) {
+        for (int64_t j = i + 1; j < class_count_; ++j, ++ps) {
+          conf[i] += *ps;
+          conf[j] -= *ps;
+        }
+      }
+#if defined(OVR_NORM)
+      auto mx = *std::max(conf.begin(), conf.end());
+      auto mi = *std::min(conf.begin(), conf.end());
+      if (mx != mi) {
+        if (mx < 0.f) mx = -mx;
+        if (mi < 0.f) mi = -mi;
+        auto mxx = mx > mi ? mx : mi;
+        auto scale = - (0.5f - 1e-7f) / mxx;
+        auto it2 = votes.begin();
+        for (auto it = conf.begin(); it != conf.end(); ++it, ++it2)
+          *it = *it2 * *it * scale;
+      } else {
+        auto it2 = votes.begin();
+        for (auto it = conf.begin(); it != conf.end(); ++it, ++it2)
+          *it = (float)*it2;
+      }
+#endif
+
+      scores = conf;
+#endif
     }
+
     int64_t maxvotes = 0;
     double maxweight = 0;
     if (votes.size() > 0) {
@@ -183,51 +269,14 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       maxweight = *it_maxweight;
     }
 
-    //write top class
+    // write top class
+    // onnx specs expects one column per class.
     int write_additional_scores = -1;
-    if (rho_.size() == 1) {  // binary
+    if (rho_.size() == 1) {
       if (using_strings_) {
-        if (classlabels_strings_.size() == 2) {
-          if (weights_are_all_positive_ && maxweight >= 0.5 && proba_.size() == 0) {
-            Y->template MutableData<std::string>()[n] = classlabels_strings_[1];  //positive label
-            write_additional_scores = 0;
-          } else if (maxweight > 0 && !weights_are_all_positive_ && proba_.size() == 0) {
-            Y->template MutableData<std::string>()[n] = classlabels_strings_[1];  //positive label
-            write_additional_scores = 0;
-          } else if (proba_.size() > 0) { //this case all classes are in their rightful spot
-            Y->template MutableData<std::string>()[n] = classlabels_strings_[maxclass];
-          } else if (proba_.size() == 0 && post_transform_ == POST_EVAL_TRANSFORM::NONE) {
-            Y->template MutableData<std::string>()[n] = classlabels_strings_[maxclass];
-          } else {
-            Y->template MutableData<std::string>()[n] = classlabels_strings_[0];  //negative label
-            write_additional_scores = 1;
-          }
-        } else if (maxweight > 0) {
-          Y->template MutableData<std::string>()[n] = "1";  //positive label
-        } else {
-          Y->template MutableData<std::string>()[n] = "0";  //negative label
-        }
-      } else {  // no strings
-        if (classlabels_ints_.size() == 2) {
-          if (weights_are_all_positive_ && maxweight >= 0.5 && proba_.size() == 0) {
-            Y->template MutableData<int64_t>()[n] = classlabels_ints_[1];  //positive label
-            write_additional_scores = 0;
-          } else if (maxweight > 0 && !weights_are_all_positive_ && proba_.size() == 0) {
-            Y->template MutableData<int64_t>()[n] = classlabels_ints_[0];  //pos  label
-            write_additional_scores = 0;
-          } else if (proba_.size() > 0) {                                         //this case all classes are in their rightful spot
-            Y->template MutableData<int64_t>()[n] = classlabels_ints_[maxclass];
-          } else if (proba_.size() == 0 && post_transform_ == POST_EVAL_TRANSFORM::NONE) {
-            Y->template MutableData<int64_t>()[n] = classlabels_ints_[maxclass];
-          } else {
-            Y->template MutableData<int64_t>()[n] = classlabels_ints_[0];  //negative label
-            write_additional_scores = 1;
-          }
-        } else if (maxweight > 0) {
-          Y->template MutableData<int64_t>()[n] = 1;  //positive label
-        } else {
-          Y->template MutableData<int64_t>()[n] = 0;  //negative label
-        }
+        SETSCORESVM(std::string, classlabels_strings_, "1", "0")
+      } else {
+        SETSCORESVM(int64_t, classlabels_ints_, 1, 0)
       }
     } else {  //multiclass
       if (using_strings_) {
@@ -242,7 +291,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   }
 
   return Status::OK();
-}  // namespace ml
+}
 
 }  // namespace ml
 }  // namespace onnxruntime
