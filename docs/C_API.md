@@ -1,20 +1,9 @@
 # C API
 
-# Q: Why have a C API? 
-Q: Why not just live in a C++ world? Why C?    
-A: We want to distribute the onnxruntime as a DLL, which can be used in .Net languages through [P/Invoke](https://docs.microsoft.com/en-us/cpp/dotnet/how-to-call-native-dlls-from-managed-code-using-pinvoke).
-This is the only option we have.
+**NOTE: The C API is PRE-RELEASE and subject to change. Please do not rely on this file not changing.**
 
-Q: Is it only for .Net?    
-A: No. It is designed for:
-1. Creating language bindings for the onnxruntime. e.g. C#, python, java, ...
-2. Dynamic linking has some benefits. For example, solving diamond dependency problems.
+## Features
 
-Q: Can I export C++ types and functions across DLL or "Shared Object" Library(.so) boundaries?    
-A: Well, you can, but it's not a good practice. We won't do it in this project.
-
-
-## What's inside
 * Creating an InferenceSession from an on-disk model file and a set of SessionOptions.
 * Registering customized loggers.
 * Registering customized allocators.
