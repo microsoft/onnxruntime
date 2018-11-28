@@ -12,50 +12,47 @@ namespace onnxruntime {
 
 class OpKernel;
 class OpKernelInfo;
-// Sub-graph data structure.
-// It contains a node index array covered by <*this> sub-graph,
-// and contains meta definition needed for customizing <*this>
-// sub-graph as a FunctionProto, which could be serialized/saved
-// to a model file.
+
+/**
+@class IndexedSubGraph
+
+Class containing information about a subgraph of Nodes from a Graph.
+It contains a NodeIndex array of the Nodes covered by the subgraph, 
+and the meta definition needed for representing this subgraph as a FunctionProto, 
+which could be serialized/saved to a model file.
+*/
 struct IndexedSubGraph {
   struct MetaDef {
-    // Name of customized Sub-Graph/FunctionProto
-    std::string name;
-    // Domain of customized Sub-Graph/FunctionProto
-    std::string domain;
-    // Since version of customized Sub-Graph/FunctionProto.
-    int since_version;
-    // Status of customized Sub-Graph/FunctionProto.
-    ONNX_NAMESPACE::OperatorStatus status;
-    // Inputs of customized Sub-Graph/FunctionProto.
-    std::vector<std::string> inputs;
-    // Outputs of customized Sub-Graph/FunctionProto.
-    std::vector<std::string> outputs;
-    // Attributes of customized Sub-Graph/FunctionProto.
-    NodeAttributes attributes;
-    // Doc string of customized Sub-Graph/FunctionProto.
-    std::string doc_string;
+    std::string name;    ///< Name of customized SubGraph/FunctionProto
+    std::string domain;  ///< Domain of customized SubGraph/FunctionProto
+    int since_version;   ///< Since version of customized SubGraph/FunctionProto.
+
+    ONNX_NAMESPACE::OperatorStatus status;  ///< Status of customized SubGraph/FunctionProto.
+
+    std::vector<std::string> inputs;   ///< Inputs of customized SubGraph/FunctionProto.
+    std::vector<std::string> outputs;  ///< Outputs of customized SubGraph/FunctionProto.
+    NodeAttributes attributes;         ///< Attributes of customized SubGraph/FunctionProto.
+
+    std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
   };
 
-  // Nodes covered by <*this> sub-graph.
-  // The indexes are from parent graph.
+  /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
   std::vector<onnxruntime::NodeIndex> nodes;
 
-  // Meta definition needed for customizing <*this>
-  // sub-graph as a FunctionProto, which could be serialized/saved
-  // to a model file. It's needed IF AND ONLY IF there're multiple
-  // indexes contained in <nodes> above.
-
+  /** Set the meta definition needed to represent this subgraph as a FunctionProto
+  It's needed IF AND ONLY IF there are multiple indexes contained in #nodes. */
   void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) {
     meta_def = std::move(meta_def_);
   }
 
+  /** Gets the meta definition needed to represent this subgraph as a FunctionProto. 
+  @returns MetaDef instance if it has been set. nullptr if not. */
   const MetaDef* GetMetaDef() const {
     return meta_def.get();
   }
 
  private:
-  // Sub-graph meta definition.
+  // subgraph meta definition.
   std::unique_ptr<MetaDef> meta_def;
 };
 

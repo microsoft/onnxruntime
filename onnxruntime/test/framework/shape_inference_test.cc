@@ -34,7 +34,7 @@ class ShapeInferenceTest : public ::testing::Test {
     return name_to_arg_[name].get();
   }
 
-  onnxruntime::Node* Node(const std::string& op, const std::string& input, const std::string& output) {
+  onnxruntime::Node& Node(const std::string& op, const std::string& input, const std::string& output) {
     std::vector<onnxruntime::NodeArg*> input_args({Arg(input)});
     std::vector<onnxruntime::NodeArg*> output_args({Arg(output)});
     int num = node_count_++;
@@ -46,12 +46,12 @@ class ShapeInferenceTest : public ::testing::Test {
     EXPECT_TRUE(status.IsOK()) << "Graph resolve failed: " << status.ErrorMessage();
   }
 
-  const TensorShapeProto* InputShape(onnxruntime::Node* node, int arg_num = 0) {
-    return node->InputDefs()[arg_num]->Shape();
+  const TensorShapeProto* InputShape(onnxruntime::Node& node, int arg_num = 0) {
+    return node.InputDefs()[arg_num]->Shape();
   }
 
-  const TensorShapeProto* OutputShape(onnxruntime::Node* node, int arg_num = 0) {
-    return node->OutputDefs()[arg_num]->Shape();
+  const TensorShapeProto* OutputShape(onnxruntime::Node& node, int arg_num = 0) {
+    return node.OutputDefs()[arg_num]->Shape();
   }
 
   void CheckShapeEquality(const TensorShapeProto* shape1, const TensorShapeProto* shape2) {
@@ -81,7 +81,7 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   Type type1({1, 50, 100});
   Input("X1", type1);
 
-  auto p_node = Node("Cast", "X1", "Y1");
+  auto& node = Node("Cast", "X1", "Y1");
   //AttributeProto squeezed_axes;
   //squeezed_axes.set_name("axes");
   //squeezed_axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
@@ -93,13 +93,13 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   cast_to.set_i(ONNX_NAMESPACE::TensorProto_DataType_INT32);
   //cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
   //cast_to.set_s("INT16");
-  p_node->AddAttribute("to", cast_to);
+  node.AddAttribute("to", cast_to);
 
   DoShapeInference();
   // check inferred shapes
   Shape expected_shape({1, 50, 100});
-  CheckShapeEquality(OutputShape(p_node), &expected_shape.value);
-  CheckShapeEquality(InputShape(p_node), OutputShape(p_node));
+  CheckShapeEquality(OutputShape(node), &expected_shape.value);
+  CheckShapeEquality(InputShape(node), OutputShape(node));
 }
 
 }  // namespace test

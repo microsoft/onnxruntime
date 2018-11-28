@@ -44,30 +44,30 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
-  auto cast_node = graph.AddNode(str, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
-  cast_node->AddAttribute("to", to_type);
-  cast_node->SetExecutionProviderType(providerType);
+  auto& cast_node = graph.AddNode(str, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
+  cast_node.AddAttribute("to", to_type);
+  cast_node.SetExecutionProviderType(providerType);
   return new_arg;
 }
 
-static bool IsInputFloat16(const onnxruntime::Node* node) {
-  for (auto input : node->InputDefs()) {
+static bool IsInputFloat16(const onnxruntime::Node& node) {
+  for (auto input : node.InputDefs()) {
     if (input->Type() != nullptr &&
         DataTypeImpl::TypeFromProto(*input->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
-        !node->GetExecutionProviderType().empty()) {
+        !node.GetExecutionProviderType().empty()) {
       return true;
     }
   }
   return false;
 }
 
-static bool IsSingleInputNodeFloat16Node(const onnxruntime::Node* node) {
-  if (IsInputFloat16(node) && node->GetExecutionProviderType() == kCpuExecutionProvider) {
-    for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+static bool IsSingleInputNodeFloat16Node(const onnxruntime::Node& node) {
+  if (IsInputFloat16(node) && node.GetExecutionProviderType() == kCpuExecutionProvider) {
+    for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
       if (IsInputFloat16(*it))
         return false;
     }
-    for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+    for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
       if (IsInputFloat16(*it))
         return false;
     }
@@ -82,7 +82,7 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
     return Status::OK();
   }
   for (auto& node : graph.Nodes()) {
-    if (IsSingleInputNodeFloat16Node(&node)) {
+    if (IsSingleInputNodeFloat16Node(node)) {
       node.SetExecutionProviderType("");
     }
   }
@@ -176,17 +176,19 @@ Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) c
       int child_removed = 0;
       int num_child = 0;
       for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-        if ((*it)->OpType() == "Cast") {
-          auto src_type1 = (*it)->InputDefs()[0]->Type();
-          auto dst_type1 = (*it)->OutputDefs()[0]->Type();
+        const Node& output_node{*it};
+        if (output_node.OpType() == "Cast") {
+          auto src_type1 = output_node.InputDefs()[0]->Type();
+          auto dst_type1 = output_node.OutputDefs()[0]->Type();
           if (src_type == dst_type1 && src_type1 == dst_type) {
             //node *it's output's follower could be linked with node's input.
             replacement_defs.clear();
-            replacement_defs[const_cast<onnxruntime::NodeArg*>((*it)->OutputDefs()[0])] = const_cast<onnxruntime::NodeArg*>(input);
-            for (auto next_it = (*it)->OutputNodesBegin(); next_it != (*it)->OutputNodesEnd(); ++next_it) {
-              const_cast<onnxruntime::Node*>((*next_it))->ReplaceDefs(replacement_defs);
+            replacement_defs[const_cast<onnxruntime::NodeArg*>(output_node.OutputDefs()[0])] =
+                const_cast<onnxruntime::NodeArg*>(input);
+            for (auto next_it = output_node.OutputNodesBegin(); next_it != output_node.OutputNodesEnd(); ++next_it) {
+              const_cast<onnxruntime::Node*>(&(*next_it))->ReplaceDefs(replacement_defs);
             }
-            removed_nodes.push_back((*it)->Index());
+            removed_nodes.push_back(output_node.Index());
             child_removed++;
           }
         }
