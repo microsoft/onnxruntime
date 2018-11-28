@@ -55,8 +55,7 @@ provider).
 
 Conceptually, each partition is reduced to a single fused operator. It is
 created by invoking the execution provider's Compile() method and wrap it as a
-custom operator. We support both sync and async modes of execution for custom
-operators. We also support both strict and non-strict invocations. An execution
+custom operator. Currently we support only sync mode of execution. An execution
 provider exposes its memory allocator, which is used to allocate the input
 tensors for the execution provider. The rewriting and partitioning transform the
 initial model graph into a new graph composed with operators assigned to either

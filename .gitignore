@@ -16,7 +16,7 @@ gen
 .vs
 TestResults/
 .idea/
-lotus.egg-info
+onnxruntime.egg-info
 nuget_root/
 .packages/
 .vscode/
