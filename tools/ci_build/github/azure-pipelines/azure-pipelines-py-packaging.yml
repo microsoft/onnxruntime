@@ -73,8 +73,6 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
-      Python37:
-        python.version: '3.7'
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
   steps:
@@ -130,8 +128,6 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
-      Python37:
-        python.version: '3.7'
   steps:
     - task: CondaEnvironment@1
       inputs:
