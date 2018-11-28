@@ -45,7 +45,7 @@ CMake creates a target to this project
              Properties="Platform=AnyCPU"
              />
     <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
-             Targets="Build" 
+             Targets="Build"
              />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Build" 
