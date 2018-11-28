@@ -20,9 +20,6 @@ New code *must* be accompanied by unit tests.
 # Build
 [Build](BUILD.md)
 
-# Additional Documentation
-   * [Adding a custom operator](docs/AddingCustomOp.md)
-
 # Coding guidelines
 Please see [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md)
 
