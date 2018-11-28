@@ -30,18 +30,21 @@
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
           PackagePath="\runtimes\win10-x64\native"
           Pack="true"
+          CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
           PackagePath="\runtimes\win10-x64\native"
           Pack="true"
+          CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\mkldnn.dll" 
           Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
           PackagePath="\runtimes\win10-x64\native"
           Pack="true"
+          CopyToOutputDirectory="Always"
           Visible="false"
     />
 
@@ -58,7 +61,7 @@
     />
   </ItemGroup>
 
-  <Target Name="ObtainPackageVersion" BeforeTargets="Pack">
+  <Target Name="ObtainPackageVersion" BeforeTargets="Build;Pack">
     <ReadLinesFromFile File="$(OnnxRuntimeCsharpRoot)\..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
     </ReadLinesFromFile>
@@ -69,6 +72,7 @@
     <PropertyGroup>
       <RepositoryCommit>$(GitCommitHash)</RepositoryCommit>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
+      <Version>$(PackageVersion)</Version>
       <PackageVersion Condition="'$(IsReleaseBuild)'==''">$(PackageVersion)-dev-$(GitCommitHash)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
