@@ -40,7 +40,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | [C#](docs/CSharp_API.md) | [Windows](TODO)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
 | [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
 
-There is also a non ABI [C++ API](core/session/inference_session.h)
+There is also a non ABI [C++ API](onnxruntime/core/session/inference_session.h)
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).
