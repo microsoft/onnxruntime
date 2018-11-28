@@ -47,21 +47,21 @@ TEST(SessionStateTest, AddGetKernelTest) {
   output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   onnxruntime::NodeArg output_arg("node_1_out_1", &output_type);
   outputs.push_back(&output_arg);
-  onnxruntime::Node* p_node = graph.AddNode("node_1", "Variable", "node 1.", inputs, outputs);
+  onnxruntime::Node& node = graph.AddNode("node_1", "Variable", "node 1.", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK());
   KernelDef kernel_def;
   CPUExecutionProvider execution_provider{CPUExecutionProviderInfo{"CPUExecutionProvider"}};
 
-  OpKernelInfo p_info(*p_node, kernel_def, execution_provider, s);
+  OpKernelInfo p_info(node, kernel_def, execution_provider, s);
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
-  std::cout << "node_idx: " << p_node->Index() << std::endl;
+  std::cout << "node_idx: " << node.Index() << std::endl;
 
   s.SetGraphViewer(std::make_unique<GraphViewer>(graph));
-  s.AddKernel(p_node->Index(), std::move(p_kernel));
-  auto test_kernel = s.GetKernel(p_node->Index());
+  s.AddKernel(node.Index(), std::move(p_kernel));
+  auto test_kernel = s.GetKernel(node.Index());
   std::cout << "orig: " << orig_num_outputs << " new: " << test_kernel->Node().OutputDefs().size() << std::endl;
   EXPECT_EQ(orig_num_outputs, test_kernel->Node().OutputDefs().size());
 }
