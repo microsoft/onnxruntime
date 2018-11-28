@@ -7,6 +7,9 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    /// <summary>
+    /// Various providers of ONNX operators
+    /// </summary>
     public enum ExecutionProvider
     {
         Cpu,
@@ -14,16 +17,25 @@ namespace Microsoft.ML.OnnxRuntime
         //TODO: add more providers gradually
     };
 
-    public class SessionOptions
+    /// <summary>
+    /// Holds the options for creating an InferenceSession
+    /// </summary>
+    public class SessionOptions:IDisposable
     {
         protected SafeHandle _nativeOption;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithMklDnnProvider);
 
+        /// <summary>
+        /// Constructs an empty SessionOptions
+        /// </summary>
         public SessionOptions()
         {
             _nativeOption = new NativeOnnxObjectHandle(NativeMethods.ONNXRuntimeCreateSessionOptions());
         }
 
+        /// <summary>
+        /// Default instance
+        /// </summary>
         public static SessionOptions Default
         {
             get
@@ -32,6 +44,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Append an execution propvider. When any operator is evaluated, it is executed on the first execution provider that provides it
+        /// </summary>
+        /// <param name="provider"></param>
         public void AppendExecutionProvider(ExecutionProvider provider)
         {
             switch (provider)
@@ -80,5 +96,30 @@ namespace Microsoft.ML.OnnxRuntime
 
             }
         }
+
+        #region destructors disposers
+
+
+        ~SessionOptions()
+        {
+            Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
+            Dispose(true);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                // cleanup managed resources
+            }
+            _nativeOption.Dispose();
+        }
+
+        #endregion
     }
 }
