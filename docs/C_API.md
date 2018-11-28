@@ -26,7 +26,7 @@ A: Well, you can, but it's not a good practice. We won't do it in this project.
 
 ## How to use it
 
-1. Include [onnxruntime_c_api.h](include/onnxruntime/core/session/onnxruntime_c_api.h).
+1. Include [onnxruntime_c_api.h](/include/onnxruntime/core/session/onnxruntime_c_api.h).
 2. Call ONNXRuntimeInitialize
 3. Create Session: ONNXRuntimeCreateInferenceSession(env, model_uri, nullptr,...)
 4. Create Tensor
