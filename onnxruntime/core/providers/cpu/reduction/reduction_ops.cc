@@ -34,8 +34,8 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 1);
 
-// When all reduce axises located at the tail of the dims, quite general cases, copy could be
-// skip to improve performance, if required by check_no_copy = true;
+// When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
+// copy could be skiped to improve performance, if required by check_no_transpose = true;
 // return value: true means transposedInputData is not created/copied, input tensor data could
 //               be direct use as row major matrix [block_size, blocks], where blocks is the
 //               size of each reduce.
@@ -47,7 +47,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
                       int64_t& blocks,
                       const std::vector<int64_t>& axes_,
                       bool keepdims_,
-                      bool check_no_copy = false) {
+                      bool check_no_transpose = false) {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
   ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& input = *input_tensor_ptr;
@@ -127,7 +127,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
   block_size = input.Shape().Size() / first_dim;
   blocks = first_dim;
 
-  if (!need_copy && check_no_copy) {
+  if (!need_copy && check_no_transpose) {
     return true;
   }
 
@@ -289,11 +289,11 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   std::vector<T> transposedInputData;
   int64_t block_size, blocks;
   Tensor* reduced;
-  bool no_copy = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  if (no_copy) {
+  if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
     #pragma omp parallel for
@@ -344,11 +344,11 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   std::vector<T> transposedInputData;
   int64_t block_size, blocks;
   Tensor* reduced;
-  bool no_copy = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
+  bool no_transpose = PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_, true);
 
   T* output_data = reduced->template MutableData<T>();
 
-  if (no_copy) {
+  if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
     
     #pragma omp parallel for
