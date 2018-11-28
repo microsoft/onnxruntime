@@ -38,7 +38,7 @@ struct UnaryNode {
             onnxruntime::NodeArg* p_input_arg, onnxruntime::NodeArg* p_output_arg)
       : input_args({p_input_arg}), output_args({p_output_arg}) {
     int num = NodeCounter::Next();
-    p_node = graph.AddNode("node" + std::to_string(num), op, "test op", input_args, output_args);
+    p_node = &graph.AddNode("node" + std::to_string(num), op, "test op", input_args, output_args);
   }
 
   UnaryNode(onnxruntime::Graph& graph, onnxruntime::NodeArg* p_input_arg, onnxruntime::NodeArg* p_output_arg)

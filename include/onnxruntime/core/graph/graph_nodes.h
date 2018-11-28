@@ -12,8 +12,7 @@ namespace onnxruntime {
 class Node;
 
 /**
-Class that provides iteration services for nodes in the Graph. 
-It's primary function is to hide holes in the nodes vector due to removed nodes.
+Class that provides iteration over all valid nodes in the Graph. 
 */
 class GraphNodes {
   using TNodesContainer = std::vector<std::unique_ptr<Node>>;
@@ -22,7 +21,10 @@ class GraphNodes {
   template <typename TIterator>
   class NodeIterator;
 
-  // construct a wrapper of the nodes that provides iteration services
+  /**
+  Construct a GraphNodes instance to provide iteration over all valid nodes in the Graph
+  @param[in] nodes Nodes to iterate, skipping invalid entries.
+  */
   explicit GraphNodes(TNodesContainer& nodes) noexcept : nodes_(nodes) {}
 
   using ConstNodeIterator = NodeIterator<TNodesContainer::const_iterator>;
@@ -52,7 +54,11 @@ class GraphNodes {
     return {nodes_.end(), nodes_.end()};
   }
 
-  // Iterator to provide const and non-const access to nodes, skipping invalid nodes.
+  /** 
+  @class NodeIterator
+  Iterator to provide const and non-const access to valid Node instances in a Graph.
+  @remarks Skips invalid nodes. 
+  */
   template <typename TIterator>
   class NodeIterator {
     // get the type being returned by the iterator. can't use TIterator::value_type as that is always non-const
@@ -65,14 +71,14 @@ class GraphNodes {
    public:
     using iterator_category = std::input_iterator_tag;
     using value_type = T;
-    using difference_type = typename TIterator::difference_type;  // ptrdiff_t;
+    using difference_type = typename TIterator::difference_type;
     using pointer = T*;
     using reference = T&;
     using const_reference = std::add_const_t<reference>;
 
-    // Constructor. Will move to a valid node or end.
+    /** Construct a NodeInterator and move to the first valid node. */
     NodeIterator<TIterator>(TIterator current, const TIterator end) noexcept : current_{current}, end_{end} {
-      // skip to valid node or end - whatever comes first
+      // skip to next valid node, stopping at end if none are found
       while (current_ < end && *current_ == nullptr) {
         ++current_;
       }
@@ -101,6 +107,7 @@ class GraphNodes {
       return tmp;
     }
 
+    /** Return the current Node&. This will be const if the iterator was returned from a const GraphNodes instance. */
     reference operator*() {
       // if iterator is valid we always have a non-nullptr node
       // if this is a nullptr we're at end_ and this shouldn't be being called

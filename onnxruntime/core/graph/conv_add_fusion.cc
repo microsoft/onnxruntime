@@ -15,18 +15,18 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       continue;
     }
 
-    const Node* next_node = *node.OutputNodesBegin();
-    if (next_node->OpType() != "Add" ||
-        next_node->GetInputEdgesCount() != 1 ||
-        graph.IsNodeOutputsInGraphOutputs(*next_node)) {
+    const Node& next_node = *node.OutputNodesBegin();
+    if (next_node.OpType() != "Add" ||
+        next_node.GetInputEdgesCount() != 1 ||
+        graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
     }
 
     auto& conv_node = node;
-    const Node* add_node = next_node;
+    const Node& add_node = next_node;
 
     const auto& conv_inputs = conv_node.InputDefs();
-    const auto& add_inputs = add_node->InputDefs();
+    const auto& add_inputs = add_node.InputDefs();
 
     const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
     graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
@@ -57,7 +57,7 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
       auto add_B = std::make_unique<Initializer>(add_B_tensor_proto);
 
-      // Caculate new value of initializers of conv node
+      // Calculate new value of initializers of conv node
       conv_B->add(*add_B);
 
       // Create new initializers of conv
@@ -92,10 +92,10 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     }
 
     // Replace the input of the node following add node
-    const NodeArg* add_output_def = add_node->OutputDefs()[0];
+    const NodeArg* add_output_def = add_node.OutputDefs()[0];
     const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
-    for (auto it = add_node->OutputNodesBegin(); it != add_node->OutputNodesEnd(); ++it) {
-      auto output_node = graph.GetNode((*it)->Index());
+    for (auto it = add_node.OutputNodesBegin(); it != add_node.OutputNodesEnd(); ++it) {
+      auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
         return Status(ONNXRUNTIME, INVALID_ARGUMENT);
       }
@@ -108,7 +108,7 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       }
     }
 
-    removed_nodes.push_back(add_node->Index());
+    removed_nodes.push_back(add_node.Index());
   }
 
   for (auto i : removed_nodes) {
@@ -121,5 +121,5 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
   }
 
   return Status::OK();
-}  // namespace onnxruntime
+}
 }  // namespace onnxruntime

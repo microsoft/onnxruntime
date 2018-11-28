@@ -5,7 +5,7 @@
 
 namespace onnxruntime {
 // Add customized domain to min/max version.
-::onnxruntime::common::Status OnnxRuntimeOpSchemaRegistry::SetBaselineAndOpsetVersionForDomain(
+common::Status OnnxRuntimeOpSchemaRegistry::SetBaselineAndOpsetVersionForDomain(
     const std::string& domain,
     int baseline_opset_version,
     int opset_version) {
@@ -13,17 +13,17 @@ namespace onnxruntime {
 
   auto it = domain_version_range_map_.find(domain);
   if (domain_version_range_map_.end() != it) {
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::FAIL, "Domain already set in registry");
+    return common::Status(common::ONNXRUNTIME, common::FAIL, "Domain already set in registry");
   }
 
   domain_version_range_map_[domain].baseline_opset_version = baseline_opset_version;
   domain_version_range_map_[domain].opset_version = opset_version;
 
-  return ::onnxruntime::common::Status::OK();
+  return common::Status::OK();
 }
 
-Domain_To_Version_Map OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool is_onnx_only) const {
-  Domain_To_Version_Map domain_version_map;
+DomainToVersionMap OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool is_onnx_only) const {
+  DomainToVersionMap domain_version_map;
 
   for (auto& domain : domain_version_range_map_) {
     if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
@@ -34,7 +34,7 @@ Domain_To_Version_Map OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool i
   return domain_version_map;
 }
 
-::onnxruntime::common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSet(
+common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSet(
     std::vector<ONNX_NAMESPACE::OpSchema>& schemas,
     const std::string& domain,
     int baseline_opset_version,
@@ -42,18 +42,18 @@ Domain_To_Version_Map OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool i
   ONNXRUNTIME_RETURN_IF_ERROR(SetBaselineAndOpsetVersionForDomain(domain, baseline_opset_version, opset_version));
   for (auto& schema : schemas)
     ONNXRUNTIME_RETURN_IF_ERROR(RegisterOpSchema(std::move(schema)));
-  return ::onnxruntime::common::Status::OK();
+  return common::Status::OK();
 }
 
-::onnxruntime::common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchema(ONNX_NAMESPACE::OpSchema&& op_schema) {
+common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchema(ONNX_NAMESPACE::OpSchema&& op_schema) {
   return RegisterOpSchemaInternal(std::move(op_schema));
 }
 
-::onnxruntime::common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema) {
+common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema) {
   try {
     op_schema.Finalize();
   } catch (const std::exception& e) {
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
   }
 
   auto& op_name = op_schema.Name();
@@ -69,7 +69,7 @@ Domain_To_Version_Map OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool i
             << op_schema.line()
             << ", but it is already registered from file "
             << schema.file() << " line " << schema.line() << std::endl;
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, ostream.str());
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
   }
 
   auto ver_range_it = domain_version_range_map_.find(op_domain);
@@ -80,7 +80,7 @@ Domain_To_Version_Map OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool i
             << ") from file " << op_schema.file() << " line "
             << op_schema.line() << ", but it its domain is not"
             << "known by the checker." << std::endl;
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, ostream.str());
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
   }
   if (ver > ver_range_it->second.opset_version) {
     std::ostringstream ostream;
@@ -90,11 +90,11 @@ Domain_To_Version_Map OnnxRuntimeOpSchemaRegistry::GetLatestOpsetVersions(bool i
         << ") from file " << op_schema.file() << " line "
         << op_schema.line() << ", but it its version is higher"
         << "than the operator set version " << ver_range_it->second.opset_version << std::endl;
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, ostream.str());
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
   }
   GSL_SUPPRESS(es .84)
   map_[op_name][op_domain].emplace(std::make_pair(ver, op_schema));
-  return ::onnxruntime::common::Status::OK();
+  return common::Status::OK();
 }
 
 // Return the schema with biggest version, which is not greater than specified
@@ -154,12 +154,12 @@ void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchem
   registries.push_front(registry);
 }
 
-Domain_To_Version_Map SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
-  Domain_To_Version_Map domain_version_map;
+DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
+  DomainToVersionMap domain_version_map;
 
   // Build the map using each of the registries
   for (auto& registry : registries) {
-    Domain_To_Version_Map latest_opset_versions_in_reg = registry->GetLatestOpsetVersions(is_onnx_only);
+    DomainToVersionMap latest_opset_versions_in_reg = registry->GetLatestOpsetVersions(is_onnx_only);
 
     for (auto& local_domain : latest_opset_versions_in_reg) {
       auto iter = domain_version_map.find(local_domain.first);

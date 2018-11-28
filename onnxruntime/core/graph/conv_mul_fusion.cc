@@ -15,18 +15,18 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       continue;
     }
 
-    const Node* next_node = *node.OutputNodesBegin();
-    if (next_node->OpType() != "Mul" ||
-        next_node->GetInputEdgesCount() != 1 ||
-        graph.IsNodeOutputsInGraphOutputs(*next_node)) {
+    const Node& next_node = *node.OutputNodesBegin();
+    if (next_node.OpType() != "Mul" ||
+        next_node.GetInputEdgesCount() != 1 ||
+        graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
     }
 
     auto& conv_node = node;
-    const Node* mul_node = next_node;
+    const Node& mul_node = next_node;
 
     const auto& conv_inputs = conv_node.InputDefs();
-    const auto& mul_inputs = mul_node->InputDefs();
+    const auto& mul_inputs = mul_node.InputDefs();
 
     const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
     graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
@@ -52,7 +52,9 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
     std::unique_ptr<Initializer> conv_B = nullptr;
     if (conv_inputs.size() == 3) {
-      graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto);
+      if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto))
+        continue;
+
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
           conv_B_tensor_proto->dims_size() != 1 || mul_B_tensor_proto->dims_size() != 3 ||
@@ -62,7 +64,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
     }
 
-    // Caculate new value of initializers of conv node
+    // Calculate new value of initializers of conv node
     conv_W->scale_by_axis(*mul_B, 1);
     if (conv_inputs.size() == 3) {
       conv_B->mul(*mul_B);
@@ -77,17 +79,24 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     graph.AddInitializedTensor(new_conv_W_tensor_proto);
 
     if (conv_inputs.size() == 3) {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6011)  // Not deferencing null pointer. conv_B_tensor_proto is set on line 55
+#endif
       ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
       conv_B->ToProto(&new_conv_B_tensor_proto);
       graph.RemoveInitializedTensor(conv_inputs[2]->Name());
       graph.AddInitializedTensor(new_conv_B_tensor_proto);
     }
 
     // Replace the input of the node following mul node
-    const NodeArg* mul_output_def = mul_node->OutputDefs()[0];
+    const NodeArg* mul_output_def = mul_node.OutputDefs()[0];
     const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
-    for (auto it = mul_node->OutputNodesBegin(); it != mul_node->OutputNodesEnd(); ++it) {
-      auto output_node = graph.GetNode((*it)->Index());
+    for (auto it = mul_node.OutputNodesBegin(); it != mul_node.OutputNodesEnd(); ++it) {
+      auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
         return Status(ONNXRUNTIME, INVALID_ARGUMENT);
       }
@@ -100,7 +109,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       }
     }
 
-    removed_nodes.push_back(mul_node->Index());
+    removed_nodes.push_back(mul_node.Index());
   }
 
   for (auto i : removed_nodes) {
