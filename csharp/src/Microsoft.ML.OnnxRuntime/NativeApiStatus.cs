@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime
                 ErrorCode statusCode = NativeMethods.ONNXRuntimeGetErrorCode(nativeStatus);
                 string errorMessage = GetErrorMessage(nativeStatus);
                 NativeMethods.ReleaseONNXStatus(nativeStatus);
-                throw new CoreRuntimeException(statusCode, errorMessage);
+                throw new OnnxRuntimeException(statusCode, errorMessage);
             }
         }
     }
