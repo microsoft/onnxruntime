@@ -295,11 +295,11 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-const ::onnxruntime::Function* Node::GetFunctionBody() const noexcept {
+const Function* Node::GetFunctionBody() const noexcept {
   return func_body_;
 }
 
-void Node::SetFunctionBody(const ::onnxruntime::Function& func) {
+void Node::SetFunctionBody(const Function& func) {
   func_body_ = &func;
   op_ = &func.OpSchema();
 }
@@ -308,7 +308,7 @@ const std::string& Node::GetExecutionProviderType() const noexcept {
   return execution_provider_type_;
 }
 
-void Node::SetExecutionProviderType(onnxruntime::ProviderType execution_provider_type) {
+void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
