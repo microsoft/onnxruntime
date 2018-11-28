@@ -2,7 +2,7 @@
 # turn off readability-braces-around-statements to allow single line statement like 'if (x == y) doSomething();'
 Checks:          '-*,cppcoreguidelines-*,google-*,readability-*,modernize-*,-readability-braces-around-statements,-google-runtime-references,-cppcoreguidelines-pro-type-reinterpret-cast'
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*lotus\/core\/.*'
+HeaderFilterRegex: '.*onnxruntime\/core\/.*'
 AnalyzeTemporaryDtors: false
 FormatStyle:     none
 CheckOptions:    
