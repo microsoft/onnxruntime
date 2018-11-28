@@ -140,7 +140,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   auto& tile_repeat_def = CreateInitializer(graph, "tile_repeat", std::vector<int64_t>({2}), std::vector<int64_t>({1, 2}));
 
   graph.AddNode("node1", "Tile", "Tile operator", ArgMap{&x1_def, &tile_repeat_def}, ArgMap{&y_def})
-      node.SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+      .SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
 
   ASSERT_TRUE(graph.Resolve().IsOK());
   ASSERT_TRUE(0 == CountCopyNodes(graph));
