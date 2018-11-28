@@ -40,12 +40,6 @@
 #include <omp.h>
 #endif
 
-#ifdef __GNUC__
-#define UNUSED __attribute__((unused))
-#else
-#define UNUSED
-#endif
-
 namespace onnxruntime {
 
 common::Status SoftmaxCore(const int n,
@@ -65,7 +59,7 @@ common::Status SoftmaxCore(const int n,
   return Status::OK();
 }
 
-static int GetParallelGroupCount(int UNUSED n, int UNUSED d) {
+static int GetParallelGroupCount(int n, int d) {
 #if defined(_OPENMP)
   int omp_num_threads = omp_get_num_threads();
   int group_count = std::min(omp_num_threads, n);
@@ -77,6 +71,8 @@ static int GetParallelGroupCount(int UNUSED n, int UNUSED d) {
  
   return std::min(group_count, max_groups);
 #else
+  (void)n;
+  (void)d;
   return 1;
 #endif
 }
