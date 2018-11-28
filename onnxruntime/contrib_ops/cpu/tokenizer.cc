@@ -169,7 +169,7 @@ Status onnxruntime::contrib::Tokenizer::CharTokenize(OpKernelContext* ctx, size_
                                                      const std::vector<int64_t>& input_dims) const {
   using namespace tokenizer_details;
   // With char tokenzation we get as many tokens as the number of
-  // utf8 characters in the string. So for every string we calculate its character(utf-8) length
+  // utf8 characters in the string. So for every string we calculate its character(utf8) length
   // add padding and add start/end test separators if necessary
   size_t max_tokens = 0;
   auto X = ctx->Input<Tensor>(0);
@@ -191,11 +191,18 @@ Status onnxruntime::contrib::Tokenizer::CharTokenize(OpKernelContext* ctx, size_
   }
 
   std::vector<int64_t> output_dims(input_dims);
+  // Check if we have no output due to apparently empty strings input.
+  if ((max_tokens - mark_ * 2) == 0) {
+    output_dims.push_back(0);
+    TensorShape output_shape(output_dims);
+    ctx->Output(0, output_shape);
+    return Status::OK();
+  }
+
   output_dims.push_back(max_tokens);
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->template MutableData<std::string>();
-
   size_t output_index = 0;
   for (size_t n = 0; n < N; ++n) {
     for (size_t c = 0; c < C; ++c) {
@@ -313,13 +320,23 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   }
 
   std::vector<int64_t> output_dims(input_dims);
+  // Check if we have no output due to apparently empty strings input.
+  if ((max_tokens - mark_ * 2) == 0) {
+    output_dims.push_back(0);
+    TensorShape output_shape(output_dims);
+    ctx->Output(0, output_shape);
+    return Status::OK();
+  }
+
   output_dims.push_back(max_tokens);
   TensorShape output_shape(output_dims);
 
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->template MutableData<std::string>();
 
+#ifdef _DEBUG
   const size_t max_output_index = N * C * max_tokens;
+#endif
   size_t output_index = 0;
   for (auto& row : tokenized_strings) {
 #ifdef _DEBUG
@@ -375,11 +392,6 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   }
 
   auto& input_dims = X->Shape().GetDims();
-  if (input_dims.size() != 1 && input_dims.size() != 2) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input dimensions are either [C] or [N][C] allowed");
-  }
-
   size_t N = 0;
   size_t C = 0;
   if (input_dims.size() == 1) {
@@ -397,7 +409,8 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
     N = input_dims[0];
     C = input_dims[1];
   } else {
-    assert(false);
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "Input dimensions are either [C] or [N][C] allowed");
   }
 
   // Max tokens in the last axis

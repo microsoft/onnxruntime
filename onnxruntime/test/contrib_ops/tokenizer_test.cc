@@ -283,6 +283,43 @@ TEST(ContribOpTest, TokenizerCharLevel) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+
+  // Special case where empty output is produced
+  // For [C] we expect [C][0] output
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {""}, 1);
+
+    std::vector<int64_t> dims{2};
+    std::vector<std::string> input{u8"", u8""};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    output_dims.push_back(int64_t(0));
+    std::vector<std::string> output{};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // Special case where empty output is produced
+  // For [N][C] we expect [N][C][0] output
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {""}, 1);
+
+    std::vector<int64_t> dims{2, 2};
+    std::vector<std::string> input{u8"", u8"", u8"", u8""};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    output_dims.push_back(int64_t(0));
+    std::vector<std::string> output{};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
 }
 
 TEST(ContribOpTest, TokenizerWithSeparators) {
@@ -317,6 +354,7 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }  // namespace test
+
   // Test entire separators match so we get nothing
   // in the output
   {
@@ -333,12 +371,8 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     std::vector<int64_t> output_dims(dims);
     // Must split both in 2
-    output_dims.push_back(int64_t(2));
-    std::vector<std::string> output{
-        start_mark,
-        end_mark,
-        start_mark,
-        end_mark};
+    output_dims.push_back(int64_t(0));
+    std::vector<std::string> output;
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
@@ -429,7 +463,50 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
-}
+  // Empty input for [C] should produce [C][0]
+  {
+    std::vector<std::string> separators = {
+        u8"文",
+        u8"ó"};
 
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, separators, 4);
+
+    std::vector<int64_t> dims{2};
+    std::vector<std::string> input{u8"", u8""};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    // Must split both in 2
+    output_dims.push_back(int64_t(0));
+    std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // Empty input for [N][C] should produce [N][C][0]
+  {
+    std::vector<std::string> separators = {
+        u8"文",
+        u8"ó"};
+
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, separators, 4);
+
+    std::vector<int64_t> dims{2, 2};
+    std::vector<std::string> input{u8"", u8"文", u8"ó", u8""};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    // Must split both in 2
+    output_dims.push_back(int64_t(0));
+    std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
