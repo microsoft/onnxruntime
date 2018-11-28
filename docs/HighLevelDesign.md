@@ -38,17 +38,16 @@ provider using the GetCapability() API.
 *Note: TensorRT and nGraph support are in progress*
 
 ### More about partitioning
-ONNXRuntime partitions a model graph based on the available execution providers
-into subgraphs, each for a distinct provider respectively. ONNXRuntime provides
+ONNXRuntime partitions a model graph into subgraphs based on the available execution providers, one for each distinct provider. ONNXRuntime provides
 a default execution provider that is used as the fallback execution for the
 operators that cannot be pushed onto the more specialized but more efficient
-execution providers. Intuitively we want to push computation to the
+execution providers. Intuitively we want to push computation to more
 specialized execution providers whenever possible.
 
 We use a simple graph partitioning technique. The available execution providers
 will be considered in a specific order, and each will be assigned the maximal
 subgraphs (possibly more than one) that it is able to handle. The
-ONNXRuntime-provided default execution provider will be the last one to be
+ONNXRuntime-provided default execution provider will be the last one
 considered, and it ensures completeness. More sophisticated optimizations can be
 considered in the future (or can even be implemented as a composite execution
 provider).
