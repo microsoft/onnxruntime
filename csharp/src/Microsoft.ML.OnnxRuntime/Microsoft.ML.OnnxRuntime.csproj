@@ -13,21 +13,17 @@
     <Description>This package contains Microsoft's implementation of ONNX runtime, usable in .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <!--IncludeSymbols>true</IncludeSymbols>
     <PackageLicenseUrl>https://github.com/Microsoft/onnxruntime/blob/master/LICENSE</PackageLicenseUrl>
-    <RepositoryUrl>https://github.com/Microsoft/onnxruntime.git</RepositoryUrl>
-    <RepositoryType>git</RepositoryType-->
 
     <!--internal build related properties-->
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
     <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
 
-
+    <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+    <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
-    <!-- Optional: Include the PDB in the built .nupkg -->
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
 
@@ -75,12 +71,8 @@
     <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashShort" />
     </Exec>
-    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true">
-        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashFull" />
-    </Exec>
     
     <PropertyGroup>
-      <!--RepositoryCommit>$(GitCommitHashFull)</RepositoryCommit-->
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
       <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(GitCommitHashShort)</PackageVersion>
