@@ -96,26 +96,19 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
 
 template <typename T>
 Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
-  std::cout << "compute SVM\n";
   const Tensor* X = ctx->Input<Tensor>(0);
 
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
 
   Tensor* Y = ctx->Output(0, TensorShape({N}));
-  Tensor* Z;
-
   std::vector<int64_t> dims;
-
-#define OVR
-#if defined(OVR)
-  auto nc = class_count_;
-#else
-  auto nc = (proba_.size() > 0 || class_count_ == 2) ? class_count_ : (class_count_ * (class_count_ - 1) / 2);
-#endif
-
+  int64_t nc = (proba_.size() > 0 || vector_count_ == 0)
+                   ? class_count_
+                   : (class_count_ > 2 ? class_count_ * (class_count_ - 1) / 2 : 2);
   dims = {static_cast<int64_t>(N), static_cast<int64_t>(nc)};
-  Z = ctx->Output(1, TensorShape(dims));
+  Tensor* Z = ctx->Output(1, TensorShape(dims));
+
 
   const auto* x_data = X->template Data<T>();
   int64_t zindex = 0;
@@ -130,7 +123,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> votes;
     float sum;
 
-    if ((int64_t)rho_.size() == 1 && mode_ == SVM_TYPE::SVM_LINEAR) {
+    if (vector_count_ == 0 && mode_ == SVM_TYPE::SVM_LINEAR) {
       // This was in the original code but it does not appear in libsvm or scikit-learn.
       for (int64_t j = 0; j < class_count_; j++) {  //for each class
         float val = kernel_dot(x_data, current_weight_0, coefficients_, feature_count_ * j,
@@ -139,6 +132,8 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
         scores.push_back(val);
       }
     } else {
+      if (vector_count_ == 0)
+        return Status(common::ONNXRUNTIME, common::FAIL, "No support vectors.");
       int evals = 0;
 
       for (int64_t j = 0; j < vector_count_; j++) {
@@ -200,7 +195,8 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       //copy probabilities back into scores
       scores.resize(estimates.size());
       std::copy(estimates.begin(), estimates.end(), scores.begin());
-#if defined(OVR)
+#if false
+      // Normalization OVR as implemented in scikit-learn.
     } else if (proba_.size() == 0) {
       // Applies function first part of _ovr_decision_function (scikit-learn).
       // ONNX specs imposes one column per class. Libsvm does not do it, scikit-learn does.
@@ -235,23 +231,6 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
           conf[j] -= *ps;
         }
       }
-#if defined(OVR_NORM)
-      auto mx = *std::max(conf.begin(), conf.end());
-      auto mi = *std::min(conf.begin(), conf.end());
-      if (mx != mi) {
-        if (mx < 0.f) mx = -mx;
-        if (mi < 0.f) mi = -mi;
-        auto mxx = mx > mi ? mx : mi;
-        auto scale = - (0.5f - 1e-7f) / mxx;
-        auto it2 = votes.begin();
-        for (auto it = conf.begin(); it != conf.end(); ++it, ++it2)
-          *it = *it2 * *it * scale;
-      } else {
-        auto it2 = votes.begin();
-        for (auto it = conf.begin(); it != conf.end(); ++it, ++it2)
-          *it = (float)*it2;
-      }
-#endif
 
       scores = conf;
 #endif
