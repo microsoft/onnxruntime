@@ -236,12 +236,10 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
 #endif
     }
 
-    int64_t maxvotes = 0;
     double maxweight = 0;
     if (votes.size() > 0) {
       auto it_maxvotes = std::max_element(votes.begin(), votes.end());
       maxclass = std::distance(votes.begin(), it_maxvotes);
-      maxvotes = *it_maxvotes;
     } else {
       auto it_maxweight = std::max_element(scores.begin(), scores.end());
       maxclass = std::distance(scores.begin(), it_maxweight);

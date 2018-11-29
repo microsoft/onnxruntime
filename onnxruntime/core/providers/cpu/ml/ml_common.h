@@ -282,15 +282,15 @@ static inline void compute_softmax_zero(std::vector<float>& values) {
 
 static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z, int add_second_class) {
   if (scores.size() >= 2) {  //multiclass
-    switch (post_transform) {
-      case POST_EVAL_TRANSFORM::LOGISTIC:
+    switch ((unsigned char)post_transform) {
+      case (unsigned char)POST_EVAL_TRANSFORM::LOGISTIC:
         for (float& score : scores)
           score = ml_logit(score);
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX:
+      case (unsigned char)POST_EVAL_TRANSFORM::SOFTMAX:
         compute_softmax(scores);
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
+      case (unsigned char)POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         compute_softmax_zero(scores);
         break;
     }
