@@ -35,7 +35,7 @@ namespace CSharpUsage
                 foreach (var name in inputMeta.Keys)
                 {
                     var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
-                    container.Add(new NamedOnnxValue(name, tensor));
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
 
                 // Run the inference

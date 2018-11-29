@@ -259,8 +259,8 @@ void Node::NodeConstIterator::operator--() {
   --m_iter;
 }
 
-const Node* Node::NodeConstIterator::operator*() {
-  return &((*m_iter).GetNode());
+const Node& Node::NodeConstIterator::operator*() {
+  return (*m_iter).GetNode();
 }
 
 NodeIndex Node::Index() const noexcept {
@@ -295,11 +295,11 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-const ::onnxruntime::Function* Node::GetFunctionBody() const noexcept {
+const Function* Node::GetFunctionBody() const noexcept {
   return func_body_;
 }
 
-void Node::SetFunctionBody(const ::onnxruntime::Function& func) {
+void Node::SetFunctionBody(const Function& func) {
   func_body_ = &func;
   op_ = &func.OpSchema();
 }
@@ -308,7 +308,7 @@ const std::string& Node::GetExecutionProviderType() const noexcept {
   return execution_provider_type_;
 }
 
-void Node::SetExecutionProviderType(onnxruntime::ProviderType execution_provider_type) {
+void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
@@ -544,36 +544,20 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
-void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg*, bool is_input)> func) const {
+void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const {
   for (const auto* arg : InputDefs()) {
     if (arg->Exists())
-      func(&*arg, true);
+      func(*arg, true);
   }
 
   for (const auto* arg : ImplicitInputDefs()) {
     if (arg->Exists())
-      func(&*arg, true);
+      func(*arg, true);
   }
 
   for (const auto* arg : OutputDefs()) {
     if (arg->Exists())
-      func(&*arg, false);
-  }
-};
-
-void Node::ForEachInputDef(std::function<void(const onnxruntime::NodeArg*)> func) const {
-  for (const auto* arg : InputDefs()) {
-    if (!arg->Exists())
-      continue;
-    func(&*arg);
-  }
-};
-
-void Node::ForEachOutputDef(std::function<void(const onnxruntime::NodeArg*)> func) const {
-  for (const auto* arg : OutputDefs()) {
-    if (!arg->Exists())
-      continue;
-    func(&*arg);
+      func(*arg, false);
   }
 };
 
@@ -1028,7 +1012,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (comp) {
       std::vector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
-        sorted_nodes.push_back((*iter));
+        sorted_nodes.push_back(&(*iter));
       }
       std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
       for (const auto* in : sorted_nodes) {
@@ -1039,7 +1023,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
       }
     } else {
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
-        const NodeIndex idx = (*iter)->Index();
+        const NodeIndex idx = (*iter).Index();
         if (!visited[idx]) {
           stack.emplace_back(GetNode(idx), false);
         }
@@ -1116,7 +1100,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     output_nodes.insert(current);
 
     for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
-      const NodeIndex idx = (*iter)->Index();
+      const NodeIndex idx = (*iter).Index();
       if (output_nodes.find(idx) != output_nodes.end()) {
         Status status(ONNXRUNTIME, FAIL, "Error: the graph is not acyclic.");
         return status;
@@ -1948,19 +1932,19 @@ std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrF
   return results;
 }
 
-Node* Graph::AddNode(const Node& other) {
+Node& Graph::AddNode(const Node& other) {
   const auto& definitions = other.GetDefinitions();
 
-  auto new_node = AddNode(other.Name(), other.OpType(), other.Description(),
-                          definitions.input_defs,
-                          definitions.output_defs,
-                          &other.GetAttributes(),
-                          other.Domain());
+  auto& new_node = AddNode(other.Name(), other.OpType(), other.Description(),
+                           definitions.input_defs,
+                           definitions.output_defs,
+                           &other.GetAttributes(),
+                           other.Domain());
 
   return new_node;
 }
 
-Node* Graph::AddNode(const NodeProto& node_proto,
+Node& Graph::AddNode(const NodeProto& node_proto,
                      const ArgNameToTypeMap& name_to_type_map) {
   auto input_defs = CreateNodeArgs(node_proto.input(), name_to_type_map);
   auto output_defs = CreateNodeArgs(node_proto.output(), name_to_type_map);
@@ -2010,7 +1994,7 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
   return new_name;
 }
 
-Node* Graph::AddNode(const std::string& name,
+Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
                      const std::vector<NodeArg*>& input_args,
@@ -2035,7 +2019,7 @@ Node* Graph::AddNode(const std::string& name,
     graph_proto_sync_needed_ = true;
   }
 
-  return node;
+  return *node;
 }
 
 bool Graph::RemoveNode(NodeIndex p_index) {
@@ -2144,9 +2128,9 @@ void Graph::CleanUnusedInitializers() {
   });
 
   for (const auto& node : Nodes()) {
-    node.ForEachInputDef([&used_args](const onnxruntime::NodeArg* def) {
+    for (const auto* def : node.InputDefs()) {
       ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
-    });
+    }
 
     for (const auto* def : node.ImplicitInputDefs()) {
       ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
@@ -2424,7 +2408,8 @@ IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
   return schema_registry_;
 }
 
-Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph, const std::string& fused_node_name) {
+Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,
+                          const std::string& fused_node_name) {
   ONNXRUNTIME_ENFORCE(nullptr != sub_graph && nullptr != sub_graph->GetMetaDef());
 
   auto func_meta_def = sub_graph->GetMetaDef();
@@ -2436,17 +2421,18 @@ Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
   for (auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
   }
-  auto fused_node = AddNode(fused_node_name,
-                            func_meta_def->name,
-                            func_meta_def->doc_string,
-                            input_args,
-                            output_args,
-                            &func_meta_def->attributes,
-                            func_meta_def->domain);
 
-  fused_node->SetNodeType(Node::Type::Fused);
+  auto& fused_node = AddNode(fused_node_name,
+                             func_meta_def->name,
+                             func_meta_def->doc_string,
+                             input_args,
+                             output_args,
+                             &func_meta_def->attributes,
+                             func_meta_def->domain);
+
+  fused_node.SetNodeType(Node::Type::Fused);
   function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph)));
-  fused_node->SetFunctionBody(*(function_container_.back().get()));
+  fused_node.SetFunctionBody(*(function_container_.back().get()));
 
   // Remove nodes fused above.
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();
@@ -2458,11 +2444,11 @@ Node* Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
 
 Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
-  // maingraph.
+  // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
   RemoveNode(node.Index());
   for (const auto& subgraph_node : subgraph.Nodes()) {
-    this->AddNode(subgraph_node);
+    AddNode(subgraph_node);
   }
   ONNXRUNTIME_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();

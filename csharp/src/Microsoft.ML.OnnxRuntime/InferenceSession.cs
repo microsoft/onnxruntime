@@ -21,17 +21,22 @@ namespace Microsoft.ML.OnnxRuntime
         protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata;
 
 
-        internal InferenceSession(IntPtr nativeHandle)
-        {
-            _nativeHandle = nativeHandle;
-        }
-
         #region Public API
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model file
+        /// </summary>
+        /// <param name="modelPath"></param>
         public InferenceSession(string modelPath)
             : this(modelPath, SessionOptions.Default)
         {
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model file, with some additional session options
+        /// </summary>
+        /// <param name="modelPath"></param>
+        /// <param name="options"></param>
         public InferenceSession(string modelPath, SessionOptions options)
         {
             var envHandle = OnnxRuntime.Handle;
@@ -92,24 +97,27 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public ModelMetadata ModelMetadata
-        {
-            get
-            {
-                return new ModelMetadata(); //TODO: implement
-            }
-        }
-
+        /// <summary>
+        /// Runs the loaded model for the given inputs, and fetches all the outputs.
+        /// </summary>
+        /// <param name="inputs"></param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
         public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
-        {
-            return Run(inputs, RunOptions.Default);
-        }
-
-        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, RunOptions options)
         {
             string[] outputNames = new string[_outputMetadata.Count];
             _outputMetadata.Keys.CopyTo(outputNames, 0);
-            return Run(inputs, outputNames, options);
+            return Run(inputs, outputNames);
+        }
+
+        /// <summary>
+        /// Runs the loaded model for the given inputs, and fetches the outputs specified in <paramref name="outputNames"/>.
+        /// </summary>
+        /// <param name="inputs"></param>
+        /// <param name="outputNames"></param>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
+        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
+        {
+            return Run(inputs, outputNames, RunOptions.Default);
         }
 
         /// <summary>
@@ -119,7 +127,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="outputNames"></param>
         /// <param name="options"></param>
         /// <returns>Output Tensors in a Dictionary</returns>
-        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
+        //TODO: kept internal until RunOptions is made public
+        internal IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
             var inputNames = new string[inputs.Count];
             var inputTensors = new IntPtr[inputs.Count];
@@ -186,6 +195,14 @@ namespace Microsoft.ML.OnnxRuntime
             
         }
 
+        //TODO: kept internal until implemented
+        internal ModelMetadata ModelMetadata
+        {
+            get
+            {
+                return new ModelMetadata(); //TODO: implement
+            }
+        }
 
         #endregion
 
@@ -353,24 +370,32 @@ namespace Microsoft.ML.OnnxRuntime
                 return _dimensions;
             }
         }
-        public System.Type Type
+        public System.Type ElementType
         {
             get
             {
                 return _type;
             }
         }
+
+        public bool IsTensor
+        {
+            get
+            {
+                return true; // currently only Tensor nodes are supported
+            }
+        }
     }
 
 
-    public class ModelMetadata
+    internal class ModelMetadata  
     {
-        //TODO: placeholder for Model metadata. Currently C-API does not expose this
+        //TODO: placeholder for Model metadata. Currently C-API does not expose this.
     }
 
     /// Sets various runtime options. 
-    /// TODO: currently uses Default options only
-    public class RunOptions
+    /// TODO: currently uses Default options only. kept internal until fully implemented
+    internal class RunOptions
     {
         protected static readonly Lazy<RunOptions> _default = new Lazy<RunOptions>(() => new RunOptions());
 

@@ -40,6 +40,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
+      Python37:
+        python.version: '3.7'
   steps:
     - task: ShellScript@2
       displayName: 'Run build script'

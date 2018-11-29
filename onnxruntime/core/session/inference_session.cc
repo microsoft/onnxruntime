@@ -421,10 +421,21 @@ class InferenceSession::Impl {
   }
 
   common::Status ValidateInputNames(const NameMLValMap& feeds) {
-    if (model_input_names_.size() != feeds.size()) {
+    std::string missing_required_inputs;
+
+    std::for_each(required_model_input_names_.cbegin(), required_model_input_names_.cend(),
+                  [&](const std::string& required_input) {
+                    if (feeds.find(required_input) == feeds.cend()) {
+                      if (!missing_required_inputs.empty())
+                        missing_required_inputs += ",";
+
+                      missing_required_inputs += required_input;
+                    }
+                  });
+
+    if (!missing_required_inputs.empty()) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "The number of feeds is not same as the number of the model input, expect ",
-                                     model_input_names_.size(), " got ", feeds.size());
+                                     "Missing required inputs: ", missing_required_inputs);
     }
 
     bool valid = true;
@@ -443,9 +454,9 @@ class InferenceSession::Impl {
                     [&ostr](const std::string& elem) {
                       ostr << elem << " ";
                     });
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Invalid Feed Input Names:" + invalid_names.str() +
-                                " Valid input names are: " + ostr.str());
+      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                     "Invalid Feed Input Names:", invalid_names.str(),
+                                     ". Valid input names are: ", ostr.str());
     }
 
     return Status::OK();
@@ -804,7 +815,7 @@ class InferenceSession::Impl {
       }
     }
 
-    return std::make_pair(common::Status::OK(), &input_def_list_);
+    return std::make_pair(common::Status::OK(), &required_input_def_list_);
   }
 
   std::pair<common::Status, const OutputDefList*> GetModelOutputs() const {
@@ -896,28 +907,33 @@ class InferenceSession::Impl {
     model_metadata_.custom_metadata_map = model.MetaData();
     model_metadata_.graph_name = graph.Name();
 
-    // save inputs
-    auto& inputs = graph.GetInputs();  // inputs excluding initializers
-    input_def_list_.reserve(inputs.size());
-    for (const auto& elem : inputs) {
-      if (!elem) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null input nodearg ptr");
-      }
+    // save required inputs
+    const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
+    required_input_def_list_.reserve(required_inputs.size());
+    required_model_input_names_.reserve(required_inputs.size());
+    for (const auto& elem : required_inputs) {
+      required_input_def_list_.push_back(elem);
+      required_model_input_names_.insert(elem->Name());
+    }
 
+    // save all valid inputs
+    const auto& all_inputs = graph.GetInputsIncludingInitializers();
+    input_def_list_.reserve(all_inputs.size());
+    model_input_names_.reserve(all_inputs.size());
+    for (const auto& elem : all_inputs) {
       input_def_list_.push_back(elem);
       model_input_names_.insert(elem->Name());
     }
 
     // save outputs
-    auto& outputs = graph.GetOutputs();
+    const auto& outputs = graph.GetOutputs();
     output_def_list_.reserve(outputs.size());
+    model_output_names_.reserve(outputs.size());
     for (const auto& elem : outputs) {
-      if (!elem) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null output nodearg ptr");
-      }
       output_def_list_.push_back(elem);
       model_output_names_.insert(elem->Name());
     }
+
     VLOGS(*session_logger_, 1) << "Done saving model metadata";
     return common::Status::OK();
   }
@@ -1030,10 +1046,12 @@ class InferenceSession::Impl {
   SessionState session_state_;
 
   ModelMetadata model_metadata_;
+  InputDefList required_input_def_list_;
   InputDefList input_def_list_;
   OutputDefList output_def_list_;
 
   // names of model inputs and outputs used for quick validation.
+  std::unordered_set<std::string> required_model_input_names_;
   std::unordered_set<std::string> model_input_names_;
   std::unordered_set<std::string> model_output_names_;
 

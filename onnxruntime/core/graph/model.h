@@ -87,34 +87,35 @@ class Model {
   ONNX_NAMESPACE::ModelProto ToProto();
 
 #ifdef _WIN32
-  static ::onnxruntime::common::Status Save(Model& model, const std::wstring& file_path);
+  static common::Status Save(Model& model, const std::wstring& file_path);
 
   // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
-  static ::onnxruntime::common::Status Load(const std::wstring& file_path, /*out*/ std::shared_ptr<Model>& p_model,
-                                            const IOnnxRuntimeOpSchemaRegistryList* local_registry = nullptr);
+  static common::Status Load(const std::wstring& file_path, /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registry = nullptr);
 #endif
-  static ::onnxruntime::common::Status Save(Model& model, const std::string& file_path);
+  static common::Status Save(Model& model, const std::string& file_path);
 
-  static ::onnxruntime::common::Status Save(Model& model, int fd);
+  static common::Status Save(Model& model, int fd);
 
-  static ::onnxruntime::common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
+  static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
-  static ::onnxruntime::common::Status Load(const std::string& file_path,
-                                            /*out*/ std::shared_ptr<Model>& p_model,
-                                            const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+  static common::Status Load(const std::string& file_path,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
-  static ::onnxruntime::common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
-                                            const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+  static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
-  static ::onnxruntime::common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,
-                                                     const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+  static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,
+                                      const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
-  static ::onnxruntime::common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
-                                            const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+  static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
-  static ::onnxruntime::common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto, /*out*/ std::shared_ptr<Model>& p_model,
-                                            const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+  static common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
  private:
   // Model data.

@@ -49,7 +49,7 @@ static common::Status LoadInferenceSessionFromModel(InferenceSession& session, o
 #define CREATE_INITIALIZER_FUNC(T, PROTO_DATATYPE, PROTO_ADD_DATA)                                          \
   onnxruntime::NodeArg& CreateInitializer(onnxruntime::Graph& graph, const std::string& name,               \
                                           const std::vector<int64_t>& shape, const std::vector<T>& value) { \
-    ONNX_NAMESPACE::TensorProto tensor_proto;                                                                         \
+    ONNX_NAMESPACE::TensorProto tensor_proto;                                                               \
     for (auto dim : shape) tensor_proto.add_dims(dim);                                                      \
     tensor_proto.set_data_type(PROTO_DATATYPE);                                                             \
     for (auto v : value) tensor_proto.PROTO_ADD_DATA(v);                                                    \
@@ -75,16 +75,16 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 
   auto& w_def = CreateInitializer(graph, "W", std::vector<int64_t>({2, 2}), std::vector<float>({-1, 2, 3, -4}));
 
-  auto p_node = graph.AddNode("node1", "MatMul", "MatMul operator", ArgMap{&w_def, &x1_def}, ArgMap{&y_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
-  p_node = graph.AddNode("node2", "Add", "Add operator", ArgMap{&y_def, &w_def}, ArgMap{&z_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  p_node = graph.AddNode("node3", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.AddNode("node1", "MatMul", "MatMul operator", ArgMap{&w_def, &x1_def}, ArgMap{&y_def})
+      .SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+  graph.AddNode("node2", "Add", "Add operator", ArgMap{&y_def, &w_def}, ArgMap{&z_def})
+      .SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.AddNode("node3", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out_def})
+      .SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
 
   // add and then delete a node to test node iteration against nullptr
-  p_node = graph.AddNode("node_to_delete", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out_def});
-  graph.RemoveNode(p_node->Index());
+  auto& node = graph.AddNode("node_to_delete", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out_def});
+  graph.RemoveNode(node.Index());
 
   ASSERT_TRUE(graph.Resolve().IsOK());
 
@@ -139,10 +139,10 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   onnxruntime::NodeArg y_def("Y", &tensor_float);
   auto& tile_repeat_def = CreateInitializer(graph, "tile_repeat", std::vector<int64_t>({2}), std::vector<int64_t>({1, 2}));
 
-  auto p_node = graph.AddNode("node1", "Tile", "Tile operator", ArgMap{&x1_def, &tile_repeat_def}, ArgMap{&y_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
-  ASSERT_TRUE(graph.Resolve().IsOK());
+  graph.AddNode("node1", "Tile", "Tile operator", ArgMap{&x1_def, &tile_repeat_def}, ArgMap{&y_def})
+      .SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
 
+  ASSERT_TRUE(graph.Resolve().IsOK());
   ASSERT_TRUE(0 == CountCopyNodes(graph));
 
   auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault);
@@ -201,14 +201,14 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   onnxruntime::NodeArg out_def("Out", &tensor_float);
   auto& w_def = CreateInitializer(graph, "W", std::vector<int64_t>({2, 2}), std::vector<float>({-1, 2, 3, -4}));
 
-  auto p_node = graph.AddNode("node1", "MatMul", "MatMul operator", ArgMap{&x1_def, &w_def}, ArgMap{&y_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
-  p_node = graph.AddNode("node2", "Shape", "Shape operator", ArgMap{&y_def}, ArgMap{&s_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  p_node = graph.AddNode("node3", "Tile", "Tile operator", ArgMap{&y_def, &s_def}, ArgMap{&out_def});
-  p_node->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
-  ASSERT_TRUE(graph.Resolve().IsOK());
+  graph.AddNode("node1", "MatMul", "MatMul operator", ArgMap{&x1_def, &w_def}, ArgMap{&y_def})
+      .SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+  graph.AddNode("node2", "Shape", "Shape operator", ArgMap{&y_def}, ArgMap{&s_def})
+      .SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.AddNode("node3", "Tile", "Tile operator", ArgMap{&y_def, &s_def}, ArgMap{&out_def})
+      .SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
 
+  ASSERT_TRUE(graph.Resolve().IsOK());
   ASSERT_TRUE(0 == CountCopyNodes(graph));
 
   auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault);
