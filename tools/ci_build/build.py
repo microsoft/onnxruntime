@@ -296,12 +296,13 @@ def setup_cuda_vars(args):
                       .format(cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid))
             sys.exit(-1)
 
-        if (not os.path.exists(os.path.join(cudnn_home, "bin"))):
-            log.error("cudnn_home path should include the 'cuda' folder, and must contain the CUDNN 'bin' directory.")
-            log.error("cudnn_home='{}'".format(cudnn_home))
-            sys.exit(-1)
-
         if (is_windows()):
+            # Validate that the cudnn_home is pointing at the right level
+            if (not os.path.exists(os.path.join(cudnn_home, "bin"))):
+                log.error("cudnn_home path should include the 'cuda' folder, and must contain the CUDNN 'bin' directory.")
+                log.error("cudnn_home='{}'".format(cudnn_home))
+                sys.exit(-1)
+
             os.environ["CUDA_PATH"] = cuda_home
             os.environ["CUDA_TOOLKIT_ROOT_DIR"] = cuda_home
 
