@@ -54,8 +54,6 @@ class TernarySearchTree {
 
     explicit Node(CharT c) : c_(c), value_(), has_val_(false) {
     }
-    explicit Node(CharT c, const Value& v, int pri) : c_(c), value_(v), has_val_(true) {
-    }
     ~Node() = default;
   };
 
