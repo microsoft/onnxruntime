@@ -110,6 +110,13 @@ else()
       add_definitions(-DUSE_OPENMP)
   endif()
 endif()
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    #For Mac compliance
+    message("Adding flags for Mac builds")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+endif()
+
 find_package(PNG)
 set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
