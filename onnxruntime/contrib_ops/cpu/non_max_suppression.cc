@@ -81,7 +81,7 @@ Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
   if (max_output_size_ <= 0 || boxes_dims[0] == 0) {
     std::vector<int64_t> output_dims(1, 0);
     TensorShape output_shape(output_dims);
-    auto output_tensor = ctx->Output(0, output_shape);
+    ctx->Output(0, output_shape);
     return Status::OK();
   }
 
