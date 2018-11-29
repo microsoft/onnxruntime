@@ -15,7 +15,7 @@ class Tokenizer : public OpKernel {
     ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mark is not set");
     mark_ = mark != 0;
     status = info.GetAttrs<std::string>("separators", separators_);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute padvalue is not set");
+    ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute separators is not set");
     status = info.GetAttr("padvalue", &padvalue_);
     ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute padvalue is not set");
     status = info.GetAttr("mincharnum", &mincharnum_);
