@@ -79,6 +79,12 @@ namespace Microsoft.ML.OnnxRuntime
             Dispose(false);
         }
 
+        public void Dispose()
+        {
+            GC.SuppressFinalize(this);
+            Dispose(true);
+        }
+
         public bool IsDisposed => _disposed;
 
         protected bool IsRetained => _referenceCount > 0;
@@ -96,6 +102,22 @@ namespace Microsoft.ML.OnnxRuntime
             get
             {
                 return _dimensions.Length;
+            }
+        }
+
+        public int Count
+        {
+            get
+            {
+                return _elementCount;
+            }
+        }
+
+        public int ElementWidth
+        {
+            get
+            {
+                return _elementWidth;
             }
         }
 
