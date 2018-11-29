@@ -12,7 +12,7 @@ using Microsoft.ML.OnnxRuntime;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-    public class InfereceTest
+    public class InferenceTest
     {
         [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
@@ -113,7 +113,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] Invalid Feed Input Names: wrong_name Valid input names are: data_0 ", ex.Message);
+            Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0 ", ex.Message);
             session.Dispose();
         }
 
@@ -179,7 +179,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] The number of feeds is not same as the number of the model input, expect 1 got 2", ex.Message);
+            Assert.Equal("[ErrorCode:InvalidArgument] Invalid Feed Input Names: extra. Valid input names are: data_0 ", ex.Message);
             session.Dispose();
         }
 
