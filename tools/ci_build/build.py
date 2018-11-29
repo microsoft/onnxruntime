@@ -72,6 +72,7 @@ Use the individual flags to only run the specified stages.
                              "These are just CMake -D options without the leading -D.")
     parser.add_argument("--x86", action='store_true',
                         help="Create x86 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
 
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -182,6 +183,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_DEV_MODE=ON",
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
+                 "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
@@ -294,6 +296,11 @@ def setup_cuda_vars(args):
                       .format(cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid))
             sys.exit(-1)
 
+        if (not os.path.exists(os.path.join(cudnn_home, "bin"))):
+            log.error("cudnn_home path should include the 'cuda' folder, and must contain the CUDNN 'bin' directory.")
+            log.error("cudnn_home='{}'".format(cudnn_home))
+            sys.exit(-1)
+
         if (is_windows()):
             os.environ["CUDA_PATH"] = cuda_home
             os.environ["CUDA_TOOLKIT_ROOT_DIR"] = cuda_home
@@ -308,6 +315,8 @@ def setup_cuda_vars(args):
                 log.error("No version file found in CUDA install directory. Looked for " + version_file)
                 sys.exit(-1)
 
+            cuda_major_version = "unknown"
+
             with open(version_file) as f:
                 # First line of version file should have something like 'CUDA Version 9.2.148'
                 first_line = f.readline()
@@ -316,9 +325,9 @@ def setup_cuda_vars(args):
                     log.error("Couldn't read version from first line of " + version_file)
                     sys.exit(-1)
 
-                major = m.group(1)
+                cuda_major_version = m.group(1)
                 minor = m.group(2)
-                os.environ["CUDA_PATH_V{}_{}".format(major, minor)] = cuda_home
+                os.environ["CUDA_PATH_V{}_{}".format(cuda_major_version, minor)] = cuda_home
 
             vc_ver_str = os.getenv("VCToolsVersion") or ""
             vc_ver = vc_ver_str.split(".")
@@ -326,14 +335,13 @@ def setup_cuda_vars(args):
                 log.warning("Unable to automatically verify VS 2017 toolset is compatible with CUDA. Will attempt to use.")
                 log.warning("Failed to get valid Visual C++ Tools version from VCToolsVersion environment variable value of '" + vc_ver_str + "'")
                 log.warning("VCToolsVersion is set in a VS 2017 Developer Command shell, or by running \"%VS2017INSTALLDIR%\\VC\\Auxiliary\\Build\\vcvars64.bat\"")
-                log.warning("See ReadMe.md in the root ONNXRuntime directory for instructions on installing the Visual C++ 2017 14.11 toolset if needed.")
+                log.warning("See build.md in the root ONNXRuntime directory for instructions on installing the Visual C++ 2017 14.11 toolset if needed.")
 
-            elif vc_ver[0] == "14" and int(vc_ver[1]) > 11:
-                log.error("Visual C++ Tools version not supported by CUDA. You must setup the environment to use the 14.11 toolset.")
+            elif cuda_major_version == "9" and vc_ver[0] == "14" and int(vc_ver[1]) > 11:
+                log.error("Visual C++ Tools version not supported by CUDA v9. You must setup the environment to use the 14.11 toolset.")
                 log.info("Current version is {}. CUDA 9.2 requires version 14.11.*".format(vc_ver_str))
                 log.info("If necessary manually install the 14.11 toolset using the Visual Studio 2017 updater.")
-                log.info("See https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/")
-                log.info("Run 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat amd64 -vcvars_ver=14.11' prior to this script, or use build.amd64.1411.bat.")
+                log.info("See 'Windows CUDA Build' in build.md in the root directory of this repository.")
                 sys.exit(-1)
 
     return cuda_home, cudnn_home
@@ -449,7 +457,11 @@ def main():
       if (args.x86):
         cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
       else:
-        cmake_extra_args = ['-A','x64','-T', 'host=x64', '-G', 'Visual Studio 15 2017']
+        toolset = 'host=x64'
+        if (args.msvc_toolset):
+            toolset += ',version=' + args.msvc_toolset
+
+        cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
 
     #Add python to PATH. Please remove this after https://github.com/onnx/onnx/issues/1080 is fixed ()
     os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
