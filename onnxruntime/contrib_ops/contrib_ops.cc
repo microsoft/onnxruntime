@@ -357,6 +357,39 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           "keepdims",
           "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
           AttributeProto::INT);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NonMaxSuppression)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+Pruning away boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
+Bounding boxes with score less than score_threshold are removed. Bounding boxes are supplied as [y1, x1, y2, x2],
+where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners and the coordinates can be provided
+as normalized (i.e., lying in the interval [0, 1]) or absolute.
+Note that this algorithm is agnostic to where the origin is in the coordinate system and more generally is invariant to
+orthogonal transformations and translations of the coordinate system;
+thus translating or reflections of the coordinate system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
+The bounding box coordinates corresponding to the selected indices can then be obtained using the gather operation.)DOC")
+      .Input(0, "boxes", "An input tensor. 2D tensor with shape [num_boxes, 4]", "T1")
+      .Input(1, "scores", "An input tensor. 1D tensor with shape [num_boxes]", "T1")
+      .Output(0, "selected_indices", "selected indices from the boxes tensor.", "T2")
+      .TypeConstraint("T1", {"tensor(float)"}, "Constrain input type to float tensor.")
+      .TypeConstraint("T2",
+                      {"tensor(int32)"},
+                      "Constrain output data type to 32-bit integer tensor.")
+      .Attr(
+          "max_output_size",
+          "Integer representing the maximum number of boxes to be selected by non max suppression.",
+          AttributeProto::INT)
+      .Attr(
+          "iou_threshold",
+          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU.",
+          AttributeProto::FLOAT)
+      .Attr(
+          "score_threshold",
+          "Float tensor representing the threshold for deciding when to remove boxes based on score.",
+          AttributeProto::FLOAT);
 }
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
@@ -366,6 +399,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression);
 
 void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp)>());
@@ -378,6 +412,7 @@ void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear)>());
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression)>());
 }
 }  // namespace contrib
 }  // namespace onnxruntime
