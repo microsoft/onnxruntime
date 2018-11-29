@@ -42,7 +42,7 @@ bool NonMaxSuppression<T>::SuppressByIOU(const T* boxes_data, int32_t box_index1
   const T intersection_y_max = std::min(y1_max, y2_max);
 
   const T intersection_area = std::max(intersection_x_max - intersection_x_min, static_cast<T>(0.0)) *
-                        std::max(intersection_y_max - intersection_y_min, static_cast<T>(0.0));
+                              std::max(intersection_y_max - intersection_y_min, static_cast<T>(0.0));
 
   if (intersection_area <= static_cast<T>(0.0)) {
     return false;
@@ -96,7 +96,7 @@ Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
   auto LessCompare = [](const ScoreIndexPair& lhs, const ScoreIndexPair& rhs) {
     return lhs.score < rhs.score;
   };
-  
+
   // Filter by score_threshold_
   std::priority_queue<ScoreIndexPair, std::deque<ScoreIndexPair>, decltype(LessCompare)> sorted_scores_with_index(LessCompare);
   for (int32_t i = 0; i < num_boxes; ++i) {
@@ -129,11 +129,18 @@ Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  std::vector<int64_t> output_dim(1, num_of_selected);
+  int64_t num_to_copy = pad_to_max_output_size_ == 1 ? max_output_size_ : num_of_selected;
+  std::vector<int64_t> output_dim(1, num_to_copy);
   TensorShape output_shape(output_dim);
   Tensor* selected_indices = ctx->Output(0, output_shape);
   auto output_data = selected_indices->MutableData<int32_t>();
-  memcpy(output_data, selected_index.data(), num_of_selected * sizeof(int32_t));
+  memcpy(output_data, selected_index.data(), num_to_copy * sizeof(int32_t));
+
+  TensorShape valid_outputs_shape(std::vector<int64_t>{1});
+  Tensor* valid_outputs = ctx->Output(1, valid_outputs_shape);
+  if (valid_outputs) {
+    valid_outputs->MutableData<int32_t>()[0] = num_of_selected;
+  }
 
   return Status::OK();
 }

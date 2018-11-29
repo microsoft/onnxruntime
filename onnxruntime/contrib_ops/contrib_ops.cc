@@ -374,6 +374,12 @@ The bounding box coordinates corresponding to the selected indices can then be o
       .Input(0, "boxes", "An input tensor. 2D tensor with shape [num_boxes, 4]", "T1")
       .Input(1, "scores", "An input tensor. 1D tensor with shape [num_boxes]", "T1")
       .Output(0, "selected_indices", "selected indices from the boxes tensor.", "T2")
+      .Output(
+          1,
+          "valid_outputs", 
+          "Optional. A 0-D integer tensor representing the number of valid elements in selected_indices, with the valid elements appearing first.",
+          "T2",
+          OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(float)"}, "Constrain input type to float tensor.")
       .TypeConstraint("T2",
                       {"tensor(int32)"},
@@ -384,12 +390,18 @@ The bounding box coordinates corresponding to the selected indices can then be o
           AttributeProto::INT)
       .Attr(
           "iou_threshold",
-          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU.",
-          AttributeProto::FLOAT)
+          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. Value range [0, 1]. The default is 0.0",
+          AttributeProto::FLOAT,
+          static_cast<float>(0.0f))
       .Attr(
           "score_threshold",
           "Float tensor representing the threshold for deciding when to remove boxes based on score.",
-          AttributeProto::FLOAT);
+          AttributeProto::FLOAT)
+      .Attr(
+          "pad_to_max_output_size",
+          "Optional. 1(true) - the output selected_indices is padded to be of length max_output_size. Defaults to 0(false).",
+          AttributeProto::INT, 
+          OPTIONAL);
 }
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);

@@ -201,5 +201,43 @@ TEST(NonMaxSuppressionOpTest, ZeroMaxOutputSize) {
   test.Run();
 }
 
+TEST(NonMaxSuppressionOpTest, PadToFiveOutput) {
+  OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("boxes", {6, 4},
+                       {0.0f, 0.0f, 1.0f, 1.0f,
+                        0.0f, 0.1f, 1.0f, 1.1f,
+                        0.0f, -0.1f, 1.0f, 0.9f,
+                        0.0f, 10.0f, 1.0f, 11.0f,
+                        0.0f, 10.1f, 1.0f, 11.1f,
+                        0.0f, 100.0f, 1.0f, 101.0f});
+  test.AddInput<float>("scores", {6}, {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
+  test.AddAttribute<int64_t>("max_output_size", 5LL);
+  test.AddAttribute<float>("iou_threshold", 0.5f);
+  test.AddAttribute<float>("score_threshold", 0.0f);
+  test.AddAttribute<int64_t>("pad_to_max_output_size", 1LL);
+  test.AddOutput<int32_t>("selected_indices", {5}, {3L, 0L, 5L, 0L, 0L});
+  test.AddOutput<int32_t>("valid_outputs", {1}, {3L});
+  test.Run();
+}
+
+TEST(NonMaxSuppressionOpTest, WithScoreThresholdPadToSixOutput) {
+  OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("boxes", {6, 4},
+                       {0.0f, 0.0f, 1.0f, 1.0f,
+                        0.0f, 0.1f, 1.0f, 1.1f,
+                        0.0f, -0.1f, 1.0f, 0.9f,
+                        0.0f, 10.0f, 1.0f, 11.0f,
+                        0.0f, 10.1f, 1.0f, 11.1f,
+                        0.0f, 100.0f, 1.0f, 101.0f});
+  test.AddInput<float>("scores", {6}, {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
+  test.AddAttribute<int64_t>("max_output_size", 6LL);
+  test.AddAttribute<float>("iou_threshold", 0.5f);
+  test.AddAttribute<float>("score_threshold", 0.4f);
+  test.AddAttribute<int64_t>("pad_to_max_output_size", 1LL);
+  test.AddOutput<int32_t>("selected_indices", {6}, {3L, 0L, 0L, 0L, 0L, 0L});
+  test.AddOutput<int32_t>("valid_outputs", {1}, {2L});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
