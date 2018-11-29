@@ -45,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateInferenceSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
-            
+
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();

@@ -40,6 +40,15 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        internal static OnnxRuntime Value
+        {
+            get
+            {
+                return _instance.Value;
+            }
+        }
+
+
         public override bool IsInvalid
         {
             get
