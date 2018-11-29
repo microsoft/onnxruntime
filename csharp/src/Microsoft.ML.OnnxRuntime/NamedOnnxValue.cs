@@ -249,12 +249,12 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         private bool TryPinAsTensor<T>(
-                    out MemoryHandle pinnedMemoryHandle,
-                    out IntPtr dataBufferPointer,
-                    out int dataBufferLength,
-                    out ReadOnlySpan<int> shape,
-                    out int rank,
-                    out TensorElementType nativeElementType
+                out MemoryHandle pinnedMemoryHandle,
+                out IntPtr dataBufferPointer,
+                out int dataBufferLength,
+                out ReadOnlySpan<int> shape,
+                out int rank,
+                out TensorElementType nativeElementType
             )
         {
             nativeElementType = TensorElementType.DataTypeMax; //invalid
