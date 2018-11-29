@@ -277,7 +277,7 @@ The integer convolution operator consumes an input tensor, a filter, and a paddi
           "Output data tensor that contains the result of the "
           "convolution. The output dimensions are functions "
           "of the kernel size, stride size, and pad lengths.",
-          "T1")
+          "T3")
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input X and Z data types as 8-bit integer tensors")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input W data types as 8-bit integer tensor")
       .TypeConstraint("T3",
