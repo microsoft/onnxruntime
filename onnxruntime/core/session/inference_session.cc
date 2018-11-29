@@ -454,9 +454,9 @@ class InferenceSession::Impl {
                     [&ostr](const std::string& elem) {
                       ostr << elem << " ";
                     });
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Invalid Feed Input Names:" + invalid_names.str() +
-                                " Valid input names are: " + ostr.str());
+      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                     "Invalid Feed Input Names:", invalid_names.str(),
+                                     ". Valid input names are: ", ostr.str());
     }
 
     return Status::OK();
