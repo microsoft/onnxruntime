@@ -12,16 +12,19 @@
     <Authors>Microsoft Corporation</Authors>
     <Description>This package contains Microsoft's implementation of ONNX runtime, usable in .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
-    <Copyright>Microsoft Corporation</Copyright>
-    <IncludeSymbols>true</IncludeSymbols>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <PackageLicenseUrl>https://github.com/Microsoft/onnxruntime/blob/master/LICENSE</PackageLicenseUrl>
-    <RepositoryUrl>https://github.com/Microsoft/onnxruntime.git</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
 
     <!--internal build related properties-->
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
     <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+
+    <!-- sourcelink flags -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+    <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
+    <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
 
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
@@ -66,20 +69,20 @@
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
     </ReadLinesFromFile>
     <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
-        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
+        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashShort" />
     </Exec>
     
     <PropertyGroup>
-      <RepositoryCommit>$(GitCommitHash)</RepositoryCommit>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>
-      <PackageVersion Condition="'$(IsReleaseBuild)'==''">$(PackageVersion)-dev-$(GitCommitHash)</PackageVersion>
+      <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
   </Target>
 
   <ItemGroup>
     <PackageReference Include="System.Numerics.Tensors" Version="0.1.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta-63127-02" PrivateAssets="All"/>
   </ItemGroup>
 
 </Project>
