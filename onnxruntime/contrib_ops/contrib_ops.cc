@@ -147,7 +147,7 @@ The dequantization formula is y = (x - x_zero_point) * x_scale.
       .SinceVersion(1)
       .SetDoc(R"DOC(
 The convolution operator consumes a quantized input tensor, its scale and zero point, 
-a quantized filter, its scale and zero point, and output’s scale and zero point, 
+a quantized filter, its scale and zero point, and output's scale and zero point, 
 and computes the quantized output. Each scale and zero point pair must have same shape.
 It means they must be either scalars (per tensor) or 1-D tensors (per channel).)DOC")
       .Input(
@@ -163,8 +163,8 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "to arrive with the dimension denotation of [DATA_BATCH, "
           "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
           "T1")
-      .Input(1, "x_scale", "Scale tensor for input ‘x’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘x’.", "T3")
-      .Input(2, "x_zero_point", "Zero point tensor for input ‘x’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘x’.", "T1")
+      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T3")
+      .Input(2, "x_zero_point", "Zero point tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T1")
       .Input(
           3,
           "w",
@@ -183,10 +183,10 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "(assuming zero based indices for the shape array). "
           "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
           "T1")
-      .Input(4, "w_scale", "Scale tensor for input ‘w’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘w’.", "T3")
-      .Input(5, "w_zero_point", "Scale tensor for input ‘w’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘w’.", "T1")
-      .Input(6, "y_scale", "Scale tensor for output ‘y’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘y’.", "T3")
-      .Input(7, "y_zero_point", "Scale tensor for output ‘y’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘y’.", "T1")
+      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T3")
+      .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T1")
+      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T3")
+      .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T1")
       .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T2", OpSchema::Optional)
       .Output(
           0,
