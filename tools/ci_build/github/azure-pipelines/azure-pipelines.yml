@@ -5,7 +5,7 @@ jobs:
   pool: Linux-CPU
 
   steps:
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml"'
       displayName: 'Command Line Script'
       env:
         AZURE_BLOB_KEY: $(onnxruntime-storage-key)

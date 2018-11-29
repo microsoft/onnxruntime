@@ -38,6 +38,6 @@ else
         --config Debug Release --build_shared_lib \
         --skip_submodule_sync \
         --enable_pybind \
-        --parallel --use_mkldnn --use_mklml --build_shared_lib $BUILD_EXTR_PAR
+        --parallel --use_mkldnn --build_shared_lib $BUILD_EXTR_PAR
     /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
 fi
