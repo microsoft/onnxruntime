@@ -78,7 +78,10 @@ if (MSVC)
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${ONNXRUNTIME_SO_LINK_FLAG})
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES INSTALL_RPATH "@loader_path")
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${PYTHON_LIBRARY} ${ONNXRUNTIME_SO_LINK_FLAG})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-Xlinker -rpath=\$ORIGIN")
