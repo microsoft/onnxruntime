@@ -486,8 +486,7 @@ static bool IsArgNameInInputsOutputs(const std::string& name,
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
                                                  const KernelRegistryManager& custom_registry_manager,
                                                  SessionState& session_state) {
-  auto& weights_map = graph.GetAllInitializedTensors();
-  auto& graph_inputs = graph.GetInputs();
+  auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 
   for (auto& node : graph.Nodes()) {
@@ -495,7 +494,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
         onnxruntime::Node::ForEachWithIndex(
             node.InputDefs(),
             [&](const onnxruntime::NodeArg& arg, size_t index) {
-              if (arg.Name().empty() || weights_map.count(arg.Name())) {
+              if (arg.Name().empty()) {
                 return Status::OK();
               }
 
