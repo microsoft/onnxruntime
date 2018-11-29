@@ -12,8 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OpSchema;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -134,6 +134,31 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
 The linear de-quantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
 The dequantization formula is y = (x - x_zero_point) * x_scale.
  Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
+It consumes two quantized input tensors, their scales and zero points, and output's scale and zero point, and computes
+the quantized output. The quantization formula is x_quantized = (x_fp32 / x_scale) + x_zero_point. For (x_fp32 / x_scale),
+it computes the nearest integer value to arg (in floating-point format), rounding halfway cases away from zero.
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per row for a and per column for b).
+If scale and zero point are 1D tensor, the number of elements of scale and zero point tensor of input 'a' and output 'y'
+should be equal to the number of rows of input 'a', and the number of elements of scale and zero point tensor of input 'b'
+should be equal to the number of columns of input 'b'.)DOC")
+      .Input(0, "a", "N-dimensional quantized matrix a", "T1")
+      .Input(1, "a_scale", "scale of quantized input a", "tensor(float)")
+      .Input(2, "a_zero_point", "zero point of quantized input a", "T1")
+      .Input(3, "b", "N-dimensional quantized matrix b", "T2")
+      .Input(4, "b_scale", "scale of quantized input b", "tensor(float)")
+      .Input(5, "b_zero_point", "zero point of quantized input b", "T2")
+      .Input(6, "y_scale", "scale of quantized output y", "tensor(float)")
+      .Input(7, "y_zero_point", "zero point of quantized output y", "T3")
+      .Output(0, "y", "Quantized matrix multiply results from a * b", "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input a and its zero point data types as 8-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input b and its zero point data types as 8-bit integer tensor")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output y and its zero point data types as 8-bit integer tensor.");
 
   const char* auto_pad_doc =
       "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
@@ -323,7 +348,7 @@ The integer convolution operator consumes an input tensor, a filter, and a paddi
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
  The production MUST never overflow. The accumulation may overflow if and only if in 32 bits.)DOC")
       .Input(0, "A", "N-dimensional matrix A", "T1")
-      .Input(0, "B", "N-dimensional matrix B", "T2")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
       .Output(0, "Y", "Matrix multiply results from A * B", "T3")
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input A data types as 8-bit integer tensor")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data types as 8-bit integer tensor")
