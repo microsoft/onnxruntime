@@ -34,7 +34,7 @@ const std::wstring wconv_error(L"Conversion Error");
 
 // Use a Trie like structure for searching multiple strings
 // at once but convert it to a ternary tree for saving space.
-// We insert in the same order separators are specified.
+// We insert separators in the same order they are specified.
 // Template parameter is a CharT which can be a char/wchar_t
 // or anything else that supports operator ><,== as long as
 // this is not a variable length sequence. We convert utf8 to utf16
@@ -45,15 +45,16 @@ template <class CharT, class Value>
 class TernarySearchTree {
  private:
   struct Node {
-    CharT c_;  // character
-    bool has_val_;
-    Value value_;
     std::unique_ptr<Node> left_;
     std::unique_ptr<Node> mid_;
     std::unique_ptr<Node> right_;
-    explicit Node(CharT c) : c_(c), has_val_(false), value_() {
+    CharT c_;  // character
+    Value value_;
+    bool has_val_;
+
+    explicit Node(CharT c) : c_(c), value_(), has_val_(false) {
     }
-    explicit Node(CharT c, const Value& v) : c_(c), has_val_(true), value_(v) {
+    explicit Node(CharT c, const Value& v, int pri) : c_(c), value_(v), has_val_(true) {
     }
     ~Node() = default;
   };
@@ -68,16 +69,17 @@ class TernarySearchTree {
 
   /**
   * Returns a ptr to an associated value and nullptr on search miss.
+  * Must use default constructed state.
   */
   const Value* get(const CharT* str, size_t len) const {
     if (len == 0) {
       return nullptr;
     }
-    const Node* n = get(root_.get(), str, len, 0);
-    if (n == nullptr || !n->has_val_) {
+    const Node* result = get(root_.get(), str, len, 0);
+    if (result == nullptr || !result->has_val_) {
       return nullptr;
     }
-    return &n->value_;
+    return &result->value_;
   }
 
   /**
@@ -110,8 +112,6 @@ class TernarySearchTree {
     } else if (c > node->c_) {
       return get(node->right_.get(), str, len, depth);
     } else if (depth < (len - 1)) {
-      // Greedy match trying to match the longest
-      // if this is a leaf, return a match
       if (node->mid_ != nullptr) {
         return get(node->mid_.get(), str, len, depth + 1);
       }
@@ -247,12 +247,14 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   // string
   struct ValueType {
     size_t w_len;
+    int priority_;
   };
 
   using SearchTree = TernarySearchTree<wchar_t, ValueType>;
 
   SearchTree stree;
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
+  int priority = 0;  // earlier search patterns get priority
   for (auto& sep : separators_) {
     std::wstring wsep = converter.from_bytes(sep);
     if (wsep.empty()) {
@@ -263,7 +265,8 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Separator strings contains invalid utf8 chars: " + sep);
     }
-    stree.put(wsep.c_str(), wsep.length(), {wsep.length()});
+    stree.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
+    ++priority;
   }
 
   // Scan all strings and attempt to find separators in them
@@ -277,38 +280,63 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
     for (size_t c = 0; c < C; ++c) {
       const size_t input_idx = (n * C) + c;
       const auto* s = input_data + input_idx;
-      tokenized_strings.emplace_back();
-      auto& row_tokens = tokenized_strings.back();
 
       std::wstring wstr = converter.from_bytes(*s);
       if (wstr == wconv_error) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                       "Invalid utf8 chars in the input: " + *s);
       }
+
+      struct Match {
+        int priority_;
+        size_t offset_;
+        size_t size_;
+        // create a conflict for overlapping matches
+        // thus if they overlap neither is less than the other
+        // and they are considered equal
+        bool operator<(const Match& o) const {
+          return (offset_ + size_) <= o.offset_;
+        }
+      };
+
+      std::set<Match> matches;
       const wchar_t* ws = wstr.c_str();
-      const wchar_t* last_mismatch = ws;
       size_t len_remaining = wstr.length();
+      size_t offset = 0;
       while (len_remaining > 0) {
         const auto* val = stree.get(ws, len_remaining);
         if (val != nullptr) {
-          auto token_len = ws - last_mismatch;
-          if (token_len > mincharnum_) {
-            row_tokens.emplace_back(last_mismatch, token_len);
+          auto p = matches.insert({val->priority_, offset, val->w_len});
+          while (!p.second && val->priority_ < p.first->priority_) {
+            // if overlapping matches of the same pattern(priority), then
+            // the earlier match naturally wins
+            matches.erase(p.first);
+            p = matches.insert({val->priority_, offset, val->w_len});
           }
-          assert(val->w_len <= len_remaining);
-          ws += val->w_len;
-          len_remaining -= val->w_len;
-          last_mismatch = ws;
-        } else {
-          // No match, start with a next char
-          ++ws;
-          --len_remaining;
         }
+        ++ws;
+        ++offset;
+        --len_remaining;
       }
 
-      // When we have no matches or a trailing token
-      if (ws > last_mismatch) {
-        row_tokens.emplace_back(last_mismatch, ws - last_mismatch);
+      // Tokenize
+      tokenized_strings.emplace_back();
+      auto& row_tokens = tokenized_strings.back();
+      row_tokens.reserve(matches.size() + 1);
+      ws = wstr.c_str();
+      offset = 0;
+      for (const auto& m : matches) {
+        assert(m.offset_ >= offset);
+        size_t sz = (m.offset_ - offset);
+        if (sz > 0 && sz >= size_t(mincharnum_)) {
+          row_tokens.emplace_back(ws, sz);
+        }
+        offset = m.offset_ + m.size_;
+        ws = wstr.c_str() + offset;
+      }
+      assert(offset <= wstr.length());
+      if (offset < wstr.length()) {
+        row_tokens.emplace_back(ws, wstr.length() - offset);
       }
 
       size_t tokens = row_tokens.size();
@@ -320,7 +348,8 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   }
 
   std::vector<int64_t> output_dims(input_dims);
-  // Check if we have no output due to apparently empty strings input.
+  // Check if we have no output due to either empty input
+  // everything is a separator
   if ((max_tokens - mark_ * 2) == 0) {
     output_dims.push_back(0);
     TensorShape output_shape(output_dims);
@@ -360,8 +389,10 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
       new (output_data + output_index) std::string(&end_text, 1);
       ++output_index;
     }
+#ifdef _DEBUG
     assert(output_index <= max_output_index);
     assert((output_index - c_idx) <= max_tokens);
+#endif
   }
   return Status::OK();
 }

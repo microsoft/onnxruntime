@@ -370,7 +370,7 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
-    // Must split both in 2
+    // Must have no output
     output_dims.push_back(int64_t(0));
     std::vector<std::string> output;
 
@@ -393,7 +393,7 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
-    // Must split both in 2
+    // Must drop first characters from both strings
     output_dims.push_back(int64_t(3));
     std::vector<std::string> output{
         start_mark,
@@ -421,7 +421,7 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
-    // Must split both in 2
+    // Must drop last characters from both strings
     output_dims.push_back(int64_t(3));
     std::vector<std::string> output{
         start_mark,
@@ -449,7 +449,8 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
-    // Must split both in 2
+    // Must drop the last character from the first
+    // and the second 3 character token does not pass mincharnum
     output_dims.push_back(int64_t(3));
     std::vector<std::string> output{
         start_mark,
@@ -477,7 +478,6 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
-    // Must split both in 2
     output_dims.push_back(int64_t(0));
     std::vector<std::string> output;
 
@@ -499,9 +499,118 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
     test.AddInput<std::string>("T", dims, input);
 
     std::vector<int64_t> output_dims(dims);
-    // Must split both in 2
     output_dims.push_back(int64_t(0));
     std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // Test of the overlapping search patterns
+  // The spec mandates that the patterns that appear
+  // in the separators earlier must be matched first.
+  {
+    // In this case the first pattern must match first
+    // and there would be no match for the second
+    std::vector<std::string> separators = {
+        u8"су",
+        u8"Абсу"};
+
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, separators, 1);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{u8"Абсу中文"};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    // must split in 2 with no two middle characters
+    output_dims.push_back(int64_t(2));
+    std::vector<std::string> output{
+        u8"Аб", u8"中文"};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // Test of the overlapping search patterns
+  // The spec mandates that the patterns that appear
+  // in the separators earlier must be matched first.
+  {
+    // In this case the first pattern must match first
+    // and there would be no match for the second
+    std::vector<std::string> separators = {
+        u8"Абсу",
+        u8"су"};
+
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, separators, 1);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{u8"Абсу中文"};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    // Must drop the beginning of the word that
+    // also contains the second separator
+    output_dims.push_back(int64_t(1));
+    std::vector<std::string> output{u8"中文"};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // Test of the overlapping search patterns
+  // The spec mandates that the patterns that appear
+  // in the separators earlier must be matched first.
+  {
+    // In this case the first pattern must match first
+    // and there would be no match for the second
+    std::vector<std::string> separators = {
+        u8"Абсу",
+        u8"су"};
+
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, separators, 1);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{u8"Абсусусу中文"};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    // Must drop the beginning of the word that
+    // also contains the second separator
+    output_dims.push_back(int64_t(1));
+    std::vector<std::string> output{u8"中文"};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // Test of the overlapping search patterns
+  // The spec mandates that the patterns that appear
+  // in the separators earlier must be matched first.
+  {
+    // In this case the first pattern must match first
+    // and there are more than one overlapping matches for the first
+    // so the earlier match for the first wins.
+    // and there would be no match for the second
+    std::vector<std::string> separators = {
+        u8"усу",
+        u8"Абсу"};
+
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, separators, 1);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{u8"Абсусусу中文"};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    // Must drop the beginning of the word that
+    // also contains the second separator
+    output_dims.push_back(int64_t(2));
+    std::vector<std::string> output{u8"Абс", u8"су中文"};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
