@@ -80,42 +80,47 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
                               return Status::OK();
                             })
                             .IsOK());
-    ONNXRUNTIME_ENFORCE(onnxruntime::Node::ForEachWithIndex(
-                            node.OutputDefs(),
-                            [this, &output_mem_types](const onnxruntime::NodeArg& arg, size_t index) {
-                              if (output_mem_types && MemTypeOnCpuExplicitly(*output_mem_types, index))
-                                non_provider_output_defs_.insert(&arg);
-                              else
-                                provider_output_defs_.insert(&arg);
-                              return Status::OK();
-                            })
-                            .IsOK());
+    auto& output_defs = node.MutableOutputDefs();
+    for (size_t i = 0; i < output_defs.size(); ++i) {
+      auto arg = output_defs[i];
+      if (!arg->Exists())
+        continue;
+
+      if (output_mem_types && MemTypeOnCpuExplicitly(*output_mem_types, i))
+        non_provider_output_defs_.insert(arg);
+      else
+        provider_output_defs_.insert(arg);
+    }
   } else {
     // TODO: copy between devices? i.e. multiple GPUs
     if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider && !node.GetExecutionProviderType().empty()) {
       ONNXRUNTIME_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
     }
-    node.ForEachDef([this](const onnxruntime::NodeArg& arg, bool is_input) {
-      if (is_input)
-        non_provider_input_defs_.insert(&arg);
-      else
-        non_provider_output_defs_.insert(&arg);
-    });
+
+    for (const auto* arg : node.InputDefs()) {
+      if (arg->Exists())
+        non_provider_input_defs_.insert(arg);
+    }
+
+    for (const auto* arg : node.ImplicitInputDefs()) {
+      if (arg->Exists())
+        non_provider_input_defs_.insert(arg);
+    }
+
+    for (auto* arg : node.MutableOutputDefs()) {
+      if (arg->Exists())
+        non_provider_output_defs_.insert(arg);
+    }
   }
 }
 
-void TransformerMemcpyImpl::AddCopyNode(const onnxruntime::NodeArg* arg, bool is_input) {
-  // TODO: eliminate the const-cast.
-  // The current graph API seems to only allow us to get a "const NodeArg*", but
-  // then we need to pass in a "NodeArg*" when we create a new node.
-  auto original_arg = const_cast<onnxruntime::NodeArg*>(arg);
-
+void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input) {
   // create unique name for new def
-  std::string new_def_name = graph_.GenerateNodeArgName(original_arg->Name() + "_" + provider_);
+  std::string new_def_name = graph_.GenerateNodeArgName(arg->Name() + "_" + provider_);
 
-  auto* new_arg = &graph_.GetOrCreateNodeArg(new_def_name, original_arg->TypeAsProto());
-  auto* src_arg = is_input ? original_arg : new_arg;
-  auto* dst_arg = is_input ? new_arg : original_arg;
+  auto* new_arg = &graph_.GetOrCreateNodeArg(new_def_name, arg->TypeAsProto());
+  auto* src_arg = is_input ? arg : new_arg;
+  auto* dst_arg = is_input ? new_arg : arg;
 
   // create unique name for copy node
   std::string new_node_name = graph_.GenerateNodeName("Memcpy");
@@ -127,7 +132,7 @@ void TransformerMemcpyImpl::AddCopyNode(const onnxruntime::NodeArg* arg, bool is
   new_node.SetExecutionProviderType(provider_);
 
   // only add copy-node here; renaming references happens later
-  replacements_.insert(std::make_pair(original_arg, new_arg));
+  replacements_.insert(std::make_pair(arg, new_arg));
 }
 
 template <typename NodeArgSetType>
