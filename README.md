@@ -58,12 +58,10 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 ## APIs and Official Builds
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
-| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime/)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](https://pypi.org/project/onnxruntime/)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
+| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime)<br>[Linux](https://pypi.org/project/onnxruntime)<br>[Mac](https://pypi.org/project/onnxruntime)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu) |
 | [C#](docs/CSharp_API.md) | [Windows](TODO)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
 | [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
-
-<br>
-ONNX Runtime also provides a [C++ API](onnxruntime/core/session/inference_session.h)
+| [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).
