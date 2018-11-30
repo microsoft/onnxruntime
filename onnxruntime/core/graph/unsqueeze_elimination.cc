@@ -78,7 +78,7 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == output_def) {
-          def = const_cast<NodeArg*>(input_def);
+          def = input_def;
         }
       }
     }

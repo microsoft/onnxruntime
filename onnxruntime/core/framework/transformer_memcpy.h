@@ -20,7 +20,7 @@ class TransformerMemcpyImpl {
 
  private:
   void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries);
-  void AddCopyNode(const onnxruntime::NodeArg* arg, bool is_input);
+  void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
   void ProcessInitializers();
 
  private:
@@ -41,10 +41,10 @@ class TransformerMemcpyImpl {
   };
 
   std::set<onnxruntime::Node*, NodeCompare> provider_nodes_;
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_input_defs_;   // all input defs of non-provider nodes
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_output_defs_;  // all output defs of non-provider nodes
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_input_defs_;       // all input defs of provider nodes that should be in provider allocator
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;      // all output defs of provider nodes that should be in provider allocator
+  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_input_defs_;  // all input defs of non-provider nodes
+  std::set<onnxruntime::NodeArg*, NodeArgCompare> non_provider_output_defs_;       // all output defs of non-provider nodes
+  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_input_defs_;      // all input defs of provider nodes that should be in provider allocator
+  std::set<onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;           // all output defs of provider nodes that should be in provider allocator
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements_;
   onnxruntime::Graph& graph_;
   std::string provider_;

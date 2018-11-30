@@ -94,7 +94,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Replace the input of the node following mul node
     const NodeArg* mul_output_def = mul_node.OutputDefs()[0];
-    const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
+    NodeArg* conv_output_def = conv_node.MutableOutputDefs()[0];
     for (auto it = mul_node.OutputNodesBegin(); it != mul_node.OutputNodesEnd(); ++it) {
       auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
@@ -104,7 +104,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == mul_output_def) {
-          def = const_cast<NodeArg*>(conv_output_def);
+          def = conv_output_def;
         }
       }
     }
