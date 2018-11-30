@@ -155,7 +155,7 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Replace the input of the nodes following batch normalization node
     const NodeArg* bn_output_def = bn_node.OutputDefs()[0];
-    const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
+    NodeArg* conv_output_def = conv_node.MutableOutputDefs()[0];
     for (auto it = bn_node.OutputNodesBegin(); it != bn_node.OutputNodesEnd(); ++it) {
       auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
@@ -165,7 +165,7 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == bn_output_def) {
-          def = const_cast<NodeArg*>(conv_output_def);
+          def = conv_output_def;
         }
       }
     }
