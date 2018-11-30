@@ -10,11 +10,12 @@ jobs:
         python.version: '3.6'
 
   steps:
-    - task: UsePythonVersion@0
-      displayName: 'Choosing Python Version'
+    - task: CondaEnvironment@1
       inputs:
-        versionSpec: '$(python.version)'
-        architecture: 'x64'
+        createCustomEnvironment: true
+        environmentName: 'py$(python.version)'
+        packageSpecs: 'python=$(python.version)'
+        cleanEnvironment: true
 
     - script: |
         sudo python -m pip install numpy
@@ -36,4 +37,11 @@ jobs:
 
     - script: 'sudo rm -rf $(Agent.BuildDirectory)'
       displayName: 'Clean build folders/files'
+      condition: always()
+
+    - task: CmdLine@1
+      displayName: 'Deactivating Conda Environment'
+      inputs:
+        filename: deactivate
+      continueOnError: true
       condition: always()
