@@ -26,8 +26,8 @@ namespace string_normalizer {
 const std::string conv_error("Conversion Error");
 const std::wstring wconv_error(L"Conversion Error");
 // performs tolower/toupper in-place
-void ChangeCase(const std::locale& loc, StringNormalizer::CaseAction caseaction,
-                std::wstring& wstr) {
+inline void ChangeCase(const std::locale& loc, StringNormalizer::CaseAction caseaction,
+                       std::wstring& wstr) {
   if (caseaction == StringNormalizer::LOWER) {
     std::transform(wstr.begin(), wstr.end(), wstr.begin(),
                    [&loc](wchar_t ch) { return std::tolower(ch, loc); });
@@ -52,7 +52,9 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
   if (C == 0) {
     output_dims.push_back(1);
     TensorShape output_shape(output_dims);
-    ctx->Output(0, output_shape);
+    auto output_ten = ctx->Output(0, output_shape);
+    auto output_default = output_ten->template MutableData<std::string>();
+    new (output_default) std::string();
     return Status::OK();
   }
 
@@ -104,9 +106,9 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
   iscasesensitive_ = iscasesensitive != 0;
 
   info.GetAttrs<std::string>("stopwords", stopwords_);
-  // Default is specified in the schema
-  status = info.GetAttr("locale", &locale_);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "Failed to get locale");
+  ONNXRUNTIME_ENFORCE(status.IsOK(), "Failed to get stopwords");
+
+  locale_ = info.GetAttrOrDefault("locale", std::string("en_US"));
 }
 
 Status StringNormalizer::Compute(OpKernelContext* ctx) const {
@@ -148,8 +150,17 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
                          std::hash<std::string>,
                          std::equal_to<std::string>>
           swords;
-      std::transform(stopwords_.begin(), stopwords_.end(), std::inserter(swords, swords.end()),
-                     [](const std::string& s) { return std::cref(s); });
+      for (const auto& s : stopwords_) {
+        if (s.empty()) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Empty stopwords are invalid");
+        }
+        auto p = swords.insert(std::cref(s));
+        if (!p.second) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Duplicate stopwords not allowed");
+        }
+      }
 
       std::vector<StrRef> filtered_strings;
       filtered_strings.reserve(C);
@@ -170,13 +181,23 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       // Perform case-insensitive comparison. Convert to lowercase for NONE, LOWER and UPPER otherwise.
       const CaseAction ca = (casechangeaction_ == UPPER) ? UPPER : LOWER;
       std::unordered_set<std::wstring> swords;
-      std::transform(stopwords_.begin(), stopwords_.end(), std::inserter(swords, swords.end()),
-                     [&loc, &converter, ca](const std::string& s) {
-                       std::wstring wstr = converter.from_bytes(s);
-                       ChangeCase(loc, ca, wstr);
-                       return wstr;
-                     });
-
+      for (const auto& s : stopwords_) {
+        if (s.empty()) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Empty stopwords are invalid");
+        }
+        std::wstring wstr = converter.from_bytes(s);
+        if (wstr == wconv_error) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Stopword contains invalid utf8 chars at: " + s);
+        }
+        ChangeCase(loc, ca, wstr);
+        auto p = swords.insert(wstr);
+        if (!p.second) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Duplicate stopwords not allowed");
+        }
+      }
       // Filter input. We choose to undergo conversion twice (if needed)
       // as oppose to preserve lower/uppercased strings to favor lower memory
       // consumption.
@@ -185,6 +206,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       for (size_t input_idx = 0; input_idx < C; ++input_idx) {
         const std::string& s = *(input_data + input_idx);
         std::wstring wstr = converter.from_bytes(s);
+        if (wstr == wconv_error) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "Input contains invalid utf8 chars at: " + s);
+        }
         ChangeCase(loc, ca, wstr);
         if (0 == swords.count(wstr)) {
           filtered_strings.push_back(std::cref(s));

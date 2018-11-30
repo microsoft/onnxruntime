@@ -479,7 +479,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           "locale",
           "Platform dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
           AttributeProto::STRING,
-          "en_US")
+          OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
