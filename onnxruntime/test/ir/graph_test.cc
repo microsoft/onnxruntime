@@ -137,7 +137,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
   inputs.push_back(&input_arg);
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
   outputs.push_back(&output_arg);
-  auto node_1 = graph.AddNode("node_1", "Variable_DFS", "node 1", inputs, outputs);
+  auto& node_1 = graph.AddNode("node_1", "Variable_DFS", "node 1", inputs, outputs);
 
   auto& input_arg2 = graph.GetOrCreateNodeArg("node_2_in_1", &tensor_int32);
   inputs.clear();
@@ -153,7 +153,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
   auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out_1", &tensor_int32);
   outputs.clear();
   outputs.push_back(&output_arg3);
-  auto node_3 = graph.AddNode("node_3", "Add_DFS", "node 3", inputs, outputs);
+  auto& node_3 = graph.AddNode("node_3", "Add_DFS", "node 3", inputs, outputs);
 
   inputs.clear();
   inputs.push_back(&output_arg3);
@@ -165,8 +165,8 @@ TEST(GraphTraversalTest, ReverseDFS) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   // Remove/Add edge should not ask for resolving again.
-  graph.RemoveEdge(node_1->Index(), node_3->Index(), *graph.GetNodeArg("node_1_out_1"));
-  graph.AddEdge(node_1->Index(), node_3->Index(), *graph.GetNodeArg("node_1_out_1"));
+  graph.RemoveEdge(node_1.Index(), node_3.Index(), *graph.GetNodeArg("node_1_out_1"));
+  graph.AddEdge(node_1.Index(), node_3.Index(), *graph.GetNodeArg("node_1_out_1"));
 
   std::vector<const Node*> from;
   for (auto& node : graph.Nodes()) {
@@ -228,11 +228,11 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNoDuplicateName) {
   graph.AddNode("node_1", "Variable", "node 1.", inputs, outputs);
 
   // Case 1: Adding two nodes with same node name should fail.
-  auto node_with_dup_name = graph.AddNode("node_1", "Variable", "node 2", inputs, outputs);
+  auto& node_with_dup_name = graph.AddNode("node_1", "Variable", "node 2", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
   EXPECT_EQ("Error: two nodes with same node name (node_1).", status.ErrorMessage());
-  graph.RemoveNode(node_with_dup_name->Index());
+  graph.RemoveNode(node_with_dup_name.Index());
 
   // Case 2: Adding two nodes with same output arg name should fail.
   graph.AddNode("node_2", "Variable", "node 2", inputs, outputs);
@@ -256,7 +256,7 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
 
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &output_type);
   outputs.push_back(&output_arg);
-  // Case: Adding node refering to non-existing operator should fail.
+  // Case: Adding node referring to non-existing operator should fail.
   graph.AddNode("node_1", "OpNotExist", "node 1", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
@@ -716,8 +716,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
   outputs.clear();
   outputs.push_back(&output_arg4);
-  auto node_4 = graph.AddNode("node_4", "Max_Fake", "node 4", inputs, outputs);
-  EXPECT_NE(node_4, nullptr);
+  graph.AddNode("node_4", "Max_Fake", "node 4", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -761,7 +760,7 @@ TEST(TestAddAttribute, AddTensorAttribute) {
   *(output_type.mutable_tensor_type()->mutable_shape()) = output_shape;
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &output_type);
   outputs.push_back(&output_arg);
-  auto node_1 = graph.AddNode("node_1", "__Constant", "node 1.", inputs, outputs);
+  auto& node_1 = graph.AddNode("node_1", "__Constant", "node 1.", inputs, outputs);
   TensorProto t;
   t.set_data_type(TensorProto_DataType_INT64);
   *(t.mutable_int64_data()->Add()) = 1;
@@ -769,27 +768,27 @@ TEST(TestAddAttribute, AddTensorAttribute) {
   *(t.mutable_int64_data()->Add()) = 3;
   *(t.mutable_dims()->Add()) = 1;
   *(t.mutable_dims()->Add()) = 3;
-  node_1->AddAttribute(kConstantValue, t);
+  node_1.AddAttribute(kConstantValue, t);
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
-void AddAttribute(onnxruntime::Node* p_node, const std::string& attr_name, int64_t attr_value) {
+void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, int64_t attr_value) {
   AttributeProto attr;
   attr.set_name(attr_name);
   attr.set_type(AttributeProto_AttributeType_INT);
   attr.set_i(attr_value);
-  p_node->AddAttribute(attr_name, attr);
+  p_node.AddAttribute(attr_name, attr);
 }
 
-void AddAttribute(onnxruntime::Node* p_node, const std::string& attr_name, std::initializer_list<int64_t> attr_value) {
+void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::initializer_list<int64_t> attr_value) {
   AttributeProto attr;
   attr.set_name(attr_name);
   attr.set_type(AttributeProto_AttributeType_INTS);
   for (auto v : attr_value) {
     attr.add_ints(v);
   }
-  p_node->AddAttribute(attr_name, attr);
+  p_node.AddAttribute(attr_name, attr);
 }
 
 // Test that output type can be inferred for ops with a type-attribute
@@ -800,7 +799,7 @@ TEST(TypeInferenceTest, TypeAttribute) {
   auto& graph = model.MainGraph();
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", nullptr);
   outputs.push_back(&output_arg);
-  auto node_1 = graph.AddNode("node_1", "RandomNormal", "node 1.", inputs, outputs);
+  auto& node_1 = graph.AddNode("node_1", "RandomNormal", "node 1.", inputs, outputs);
   AddAttribute(node_1, "dtype", TensorProto_DataType_FLOAT);
   AddAttribute(node_1, "shape", {2, 3});
   auto status = graph.Resolve();

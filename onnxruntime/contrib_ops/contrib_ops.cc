@@ -12,8 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OpSchema;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -135,6 +135,31 @@ The linear de-quantization operator. It consumes a quantized data, a scale, a ze
 The dequantization formula is y = (x - x_zero_point) * x_scale.
  Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
+It consumes two quantized input tensors, their scales and zero points, and output's scale and zero point, and computes
+the quantized output. The quantization formula is x_quantized = (x_fp32 / x_scale) + x_zero_point. For (x_fp32 / x_scale),
+it computes the nearest integer value to arg (in floating-point format), rounding halfway cases away from zero.
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per row for a and per column for b).
+If scale and zero point are 1D tensor, the number of elements of scale and zero point tensor of input 'a' and output 'y'
+should be equal to the number of rows of input 'a', and the number of elements of scale and zero point tensor of input 'b'
+should be equal to the number of columns of input 'b'.)DOC")
+      .Input(0, "a", "N-dimensional quantized matrix a", "T1")
+      .Input(1, "a_scale", "scale of quantized input a", "tensor(float)")
+      .Input(2, "a_zero_point", "zero point of quantized input a", "T1")
+      .Input(3, "b", "N-dimensional quantized matrix b", "T2")
+      .Input(4, "b_scale", "scale of quantized input b", "tensor(float)")
+      .Input(5, "b_zero_point", "zero point of quantized input b", "T2")
+      .Input(6, "y_scale", "scale of quantized output y", "tensor(float)")
+      .Input(7, "y_zero_point", "zero point of quantized output y", "T3")
+      .Output(0, "y", "Quantized matrix multiply results from a * b", "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input a and its zero point data types as 8-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input b and its zero point data types as 8-bit integer tensor")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output y and its zero point data types as 8-bit integer tensor.");
+
   const char* auto_pad_doc =
       "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
       "default value is NOTSET, which means explicit padding is used. "
@@ -147,7 +172,7 @@ The dequantization formula is y = (x - x_zero_point) * x_scale.
       .SinceVersion(1)
       .SetDoc(R"DOC(
 The convolution operator consumes a quantized input tensor, its scale and zero point, 
-a quantized filter, its scale and zero point, and output’s scale and zero point, 
+a quantized filter, its scale and zero point, and output's scale and zero point, 
 and computes the quantized output. Each scale and zero point pair must have same shape.
 It means they must be either scalars (per tensor) or 1-D tensors (per channel).)DOC")
       .Input(
@@ -163,8 +188,8 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "to arrive with the dimension denotation of [DATA_BATCH, "
           "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
           "T1")
-      .Input(1, "x_scale", "Scale tensor for input ‘x’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘x’.", "T3")
-      .Input(2, "x_zero_point", "Zero point tensor for input ‘x’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘x’.", "T1")
+      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T3")
+      .Input(2, "x_zero_point", "Zero point tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T1")
       .Input(
           3,
           "w",
@@ -183,10 +208,10 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "(assuming zero based indices for the shape array). "
           "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
           "T1")
-      .Input(4, "w_scale", "Scale tensor for input ‘w’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘w’.", "T3")
-      .Input(5, "w_zero_point", "Scale tensor for input ‘w’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘w’.", "T1")
-      .Input(6, "y_scale", "Scale tensor for output ‘y’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘y’.", "T3")
-      .Input(7, "y_zero_point", "Scale tensor for output ‘y’. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it’s a 1-D tensor, its number of elements should be equal to the number of channels of input ‘y’.", "T1")
+      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T3")
+      .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T1")
+      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T3")
+      .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T1")
       .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T2", OpSchema::Optional)
       .Output(
           0,
@@ -277,7 +302,7 @@ The integer convolution operator consumes an input tensor, a filter, and a paddi
           "Output data tensor that contains the result of the "
           "convolution. The output dimensions are functions "
           "of the kernel size, stride size, and pad lengths.",
-          "T1")
+          "T3")
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input X and Z data types as 8-bit integer tensors")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input W data types as 8-bit integer tensor")
       .TypeConstraint("T3",
@@ -323,7 +348,7 @@ The integer convolution operator consumes an input tensor, a filter, and a paddi
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
  The production MUST never overflow. The accumulation may overflow if and only if in 32 bits.)DOC")
       .Input(0, "A", "N-dimensional matrix A", "T1")
-      .Input(0, "B", "N-dimensional matrix B", "T2")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
       .Output(0, "Y", "Matrix multiply results from A * B", "T3")
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input A data types as 8-bit integer tensor")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data types as 8-bit integer tensor")

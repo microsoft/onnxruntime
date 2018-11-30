@@ -115,7 +115,7 @@ void SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, 
 
 common::Status SessionState::GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const {
   if (!input_names_to_nodeinfo_mapping_.count(input_name)) {
-    return Status(ONNXRUNTIME, FAIL, "Failed to find input name in the mapping");
+    return Status(ONNXRUNTIME, FAIL, "Failed to find input name in the mapping: " + input_name);
   }
   node_info_vec = input_names_to_nodeinfo_mapping_.at(input_name);
   return Status::OK();

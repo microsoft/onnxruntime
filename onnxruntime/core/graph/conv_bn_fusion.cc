@@ -15,15 +15,15 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       continue;
     }
 
-    const Node* next_node = *node.OutputNodesBegin();
-    if (next_node->OpType() != "BatchNormalization" ||
-        next_node->GetInputEdgesCount() != 1 ||
-        graph.IsNodeOutputsInGraphOutputs(*next_node)) {
+    const Node& next_node = *node.OutputNodesBegin();
+    if (next_node.OpType() != "BatchNormalization" ||
+        next_node.GetInputEdgesCount() != 1 ||
+        graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
     }
 
     auto& conv_node = node;
-    const Node* bn_node = next_node;
+    const Node& bn_node = next_node;
 
     // Get value of attribute group
     const onnxruntime::NodeAttributes& conv_attributes = conv_node.GetAttributes();
@@ -35,7 +35,7 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     }
 
     // Get value of attribute epsilon
-    const onnxruntime::NodeAttributes& attributes = bn_node->GetAttributes();
+    const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
     const onnx::AttributeProto* attr = &(attributes.find("epsilon")->second);
     if (attr == nullptr || attr->type() != AttributeProto_AttributeType_FLOAT) {
       continue;
@@ -43,7 +43,7 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     float epsilon = static_cast<float>(attr->f());
 
     // Get initializers of BatchNormalization
-    const auto& bn_inputs = bn_node->InputDefs();
+    const auto& bn_inputs = bn_node.InputDefs();
     const ONNX_NAMESPACE::TensorProto* bn_scale_tensor_proto = nullptr;
     graph.GetInitializedTensor(bn_inputs[1]->Name(), bn_scale_tensor_proto);
 
@@ -90,7 +90,9 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
     std::unique_ptr<Initializer> conv_B = nullptr;
     if (conv_inputs.size() == 3) {
-      graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto);
+      if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto))
+        continue;
+
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->dims_size() != 1 ||
           conv_B_tensor_proto->dims(0) != bn_B_tensor_proto->dims(0) ||
@@ -100,7 +102,7 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
     }
 
-    // Caculate new value of initializers of conv node
+    // Calculate new value of initializers of conv node
     bn_var->add(epsilon);
     bn_var->sqrt();
     bn_scale->div(*bn_var);
@@ -134,7 +136,15 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     // Replace initializers of conv node
     graph.RemoveInitializedTensor(conv_W_tensor_proto->name());
     if (conv_inputs.size() == 3) {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6011)  // Not deferencing null pointer. conv_B_tensor_proto is set on line 93
+#endif
       graph.RemoveInitializedTensor(conv_B_tensor_proto->name());
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
     } else {
       graph.RemoveInitializedTensor(bn_B_tensor_proto->name());
       conv_node.MutableInputDefs().push_back(bn_B_node_arg);
@@ -144,10 +154,10 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     graph.AddInitializedTensor(new_conv_B_tensor_proto);
 
     // Replace the input of the nodes following batch normalization node
-    const NodeArg* bn_output_def = bn_node->OutputDefs()[0];
-    const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
-    for (auto it = bn_node->OutputNodesBegin(); it != bn_node->OutputNodesEnd(); ++it) {
-      auto output_node = graph.GetNode((*it)->Index());
+    const NodeArg* bn_output_def = bn_node.OutputDefs()[0];
+    NodeArg* conv_output_def = conv_node.MutableOutputDefs()[0];
+    for (auto it = bn_node.OutputNodesBegin(); it != bn_node.OutputNodesEnd(); ++it) {
+      auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
         return Status(ONNXRUNTIME, INVALID_ARGUMENT);
       }
@@ -155,12 +165,12 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == bn_output_def) {
-          def = const_cast<NodeArg*>(conv_output_def);
+          def = conv_output_def;
         }
       }
     }
 
-    removed_nodes.push_back(bn_node->Index());
+    removed_nodes.push_back(bn_node.Index());
   }
 
   for (auto i : removed_nodes) {

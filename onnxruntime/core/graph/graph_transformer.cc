@@ -29,12 +29,12 @@ Status TopDownRuleBasedTransformer::Apply(Graph& graph, bool& modified) const {
     }
 
     // Get the rules that should be fired for this node.
-    if (!HasRules(node->OpType())) {
+    const std::vector<std::unique_ptr<RewriteRule>>* rules = GetRewriteRules(node->OpType());
+    if (!rules)
       continue;
-    }
-    const std::vector<std::unique_ptr<RewriteRule>>& rules = GetRewriteRules(node->OpType());
-    for (const auto& rule : rules) {
-      ONNXRUNTIME_RETURN_IF_ERROR(rule->CheckConditionAndApply(&graph_editor, node, &modified));
+
+    for (const auto& rule : *rules) {
+      ONNXRUNTIME_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph_editor, *node, modified));
     }
   }
 

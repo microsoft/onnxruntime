@@ -25,6 +25,7 @@
 #include "core/session/IOBinding.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
+#include "test/providers/provider_test_utils.h"
 #include "test_utils.h"
 #include "gtest/gtest.h"
 
@@ -141,7 +142,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   output_defs.push_back(&output_arg);
 
   // Create a simple model
-  auto& node = *graph.AddNode("node1", "MatMul", "MatMul", input_defs, output_defs, nullptr, onnxruntime::kOnnxDomain);
+  auto& node = graph.AddNode("node1", "MatMul", "MatMul", input_defs, output_defs, nullptr, onnxruntime::kOnnxDomain);
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
@@ -806,6 +807,130 @@ TEST(InferenceSessionTests, ModelWithoutOpset) {
   if (!retval.IsOK()) {
     ASSERT_TRUE(retval.ErrorMessage().find("Missing opset in the model") != std::string::npos);
   }
+}
+
+static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
+  Model model("ModelWithOptionalInputs");
+  auto& graph = model.MainGraph();
+
+  // create an initializer, which is an optional input that can be overridden
+  onnx::TensorProto tensor_proto;
+  tensor_proto.add_dims(1);
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_float_data(1.f);
+  tensor_proto.set_name("optional_input");
+
+  graph.AddInitializedTensor(tensor_proto);
+
+  TypeProto single_float;
+  single_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  single_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& required_input = graph.GetOrCreateNodeArg("required_input", &single_float);
+  auto& optional_input = graph.GetOrCreateNodeArg("optional_input", nullptr);
+  auto& add_output = graph.GetOrCreateNodeArg("add_output", &single_float);
+
+  EXPECT_TRUE(optional_input.Shape() != nullptr) << "AddInitializedTensor should have created the NodeArg with shape.";
+
+  graph.AddNode("add", "Add", "Add required and optional inputs", {&required_input, &optional_input}, {&add_output});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  auto model_proto = model.ToProto();
+
+  return model_proto;
+}
+
+static common::Status RunOptionalInputTest(bool add_required_input,
+                                           bool add_optional_input,
+                                           bool add_invalid_input) {
+  auto model_proto = CreateModelWithOptionalInputs();
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestOptionalInputs";
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+
+  std::stringstream s1;
+  model_proto.SerializeToOstream(&s1);
+  auto status = session_object.Load(s1);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session_object.Initialize();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  // prepare inputs
+  std::vector<int64_t> dims = {1};
+  std::vector<float> required_input_val = {1.f};
+  std::vector<float> optional_input_val = {10.f};  // override initializer value of 1
+  std::vector<float> unknown_input_val = {20.f};
+
+  MLValue required_input_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault),
+                       dims, required_input_val, &required_input_mlvalue);
+
+  MLValue optional_input_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault),
+                       dims, optional_input_val, &optional_input_mlvalue);
+
+  MLValue unknown_input_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault),
+                       dims, unknown_input_val, &unknown_input_mlvalue);
+
+  NameMLValMap feeds;
+
+  if (add_required_input)
+    feeds.insert(std::make_pair("required_input", required_input_mlvalue));
+
+  if (add_optional_input)
+    feeds.insert(std::make_pair("optional_input", optional_input_mlvalue));
+
+  if (add_invalid_input)
+    feeds.insert(std::make_pair("unknown_input", unknown_input_mlvalue));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("add_output");
+  std::vector<MLValue> fetches;
+
+  float expected_value = required_input_val[0];
+  expected_value += add_optional_input ? optional_input_val[0] : 1.f;
+
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+
+  if (status.IsOK()) {
+    MLValue& output = fetches.front();
+    const auto& tensor = output.Get<Tensor>();
+    float output_value = *tensor.Data<float>();
+    if (output_value != expected_value) {
+      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output of ", output_value, " != ", expected_value);
+    }
+  }
+
+  return status;
+}
+
+TEST(InferenceSessionTests, TestOptionalInputs) {
+  // required input only
+  auto status = RunOptionalInputTest(true, false, false);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // required and optional input
+  status = RunOptionalInputTest(true, true, false);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // required, optional and invalid input
+  status = RunOptionalInputTest(true, true, true);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names: unknown_input"));
+
+  // missing required
+  status = RunOptionalInputTest(false, true, false);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required inputs: required_input"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {

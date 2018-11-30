@@ -29,3 +29,5 @@ onnxruntime_profile*.json
 /docs/python/examples/*.onnx
 /docs/python/examples/graph.*
 /docs/python/*_LICENSE
+/csharp/**/obj/
+/csharp/**/bin/
