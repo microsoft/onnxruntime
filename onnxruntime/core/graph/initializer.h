@@ -255,13 +255,13 @@ class Initializer final {
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         for (int i = 0; i < size_; i++) {
-          data<float>()[i] *= other.data<float>()[other.size() == 1 ? 0 : i];
+          data<float>()[i] *= other.data<float>()[i];
         }
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
         for (int i = 0; i < size_; i++) {
-          data<double>()[i] *= other.data<double>()[other.size() == 1 ? 0 : i];
+          data<double>()[i] *= other.data<double>()[i];
         }
         break;
       }
@@ -318,17 +318,17 @@ class Initializer final {
 
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        for (int64_t i = 0; i < dims_[0]; i++) {
+        for (size_t i = 0; i < size() / num; i++) {
           for (int64_t j = 0; j < num; j++) {
-            data<float>()[i * num + j] *= other.data<float>()[i];
+            data<float>()[i * num + j] *= other.data<float>()[other.size() == 1 ? 0 : i];
           }
         }
         break;
       }
       case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-        for (int64_t i = 0; i < dims_[0]; i++) {
+        for (size_t i = 0; i < size() / num; i++) {
           for (int64_t j = 0; j < num; j++) {
-            data<double>()[i * num + j] *= other.data<double>()[i];
+            data<double>()[i * num + j] *= other.data<double>()[other.size() == 1 ? 0 : i];
           }
         }
         break;

@@ -80,7 +80,11 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     conv_W->scale_by_axis(*mul_B, 1);
 
     if (conv_inputs.size() == 3) {
-      conv_B->mul(*mul_B);
+      if (mul_B_tensor_proto->dims_size() != 0) {
+        conv_B->mul(*mul_B);
+      } else {
+        conv_B->scale_by_axis(*mul_B, 0);
+      }
     }
 
     // Create new initializers of conv
