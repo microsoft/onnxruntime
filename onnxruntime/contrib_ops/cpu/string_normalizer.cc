@@ -105,7 +105,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
   ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute iscasesensitive is not set");
   iscasesensitive_ = iscasesensitive != 0;
 
-  info.GetAttrs<std::string>("stopwords", stopwords_);
+  status = info.GetAttrs<std::string>("stopwords", stopwords_);
   ONNXRUNTIME_ENFORCE(status.IsOK(), "Failed to get stopwords");
 
   locale_ = info.GetAttrOrDefault("locale", std::string("en_US"));
