@@ -79,8 +79,7 @@ Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
   ONNXRUNTIME_RETURN_IF_NOT(scores_shape.GetDims()[0] == num_boxes, "scores and boxes should have same num_boxes.");
 
   if (max_output_size_ <= 0 || boxes_dims[0] == 0) {
-    std::vector<int64_t> output_dims(1, 0);
-    TensorShape output_shape(output_dims);
+    TensorShape output_shape({0});
     ctx->Output(0, output_shape);
     return Status::OK();
   }
@@ -130,13 +129,12 @@ Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
   }
 
   int64_t num_to_copy = pad_to_max_output_size_ == 1 ? max_output_size_ : num_of_selected;
-  std::vector<int64_t> output_dim(1, num_to_copy);
-  TensorShape output_shape(output_dim);
+  TensorShape output_shape({num_to_copy});
   Tensor* selected_indices = ctx->Output(0, output_shape);
   auto output_data = selected_indices->MutableData<int32_t>();
   memcpy(output_data, selected_index.data(), num_to_copy * sizeof(int32_t));
 
-  TensorShape valid_outputs_shape(std::vector<int64_t>{1});
+  TensorShape valid_outputs_shape({1});
   Tensor* valid_outputs = ctx->Output(1, valid_outputs_shape);
   if (valid_outputs) {
     valid_outputs->MutableData<int32_t>()[0] = num_of_selected;
