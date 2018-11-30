@@ -1288,9 +1288,8 @@ Return Value:
 
 #if defined(MLAS_USE_OPENMP)
 
-    #pragma omp parallel num_threads(Index)
-    {
-        int tid = omp_get_thread_num();
+    #pragma omp parallel for
+    for (int32_t tid = 0; tid < int32_t(Index); tid++) {
 
         MLAS_SGEMM_WORK_BLOCK::SEGMENT* Segment = &WorkBlock.Segments[tid];
 
