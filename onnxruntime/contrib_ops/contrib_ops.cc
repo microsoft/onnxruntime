@@ -12,8 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OpSchema;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -376,7 +376,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
       .Output(0, "selected_indices", "selected indices from the boxes tensor.", "T2")
       .Output(
           1,
-          "valid_outputs", 
+          "valid_outputs",
           "Optional. A 0-D integer tensor representing the number of valid elements in selected_indices, with the valid elements appearing first.",
           "T2",
           OpSchema::Optional)
@@ -400,8 +400,33 @@ The bounding box coordinates corresponding to the selected indices can then be o
       .Attr(
           "pad_to_max_output_size",
           "Optional. 1(true) - the output selected_indices is padded to be of length max_output_size. Defaults to 0(false).",
-          AttributeProto::INT, 
-          OPTIONAL);
+          AttributeProto::INT,
+          OPTIONAL)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
+        selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+
+        // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
+        auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
+        if (pad_to_max_output_size && 1 == pad_to_max_output_size->i()) {
+          auto max_output_size = ctx.getAttribute("max_output_size")->i();
+          selected_indices_type
+              ->mutable_shape()
+              ->add_dim()
+              ->set_dim_value(max_output_size);
+        }
+
+        // valid_outputs is optional, shape is [1]
+        auto num_outputs = ctx.getNumOutputs();
+        if (num_outputs > 1) {
+          auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
+          valid_outputs_shape->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          valid_outputs_shape
+              ->mutable_shape()
+              ->add_dim()
+              ->set_dim_value(1);
+        }
+      });
 }
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
