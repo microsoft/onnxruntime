@@ -12,8 +12,8 @@ ONNX Runtime is an open architecture that is continually evolving to adapt to an
 
 ONNX Runtime continuously strives to provide top performance for a broad and growing number of usage scenarios in Machine Learning. Our investments focus on these 3 core areas:
 1. Run any ONNX model 
-2. Cross platform
-3. High performance
+2. High performance
+3. Cross platform
 
 ## Run any ONNX model
 
@@ -24,7 +24,16 @@ As of November 2018, ONNX Runtime supports the latest released version of ONNX (
 
 ### Traditional ML support
 ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios. 
- 
+
+## High Performance 
+You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
+
+Currently ONNX Runtime supports CUDA and MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
+
+We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. We have ongoing collaborations to integrate the following with ONNX Runtime:
+	* Intel MKL-DNN and nGraph
+	* NVIDIA TensorRT
+
 ## Cross Platform 
 ONNX Runtime offers:
 * APIs for Python, C#, and C (experimental)
@@ -37,16 +46,7 @@ Looking ahead: To broaden the reach of the runtime, we will continue investments
 * C# supporting GPU
 * C packages
 * ARM
- 
-## High Performance 
-You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
 
-Currently ONNX Runtime supports CUDA and MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
-
-We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. We have ongoing collaborations to integrate the following with ONNX Runtime:
-	* Intel MKL-DNN and nGraph
-	* NVIDIA TensorRT
- 
 # Getting Started 
 If you need a model:  
 * Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models. 
