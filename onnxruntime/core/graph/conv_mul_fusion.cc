@@ -44,6 +44,20 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       continue;
     }
 
+    // The dimensions of mul_B should be equal to 1 except first dimension.
+    if (mul_B_tensor_proto->dims_size() != 0) {
+      bool flag = false;
+      for (int i = 1; i < mul_B_tensor_proto->dims_size(); i++) {
+        if (mul_B_tensor_proto->dims(i) != 1) {
+          flag = true;
+          break;
+        }
+      }
+
+      if (flag) {
+        continue;
+      }
+    }
     auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
     auto mul_B = std::make_unique<Initializer>(mul_B_tensor_proto);
 
