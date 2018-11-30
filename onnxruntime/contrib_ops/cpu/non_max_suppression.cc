@@ -114,7 +114,7 @@ Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
     sorted_scores_with_index.pop();
 
     bool selected = true;
-    // Check with existing boxes, suppress if exceed the IOU (Intersection Over Union) threadhold
+    // Check with existing boxes, suppress if exceed the IOU (Intersection Over Union) threshold
     for (int i = num_of_selected - 1; i >= 0; --i) {
       if (SuppressByIOU(boxes_data, selected_index[i], next_top_score.index)) {
         selected = false;
