@@ -130,7 +130,7 @@ class Node {
     return definitions_.input_defs;
   }
 
-  /** Gets a modifiable collection of the Node's input definitions. */
+  /** Gets a modifiable collection of the Node's output definitions. */
   std::vector<NodeArg*>& MutableOutputDefs() noexcept {
     return definitions_.output_defs;
   }
