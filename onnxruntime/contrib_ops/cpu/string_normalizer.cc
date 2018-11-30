@@ -66,19 +66,19 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
 
   size_t output_idx = 0;
   while (first != end) {
-    const std::string& s = *first;
+    auto& s = *first;
     if (caseaction == StringNormalizer::LOWER || caseaction == StringNormalizer::UPPER) {
       std::wstring wstr = converter.from_bytes(s);
       if (wstr == wconv_error) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input contains invalid utf8 chars at: " + s);
+                      "Input contains invalid utf8 chars at: " + static_cast<const std::string&>(s));
       }
       // In place transform
       ChangeCase(loc, caseaction, wstr);
       new (output_data + output_idx) std::string(converter.to_bytes(wstr));
     } else {
-      // Simple copy
-      new (output_data + output_idx) std::string(s);
+      // Simple copy or move if the iterator points to a non-const string
+      new (output_data + output_idx) std::string(std::move(s));
     }
     ++output_idx;
     ++first;
@@ -198,11 +198,13 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
                         "Duplicate stopwords not allowed");
         }
       }
-      // Filter input. We choose to undergo conversion twice (if needed)
-      // as oppose to preserve lower/uppercased strings to favor lower memory
-      // consumption.
-      std::vector<StrRef> filtered_strings;
-      filtered_strings.reserve(C);
+      // Filter input. When no case action is required
+      // we simply store original string references.
+      // Otherwise, we store converted strings.
+      std::vector<StrRef> filtered_orignal_strings;
+      std::vector<std::string> filtered_cased_strings;
+      filtered_orignal_strings.reserve(C);
+      filtered_cased_strings.reserve(C);
       for (size_t input_idx = 0; input_idx < C; ++input_idx) {
         const std::string& s = *(input_data + input_idx);
         std::wstring wstr = converter.from_bytes(s);
@@ -212,11 +214,20 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
         ChangeCase(loc, ca, wstr);
         if (0 == swords.count(wstr)) {
-          filtered_strings.push_back(std::cref(s));
+          if (casechangeaction_ == NONE) {
+            filtered_orignal_strings.push_back(std::cref(s));
+          } else {
+            filtered_cased_strings.push_back(converter.to_bytes(wstr));
+          }
         }
       }
-      status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, loc, converter,
-                              N, filtered_strings.size(), casechangeaction_);
+      if (casechangeaction_ == NONE) {
+        status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, loc, converter,
+                                N, filtered_orignal_strings.size(), NONE);
+      } else {
+        status = CopyCaseAction(filtered_cased_strings.begin(), filtered_cased_strings.end(), ctx, loc, converter,
+                                N, filtered_cased_strings.size(), NONE);
+      }
     } else {
       // Nothing to filter. Copy input to output and change case if needed
       status = CopyCaseAction(input_data, input_data + C, ctx, loc, converter, N, C, casechangeaction_);
