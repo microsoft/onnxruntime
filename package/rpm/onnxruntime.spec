@@ -1,5 +1,5 @@
 Name:           onnxruntime
-Version:        0.1.4
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        onnxruntime
 
@@ -50,7 +50,7 @@ cd ..
 
 %files
 %license LICENSE
-%doc docs/* 
+%doc docs/*
 %doc ThirdPartyNotices.txt
 %{_bindir}/onnx_test_runner
 %{_libdir}/libonnxruntime.so*

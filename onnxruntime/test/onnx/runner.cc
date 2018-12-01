@@ -452,8 +452,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
           res = EXECUTE_RESULT::UNKNOWN_ERROR;
       }
     }
+
     if (compare_result != COMPARE_RESULT::SUCCESS && !ret.second.empty()) {
-      LOGF_DEFAULT(ERROR, "%s:%s", test_case_name_.c_str(), ret.second.c_str());
+      LOGS_DEFAULT(ERROR) << test_case_name_ << ":output=" << output_name << ":" << ret.second;
     }
     if (compare_result != COMPARE_RESULT::SUCCESS) {
       break;

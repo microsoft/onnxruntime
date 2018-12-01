@@ -130,6 +130,11 @@ class Node {
     return definitions_.input_defs;
   }
 
+  /** Gets a modifiable collection of the Node's output definitions. */
+  std::vector<NodeArg*>& MutableOutputDefs() noexcept {
+    return definitions_.output_defs;
+  }
+
   /** Gets the count of arguments for each of the Node's explicit inputs. */
   const std::vector<int>& InputArgCount() const noexcept { return definitions_.input_arg_count; }
 
