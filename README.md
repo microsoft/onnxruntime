@@ -1,5 +1,7 @@
 # ONNX Runtime
 
+<p align="center"><img width="50%" src="docs/MSFT-Onnx-Runtime-11282019-Logo.png" /></p>
+
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/onnxruntime%20CI%20Pipelines)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=1)
 
 # Introduction 
@@ -37,7 +39,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
 | [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime/)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](https://pypi.org/project/onnxruntime/)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
-| [C#](docs/CSharp_API.md) | [Windows](TODO)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
+| [C#](docs/CSharp_API.md) | [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
 | [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
 
 <br><br>
