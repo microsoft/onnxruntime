@@ -204,7 +204,7 @@ jobs:
     - script: |
         sudo python -m pip install numpy
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel
+        ./build.sh --config Release --skip_submodule_sync --parallel --use_mkldnn --build_wheel
       displayName: 'Command Line Script'
 
     - task: CopyFiles@2
