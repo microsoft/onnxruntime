@@ -52,6 +52,11 @@ replaces *scikit-learn* to compute the predictions.
 Changes
 -------
 
+0.1.5
+^^^^^
+
+GA release as part of open sourcing onnxruntime (patch for 0.1.4).
+
 0.1.4
 ^^^^^
 
