@@ -90,6 +90,11 @@ class ConvBase {
       group_ = 1;
     }
 
+    status = info.GetAttr<std::string>("activation", &activation_);
+    if (!status.IsOK()) {
+      activation_ = "";
+    }
+
 #if false
     // TODO: Re-enable when attributes values are guaranteed to be filled.
     std::string auto_pad;
@@ -122,21 +127,21 @@ class ConvBase {
 
     if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                             " X: ", X->Shape().ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+                                     " X: ", X->Shape().ToString().c_str(),
+                                     " W: ", W->Shape().ToString().c_str());
     }
 
     if (C != W->Shape()[1] * group_) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
-                             " C: ", C,
-                             " kernel channels: ", W->Shape()[1],
-                             " group: ", group_);
+                                     " C: ", C,
+                                     " kernel channels: ", W->Shape()[1],
+                                     " group: ", group_);
     }
 
     if (M % group_ != 0) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
-                             " M: ", M,
-                             " group: ", group_);
+                                     " M: ", M,
+                                     " group: ", group_);
     }
     return Status::OK();
   }
@@ -179,6 +184,7 @@ class ConvBase {
   std::vector<int64_t> strides_;
   std::vector<int64_t> pads_;
   std::vector<int64_t> dilations_;
+  std::string activation_;
 
  private:
   std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_

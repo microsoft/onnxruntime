@@ -23,6 +23,25 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
+namespace {
+template <typename T>
+void fuse_activation(const std::string& activation, T* y_data, size_t y_size) {
+  EigenVectorArrayMap<T> y_vec(y_data, y_size);
+  if (activation.empty()) {
+    return;
+  } else if (activation == "Relu") {
+    y_vec.cwiseMax(0);
+  } else if (activation == "Sigmoid") {
+    y_vec = (y_vec >= 0).select(1 / (1. + (-y_vec.abs()).exp()), 1 - 1 / (1. + (-y_vec.abs()).exp()));
+  } else if (activation == "Softsign") {
+    y_vec = (1 + y_vec.abs()).inverse() * y_vec;
+  } else if (activation == "Tanh") {
+    y_vec.tanh();
+  } else {
+    ONNXRUNTIME_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
+  }
+}
+}  // namespace
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
@@ -40,15 +59,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
     return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                           " W: ", W->Shape().ToString().c_str());
+                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                   " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_shape.size(); ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                     " W: ", W->Shape().ToString().c_str());
     }
   }
 
@@ -152,8 +171,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       Ymatrix.rowwise() += Bvec.transpose();
     }
 
-    Xdata += X_offset * group_;
-    Ydata += Y_offset * group_;
+    fuse_activation(activation_, Ydata, Y_offset * group_);
   }
 
   return Status::OK();
@@ -174,15 +192,15 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
     return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                           " W: ", W->Shape().ToString().c_str());
+                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                   " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_shape.size(); ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                     " W: ", W->Shape().ToString().c_str());
     }
   }
 
@@ -239,6 +257,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              B != nullptr ? B->template Data<float>() : nullptr,
              static_cast<float*>(working_buffer.get()),
              Ydata);
+
+    fuse_activation(activation_, Ydata, Y->Shape().Size());
+
   } else {
     const int64_t X_offset = C / group_ * input_image_size;
     const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group_;
@@ -289,6 +310,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         auto Bvec = ConstEigenVectorMap<float>(B->template Data<float>(), M);
         Ymatrix.rowwise() += Bvec.transpose();
       }
+
+      fuse_activation<float>(activation_, Ydata, Y_offset * group_);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;
