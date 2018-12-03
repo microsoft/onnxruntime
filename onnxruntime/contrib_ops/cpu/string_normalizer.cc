@@ -28,6 +28,7 @@ const std::wstring wconv_error(L"Conversion Error");
 // performs tolower/toupper in-place
 inline void ChangeCase(const std::locale& loc, StringNormalizer::CaseAction caseaction,
                        std::wstring& wstr) {
+  assert(caseaction != StringNormalizer::NONE);
   if (caseaction == StringNormalizer::LOWER) {
     std::transform(wstr.begin(), wstr.end(), wstr.begin(),
                    [&loc](wchar_t ch) { return std::tolower(ch, loc); });
@@ -77,6 +78,7 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
       ChangeCase(loc, caseaction, wstr);
       new (output_data + output_idx) std::string(converter.to_bytes(wstr));
     } else {
+      assert(caseaction == StringNormalizer::NONE);
       // Simple copy or move if the iterator points to a non-const string
       new (output_data + output_idx) std::string(std::move(s));
     }
@@ -87,9 +89,19 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
 }
 }  // namespace string_normalizer
 
-StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
+using namespace string_normalizer;
+
+StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
+                                                               is_case_sensitive_(true),
+                                                               casechangeaction_(NONE),
+                                                               compare_caseaction_(NONE) {
+  int64_t iscasesensitive = 0;
+  Status status = info.GetAttr("is_case_sensitive", &iscasesensitive);
+  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
+  is_case_sensitive_ = iscasesensitive != 0;
+
   std::string casechangeaction;
-  auto status = info.GetAttr("casechangeaction", &casechangeaction);
+  status = info.GetAttr("casechangeaction", &casechangeaction);
   ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute caseaction is not set");
   if (casechangeaction == "LOWER") {
     casechangeaction_ = LOWER;
@@ -100,13 +112,30 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
   } else {
     ONNXRUNTIME_ENFORCE(false, "attribute casechangeaction has invalid value");
   }
-  int64_t iscasesensitive = 0;
-  status = info.GetAttr("iscasesensitive", &iscasesensitive);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute iscasesensitive is not set");
-  iscasesensitive_ = iscasesensitive != 0;
 
-  stopwords_ = info.GetAttrsOrDefault<std::string>("stopwords");
-  locale_ = info.GetAttrOrDefault("locale", std::string("en_US"));
+  if (!is_case_sensitive_) {
+    // Convert stop words to a case which can help us preserve the case of filtered strings
+    compare_caseaction_ = (casechangeaction_ == UPPER) ? UPPER : LOWER;
+  }
+
+  std::string loc = info.GetAttrOrDefault("locale", std::string("en_US"));
+  locale_ = std::locale(loc);
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
+
+  std::vector<std::string> swords = info.GetAttrsOrDefault<std::string>("stopwords");
+  for (const auto& sw : swords) {
+    ONNXRUNTIME_ENFORCE(!sw.empty(), "Empty stopwords not allowed");
+    if (is_case_sensitive_) {
+      auto p = stopwords_.insert(sw);
+      ONNXRUNTIME_ENFORCE(p.second, "Duplicate stopwords not allowed");
+    } else {
+      std::wstring wstr = converter.from_bytes(sw);
+      ONNXRUNTIME_ENFORCE(wstr != wconv_error, "Stopword contains invalid utf8 chars");
+      ChangeCase(locale_, compare_caseaction_, wstr);
+      auto p = wstopwords_.insert(wstr);
+      ONNXRUNTIME_ENFORCE(p.second, "Duplicate stopwords not allowed");
+    }
+  }
 }
 
 Status StringNormalizer::Compute(OpKernelContext* ctx) const {
@@ -136,66 +165,30 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   }
 
   Status status;
-  std::locale loc(locale_);
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
   auto const input_data = X->template Data<std::string>();
-
   using StrRef = std::reference_wrapper<const std::string>;
-  if (iscasesensitive_) {
+  if (is_case_sensitive_) {
     if (!stopwords_.empty()) {
-      // Create a filter and create filtered output
-      std::unordered_set<StrRef,
-                         std::hash<std::string>,
-                         std::equal_to<std::string>>
-          swords;
-      for (const auto& s : stopwords_) {
-        if (s.empty()) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Empty stopwords are invalid");
-        }
-        auto p = swords.insert(std::cref(s));
-        if (!p.second) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Duplicate stopwords not allowed");
-        }
-      }
-
       std::vector<StrRef> filtered_strings;
       filtered_strings.reserve(C);
-      for (size_t input_idx = 0; input_idx < C; ++input_idx) {
-        const std::string& s = *(input_data + input_idx);
-        if (0 == swords.count(s)) {
+      auto first = input_data;
+      auto const last = input_data + C;
+      while (first != last) {
+        const std::string& s = *first;
+        if (0 == stopwords_.count(s)) {
           filtered_strings.push_back(std::cref(s));
         }
+        ++first;
       }
-      status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, loc, converter,
+      status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, locale_, converter,
                               N, filtered_strings.size(), casechangeaction_);
     } else {
       // Nothing to filter. Copy input to output and change case if needed
-      status = CopyCaseAction(input_data, input_data + C, ctx, loc, converter, N, C, casechangeaction_);
+      status = CopyCaseAction(input_data, input_data + C, ctx, locale_, converter, N, C, casechangeaction_);
     }
   } else {
-    if (!stopwords_.empty()) {
-      // Perform case-insensitive comparison. Convert to lowercase for NONE, LOWER and UPPER otherwise.
-      const CaseAction ca = (casechangeaction_ == UPPER) ? UPPER : LOWER;
-      std::unordered_set<std::wstring> swords;
-      for (const auto& s : stopwords_) {
-        if (s.empty()) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Empty stopwords are invalid");
-        }
-        std::wstring wstr = converter.from_bytes(s);
-        if (wstr == wconv_error) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Stopword contains invalid utf8 chars at: " + s);
-        }
-        ChangeCase(loc, ca, wstr);
-        auto p = swords.insert(wstr);
-        if (!p.second) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Duplicate stopwords not allowed");
-        }
-      }
+    if (!wstopwords_.empty()) {
       // Filter input. When no case action is required
       // we simply store original string references.
       // Otherwise, we store converted strings.
@@ -203,32 +196,35 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       std::vector<std::string> filtered_cased_strings;
       filtered_orignal_strings.reserve(C);
       filtered_cased_strings.reserve(C);
-      for (size_t input_idx = 0; input_idx < C; ++input_idx) {
-        const std::string& s = *(input_data + input_idx);
+      auto first = input_data;
+      auto const last = input_data + C;
+      while (first != last) {
+        const std::string& s = *first;
         std::wstring wstr = converter.from_bytes(s);
         if (wstr == wconv_error) {
           return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                         "Input contains invalid utf8 chars at: " + s);
         }
-        ChangeCase(loc, ca, wstr);
-        if (0 == swords.count(wstr)) {
+        ChangeCase(locale_, compare_caseaction_, wstr);
+        if (0 == wstopwords_.count(wstr)) {
           if (casechangeaction_ == NONE) {
             filtered_orignal_strings.push_back(std::cref(s));
           } else {
             filtered_cased_strings.push_back(converter.to_bytes(wstr));
           }
         }
+        ++first;
       }
       if (casechangeaction_ == NONE) {
-        status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, loc, converter,
+        status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, locale_, converter,
                                 N, filtered_orignal_strings.size(), NONE);
       } else {
-        status = CopyCaseAction(filtered_cased_strings.begin(), filtered_cased_strings.end(), ctx, loc, converter,
+        status = CopyCaseAction(filtered_cased_strings.begin(), filtered_cased_strings.end(), ctx, locale_, converter,
                                 N, filtered_cased_strings.size(), NONE);
       }
     } else {
       // Nothing to filter. Copy input to output and change case if needed
-      status = CopyCaseAction(input_data, input_data + C, ctx, loc, converter, N, C, casechangeaction_);
+      status = CopyCaseAction(input_data, input_data + C, ctx, locale_, converter, N, C, casechangeaction_);
     }
   }
   return status;

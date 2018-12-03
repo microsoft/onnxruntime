@@ -5,8 +5,9 @@
 
 #include "core/framework/op_kernel.h"
 
+#include <locale>
 #include <string>
-#include <vector>
+#include <unordered_set>
 
 namespace onnxruntime {
 namespace contrib {
@@ -25,10 +26,13 @@ class StringNormalizer : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
+  bool is_case_sensitive_;
   CaseAction casechangeaction_;
-  bool iscasesensitive_;
-  std::vector<std::string> stopwords_;
-  std::string locale_;  // needed for upper/lowercasing actions and case insensitive compare
+  CaseAction compare_caseaction_;  // used for case-insensitive compare
+  std::locale locale_;             // needed for upper/lowercasing actions and case insensitive compare
+  // Either if these are populated but not both
+  std::unordered_set<std::string> stopwords_;
+  std::unordered_set<std::wstring> wstopwords_;
 };
 
 }  // namespace contrib

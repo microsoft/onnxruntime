@@ -17,7 +17,7 @@ void InitTestAttr(OpTester& test, const std::string& casechangeaction,
                   const std::vector<std::string>& stopwords,
                   const std::string& locale) {
   test.AddAttribute("casechangeaction", casechangeaction);
-  test.AddAttribute("iscasesensitive", int64_t{iscasesensitive});
+  test.AddAttribute("is_case_sensitive", int64_t{iscasesensitive});
   if (!stopwords.empty()) {
     test.AddAttribute("stopwords", stopwords);
   }
@@ -38,7 +38,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
     OpTester test("StringNormalizer", opset_ver, domain);
     InitTestAttr(test, "NONE", true, {}, "en_US");
     std::vector<int64_t> dims{2, 2};
-    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wendsday"), std::string("thursday")};
+    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
     test.AddInput<std::string>("T", dims, input);
     std::vector<std::string> output(input);  // do the same for now
     test.AddOutput<std::string>("Y", dims, output);

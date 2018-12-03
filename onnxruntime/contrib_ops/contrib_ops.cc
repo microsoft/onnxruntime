@@ -12,8 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
 using ::ONNX_NAMESPACE::OpSchema;
+using ::ONNX_NAMESPACE::OPTIONAL;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -467,7 +467,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           "string enum that cases output to be lowercased/uppercases/unchanged. Valid values are \"LOWER\", \"UPPER\", \"NONE\"",
           AttributeProto::STRING)
       .Attr(
-          "iscasesensitive",
+          "is_case_sensitive",
           "Boolean. Whether the identification of stop words in X is case-sensitive.",
           AttributeProto::INT)
       .Attr(
@@ -477,7 +477,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           OPTIONAL)
       .Attr(
           "locale",
-          "Platform dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
+          "Environment dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
           AttributeProto::STRING,
           OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
