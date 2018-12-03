@@ -484,8 +484,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
       })
-      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they matches any of stop words so that output tensor may not contain any stop word. This operator only accepts [C]- and [1, C]-tensor. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C]. 
-[optional] Step2: Lower all characters (if action is LOWER) in X or capitalize them (when action is UPPER))DOC");
+      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 }
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
