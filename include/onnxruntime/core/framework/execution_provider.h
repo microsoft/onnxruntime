@@ -65,7 +65,7 @@ class IExecutionProvider {
      with multiple sessions/models.
      2. Adding an execution provider into ONNXRuntime does not need to touch ONNXRuntime
      frameowrk/session code.
-     3. onnxruntime runtime (framework/session) does not depend on any specific
+     3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
