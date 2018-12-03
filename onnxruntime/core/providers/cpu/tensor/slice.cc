@@ -4,14 +4,32 @@
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
 using namespace ::onnxruntime::common;
+using namespace std;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
-    Slice,
-    1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Slice<float>);
+#define ADD_TYPED_SLICE_OP(data_type)                                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                       \
+      Slice,                                                                            \
+      1,                                                                                \
+      data_type,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
+      Slice<data_type>);
+
+ADD_TYPED_SLICE_OP(uint8_t);
+ADD_TYPED_SLICE_OP(uint16_t);
+ADD_TYPED_SLICE_OP(uint32_t);
+ADD_TYPED_SLICE_OP(uint64_t);
+ADD_TYPED_SLICE_OP(int8_t);
+ADD_TYPED_SLICE_OP(int16_t);
+ADD_TYPED_SLICE_OP(int32_t);
+ADD_TYPED_SLICE_OP(int64_t);
+ADD_TYPED_SLICE_OP(float);
+ADD_TYPED_SLICE_OP(double);
+ADD_TYPED_SLICE_OP(MLFloat16);
+ADD_TYPED_SLICE_OP(bool);
+ADD_TYPED_SLICE_OP(string);
+
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>
@@ -58,8 +76,8 @@ Status SliceBase::PrepareForCompute(const size_t dimension_count, const std::vec
   return Status::OK();
 }
 
-template <>
-Status Slice<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Slice<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
   ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
   auto& input_tensor = *input_tensor_ptr;
@@ -74,10 +92,10 @@ Status Slice<float>::Compute(OpKernelContext* ctx) const {
 
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
-  auto* output = output_tensor.template MutableData<float>();
+  auto* output = output_tensor.template MutableData<T>();
   const auto* output_end = output + output_shape.Size();
 
-  SliceIterator<float> input_iterator(input_tensor, starts, output_dims);
+  SliceIterator<T> input_iterator(input_tensor, starts, output_dims);
   while (output != output_end)
     *output++ = *input_iterator++;
 
