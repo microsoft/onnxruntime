@@ -10,7 +10,7 @@
     <!--- packaging properties -->
     <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
     <Authors>Microsoft</Authors>
-    <Description>This package contains ONNX runtime for .Net platforms</Description>
+    <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
