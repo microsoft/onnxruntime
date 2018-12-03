@@ -37,17 +37,29 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     if (!Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
         !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
         conv_W_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
-        !(conv_W_tensor_proto->dims_size() > 2 && conv_W_tensor_proto->dims(0) == mul_B_tensor_proto->dims(0))) {
+        conv_W_tensor_proto->dims_size() < 4 ||
+        !(mul_B_tensor_proto->dims_size() == 0 ||
+          (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1 &&
+          conv_W_tensor_proto->dims(0) == mul_B_tensor_proto->dims(0)))) {
       continue;
     }
 
+    // The dimensions of mul_B should be equal to 1 except first dimension.
+    if (mul_B_tensor_proto->dims_size() != 0) {
+      bool flag = false;
+      for (int i = 1; i < mul_B_tensor_proto->dims_size(); i++) {
+        if (mul_B_tensor_proto->dims(i) != 1) {
+          flag = true;
+          break;
+        }
+      }
+
+      if (flag) {
+        continue;
+      }
+    }
     auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
     auto mul_B = std::make_unique<Initializer>(mul_B_tensor_proto);
-
-    if (conv_W->data_type() != mul_B->data_type() ||
-        !(conv_W->dims().size() > 2 && conv_W->dims()[0] == mul_B->dims()[0])) {
-      continue;
-    }
 
     const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
     std::unique_ptr<Initializer> conv_B = nullptr;
@@ -57,8 +69,8 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
-          conv_B_tensor_proto->dims_size() != 1 || mul_B_tensor_proto->dims_size() != 3 ||
-          conv_B_tensor_proto->dims(0) != mul_B_tensor_proto->dims(0)) {
+          conv_B_tensor_proto->dims_size() != 1 || (mul_B_tensor_proto->dims_size() != 0 &&
+          conv_B_tensor_proto->dims(0) != mul_B_tensor_proto->dims(0))) {
         continue;
       }
       conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
@@ -66,8 +78,13 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Calculate new value of initializers of conv node
     conv_W->scale_by_axis(*mul_B, 1);
+
     if (conv_inputs.size() == 3) {
-      conv_B->mul(*mul_B);
+      if (mul_B_tensor_proto->dims_size() != 0) {
+        conv_B->mul(*mul_B);
+      } else {
+        conv_B->scale_by_axis(*mul_B, 0);
+      }
     }
 
     // Create new initializers of conv
