@@ -69,7 +69,7 @@ implying the kernels are stateless.
 * Implementations of the operators by execution providers are called
 kernels. Each execution provider supports a subset of the (ONNX)
 operators/kernels.
-* The ONNXRuntime runtime guarantees that all operators are supported by the default
+* The ONNX Runtime guarantees that all operators are supported by the default
 execution provider.
 * Tensor representation: ONNXRuntime will utilize a standard representation for
 the tensor runtime values. The execution providers can internally use a
