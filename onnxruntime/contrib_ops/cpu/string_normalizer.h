@@ -29,7 +29,7 @@ class StringNormalizer : public OpKernel {
   bool is_case_sensitive_;
   CaseAction casechangeaction_;
   CaseAction compare_caseaction_;  // used for case-insensitive compare
-  std::locale locale_;             // needed for upper/lowercasing actions and case insensitive compare
+  std::string locale_;
   // Either if these are populated but not both
   std::unordered_set<std::string> stopwords_;
   std::unordered_set<std::wstring> wstopwords_;
