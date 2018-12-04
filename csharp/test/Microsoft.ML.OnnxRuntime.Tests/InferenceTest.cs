@@ -381,7 +381,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void Yunsong()
         {
-            var session = new InferenceSession(@"D:\models\yunsong\model_181031_12.onnx");
+            var session = new InferenceSession(@"model_181031_12.onnx");
 
             float[] zerof = new float[] { 0 };
             long[] zerol = new long[] { 1 };
@@ -589,7 +589,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                  NamedOnnxValue.CreateFromTensor<long>("input_5_37", new DenseTensor<long>(zerol, new int[] { 1 })),
                  };
 
-            session.Run(data);
+            var result = session.Run(data); session.Run(data);
+            Assert.NotNull(result);
+            Assert.Equal(1, result.Count);
+            var value = result.First<NamedOnnxValue>();
+            Assert.Equal("label", value.Name);
+            Assert.NotNull(value.AsTensor<long>());
+            Assert.Equal(1, value.AsTensor<long>().Length);
         }
 
 
