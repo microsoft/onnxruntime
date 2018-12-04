@@ -8,7 +8,7 @@
 #include "core/framework/data_types.h"
 #include "core/graph/function.h"
 #include "core/graph/constants.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 namespace onnxruntime {
 
 //TODO: this is just initial design to represent TVM Graph, to make the basic test work.
