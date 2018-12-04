@@ -6,7 +6,7 @@
 |-------------|:------------:|:------------:|------------------------------------|
 |Windows 10   | YES          | YES         |Must use VS 2017 or the latest VS2015|
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
-|Ubuntu 16.x  | YES          | YES         |                            |
+|Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |Ubuntu 17.x  | YES          | YES         |                            |
 |Ubuntu 18.x  | YES          | YES         |                            |
 |Fedora 24    | YES          | YES         |                            |
@@ -141,3 +141,8 @@ Then run it
 ```
 ./tools/ci_build/github/linux/run_dockerbuild.sh
 ```
+
+## ARM Builds
+We've experimental support for ARM builds. Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Note that
+to build in ACR-Build (Azure Container Registry), you may want to split it to two files and run them one by one.
+If you run this Dockerfile directly in ACR-Build, it is likely to hit their timeout limitation (8 hours).
