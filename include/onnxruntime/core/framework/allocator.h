@@ -13,7 +13,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/status.h"
 #include "core/framework/fence.h"
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_c_api.h"  // TODO: Framework headers should not depend on session headers
 
 struct ONNXRuntimeAllocatorInfo {
   // use string for name, so we could have customized allocator in execution provider.
