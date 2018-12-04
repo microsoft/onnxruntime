@@ -589,7 +589,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                  NamedOnnxValue.CreateFromTensor<long>("input_5_37", new DenseTensor<long>(zerol, new int[] { 1 })),
                  };
 
-            var result = session.Run(data); session.Run(data);
+            var result = session.Run(data);
             Assert.NotNull(result);
             Assert.Equal(1, result.Count);
             var value = result.First<NamedOnnxValue>();
