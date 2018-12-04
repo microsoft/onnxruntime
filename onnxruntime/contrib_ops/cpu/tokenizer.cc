@@ -229,21 +229,20 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<std::string>();
   auto curr_input = input_data;
-  for (size_t n = 0; n < N; ++n) {
-    for (size_t c = 0; c < C; ++c) {
-      const auto& s = *curr_input;
-      size_t tokens = 0;  // length in utf8 chars
-      if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                         tokens)) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input string contains invalid utf8 chars: " + s);
-      }
-      if (mark_) {
-        tokens += 2;  // Start/end markers as separate tokens
-      }
-      max_tokens = std::max(max_tokens, tokens);
-      ++curr_input;
+  auto const last = input_data + N * C;
+  while (curr_input != last) {
+    const auto& s = *curr_input;
+    size_t tokens = 0;  // length in utf8 chars
+    if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
+                       tokens)) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Input string contains invalid utf8 chars: " + s);
     }
+    if (mark_) {
+      tokens += 2;  // Start/end markers as separate tokens
+    }
+    max_tokens = std::max(max_tokens, tokens);
+    ++curr_input;
   }
 
   std::vector<int64_t> output_dims(input_dims);
@@ -261,36 +260,34 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   auto const output_data = output_tensor->template MutableData<std::string>();
   size_t output_index = 0;
   curr_input = input_data;
-  for (size_t n = 0; n < N; ++n) {
-    for (size_t c = 0; c < C; ++c) {
-      const auto& s = *curr_input;
-      if (mark_) {
-        new (output_data + output_index) std::string(&start_text, 1);
-        ++output_index;
-      }
-      size_t tokens = 0;
-      const size_t str_len = s.size();
-      for (size_t token_idx = 0; token_idx < str_len;) {
-        size_t tlen = utf8_bytes(static_cast<unsigned char>(s[token_idx]));
-        assert(token_idx + tlen <= str_len);
-        new (output_data + output_index) std::string(s.substr(token_idx, tlen));
-        ++output_index;
-        token_idx += tlen;
-        ++tokens;
-      }
-      // Padding strings
-      assert(tokens + (mark_ * 2) <= max_tokens);
-      const size_t pads = max_tokens - (mark_ * 2) - tokens;
-      for (size_t p = 0; p < pads; ++p) {
-        new (output_data + output_index) std::string(pad_value_);
-        ++output_index;
-      }
-      if (mark_) {
-        new (output_data + output_index) std::string(&end_text, 1);
-        ++output_index;
-      }
-      ++curr_input;
+  while (curr_input != last) {
+    const auto& s = *curr_input;
+    if (mark_) {
+      new (output_data + output_index) std::string(&start_text, 1);
+      ++output_index;
     }
+    size_t tokens = 0;
+    const size_t str_len = s.size();
+    for (size_t token_idx = 0; token_idx < str_len;) {
+      size_t tlen = utf8_bytes(static_cast<unsigned char>(s[token_idx]));
+      assert(token_idx + tlen <= str_len);
+      new (output_data + output_index) std::string(s.substr(token_idx, tlen));
+      ++output_index;
+      token_idx += tlen;
+      ++tokens;
+    }
+    // Padding strings
+    assert(tokens + (mark_ * 2) <= max_tokens);
+    const size_t pads = max_tokens - (mark_ * 2) - tokens;
+    for (size_t p = 0; p < pads; ++p) {
+      new (output_data + output_index) std::string(pad_value_);
+      ++output_index;
+    }
+    if (mark_) {
+      new (output_data + output_index) std::string(&end_text, 1);
+      ++output_index;
+    }
+    ++curr_input;
   }
   return Status::OK();
 }
@@ -309,74 +306,73 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<std::string>();
   auto curr_input = input_data;
-  for (size_t n = 0; n < N; ++n) {
-    for (size_t c = 0; c < C; ++c) {
-      const auto& s = *curr_input;
-      std::wstring wstr = converter.from_bytes(s);
-      if (wstr == wconv_error) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Invalid utf8 chars in the input: " + s);
-      }
-
-      struct Match {
-        int priority_;
-        size_t offset_;
-        size_t size_;
-        // create a conflict for overlapping matches
-        // thus if they overlap neither is less than the other
-        // and they are considered equal
-        bool operator<(const Match& o) const {
-          return (offset_ + size_) <= o.offset_;
-        }
-      };
-
-      std::set<Match> matches;
-      const wchar_t* ws = wstr.c_str();
-      size_t len_remaining = wstr.length();
-      size_t offset = 0;
-      while (len_remaining > 0) {
-        const auto* val = search_data_->tst_.get(ws, len_remaining);
-        if (val != nullptr) {
-          auto p = matches.insert({val->priority_, offset, val->w_len});
-          while (!p.second && val->priority_ < p.first->priority_) {
-            // if overlapping matches of the same pattern(priority), then
-            // the earlier match naturally wins
-            matches.erase(p.first);
-            p = matches.insert({val->priority_, offset, val->w_len});
-          }
-        }
-        ++ws;
-        ++offset;
-        --len_remaining;
-      }
-
-      // Tokenize
-      tokenized_strings.emplace_back();
-      auto& row_tokens = tokenized_strings.back();
-      row_tokens.reserve(matches.size() + 1);
-      ws = wstr.c_str();
-      offset = 0;
-      for (const auto& m : matches) {
-        assert(m.offset_ >= offset);
-        size_t sz = (m.offset_ - offset);
-        if (sz > 0 && sz >= size_t(mincharnum_)) {
-          row_tokens.emplace_back(ws, sz);
-        }
-        offset = m.offset_ + m.size_;
-        ws = wstr.c_str() + offset;
-      }
-      assert(offset <= wstr.length());
-      if (offset < wstr.length()) {
-        row_tokens.emplace_back(ws, wstr.length() - offset);
-      }
-
-      size_t tokens = row_tokens.size();
-      if (mark_) {
-        tokens += 2;  // Start/end markers as separate tokens
-      }
-      max_tokens = std::max(max_tokens, tokens);
-      ++curr_input;
+  auto const last = input_data + N * C;
+  while (curr_input != last) {
+    const auto& s = *curr_input;
+    std::wstring wstr = converter.from_bytes(s);
+    if (wstr == wconv_error) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Invalid utf8 chars in the input: " + s);
     }
+
+    struct Match {
+      int priority_;
+      size_t offset_;
+      size_t size_;
+      // create a conflict for overlapping matches
+      // thus if they overlap neither is less than the other
+      // and they are considered equal
+      bool operator<(const Match& o) const {
+        return (offset_ + size_) <= o.offset_;
+      }
+    };
+
+    std::set<Match> matches;
+    const wchar_t* ws = wstr.c_str();
+    size_t len_remaining = wstr.length();
+    size_t offset = 0;
+    while (len_remaining > 0) {
+      const auto* val = search_data_->tst_.get(ws, len_remaining);
+      if (val != nullptr) {
+        auto p = matches.insert({val->priority_, offset, val->w_len});
+        while (!p.second && val->priority_ < p.first->priority_) {
+          // if overlapping matches of the same pattern(priority), then
+          // the earlier match naturally wins
+          matches.erase(p.first);
+          p = matches.insert({val->priority_, offset, val->w_len});
+        }
+      }
+      ++ws;
+      ++offset;
+      --len_remaining;
+    }
+
+    // Tokenize
+    tokenized_strings.emplace_back();
+    auto& row_tokens = tokenized_strings.back();
+    row_tokens.reserve(matches.size() + 1);
+    ws = wstr.c_str();
+    offset = 0;
+    for (const auto& m : matches) {
+      assert(m.offset_ >= offset);
+      size_t sz = (m.offset_ - offset);
+      if (sz > 0 && sz >= size_t(mincharnum_)) {
+        row_tokens.emplace_back(ws, sz);
+      }
+      offset = m.offset_ + m.size_;
+      ws = wstr.c_str() + offset;
+    }
+    assert(offset <= wstr.length());
+    if (offset < wstr.length()) {
+      row_tokens.emplace_back(ws, wstr.length() - offset);
+    }
+
+    size_t tokens = row_tokens.size();
+    if (mark_) {
+      tokens += 2;  // Start/end markers as separate tokens
+    }
+    max_tokens = std::max(max_tokens, tokens);
+    ++curr_input;
   }
 
   std::vector<int64_t> output_dims(input_dims);
