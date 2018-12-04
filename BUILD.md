@@ -179,7 +179,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 ### Native compiling on Linux (SLOWER)
 
-Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build run on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total. If you want to use [Azure Container Registry Tasks](https://docs.microsoft.com/en-us/azure/container-registry/container-registry-tasks-overview) building the Docker image in cloud, you may want to split this Dockerfile to two steps:
+Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total. If you want to use [Azure Container Registry Tasks](https://docs.microsoft.com/en-us/azure/container-registry/container-registry-tasks-overview) to build the Docker image in cloud, you may want to split this Dockerfile to two steps:
 
 1. Build environment image creation: steps before onnxruntime repo clone
 2. ONNX Runtime and Python binding creation: the rest of steps in the original Dockerfile with step 1 output as base image.
