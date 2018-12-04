@@ -31,28 +31,28 @@ class SVMCommon {
 
   float kernel_dot(const T* A, int64_t a, const std::vector<float>& B, int64_t b, int64_t len, KERNEL k) const {
     float sum = 0.f;
+    float* pA = (float*)&A[a];
+    float* pB = (float*)&B[b];
     if (k == KERNEL::POLY) {
-      for (int64_t i = 0; i < len; i++) {
-        sum += B[b + i] * static_cast<float>(A[a + i]);
-      }
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB)
+        sum += *pB * static_cast<float>(*pA);
       sum = gamma_ * sum + coef0_;
       sum = std::pow(sum, degree_);
     } else if (k == KERNEL::SIGMOID) {
-      for (int64_t i = 0; i < len; i++) {
-        sum += B[b + i] * static_cast<float>(A[a + i]);
-      }
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB)
+        sum += *pB * static_cast<float>(*pA);        
       sum = gamma_ * sum + coef0_;
       sum = std::tanh(sum);
     } else if (k == KERNEL::RBF) {
-      for (int64_t i = 0; i < len; i++) {
-        float val = static_cast<float>(A[a + i]) - B[b + i];
-        sum += (val * val);
+      float val;
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB) {
+        val = static_cast<float>(*pA) - *pB;
+        sum += val * val;
       }
       sum = std::exp(-gamma_ * sum);
     } else if (k == KERNEL::LINEAR) {
-      for (int64_t i = 0; i < len; i++) {
-        sum += B[b + i] * static_cast<float>(A[a + i]);
-      }
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB)
+        sum += *pB * static_cast<float>(*pA);
     }
     return sum;
   }
