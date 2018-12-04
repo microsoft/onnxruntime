@@ -303,8 +303,7 @@ class TensorType : public TensorTypeBase {
 
  private:
   TensorType() {
-    using namespace data_types_internal;
-    TensorContainedTypeSetter<elemT>::SetTensorElementType(this->mutable_type_proto());
+    data_types_internal::TensorContainedTypeSetter<elemT>::SetTensorElementType(this->mutable_type_proto());
   }
 };
 
@@ -390,8 +389,7 @@ class MapType : public NonTensorType<CPPType> {
 
  private:
   MapType() {
-    using namespace data_types_internal;
-    SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->mutable_type_proto());
+    data_types_internal::SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->mutable_type_proto());
   }
 };
 

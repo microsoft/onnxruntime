@@ -11,11 +11,11 @@
 namespace onnxruntime {
 namespace test {
 
-using namespace ::onnxruntime::logging;
-
 class CapturingSink : public logging::ISink {
  public:
-  void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override {
+  void SendImpl(const ::onnxruntime::logging::Timestamp& timestamp,
+                const std::string& logger_id,
+                const ::onnxruntime::logging::Capture& message) override {
     // operator for formatting of timestamp in ISO8601 format including microseconds
     using date::operator<<;
     std::ostringstream msg;
