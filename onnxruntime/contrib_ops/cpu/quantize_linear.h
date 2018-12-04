@@ -20,7 +20,7 @@ class DequantizeLinear final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  int64_t axis_;
+  int64_t axis_ = 0;
   bool has_axis_;
 };
 
@@ -34,7 +34,7 @@ class QuantizeLinear final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  int64_t axis_;
+  int64_t axis_ = 0;
   bool has_axis_;
 };
 }  // namespace contrib
