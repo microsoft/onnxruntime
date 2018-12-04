@@ -18,7 +18,7 @@
 #else
 #pragma GCC diagnostic pop
 #endif
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"

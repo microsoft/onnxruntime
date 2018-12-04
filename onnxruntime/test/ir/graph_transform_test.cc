@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_transformer.h"
 #include "core/graph/identity_elimination.h"

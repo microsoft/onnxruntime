@@ -15,7 +15,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
 #include "core/graph/constants.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "gsl/span"
 #include "onnx/defs/schema.h"
 

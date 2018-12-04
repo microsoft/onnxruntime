@@ -15,7 +15,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/computation_capacity.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
