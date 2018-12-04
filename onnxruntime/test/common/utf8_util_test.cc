@@ -34,6 +34,10 @@ TEST(Utf8UtilTest, Validate) {
     size_t utf8_len = 0;
     if (s.valid != utf8_validate(reinterpret_cast<const unsigned char*>(s.sequence), strlen(s.sequence), utf8_len)) {
       ASSERT_TRUE(false);
+    } else {
+      if (s.valid) {
+        ASSERT_EQ(1U, utf8_len);
+      }
     }
   }
 }

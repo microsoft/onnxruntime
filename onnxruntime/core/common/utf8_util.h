@@ -8,37 +8,121 @@
 namespace onnxruntime {
 namespace utf8_util {
 
-// For functions decode/utf_validate
-// Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>
-// See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
-
-const uint32_t UTF8_ACCEPT = 0;
-const uint32_t UTF8_REJECT = 1;
-
-uint32_t decode(uint32_t* state, uint32_t* codep, uint32_t byte);
+// Returns the number of bytes in the utf8 character
+// by analyzing its leading byte
+inline bool utf8_bytes(unsigned char ch, size_t& len) {
+  if ((ch & 0x80) == 0) {
+    len = 1;
+    return true;
+  }
+  if ((ch & 0xE0) == 0xC0) {
+    len = 2;
+    return true;
+  }
+  unsigned int result = (ch & 0xF0);
+  if (result == 0xE0) {
+    len = 3;
+    return true;
+  }
+  if (result == 0xF0) {
+    len = 4;
+    return true;
+  }
+  return false;
+}
 
 inline bool utf8_validate(const unsigned char* s, size_t len, size_t& utf8_chars) {
   size_t utf8_len = 0;
-  uint32_t state = 0;
-  uint32_t codepoint = 0;
-  for (size_t idx = 0; idx < len; ++idx) {
-    if (UTF8_ACCEPT == decode(&state, &codepoint, s[idx])) {
+  size_t idx = 0;
+  while (idx < len) {
+    size_t bytes = 0;
+    auto ch = s[idx];
+    if (utf8_bytes(ch, bytes)) {
+      switch (bytes) {
+        case 1:
+          break;
+        case 2: {
+          if (++idx >= len || s[idx] < 0x80u || s[idx] > 0xBFu) {
+            return false;
+          }
+        } break;  // 2
+        case 3: {
+          auto ch1 = s[idx];
+          switch (ch1) {
+            case 0xE0u:
+              if (++idx >= len || s[idx] < 0xA0u || s[idx] > 0xBFu) {
+                return false;
+              }
+              break;
+            case 0xEDu:
+              if (++idx >= len || s[idx] < 0x80u || s[idx] > 0x9Fu) {
+                return false;
+              }
+              break;
+            default: {
+              if ((ch1 >= 0xE1u && ch1 <= 0xECu) ||
+                  (ch1 >= 0xEEu && ch1 <= 0xEFu)) {
+                if (++idx >= len || s[idx] < 0x80u || s[idx] > 0xBFu) {
+                  return false;
+                }
+              } else {
+                return false;
+              }
+            } break;
+          }
+          // validate byte 3
+          if (++idx >= len || s[idx] < 0x80u || s[idx] > 0xBFu) {
+            return false;
+          }
+        } break;  // 3
+        case 4: {
+          auto ch1 = s[idx];
+          switch (ch1) {
+            case 0xF0u: {
+              if (++idx >= len || s[idx] < 0x90u || s[idx] > 0xBFu) {
+                return false;
+              }
+            } break;
+            case 0xF4u: {
+              if (++idx >= len || s[idx] < 0x80u || s[idx] > 0x8Fu) {
+                return false;
+              }
+            } break;
+            default: {
+              if (ch1 >= 0xF1u && ch1 <= 0xF3u) {
+                if (++idx >= len || s[idx] < 0x80u || s[idx] > 0xBFu) {
+                  return false;
+                }
+              } else {
+                return false;
+              }
+            } break;
+          }
+          // validate bytes 3 and 4
+          size_t stop = idx + 2;
+          while (idx < stop) {
+            if (++idx >= len || s[idx] < 0x80u || s[idx] > 0xBFu) {
+              return false;
+            }
+          }
+        } break;  // 4
+        default:
+          // no chars longer than 4
+          return false;
+      }  // switch bytes
+      ++idx;
       ++utf8_len;
+    } else {
+      return false;
     }
   }
+  // End index must match
+  // the end of the last byte sequence.
+  if (idx != len) {
+    return false;
+  }
   utf8_chars = utf8_len;
-  return state == UTF8_ACCEPT;
-}
-
-// Returns the number of bytes in the utf8 character
-// by analyzing its leading byte
-inline size_t utf8_bytes(unsigned char ch) {
-  if ((ch & 0x80) == 0) return 1;
-  if ((ch & 0xE0) == 0xC0) return 2;
-  unsigned int result = (ch & 0xF0);
-  if (result == 0xE0) return 3;
-  if (result == 0xF0) return 4;
-  ONNXRUNTIME_ENFORCE(false, "utf8_bytes failed");
+  return true;
 }
 
 }  // namespace utf8_util

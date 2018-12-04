@@ -269,7 +269,10 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     size_t tokens = 0;
     const size_t str_len = s.size();
     for (size_t token_idx = 0; token_idx < str_len;) {
-      size_t tlen = utf8_bytes(static_cast<unsigned char>(s[token_idx]));
+      size_t tlen = 0;
+      bool result = false;
+      result = utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen);
+      assert(result);
       assert(token_idx + tlen <= str_len);
       new (output_data + output_index) std::string(s.substr(token_idx, tlen));
       ++output_index;
