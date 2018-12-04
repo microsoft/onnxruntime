@@ -49,7 +49,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 | Linux_CI_Dev       | Ubuntu 16.04        | python=3.5                      | Unit tests; ONNXModelZoo | [script](tools/ci_build/github/linux/run_build.sh) |
 | Linux_CI_GPU_Dev   | Ubuntu 16.04        | python=3.5; nvidia-docker       | Unit tests; ONNXModelZoo | [script](tools/ci_build/github/linux/run_build.sh) |
 | Windows_CI_Dev     | Windows Server 2016 | python=3.5                      | Unit tests; ONNXModelZoo | [script](build.bat)                                |
-| Windows_CI_GPU_Dev | Windows Server 2016 | cuda=9.0; cudnn=7.0; python=3.5 | Unit tests; ONNXModelZoo | [script](build.bat)                                |
+| Windows_CI_GPU_Dev | Windows Server 2016 | cuda=9.1; cudnn=7.1; python=3.5 | Unit tests; ONNXModelZoo | [script](build.bat)                                |
 
 ## Additional Build Flavors
 The complete list of build flavors can be seen by running `./build.sh --help` or `./build.bat --help`. Here are some common flavors.
@@ -57,26 +57,12 @@ The complete list of build flavors can be seen by running `./build.sh --help` or
 ### Windows CUDA Build
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
 
-ONNX Runtime is built and tested with CUDA 9.0 and CUDNN 7.0 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
-CUDA versions up to 9.2 and CUDNN version 7.1 should also work with versions of Visual Studio 2017 up to and including v15.7, however you may need to explicitly install and use the 14.11 toolset due to CUDA and CUDNN only being compatible with earlier versions of Visual Studio 2017.
+ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
+CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017. 
 
-To install the Visual Studio 2017 14.11 toolset, see <https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/>
-
-If using this toolset with a later version of Visual Studio 2017 you have two options:
-
-1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat prior to running cmake
-   - e.g.  if you have VS2017 Enterprise, an x64 build would use the following command
-`"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11`
-
-2. Alternatively if you have CMake 3.12 or later you can specify the toolset version in the "-T" parameter by adding "version=14.11"
-   - e.g. use the following with the below cmake command
-`-T version=14.11,host=x64`
-
-CMake should automatically find the CUDA installation. If it does not, or finds a different version to the one you wish to use, specify your root CUDA installation directory via the -DCUDA_TOOLKIT_ROOT_DIR CMake parameter.
-
-_Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.  e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\. If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
-
-The path to the 'cuda' folder in the CUDNN installation must be provided. The 'cuda' folder should contain 'bin', 'include' and 'lib' directories.
+ - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the --cuda_home parameter.
+ - The path to the CUDNN installation (include the 'cuda' folder in the path) must be provided via the CUDNN_PATH environment variable, or --cudnn_home parameter. The CUDNN path should contain 'bin', 'include' and 'lib' directories.
+ - The path to the CUDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 You can build with:
 
@@ -84,6 +70,27 @@ You can build with:
 ./build.sh --use_cuda --cudnn_home /usr --cuda_home /usr/local/cuda (Linux)
 ./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path> (Windows)
 ```
+
+Depending on compatibility between the CUDA, CUDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset. 
+CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
+CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9)
+
+To install the 14.11 MSVC toolset, see <https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/>
+
+To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
+
+1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script
+   - e.g.  if you have VS2017 Enterprise, an x64 build would use the following command
+`"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11`
+   - For convenience, build.amd64.1411.bat will do this and can be used in the same way as build.bat.
+     - e.g.` .\build.amd64.1411.bat --use_cuda`
+
+2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the "--msvc_toolset" build script parameter.
+   - e.g. `.\build.bat --msvc_toolset 14.11`
+
+_Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.  
+e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\. 
+If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
 
 ### MKL-DNN
 To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn --use_mklml`

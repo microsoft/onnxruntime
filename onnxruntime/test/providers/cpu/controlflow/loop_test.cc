@@ -48,7 +48,7 @@ class LoopOpTester : public OpTester {
 
       {
         auto& output_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_scalar);
-        auto* constant = graph.AddNode("outer_scope_constant", "Constant", "Constant in outer scope", {},
+        auto& constant = graph.AddNode("outer_scope_constant", "Constant", "Constant in outer scope", {},
                                        {&output_arg});
 
         TensorProto value_tensor;
@@ -56,16 +56,16 @@ class LoopOpTester : public OpTester {
         value_tensor.add_float_data(kOuterNodeAddValue);
         value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
 
-        constant->AddAttribute("value", value_tensor);
+        constant.AddAttribute("value", value_tensor);
       }
     }
 
     // add Loop node
     {
-      auto loop_node = graph.AddNode("loop", "Loop", "Loop node", graph_input_defs, graph_output_defs);
+      auto& loop_node = graph.AddNode("loop", "Loop", "Loop node", graph_input_defs, graph_output_defs);
 
       auto body = create_subgraph_(options_);
-      loop_node->AddAttribute("body", {body});
+      loop_node.AddAttribute("body", {body});
     }
   }
 
@@ -177,8 +177,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
   // Convert iter_num to float
   {
-    auto* cast = graph.AddNode("iter_num_cast", "Cast", "Cast iter_num to float", {&iter_num_in}, {&iter_num_float});
-    cast->AddAttribute("to", int64_t{TensorProto_DataType_FLOAT});
+    auto& cast = graph.AddNode("iter_num_cast", "Cast", "Cast iter_num to float", {&iter_num_in}, {&iter_num_float});
+    cast.AddAttribute("to", int64_t{TensorProto_DataType_FLOAT});
   }
 
   // Concat iter_num and sum to create loop_out_0
@@ -199,8 +199,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     inputs = {&iter_num_float, &sum_0};
     outputs = {loop_out_0};
 
-    auto* concat = graph.AddNode("concat_0", "Concat", "Combine iter num and current sum", inputs, outputs);
-    concat->AddAttribute("axis", int64_t{0});
+    auto& concat = graph.AddNode("concat_0", "Concat", "Combine iter num and current sum", inputs, outputs);
+    concat.AddAttribute("axis", int64_t{0});
   }
 
   // output sum_0 as loop_var_0_out
@@ -237,15 +237,15 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     inputs = {&loop_var_1_in, &sum_0};
     outputs = {loop_var_1_out};
 
-    auto* concat = graph.AddNode("concat_1", "Concat", "Append value of sum to loop_var_1_out", inputs, outputs);
-    concat->AddAttribute("axis", int64_t{0});
+    auto& concat = graph.AddNode("concat_1", "Concat", "Append value of sum to loop_var_1_out", inputs, outputs);
+    concat.AddAttribute("axis", int64_t{0});
   }
 
   // Update cond by checking if sum is < kSumMax
   {
     {
       auto& max_value_out = graph.GetOrCreateNodeArg("max_value_out", &float_scalar);
-      auto* constant = graph.AddNode("constant_max_value", "Constant", "Constant with value kSumMax",
+      auto& constant = graph.AddNode("constant_max_value", "Constant", "Constant with value kSumMax",
                                      {}, {&max_value_out});
 
       TensorProto value_tensor;
@@ -253,7 +253,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
       value_tensor.add_float_data(kSumMax);
       value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
 
-      constant->AddAttribute("value", value_tensor);
+      constant.AddAttribute("value", value_tensor);
 
       cond_out = &graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
 

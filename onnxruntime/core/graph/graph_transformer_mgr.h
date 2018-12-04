@@ -15,14 +15,14 @@ class GraphTransformerManager {
   }
 
   // Register a graph transformer.
-  ::onnxruntime::common::Status Register(std::unique_ptr<GraphTransformer> transformer) {
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer) {
     transformers_.push_back(std::move(transformer));
-    return ::onnxruntime::common::Status::OK();
+    return common::Status::OK();
   }
 
   // Apply the list of graph transformers registered on the specified graph
   // up to the given number of steps.
-  ::onnxruntime::common::Status ApplyAll(Graph& graph) const;
+  common::Status ApplyAll(Graph& graph) const;
 
  private:
   GraphTransformerManager() = default;

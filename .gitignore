@@ -16,7 +16,7 @@ gen
 .vs
 TestResults/
 .idea/
-lotus.egg-info
+onnxruntime.egg-info
 nuget_root/
 .packages/
 .vscode/
@@ -29,3 +29,5 @@ onnxruntime_profile*.json
 /docs/python/examples/*.onnx
 /docs/python/examples/graph.*
 /docs/python/*_LICENSE
+/csharp/**/obj/
+/csharp/**/bin/

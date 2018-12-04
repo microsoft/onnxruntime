@@ -25,6 +25,8 @@ except ImportError:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.0', 'libmklml_intel.so', 'libiomp5.so']
+elif platform.system() == "Darwin":
+  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib'] # TODO add libmklml and libiomp5 later.
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
 
@@ -51,8 +53,8 @@ with open(README) as f:
 # Setup
 setup(
     name=package_name,
-    version='0.1.4',
-    description='ONNX Runtime Runtime Python bindings',
+    version='0.1.5',
+    description='ONNX Runtime Python bindings',
     long_description=long_description,
     author='Microsoft Corporation',
     author_email='onnx@microsoft.com',

@@ -28,16 +28,10 @@ namespace Microsoft.ML.OnnxRuntime
         RequirementNotRegistered = 12
     }
 
+    /// <summary>
+    /// The Exception that is thrown for errors related ton OnnxRuntime
+    /// </summary>
     public class OnnxRuntimeException: Exception
-    {
-        public OnnxRuntimeException(string message)
-            :base(message)
-        {
-        }
-    }
-
-
-    public class CoreRuntimeException : OnnxRuntimeException
     {
         private static Dictionary<ErrorCode, string> errorCodeToString = new Dictionary<ErrorCode, string>()
         {
@@ -56,7 +50,7 @@ namespace Microsoft.ML.OnnxRuntime
             { ErrorCode.RequirementNotRegistered, "RequirementNotRegistered" }
         };
 
-        internal CoreRuntimeException(ErrorCode errorCode, string message)
+        internal OnnxRuntimeException(ErrorCode errorCode, string message)
             :base("[ErrorCode:" + errorCodeToString[errorCode] + "] " + message)
         {
         }

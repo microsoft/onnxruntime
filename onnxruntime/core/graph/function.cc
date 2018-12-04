@@ -26,7 +26,7 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
     const auto node_op_schema = schema_registry->GetSchema(node.op_type(), (int)onnx_func_proto_->since_version(), node.domain());
     for (int i = 0; i < node.input_size(); ++i) {
       auto& in_name = node.input().Get(i);
-	  auto iter = input_name_idx_map.find(in_name);
+      auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
         int idx = iter->second;
         const auto& p = node_op_schema->inputs().at(i);
@@ -41,9 +41,9 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
     }
     for (int i = 0; i < node.output_size(); ++i) {
       auto& out_name = node.output().Get(i);
-	  auto iter = output_name_idx_map.find(out_name);
-	  if (iter != output_name_idx_map.end()) {
-		int idx = iter->second;
+      auto iter = output_name_idx_map.find(out_name);
+      if (iter != output_name_idx_map.end()) {
+        int idx = iter->second;
         const auto& p = node_op_schema->outputs().at(i);
         std::string type_str = p.GetTypeStr() + "out" + std::to_string(i);
         output_types_list[idx] = std::make_pair(out_name, type_str);
@@ -74,7 +74,7 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            std::unique_ptr<IndexedSubGraph> customized_func)
-    : parent_graph_(&graph) {
+    : parent_graph_(&graph), onnx_func_proto_{nullptr} {
   customized_func_body_ = std::move(customized_func);
   auto meta_def = customized_func_body_->GetMetaDef();
   op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
@@ -97,7 +97,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->Finalize();
   //construct body
   body_ = std::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-                                               IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}), graph.DomainToVersionMap());
+                                               IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+                                               graph.DomainToVersionMap());
 
   auto& sub_graph = body_->MainGraph();
   //Add node and node args
@@ -160,8 +161,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (int idx = 0; idx < node.input_size(); ++idx) {
       std::string tensor_name = node.input().Get(idx);
-	  auto iter = input_name_idx_map.find(tensor_name);
-	  if (iter != input_name_idx_map.end()) {
+      auto iter = input_name_idx_map.find(tensor_name);
+      if (iter != input_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
         ONNX_NAMESPACE::NodeProto temp_node_proto;
         node_in_parent_graph->ToProto(temp_node_proto);
@@ -177,7 +178,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
     for (int idx = 0; idx < node.output_size(); ++idx) {
       std::string tensor_name = node.output().Get(idx);
-	  auto iter = output_name_idx_map.find(tensor_name);
+      auto iter = output_name_idx_map.find(tensor_name);
       if (iter != output_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
         ONNX_NAMESPACE::NodeProto temp_node_proto;

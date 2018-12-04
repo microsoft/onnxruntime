@@ -25,10 +25,10 @@ TEST(TransformerTest, InsertCastGPUTest) {
       o2_def("O2", &tensor_float_16),
       o3_def("O3", &tensor_float_16);
 
-  auto node1 = graph.AddNode("node1", "MatMul", "cpu operator1", ArgMap{&i1_def, &i2_def}, ArgMap{&o1_def});
-  auto node2 = graph.AddNode("node2", "MatMul", "gpu operator1", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
-  node2->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
-  auto node3 = graph.AddNode("node3", "Clip", "cpu operator2", ArgMap{&o2_def}, ArgMap{&o3_def});
+  auto& node1 = graph.AddNode("node1", "MatMul", "cpu operator1", ArgMap{&i1_def, &i2_def}, ArgMap{&o1_def});
+  auto& node2 = graph.AddNode("node2", "MatMul", "gpu operator1", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
+  node2.SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+  auto& node3 = graph.AddNode("node3", "Clip", "cpu operator2", ArgMap{&o2_def}, ArgMap{&o3_def});
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -47,23 +47,23 @@ TEST(TransformerTest, InsertCastGPUTest) {
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 8);
-  for (auto it = node1->InputNodesBegin(); it != node1->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node1.InputNodesBegin(); it != node1.InputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
-  for (auto it = node1->OutputNodesBegin(); it != node1->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node1.OutputNodesBegin(); it != node1.OutputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
-  for (auto it = node2->InputNodesBegin(); it != node2->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node2.InputNodesBegin(); it != node2.InputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
-  for (auto it = node2->OutputNodesBegin(); it != node2->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node2.OutputNodesBegin(); it != node2.OutputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
-  for (auto it = node3->InputNodesBegin(); it != node3->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node3.InputNodesBegin(); it != node3.InputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
-  for (auto it = node3->OutputNodesBegin(); it != node3->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node3.OutputNodesBegin(); it != node3.OutputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
 }
 
@@ -80,9 +80,9 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
       o2_def("O2", &tensor_float_16),
       o3_def("O3", &tensor_float_16);
 
-  auto node1 = graph.AddNode("node1", "MatMul", "cpu operator1", ArgMap{&i1_def, &i2_def}, ArgMap{&o1_def});
-  auto node2 = graph.AddNode("node2", "MatMul", "gpu operator1", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
-  auto node3 = graph.AddNode("node3", "Clip", "cpu operator2", ArgMap{&o2_def}, ArgMap{&o3_def});
+  auto& node1 = graph.AddNode("node1", "MatMul", "cpu operator1", ArgMap{&i1_def, &i2_def}, ArgMap{&o1_def});
+  auto& node2 = graph.AddNode("node2", "MatMul", "gpu operator1", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
+  auto& node3 = graph.AddNode("node3", "Clip", "cpu operator2", ArgMap{&o2_def}, ArgMap{&o3_def});
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -101,20 +101,20 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 7);
-  for (auto it = node1->InputNodesBegin(); it != node1->InputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node1.InputNodesBegin(); it != node1.InputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
-  for (auto it = node1->OutputNodesBegin(); it != node1->OutputNodesEnd(); ++it) {
-    EXPECT_NE((*it)->OpType(), "Cast");
+  for (auto it = node1.OutputNodesBegin(); it != node1.OutputNodesEnd(); ++it) {
+    EXPECT_NE((*it).OpType(), "Cast");
   }
-  for (auto it = node2->OutputNodesBegin(); it != node2->OutputNodesEnd(); ++it) {
-    EXPECT_NE((*it)->OpType(), "Cast");
+  for (auto it = node2.OutputNodesBegin(); it != node2.OutputNodesEnd(); ++it) {
+    EXPECT_NE((*it).OpType(), "Cast");
   }
-  for (auto it = node3->InputNodesBegin(); it != node3->InputNodesEnd(); ++it) {
-    EXPECT_NE((*it)->OpType(), "Cast");
+  for (auto it = node3.InputNodesBegin(); it != node3.InputNodesEnd(); ++it) {
+    EXPECT_NE((*it).OpType(), "Cast");
   }
-  for (auto it = node3->OutputNodesBegin(); it != node3->OutputNodesEnd(); ++it) {
-    EXPECT_EQ((*it)->OpType(), "Cast");
+  for (auto it = node3.OutputNodesBegin(); it != node3.OutputNodesEnd(); ++it) {
+    EXPECT_EQ((*it).OpType(), "Cast");
   }
 }
 }  // namespace test

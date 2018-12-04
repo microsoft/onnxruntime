@@ -4,18 +4,20 @@ We're always looking for your help to fix bugs and improve the product. Create a
 Start by reading the [Engineering Design](docs/HighLevelDesign.md).
 
 # Checkin procedure
-```
-git clone --recursive https://github.com/Microsoft/onnxruntime
-git checkout -b feature_branch
-# make your changes
-# write unit tests
-# make sure it builds and all tests pass
-git commit -m "my changes"
-git push origin HEAD
-```
-To request merge into master send a pull request from the web ui
-https://github.com/Microsoft/onnxruntime
+1. Fork the repo
+2. git clone your fork
+3. Create feature branch
+4. Make and checkin your changes along with unit tests
+5. git commit your changes
+6. git push origin HEAD
+7. To request merge into master send a pull request from the web ui
+https://github.com/Microsoft/onnxruntime.
+8. Add 'Microsoft/onnxruntime' as a reviewer.
+
 New code *must* be accompanied by unit tests.
+
+*Note*: After creating a pull request, you might not see a build getting triggered right away. One of the
+onnxruntime team members will trigger the build for you.
 
 # Build
 [Build](BUILD.md)

@@ -330,9 +330,9 @@ TEST_F(OpaqueTypeTests, RunModel) {
     auto& output_sparse_tensor_arg = graph.GetOrCreateNodeArg("sparse_rep", &output_sparse_tensor);
     outputs.push_back(&output_sparse_tensor_arg);
 
-    auto* node = graph.AddNode("ConstructSparseTensor", "ConstructSparseTensor", "Create a sparse tensor representation",
+    auto& node = graph.AddNode("ConstructSparseTensor", "ConstructSparseTensor", "Create a sparse tensor representation",
                                inputs, outputs, nullptr, onnxruntime::kMLDomain);
-    node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+    node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   {
     // We start the input from previous node output
@@ -343,9 +343,9 @@ TEST_F(OpaqueTypeTests, RunModel) {
     output_shape.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
     auto& output_shape_arg = graph.GetOrCreateNodeArg("sparse_tensor_shape", &output_shape);
     outputs.push_back(&output_shape_arg);
-    auto* node = graph.AddNode("FetchSparseTensorShape", "FetchSparseTensorShape", "Fetch shape from sparse tensor",
+    auto& node = graph.AddNode("FetchSparseTensorShape", "FetchSparseTensorShape", "Fetch shape from sparse tensor",
                                inputs, outputs, nullptr, onnxruntime::kMLDomain);
-    node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+    node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
 
   EXPECT_TRUE(graph.Resolve().IsOK());

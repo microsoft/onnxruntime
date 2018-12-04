@@ -70,7 +70,7 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
     // Replace the input of the nodes following unsqueeze node
     const NodeArg* output_def = node.OutputDefs()[0];
     for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-      auto output_node = graph.GetNode((*it)->Index());
+      auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
         return Status(ONNXRUNTIME, INVALID_ARGUMENT);
       }
@@ -78,7 +78,7 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == output_def) {
-          def = const_cast<NodeArg*>(input_def);
+          def = input_def;
         }
       }
     }

@@ -9,6 +9,6 @@
 //Right now only functions_ has issue because it use vector of unique-ptr, maybe we should extend this to GraphImpl later.
 namespace onnxruntime {
 struct FunctionContainer {
-  std::vector<std::unique_ptr<::onnxruntime::Function>> functions_;
+  std::vector<std::unique_ptr<Function>> functions_;
 };
 }  // namespace onnxruntime

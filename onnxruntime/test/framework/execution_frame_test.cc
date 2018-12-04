@@ -178,11 +178,11 @@ TEST(ExecutionFrameTest, MemPatternTest) {
       clip_out_def("T3", &tensor_float);
 
   graph.AddNode("node1", "MatMul", "gemm1", ArgMap{&input_def1, &input_def2}, ArgMap{&gemm1_out_def})
-      ->SetExecutionProviderType(xp_type);
+      .SetExecutionProviderType(xp_type);
   graph.AddNode("node2", "MatMul", "gemm2", ArgMap{&gemm1_out_def, &input_def3}, ArgMap{&gemm2_out_def})
-      ->SetExecutionProviderType(xp_type);
+      .SetExecutionProviderType(xp_type);
   graph.AddNode("node3", "Clip", "clip1", ArgMap{&gemm2_out_def}, ArgMap{&clip_out_def})
-      ->SetExecutionProviderType(xp_type);
+      .SetExecutionProviderType(xp_type);
 
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
