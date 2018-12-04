@@ -93,8 +93,8 @@ inline std::locale GetLocale(const std::string& locale_name) {
     std::locale result(locale_name);
     return result;
   } catch (const std::runtime_error& e) {
-    ONNXRUNTIME_THROW("Failed to construct locale with name: ",
-                      locale_name, e.what(), " Please, install necessary language-pack-XX");
+    ONNXRUNTIME_THROW("Failed to construct locale with name:",
+                      locale_name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
   }
 }
 }  // namespace string_normalizer
