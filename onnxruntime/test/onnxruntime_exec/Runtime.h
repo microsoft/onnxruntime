@@ -273,7 +273,7 @@ class WinMLRuntime {
           ctensor = &output.Get<Tensor>();
 
           ONNX_NAMESPACE::ValueInfoProto expected_output_info = (*outputMeta)[i]->ToProto();
-          std::pair<COMPARE_RESULT, std::string> ret = VerifyValueInfo(expected_output_info, (ONNXValuePtr)&output);
+          std::pair<COMPARE_RESULT, std::string> ret = VerifyValueInfo(expected_output_info, (ONNXValue*)&output);
           COMPARE_RESULT compare_result = ret.first;
           compare_result = ret.first;
           if (compare_result != COMPARE_RESULT::SUCCESS) {

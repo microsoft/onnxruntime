@@ -16,8 +16,8 @@
 using namespace std::experimental::filesystem::v1;
 using onnxruntime::Status;
 
-inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, ONNXRuntimeProviderFactoryPtr* f) {
-  ONNXRuntimeProviderPtr p;
+inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, ONNXRuntimeProviderFactoryInterface** f) {
+  ONNXRuntimeProvider* p;
   (*f)->CreateProvider(f, &p);
   std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
   auto status = sess->RegisterExecutionProvider(std::move(q));
@@ -26,7 +26,7 @@ inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, ONNXR
   }
 }
 #define FACTORY_PTR_HOLDER \
-  std::unique_ptr<ONNXRuntimeProviderFactoryPtr, decltype(&ONNXRuntimeReleaseObject)> ptr_holder_(f, ONNXRuntimeReleaseObject);
+  std::unique_ptr<ONNXRuntimeProviderFactoryInterface*, decltype(&ONNXRuntimeReleaseObject)> ptr_holder_(f, ONNXRuntimeReleaseObject);
 
 Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& sess, const path& model_url, const std::string& logid) const {
   ::onnxruntime::SessionOptions so;
