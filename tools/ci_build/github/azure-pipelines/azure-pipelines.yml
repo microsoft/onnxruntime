@@ -87,7 +87,7 @@ jobs:
     - task: BatchScript@1
       inputs:
         filename: build.bat
-        arguments: ' --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda"'
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda"'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CmdLine@1
