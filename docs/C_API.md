@@ -1,6 +1,6 @@
 # C API
 
-**NOTE: The C API is PRE-RELEASE and subject to change. Please do not rely on this file not changing.**
+**NOTE: The C API is PRE-RELEASE and subject to change. Please do not rely on this file keeping authoritative track of those changes.**
 
 ## Features
 
