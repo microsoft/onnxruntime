@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #include <atomic>
-#include <stdexcept>
-#include "core/framework/allocator_info.h"
-#include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
