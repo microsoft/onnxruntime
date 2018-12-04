@@ -96,6 +96,12 @@ class Conv2dPrimitive : public PrimitiveBase {
 
   mkldnn::memory::format GetDstMemoryFormat() const { return context_.dst_fmt; }
 
+  size_t GetSrcSize() const { return context_.src_size; }
+
+  size_t GetFilterSize() const { return context_.filter_size; }
+
+  size_t GetDstSize() const { return context_.dst_size; }
+
   mkldnn::convolution_forward::primitive_desc* GetPrimitiveDesc() const {
     return context_.conv_fwd_pd.get();
   }
@@ -105,6 +111,10 @@ class Conv2dPrimitive : public PrimitiveBase {
     mkldnn::memory::format src_fmt;
     mkldnn::memory::format filter_fmt;
     mkldnn::memory::format dst_fmt;
+
+    size_t src_size;
+    size_t filter_size;
+    size_t dst_size;
 
     std::unique_ptr<mkldnn::memory> src_mem;
     std::unique_ptr<mkldnn::memory> filter_mem;
@@ -128,6 +138,9 @@ class Conv2dPrimitive : public PrimitiveBase {
         : src_fmt(mkldnn::memory::format::any),
           filter_fmt(mkldnn::memory::format::any),
           dst_fmt(mkldnn::memory::format::any),
+          src_size(0),
+          filter_size(0),
+          dst_size(0),
           src_mem(nullptr),
           filter_mem(nullptr),
           bias_mem(nullptr),
@@ -180,6 +193,12 @@ class Conv2dPrimitive : public PrimitiveBase {
     context_.dst_fmt = static_cast<mkldnn::memory::format>(
         context_.conv_fwd_pd.get()->dst_primitive_desc().desc().data.format);
 
+    context_.src_size = context_.conv_fwd_pd.get()->src_primitive_desc().get_size();
+
+    context_.filter_size = context_.conv_fwd_pd.get()->weights_primitive_desc().get_size();
+
+    context_.dst_size = context_.conv_fwd_pd.get()->dst_primitive_desc().get_size();
+
     context_.src_mem.reset(
         new mkldnn::memory(context_.conv_fwd_pd.get()->src_primitive_desc(), nullptr));
     context_.filter_mem.reset(
@@ -188,10 +207,9 @@ class Conv2dPrimitive : public PrimitiveBase {
         new mkldnn::memory(context_.conv_fwd_pd.get()->dst_primitive_desc(), nullptr));
 
     if (!params.bias_dims.empty()) {
-      context_.bias_mem.reset(new mkldnn::memory(
-          {{{params.bias_dims}, MklDnnType<T>(), mkldnn::memory::format::x},
-           cpu_engine_},
-          nullptr));
+      context_.bias_mem.reset(
+          new mkldnn::memory(context_.conv_fwd_pd.get()->bias_primitive_desc(), nullptr));
+
       context_.conv_fwd.reset(new mkldnn::convolution_forward(
           *context_.conv_fwd_pd, *context_.src_mem, *context_.filter_mem,
           *context_.bias_mem, *context_.dst_mem));
@@ -350,7 +368,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     if (src_md.data.format != conv2d_primitive->GetSrcMemoryFormat()) {
       auto pd = mkldnn::memory::primitive_desc(src_md, cpu_engine);
       mkldnn::memory src = mkldnn::memory(pd, (void*)src_data);
-      src_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * X->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      src_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv2d_primitive->GetSrcSize());
       mkldnn::memory dst = mkldnn::memory(conv_fwd_pd->src_primitive_desc(), src_reorder_buffer.get());
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
@@ -364,7 +384,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                     filter_format),
                                                cpu_engine);
       mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
-      filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * W->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv2d_primitive->GetFilterSize());
       mkldnn::memory dst = mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get());
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
@@ -373,7 +395,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     // Allocate dst buffer if reorder is necessary
     if (dst_md.data.format != conv2d_primitive->GetDstMemoryFormat()) {
-      dst_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * Y->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      dst_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv2d_primitive->GetDstSize());
       dst_data = static_cast<T*>(dst_reorder_buffer.get());
     }
 
