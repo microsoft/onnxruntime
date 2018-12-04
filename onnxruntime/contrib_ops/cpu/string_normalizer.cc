@@ -118,7 +118,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     compare_caseaction_ = (casechangeaction_ == UPPER) ? UPPER : LOWER;
   }
 
-  locale_ = info.GetAttrOrDefault("locale", std::string("en_US"));
+  locale_ = info.GetAttrOrDefault("locale", std::string("en_US.UTF-8"));
   std::locale locale(locale_);
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
 
