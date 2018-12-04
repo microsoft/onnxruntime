@@ -8,7 +8,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/graph_transformer.h"
 #include "core/graph/graph_transformer_mgr.h"
 

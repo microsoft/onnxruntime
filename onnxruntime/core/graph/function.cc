@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/function_impl.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "onnx/shape_inference/implementation.h"
 

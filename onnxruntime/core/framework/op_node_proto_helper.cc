@@ -4,7 +4,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "core/framework/op_kernel.h"

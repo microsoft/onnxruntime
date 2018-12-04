@@ -7,7 +7,7 @@
 #include <list>
 #include <mutex>
 #include "core/common/status.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 struct KernelCreateInfo;

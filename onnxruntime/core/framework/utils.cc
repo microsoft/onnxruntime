@@ -3,7 +3,7 @@
 
 #include "core/framework/utils.h"
 
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_def_builder.h"

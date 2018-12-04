@@ -11,7 +11,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"

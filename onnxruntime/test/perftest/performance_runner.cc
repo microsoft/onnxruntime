@@ -7,7 +7,7 @@
 #ifdef _MSC_VER
 #include <filesystem>
 #endif
-#include "core/graph/graph.h"  //for onnxruntime::NodeArg
+#include "core/graph/graph_viewer.h"  //for onnxruntime::NodeArg
 #include "utils.h"
 #include "testenv.h"
 #include "providers.h"

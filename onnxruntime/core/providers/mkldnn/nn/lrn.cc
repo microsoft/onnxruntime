@@ -74,6 +74,10 @@ class LRNPrimitive : public PrimitiveBase {
 
   mkldnn::memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
 
+  size_t GetSrcSize() const { return context_.src_size; }
+
+  size_t GetDstSize() const { return context_.dst_size; }
+
   mkldnn::lrn_forward::primitive_desc* GetPrimitiveDesc() const {
     return context_.fwd_primitive_desc.get();
   }
@@ -82,6 +86,9 @@ class LRNPrimitive : public PrimitiveBase {
   struct LRNContext {
     mkldnn::memory::format src_fmt;
     std::unique_ptr<mkldnn::memory::desc> src_md;
+
+    size_t src_size;
+    size_t dst_size;
 
     std::unique_ptr<mkldnn::memory> src_mem;
     std::unique_ptr<mkldnn::memory> dst_mem;
@@ -96,6 +103,8 @@ class LRNPrimitive : public PrimitiveBase {
     LRNContext()
         : src_fmt(mkldnn::memory::format::any),
           src_md(nullptr),
+          src_size(0),
+          dst_size(0),
           src_mem(nullptr),
           dst_mem(nullptr),
           fwd_desc(nullptr),
@@ -117,6 +126,9 @@ class LRNPrimitive : public PrimitiveBase {
 
     context_.src_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_primitive_desc.get()->src_primitive_desc().desc().data.format);
+
+    context_.src_size = context_.fwd_primitive_desc.get()->src_primitive_desc().get_size();
+    context_.dst_size = context_.fwd_primitive_desc.get()->dst_primitive_desc().get_size();
 
     context_.src_mem.reset(new mkldnn::memory(context_.fwd_primitive_desc.get()->src_primitive_desc(), nullptr));
     context_.dst_mem.reset(new mkldnn::memory(context_.fwd_primitive_desc.get()->dst_primitive_desc(), nullptr));
@@ -192,7 +204,9 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
     if (src_md.data.format != lrn_primitive->GetSrcMemoryFormat()) {
       auto pd = mkldnn::memory::primitive_desc(src_md, cpu_engine);
       mkldnn::memory src = mkldnn::memory(pd, (void*)src_data);
-      src_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * X->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      src_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, lrn_primitive->GetSrcSize());
       mkldnn::memory dst = mkldnn::memory(fwd_primitive_desc->src_primitive_desc(), src_reorder_buffer.get());
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
@@ -201,7 +215,9 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
 
     // Allocate dst buffer if reorder is necessary
     if (src_md.data.format != lrn_primitive->GetSrcMemoryFormat()) {
-      dst_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * Y->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      dst_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, lrn_primitive->GetDstSize());
       dst_data = static_cast<T*>(dst_reorder_buffer.get());
     }
 
@@ -222,5 +238,5 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+}  // namespace mkl_dnn
 }  // namespace onnxruntime
-}
