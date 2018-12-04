@@ -100,7 +100,7 @@ struct SliceSkips : std::vector<int64_t> {
   }
 };
 
-// This provides easy sequential iteration over a subset of a tensor given a span of starts & etents
+// This provides easy sequential iteration over a subset of a tensor given a span of starts & extents
 template <typename T>
 struct SliceIterator {
   SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
@@ -137,7 +137,7 @@ struct SliceIterator {
   }
 
   T* CopyInnermostAxis(T* output) {
-    gsl::copy(gsl::make_span(input_, inner_extent_), gsl::make_span(output, inner_extent_));
+    std::copy(input_, input_ + inner_extent_, output);
     input_ += inner_extent_;
     output += inner_extent_;
     AdvanceOverInnerExtent();

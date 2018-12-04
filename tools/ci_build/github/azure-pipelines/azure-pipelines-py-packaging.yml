@@ -182,3 +182,50 @@ jobs:
         filename: deactivate
       continueOnError: true
       condition: always()
+
+- job: MacOS_py_Wheels
+  pool:
+    vmImage: 'macOS-10.13'
+  strategy:
+    matrix:
+      Python35:
+        python.version: '3.5'
+      Python36:
+        python.version: '3.6'
+
+  steps:
+    - task: CondaEnvironment@1
+      inputs:
+        createCustomEnvironment: true
+        environmentName: 'py$(python.version)'
+        packageSpecs: 'python=$(python.version)'
+        cleanEnvironment: true
+
+    - script: |
+        sudo python -m pip install numpy
+        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        ./build.sh --config Release --skip_submodule_sync --parallel --use_mkldnn --build_wheel
+      displayName: 'Command Line Script'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)'
+        Contents: '**/dist/onnxruntime-*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime
+
+    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
+      displayName: 'Clean build folders/files'
+      condition: always()
+
+    - task: CmdLine@1
+      displayName: 'Deactivating Conda Environment'
+      inputs:
+        filename: deactivate
+      continueOnError: true
+      condition: always()

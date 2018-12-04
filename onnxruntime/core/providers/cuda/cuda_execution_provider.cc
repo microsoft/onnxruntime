@@ -784,7 +784,10 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
     if ("activations" == attr_name &&
         ::onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS == attr_value.type()) {
       for (int i = 0; i < attr_value.strings_size(); ++i) {
-        if (activations_supported[i] != attr_value.strings(i)) {
+        std::string activation_lowercase(attr_value.strings(i));
+        std::transform(activation_lowercase.begin(), activation_lowercase.end(), activation_lowercase.begin(),
+                       [](const unsigned char i) { return static_cast<char>(::tolower(i)); });
+        if (activations_supported[i] != activation_lowercase) {
           return true;
         }
       }
@@ -829,13 +832,14 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (auto& node : graph.Nodes()) {
     bool fallback_to_cpu_provider = false;
     if ("LSTM" == node.OpType()) {
-      std::vector<std::string> activations_supported{"Sigmoid", "Tanh", "Tanh"};
+      // the supported activations covers the bidirectional mode
+      std::vector<std::string> activations_supported{"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
       fallback_to_cpu_provider = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
     } else if ("RNN" == node.OpType()) {
-      std::vector<std::string> activations_supported{"Tanh", "Tanh"};
+      std::vector<std::string> activations_supported{"tanh", "tanh"};
       fallback_to_cpu_provider = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
     } else if ("GRU" == node.OpType()) {
-      std::vector<std::string> activations_supported{"Sigmoid", "Tanh"};
+      std::vector<std::string> activations_supported{"sigmoid", "tanh", "sigmoid", "tanh"};
       fallback_to_cpu_provider = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
     }
 

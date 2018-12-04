@@ -12,8 +12,7 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-static void RunGruTest(bool run_on_gpu,
-                       const std::vector<float>& X_data,
+static void RunGruTest(const std::vector<float>& X_data,
                        const std::vector<float>& W_data,
                        const std::vector<float>& R_data,
                        const std::vector<float>& Y_data,
@@ -95,16 +94,10 @@ static void RunGruTest(bool run_on_gpu,
   } else {
     test.AddMissingOptionalOutput<float>();
   }
-
-  std::unordered_set<std::string> excluded_provider_types;
-  if (!run_on_gpu) {
-    excluded_provider_types.insert(kCudaExecutionProvider);
-  }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  test.Run();
 }
 
-void DefaultActivationsSimpleWeightsNoBias(bool run_on_gpu,
-                                           std::string direction,
+void DefaultActivationsSimpleWeightsNoBias(std::string direction,
                                            const std::vector<float>& Y_data,
                                            const std::vector<float>& Y_h_data) {
   int64_t seq_length = 2;
@@ -129,13 +122,13 @@ void DefaultActivationsSimpleWeightsNoBias(bool run_on_gpu,
 
   std::vector<float> R_data(num_directions * 3 * hidden_size * hidden_size, 0.1f);
 
-  RunGruTest(run_on_gpu, X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
+  RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
              nullptr, nullptr, nullptr, direction);
 
   // if Y_h_data is empty that tests Y_h not being returned. we need to have at least one output or
   // the node will get removed, so only test with output_sequence == false (no Y as output) if Y_h is not optional
   if (!Y_h_data.empty())
-    RunGruTest(run_on_gpu, X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
+    RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
                nullptr, nullptr, nullptr, direction, 9999.0, /* output_sequence*/ false);
 }
 
@@ -151,11 +144,10 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
       0.6027093f, 0.5083023f, 0.44950223f,
       0.5754369f, 0.45485455f, 0.3747841f};
 
-  bool run_on_gpu = true;
-  DefaultActivationsSimpleWeightsNoBias(run_on_gpu, "forward", Y_data, Y_h_data);
+  DefaultActivationsSimpleWeightsNoBias("forward", Y_data, Y_h_data);
 
   // test Y_h not being returned
-  DefaultActivationsSimpleWeightsNoBias(run_on_gpu, "forward", Y_data, {});
+  DefaultActivationsSimpleWeightsNoBias("forward", Y_data, {});
 }
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
@@ -170,8 +162,7 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
       0.6082785f, 0.50623393f, 0.4426924f,
       0.5803454f, 0.4527356f, 0.36886263f};
 
-  bool run_on_gpu = false;  // cudnn implementation only support linear_before_reset = true
-  DefaultActivationsSimpleWeightsNoBias(run_on_gpu, "reverse", Y_data, Y_h_data);
+  DefaultActivationsSimpleWeightsNoBias("reverse", Y_data, Y_h_data);
 }
 
 TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows) {
@@ -201,12 +192,10 @@ TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows) {
       0.6082785f, 0.50623393f, 0.4426924f,
       0.5803454f, 0.4527356f, 0.36886263f};
 
-  bool run_on_gpu = true;
-  DefaultActivationsSimpleWeightsNoBias(run_on_gpu, "bidirectional", Y_data, Y_h_data);
+  DefaultActivationsSimpleWeightsNoBias("bidirectional", Y_data, Y_h_data);
 }
 
-void DefaultActivationsSimpleWeightsWithBias(bool run_on_gpu,
-                                             std::string direction,
+void DefaultActivationsSimpleWeightsWithBias(std::string direction,
                                              const std::vector<float>& Y_data,
                                              bool linear_before_reset = false,
                                              bool one_row = false) {
@@ -250,7 +239,7 @@ void DefaultActivationsSimpleWeightsWithBias(bool run_on_gpu,
 
   std::vector<float> R_data(num_directions * 3 * hidden_size * hidden_size, 0.1f);
 
-  RunGruTest(run_on_gpu, X_data, W_data, R_data, Y_data, {}, input_size, batch_size, hidden_size, seq_length,
+  RunGruTest(X_data, W_data, R_data, Y_data, {}, input_size, batch_size, hidden_size, seq_length,
              &B_data, nullptr, nullptr, direction, 999.f, /* output_sequence*/ true, linear_before_reset);
 }  // namespace test
 
@@ -262,8 +251,7 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallel) {
       0.22688604f, -0.19698407f, 0.14017843f,
       0.33386092f, -0.15799662f, 0.2381169f};
 
-  bool run_on_gpu = false;
-  DefaultActivationsSimpleWeightsWithBias(run_on_gpu, "forward", Y_data);
+  DefaultActivationsSimpleWeightsWithBias("forward", Y_data);
 }
 
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset) {
@@ -274,9 +262,8 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearB
       0.19538902f, -0.19016478f, -0.05644283f,
       0.30856851f, -0.15190377f, 0.05999807f};
 
-  bool run_on_gpu = true;
   const bool linear_before_reset = true;
-  DefaultActivationsSimpleWeightsWithBias(run_on_gpu, "forward", Y_data, linear_before_reset);
+  DefaultActivationsSimpleWeightsWithBias("forward", Y_data, linear_before_reset);
 }
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset) {
@@ -287,9 +274,8 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearB
       0.12252139f, -0.12032216f, -0.05064924f,
       0.21249877f, -0.08884402f, 0.04751285f};
 
-  bool run_on_gpu = false;
   const bool linear_before_reset = true;
-  DefaultActivationsSimpleWeightsWithBias(run_on_gpu, "reverse", Y_data, linear_before_reset);
+  DefaultActivationsSimpleWeightsWithBias("reverse", Y_data, linear_before_reset);
 }
 
 // test forward !batch_parallel_ path with linear_before_reset
@@ -298,10 +284,9 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
       0.15024948f, -0.11097029f, -0.02121867f,
       0.19538902f, -0.19016478f, -0.05644283f};
 
-  bool run_on_gpu = true;
   const bool linear_before_reset = true;
   const bool one_row = true;
-  DefaultActivationsSimpleWeightsWithBias(run_on_gpu, "forward", Y_data, linear_before_reset, one_row);
+  DefaultActivationsSimpleWeightsWithBias("forward", Y_data, linear_before_reset, one_row);
 }
 
 // test reverse !batch_parallel_ path with linear_before_reset
@@ -310,10 +295,9 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
       0.20910699f, -0.18880953f, -0.04005555f,
       0.12252139f, -0.12032216f, -0.05064924f};
 
-  bool run_on_gpu = false;
   const bool linear_before_reset = true;
   const bool one_row = true;
-  DefaultActivationsSimpleWeightsWithBias(run_on_gpu, "reverse", Y_data, linear_before_reset, one_row);
+  DefaultActivationsSimpleWeightsWithBias("reverse", Y_data, linear_before_reset, one_row);
 }
 
 /*******************
@@ -331,8 +315,7 @@ class DeepCpuGruOpTestContext {
 
   ~DeepCpuGruOpTestContext() = default;
 
-  void RunTest(bool run_on_gpu,
-               const std::vector<float>& X,
+  void RunTest(const std::vector<float>& X,
                const int batch,
                const int seq_length,
                const std::vector<int>& sequence_length,
@@ -467,8 +450,7 @@ DeepCpuGruOpTestContext::DeepCpuGruOpTestContext(const std::string direction,
   }
 }
 
-void DeepCpuGruOpTestContext::RunTest(bool run_on_gpu,
-                                      const std::vector<float>& X,
+void DeepCpuGruOpTestContext::RunTest(const std::vector<float>& X,
                                       const int batch_size,
                                       const int seq_length,
                                       const std::vector<int>& sequence_lens,
@@ -476,7 +458,7 @@ void DeepCpuGruOpTestContext::RunTest(bool run_on_gpu,
                                       const std::vector<float>& expected_Y,
                                       const std::vector<float>& expected_Y_h) {
   // run with and without output_sequence
-  ::onnxruntime::test::RunGruTest(run_on_gpu, X, gru_input_weights_, gru_recurrent_weights_,
+  ::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
                                   expected_Y, expected_Y_h,
                                   input_size_, batch_size, hidden_dim_, seq_length,
                                   use_bias_ ? &gru_bias_ : nullptr,
@@ -490,7 +472,7 @@ void DeepCpuGruOpTestContext::RunTest(bool run_on_gpu,
                                   alphas_,
                                   betas_);
 
-  ::onnxruntime::test::RunGruTest(run_on_gpu, X, gru_input_weights_, gru_recurrent_weights_,
+  ::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
                                   expected_Y, expected_Y_h,
                                   input_size_, batch_size, hidden_dim_, seq_length,
                                   use_bias_ ? &gru_bias_ : nullptr,
@@ -520,8 +502,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBasic) {
   std::vector<float> expected_Y = {-0.03255286f, 0.0774838f, -0.05556786f, 0.0785508f};
   std::vector<float> expected_Y_h = {-0.05556786f, 0.0785508f};
 
-  bool run_on_gpu = true;
-  ctx.RunTest(run_on_gpu, X, batch, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpBackwardBasic) {
@@ -540,8 +521,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpBackwardBasic) {
                                    -0.03255286f, 0.0774838f};
   std::vector<float> expected_Y_h = {-0.05556786f, 0.0785508f};
 
-  bool run_on_gpu = true;
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpBidirectionalBasic) {
@@ -564,8 +544,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpBidirectionalBasic) {
   std::vector<float> expected_Y_h = {-0.05556786f, 0.0785508f,
                                      -0.05469977f, 0.1004222f};
 
-  bool run_on_gpu = true;
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardActivation) {
@@ -584,8 +563,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardActivation) {
                                    0.3810334f, 0.4944591f};
   std::vector<float> expected_Y_h = {0.3810334f, 0.4944591f};
 
-  bool run_on_gpu = false;  // cudnn only support activation {sigmoid, tanh}
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardInitialHiddenState) {
@@ -604,8 +582,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardInitialHiddenState) {
                                    0.07378622f, -0.02782359f};
   std::vector<float> expected_Y_h = {0.07378622f, -0.02782359f};
 
-  bool run_on_gpu = false;  // cudnn implementation only support linear_before_reset = true
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatch) {
@@ -632,8 +609,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatch) {
   std::vector<float> expected_Y_h = {0.07378622f, -0.02782359f,
                                      -0.05556786f, 0.0785508f};
 
-  bool run_on_gpu = false;  // cudnn implementation only support linear_before_reset = true
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
@@ -652,8 +628,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
                                    -0.05556786f, 0.0785508f};
   std::vector<float> expected_Y_h = {-0.05556786f, 0.0785508f};
 
-  bool run_on_gpu = false;
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 
   const int batch2 = 2;
   const int seq_length2 = 2;
@@ -674,7 +649,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
   std::vector<float> expected_Y_h2 = {0.07378622f, -0.02782359f,
                                       -0.03255286f, 0.0774838f};
 
-  ctx.RunTest(run_on_gpu, X2, batch2, seq_length2, sequence_length2, &initial_h2, expected_Y2, expected_Y_h2);
+  ctx.RunTest(X2, batch2, seq_length2, sequence_length2, &initial_h2, expected_Y2, expected_Y_h2);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSingleBatchMultipleHiddenThreads) {
@@ -704,8 +679,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSingleBatchMultipleHiddenThreads) {
           0.437727744598091f, 0.451604294166264f, 0.40203814648622f, 0.416614999456787f};
   std::vector<float> expected_Y_h(expected_Y);
 
-  bool run_on_gpu = true;
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationClipping) {
@@ -734,8 +708,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationClipping) {
 
   std::vector<float> expected_Y_h(expected_Y);
 
-  bool run_on_gpu = true;
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationAlphaBeta) {
@@ -776,9 +749,8 @@ TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationAlphaBeta) {
 
   std::vector<float> expected_Y_h(expected_Y);
 
-  bool run_on_gpu = false;  // cudnn implementation don't support the alpha & beta and customized activations
   DeepCpuGruOpTestContext ctx(direction, activations, true, alpha, beta, /*large_hidden*/ true, input_size);
-  ctx.RunTest(run_on_gpu, X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
 }  // namespace test
