@@ -1,0 +1,10 @@
+digraph "ONNXRuntimeTypeInfo"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node2 [label="ONNXRuntimeTypeInfo",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node3 -> Node2 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node3 [label="onnxruntime::ObjectBase\l\< ONNXRuntimeTypeInfo \>",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classonnxruntime_1_1ObjectBase.html"];
+  Node4 -> Node3 [dir="back",color="darkorchid3",fontsize="10",style="dashed",label=" cls_" ,fontname="Helvetica"];
+  Node4 [label="ONNXObject",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structONNXObject.html"];
+}

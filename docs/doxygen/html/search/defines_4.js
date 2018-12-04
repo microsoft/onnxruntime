@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['declare_5fbinary_5fop',['DECLARE_BINARY_OP',['../math_8h.html#aa7220b7b32f96cdd54384dca3f723739',1,'math.h']]],
+  ['declare_5fbinary_5fop_5fbinary_5fresult',['DECLARE_BINARY_OP_BINARY_RESULT',['../math_8h.html#a5df70bb19c4fcb622d7569f7de4f1fc0',1,'math.h']]],
+  ['declare_5fdefault_5fdeleter_5ffor_5fonnx_5fobject',['DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT',['../onnxruntime__cxx__api_8h.html#adbe40d7b397179107b239685ea0e9975',1,'onnxruntime_cxx_api.h']]],
+  ['define_5fbinary_5fop',['DEFINE_BINARY_OP',['../math__cpu_8cc.html#a13a581a9caa13dcd4bca000bd91436b7',1,'math_cpu.cc']]],
+  ['define_5fbroadcast_5fbinary_5ffunction',['DEFINE_BROADCAST_BINARY_FUNCTION',['../math__cpu_8cc.html#a95302a22927265f2451b086a2926e4b4',1,'math_cpu.cc']]],
+  ['define_5frelease_5fonnx_5fruntime_5fobject_5ffunction',['DEFINE_RELEASE_ONNX_RUNTIME_OBJECT_FUNCTION',['../onnxruntime__c__api_8cc.html#ae0510860428d98d315cc86e9fd29c970',1,'onnxruntime_c_api.cc']]],
+  ['define_5frelease_5fonnx_5fruntime_5fobject_5ffunction_5ffor_5farray',['DEFINE_RELEASE_ONNX_RUNTIME_OBJECT_FUNCTION_FOR_ARRAY',['../onnxruntime__c__api_8cc.html#ae18cad5aebbbd7ab0f8df7306c69c923',1,'onnxruntime_c_api.cc']]],
+  ['define_5fruntime_5fclass',['DEFINE_RUNTIME_CLASS',['../error__code_8h.html#a7227abd906fe6c93f0c54182d2c26e37',1,'error_code.h']]],
+  ['define_5fruntime_5fclass2',['DEFINE_RUNTIME_CLASS2',['../error__code_8h.html#a80ed1c50a65b6bd3f539080859a6b2af',1,'error_code.h']]],
+  ['define_5fsimple_5fbinary_5ffunction',['DEFINE_SIMPLE_BINARY_FUNCTION',['../math__cpu_8cc.html#ab74d0d05652687cc33ce88726e602605',1,'math_cpu.cc']]],
+  ['define_5funpack_5ftensor',['DEFINE_UNPACK_TENSOR',['../tensorutils_8cc.html#a631753452a4db6913ffb1bba000b9801',1,'tensorutils.cc']]],
+  ['delegate_5fbroadcast_5fbinary_5ffunction',['DELEGATE_BROADCAST_BINARY_FUNCTION',['../math__cpu_8cc.html#a3d6ba0eb0399d9930dbda50fd6c9301b',1,'math_cpu.cc']]],
+  ['delegate_5fpowx_5ffunction',['DELEGATE_POWX_FUNCTION',['../math__cpu_8cc.html#aa76254be1a287845a75eb567933a1f67',1,'math_cpu.cc']]],
+  ['delegate_5fsimple_5funary_5ffunction',['DELEGATE_SIMPLE_UNARY_FUNCTION',['../math__cpu_8cc.html#aa8dd00424eb9cc08404b4b9cbad0b934',1,'math_cpu.cc']]],
+  ['delegate_5fsincos_5ffunction',['DELEGATE_SINCOS_FUNCTION',['../math__cpu_8cc.html#a330f40150a356104ed232a78716d2b9f',1,'math_cpu.cc']]],
+  ['dumpmatrix',['DumpMatrix',['../deep__cpu__attn__lstm_8cc.html#a50e374595b7e52f46cf24f4260bccf2b',1,'DumpMatrix():&#160;deep_cpu_attn_lstm.cc'],['../uni__dir__attn__lstm_8cc.html#a50e374595b7e52f46cf24f4260bccf2b',1,'DumpMatrix():&#160;uni_dir_attn_lstm.cc'],['../deep__cpu__gru_8cc.html#a50e374595b7e52f46cf24f4260bccf2b',1,'DumpMatrix():&#160;deep_cpu_gru.cc'],['../deep__cpu__lstm_8cc.html#a50e374595b7e52f46cf24f4260bccf2b',1,'DumpMatrix():&#160;deep_cpu_lstm.cc'],['../cpu_2rnn_2rnn_8cc.html#a50e374595b7e52f46cf24f4260bccf2b',1,'DumpMatrix():&#160;rnn.cc']]]
+];

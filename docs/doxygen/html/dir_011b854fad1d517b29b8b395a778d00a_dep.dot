@@ -1,0 +1,17 @@
+digraph "onnxruntime/onnxruntime/core/providers/cpu/controlflow" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_3683cb2698e6daed4ebbd4c1d451f237 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="cpu" fontname="Helvetica", fontsize="10", URL="dir_3683cb2698e6daed4ebbd4c1d451f237.html"]
+  dir_011b854fad1d517b29b8b395a778d00a [shape=box, label="controlflow", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_011b854fad1d517b29b8b395a778d00a.html"];
+  }
+  dir_7d26c658b0bb1c0d69da41994bff74c9 [shape=box label="tensor" URL="dir_7d26c658b0bb1c0d69da41994bff74c9.html"];
+  dir_1b4a698a764d4f86e6ae1764e7f37a99 [shape=box label="framework" URL="dir_1b4a698a764d4f86e6ae1764e7f37a99.html"];
+  dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
+  dir_7d26c658b0bb1c0d69da41994bff74c9->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="44", labeldistance=1.5 headhref="dir_000032_000006.html"];
+  dir_011b854fad1d517b29b8b395a778d00a->dir_7d26c658b0bb1c0d69da41994bff74c9 [headlabel="2", labeldistance=1.5 headhref="dir_000046_000032.html"];
+  dir_011b854fad1d517b29b8b395a778d00a->dir_1b4a698a764d4f86e6ae1764e7f37a99 [headlabel="13", labeldistance=1.5 headhref="dir_000046_000030.html"];
+  dir_011b854fad1d517b29b8b395a778d00a->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="9", labeldistance=1.5 headhref="dir_000046_000006.html"];
+  dir_1b4a698a764d4f86e6ae1764e7f37a99->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="149", labeldistance=1.5 headhref="dir_000030_000006.html"];
+}

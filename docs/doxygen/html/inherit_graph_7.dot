@@ -1,0 +1,9 @@
+digraph "Graphical Class Hierarchy"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  rankdir="LR";
+  Node478 [label="Exception",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node478 -> Node0 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node0 [label="Microsoft.ML.OnnxRuntime.\lOnnxRuntimeException",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$classMicrosoft_1_1ML_1_1OnnxRuntime_1_1OnnxRuntimeException.html",tooltip="The Exception that is thrown for errors related ton OnnxRuntime "];
+}

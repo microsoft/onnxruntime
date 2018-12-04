@@ -1,0 +1,38 @@
+digraph "onnxruntime/onnxruntime/core/mlas/inc/mlas.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node3 [label="onnxruntime/onnxruntime\l/core/mlas/inc/mlas.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node3 -> Node4 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node4 [label="onnxruntime/onnxruntime\l/core/mlas/lib/mlasi.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mlasi_8h.html"];
+  Node4 -> Node5 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node5 [label="onnxruntime/onnxruntime\l/core/mlas/lib/arm/sgemmc.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$sgemmc_8cpp.html"];
+  Node4 -> Node6 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node6 [label="onnxruntime/onnxruntime\l/core/mlas/lib/bias.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$bias_8cpp.html"];
+  Node4 -> Node7 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node7 [label="onnxruntime/onnxruntime\l/core/mlas/lib/convolve.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$convolve_8cpp.html"];
+  Node4 -> Node8 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node8 [label="onnxruntime/onnxruntime\l/core/mlas/lib/platform.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$platform_8cpp.html"];
+  Node4 -> Node9 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node9 [label="onnxruntime/onnxruntime\l/core/mlas/lib/pooling.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$pooling_8cpp.html"];
+  Node4 -> Node10 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node10 [label="onnxruntime/onnxruntime\l/core/mlas/lib/sgemm.cpp",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$sgemm_8cpp.html"];
+  Node3 -> Node11 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node11 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/conv_impl.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$conv__impl_8h.html"];
+  Node11 -> Node12 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node12 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/conv.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2conv_8cc.html"];
+  Node3 -> Node13 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node13 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/pool_base.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$pool__base_8h.html"];
+  Node13 -> Node14 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node14 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/pool.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2pool_8h.html"];
+  Node14 -> Node15 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node15 [label="onnxruntime/onnxruntime\l/core/providers/cpu/nn\l/pool.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cpu_2nn_2pool_8cc.html"];
+  Node14 -> Node16 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node16 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/pool.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2pool_8h.html"];
+  Node16 -> Node17 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node17 [label="onnxruntime/onnxruntime\l/core/providers/mkldnn\l/nn/pool.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$mkldnn_2nn_2pool_8cc.html"];
+  Node13 -> Node18 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node18 [label="onnxruntime/onnxruntime\l/core/providers/cuda/nn\l/pool.h",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cuda_2nn_2pool_8h.html"];
+  Node18 -> Node19 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node19 [label="onnxruntime/onnxruntime\l/core/providers/cuda/nn\l/pool.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$cuda_2nn_2pool_8cc.html"];
+}

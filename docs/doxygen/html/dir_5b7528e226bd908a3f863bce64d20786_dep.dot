@@ -1,0 +1,11 @@
+digraph "onnxruntime/onnxruntime/core/codegen/tvm" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_9152529c34c619e2d001a39c823a5a99 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="codegen" fontname="Helvetica", fontsize="10", URL="dir_9152529c34c619e2d001a39c823a5a99.html"]
+  dir_5b7528e226bd908a3f863bce64d20786 [shape=box, label="tvm", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_5b7528e226bd908a3f863bce64d20786.html"];
+  }
+  dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
+  dir_5b7528e226bd908a3f863bce64d20786->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="6", labeldistance=1.5 headhref="dir_000026_000006.html"];
+}

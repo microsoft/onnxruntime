@@ -1,0 +1,15 @@
+digraph "onnxruntime/onnxruntime/core/codegen" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_d53f99a49d07d97f83b643cb8d6238c5 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="core" fontname="Helvetica", fontsize="10", URL="dir_d53f99a49d07d97f83b643cb8d6238c5.html"]
+  subgraph clusterdir_9152529c34c619e2d001a39c823a5a99 {
+    graph [ bgcolor="#eeeeff", pencolor="black", label="" URL="dir_9152529c34c619e2d001a39c823a5a99.html"];
+    dir_9152529c34c619e2d001a39c823a5a99 [shape=plaintext label="codegen"];
+    dir_5b7528e226bd908a3f863bce64d20786 [shape=box label="tvm" color="black" fillcolor="white" style="filled" URL="dir_5b7528e226bd908a3f863bce64d20786.html"];
+  }
+  }
+  dir_f44f875884e6b767c5658db22ccaab42 [shape=box label="include" fillcolor="white" style="filled" color="red" URL="dir_f44f875884e6b767c5658db22ccaab42.html"];
+  dir_5b7528e226bd908a3f863bce64d20786->dir_f44f875884e6b767c5658db22ccaab42 [headlabel="6", labeldistance=1.5 headhref="dir_000026_000006.html"];
+}

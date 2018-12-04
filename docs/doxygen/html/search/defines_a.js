@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['make_5ffunc_5fctx_5falpha',['MAKE_FUNC_CTX_ALPHA',['../cuda_2activation_2activations_8h.html#a3e87c21a47ff5014d7b5c7f4391220a5',1,'activations.h']]],
+  ['make_5ffunc_5fctx_5falpha_5fbeta',['MAKE_FUNC_CTX_ALPHA_BETA',['../cuda_2activation_2activations_8h.html#a77e768efc88a860460a356661317509e',1,'activations.h']]],
+  ['make_5ffunc_5fctx_5falpha_5fgamma',['MAKE_FUNC_CTX_ALPHA_GAMMA',['../cuda_2activation_2activations_8h.html#a4adf53d93df8406e926103ba0639058d',1,'activations.h']]],
+  ['make_5ffunc_5fctx_5fnull',['MAKE_FUNC_CTX_NULL',['../cuda_2activation_2activations_8h.html#a0963b8f0dd518f86d67da3d653f49997',1,'activations.h']]],
+  ['malloc',['malloc',['../debug__alloc_8h.html#acf143577800376dd931c059ecc61ba06',1,'debug_alloc.h']]],
+  ['mlas_5fconv_5fworking_5fbuffer_5fsize_5fper_5fthread',['MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD',['../convolve_8cpp.html#a7ea99c6ca5a5a4bcce6a0092af2aefd4',1,'convolve.cpp']]],
+  ['mlas_5fdeclspec_5falign',['MLAS_DECLSPEC_ALIGN',['../mlasi_8h.html#a4b422064ddb3aa5bedac739e45547674',1,'mlasi.h']]],
+  ['mlas_5fmaximum_5fthread_5fcount',['MLAS_MAXIMUM_THREAD_COUNT',['../mlasi_8h.html#a86466d6811df85b69801ae746e3ad493',1,'mlasi.h']]],
+  ['mlas_5fpool_5freduction_5fbuffer_5fpadding',['MLAS_POOL_REDUCTION_BUFFER_PADDING',['../pooling_8cpp.html#a0dabfb35bbb884a37976483cf7dfbd85',1,'pooling.cpp']]],
+  ['mlas_5fpool_5freduction_5fbuffer_5fstack',['MLAS_POOL_REDUCTION_BUFFER_STACK',['../pooling_8cpp.html#ae2e86b8d5dafb44be2e7129d59cf351c',1,'pooling.cpp']]],
+  ['mlas_5fsgemm_5fstridek',['MLAS_SGEMM_STRIDEK',['../mlasi_8h.html#ab53b4ce1656fff1cd0b0be02bdfedf5b',1,'mlasi.h']]],
+  ['mlas_5fsgemm_5fstriden',['MLAS_SGEMM_STRIDEN',['../mlasi_8h.html#aa28ee8dc9022be9a210bbf95f3351833',1,'mlasi.h']]],
+  ['mlas_5fsgemm_5fstriden_5fthread_5falign',['MLAS_SGEMM_STRIDEN_THREAD_ALIGN',['../mlasi_8h.html#aa9d9b3262d81d2335b76f93edaad391b',1,'mlasi.h']]],
+  ['mlas_5fsgemm_5fthread_5fcomplexity',['MLAS_SGEMM_THREAD_COMPLEXITY',['../mlasi_8h.html#ab15abfebb6191b63e0f88888b6f12992',1,'mlasi.h']]],
+  ['mlas_5fsgemm_5ftransa_5frows',['MLAS_SGEMM_TRANSA_ROWS',['../sgemm_8cpp.html#abb6c1b5a6094298a708546ad51c9919e',1,'sgemm.cpp']]],
+  ['mlas_5funreferenced_5fparameter',['MLAS_UNREFERENCED_PARAMETER',['../mlasi_8h.html#a5186491f7860fc11a557eaa237c952f0',1,'mlasi.h']]],
+  ['mlascall',['MLASCALL',['../mlas_8h.html#a2447f51fe5640fdad4a6fa679c1108cd',1,'mlas.h']]],
+  ['msvc_5fprintf_5fcheck',['msvc_printf_check',['../capture_8h.html#a7249ae45e189a29f562633e536a1042c',1,'capture.h']]],
+  ['must_5fuse_5fresult',['MUST_USE_RESULT',['../op__node__proto__helper_8h.html#afefbce768b9d0df9c9ebc30dd6d13fed',1,'op_node_proto_helper.h']]]
+];

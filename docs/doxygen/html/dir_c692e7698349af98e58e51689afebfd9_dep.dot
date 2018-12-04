@@ -1,0 +1,15 @@
+digraph "onnxruntime/onnxruntime/core/mlas" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_d53f99a49d07d97f83b643cb8d6238c5 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="core" fontname="Helvetica", fontsize="10", URL="dir_d53f99a49d07d97f83b643cb8d6238c5.html"]
+  subgraph clusterdir_c692e7698349af98e58e51689afebfd9 {
+    graph [ bgcolor="#eeeeff", pencolor="black", label="" URL="dir_c692e7698349af98e58e51689afebfd9.html"];
+    dir_c692e7698349af98e58e51689afebfd9 [shape=plaintext label="mlas"];
+    dir_bed18798a5b0341d926decf41624b10f [shape=box label="inc" color="black" fillcolor="white" style="filled" URL="dir_bed18798a5b0341d926decf41624b10f.html"];
+    dir_484f0a02b39637dc17590a50246ccad2 [shape=box label="lib" color="red" fillcolor="white" style="filled" URL="dir_484f0a02b39637dc17590a50246ccad2.html"];
+  }
+  }
+  dir_484f0a02b39637dc17590a50246ccad2->dir_bed18798a5b0341d926decf41624b10f [headlabel="1", labeldistance=1.5 headhref="dir_000035_000034.html"];
+}

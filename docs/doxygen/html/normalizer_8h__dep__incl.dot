@@ -1,0 +1,8 @@
+digraph "onnxruntime/onnxruntime/core/providers/cpu/ml/normalizer.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node72 [label="onnxruntime/onnxruntime\l/core/providers/cpu/ml\l/normalizer.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node72 -> Node73 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node73 [label="onnxruntime/onnxruntime\l/core/providers/cpu/ml\l/normalizer.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$normalizer_8cc.html"];
+}

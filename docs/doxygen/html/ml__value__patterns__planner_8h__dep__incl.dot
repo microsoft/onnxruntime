@@ -1,0 +1,16 @@
+digraph "onnxruntime/onnxruntime/core/framework/ml_value_patterns_planner.h"
+{
+  edge [fontname="Helvetica",fontsize="10",labelfontname="Helvetica",labelfontsize="10"];
+  node [fontname="Helvetica",fontsize="10",shape=record];
+  Node55 [label="onnxruntime/onnxruntime\l/core/framework/ml_value\l_patterns_planner.h",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled", fontcolor="black"];
+  Node55 -> Node56 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node56 [label="onnxruntime/onnxruntime\l/core/framework/execution\l_frame.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$execution__frame_8cc.html"];
+  Node55 -> Node57 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node57 [label="onnxruntime/onnxruntime\l/core/framework/ml_value\l_pattern_planner.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$ml__value__pattern__planner_8cc.html"];
+  Node55 -> Node58 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node58 [label="onnxruntime/onnxruntime\l/core/framework/session\l_state_initializer.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$session__state__initializer_8cc.html"];
+  Node55 -> Node59 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node59 [label="onnxruntime/onnxruntime\l/core/framework/tensorprotoutils.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$tensorprotoutils_8cc.html"];
+  Node55 -> Node60 [dir="back",color="midnightblue",fontsize="10",style="solid",fontname="Helvetica"];
+  Node60 [label="onnxruntime/onnxruntime\l/core/session/inference\l_session.cc",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$inference__session_8cc.html"];
+}

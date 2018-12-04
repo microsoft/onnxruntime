@@ -1,0 +1,23 @@
+digraph "onnxruntime/include/onnxruntime/core" {
+  compound=true
+  node [ fontsize="10", fontname="Helvetica"];
+  edge [ labelfontsize="10", labelfontname="Helvetica"];
+  subgraph clusterdir_d6e79b97d95370e0e9b61c930d6d50a9 {
+    graph [ bgcolor="#ddddee", pencolor="black", label="onnxruntime" fontname="Helvetica", fontsize="10", URL="dir_d6e79b97d95370e0e9b61c930d6d50a9.html"]
+  subgraph clusterdir_48a215034096b7d38d25d28d3b6122be {
+    graph [ bgcolor="#eeeeff", pencolor="black", label="" URL="dir_48a215034096b7d38d25d28d3b6122be.html"];
+    dir_48a215034096b7d38d25d28d3b6122be [shape=plaintext label="core"];
+    dir_e41ba2a921c9eb25ec612c54e1511419 [shape=box label="common" color="red" fillcolor="white" style="filled" URL="dir_e41ba2a921c9eb25ec612c54e1511419.html"];
+    dir_14f28c7b411a31ad97b4d47c064745cf [shape=box label="framework" color="black" fillcolor="white" style="filled" URL="dir_14f28c7b411a31ad97b4d47c064745cf.html"];
+    dir_f6c3e94e4b7724fa7d56da89f9fd2002 [shape=box label="graph" color="black" fillcolor="white" style="filled" URL="dir_f6c3e94e4b7724fa7d56da89f9fd2002.html"];
+    dir_430679522f5f99c93276ff28b0dda849 [shape=box label="providers" color="red" fillcolor="white" style="filled" URL="dir_430679522f5f99c93276ff28b0dda849.html"];
+    dir_260d19548b962cb3f7f53e55140fd4e8 [shape=box label="session" color="black" fillcolor="white" style="filled" URL="dir_260d19548b962cb3f7f53e55140fd4e8.html"];
+  }
+  }
+  dir_260d19548b962cb3f7f53e55140fd4e8->dir_e41ba2a921c9eb25ec612c54e1511419 [headlabel="2", labeldistance=1.5 headhref="dir_000015_000009.html"];
+  dir_260d19548b962cb3f7f53e55140fd4e8->dir_14f28c7b411a31ad97b4d47c064745cf [headlabel="9", labeldistance=1.5 headhref="dir_000015_000014.html"];
+  dir_f6c3e94e4b7724fa7d56da89f9fd2002->dir_e41ba2a921c9eb25ec612c54e1511419 [headlabel="9", labeldistance=1.5 headhref="dir_000016_000009.html"];
+  dir_14f28c7b411a31ad97b4d47c064745cf->dir_e41ba2a921c9eb25ec612c54e1511419 [headlabel="20", labeldistance=1.5 headhref="dir_000014_000009.html"];
+  dir_14f28c7b411a31ad97b4d47c064745cf->dir_f6c3e94e4b7724fa7d56da89f9fd2002 [headlabel="7", labeldistance=1.5 headhref="dir_000014_000016.html"];
+  dir_430679522f5f99c93276ff28b0dda849->dir_260d19548b962cb3f7f53e55140fd4e8 [headlabel="3", labeldistance=1.5 headhref="dir_000018_000015.html"];
+}
