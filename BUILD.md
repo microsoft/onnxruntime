@@ -178,9 +178,13 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 5. append "-DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
 
 ### Native compiling on Linux (SLOWER)
-Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Note that
-to build in ACR-Build (Azure Container Registry), you may want to split it to two files and run them one by one.
-If you run this Dockerfile directly in ACR-Build, it is likely to hit their timeout limitation (8 hours).
+
+Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build run on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total. If you want to use [Azure Container Registry Tasks](https://docs.microsoft.com/en-us/azure/container-registry/container-registry-tasks-overview) building the Docker image in cloud, you may want to split this Dockerfile to two steps:
+
+1. Build environment image creation: steps before onnxruntime repo clone
+2. ONNX Runtime and Python binding creation: the rest of steps in the original Dockerfile with step 1 output as base image.
+
+By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours) 
 
 ### Cross compiling on Windows
 (TODO)
