@@ -35,7 +35,7 @@ fi
 set +e
 
 if [ $BUILD_DEVICE = "cpu" ]; then
-    docker rm -f $HOSTNAME || true
+    docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     docker run -h $HOSTNAME \
         --rm -e AZURE_BLOB_KEY \
         --name "onnxruntime-$BUILD_DEVICE" \
@@ -45,6 +45,7 @@ if [ $BUILD_DEVICE = "cpu" ]; then
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
 else
+    docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     nvidia-docker run --rm -h $HOSTNAME \
         --rm -e AZURE_BLOB_KEY \
         --name "onnxruntime-$BUILD_DEVICE" \
