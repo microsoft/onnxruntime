@@ -15,6 +15,7 @@ import onnxruntime
 # The documentation requires two extensions available at:
 # https://github.com/xadupre/sphinx-docfx-yaml
 # https://github.com/xadupre/sphinx-docfx-markdown
+import sphinx_modern_theme
 
 
 # -- Project information -----------------------------------------------------
@@ -33,6 +34,7 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     "sphinx.ext.autodoc",
+    'sphinx.ext.githubpages',
     "sphinx_gallery.gen_gallery",
     'sphinx.ext.autodoc',
     "docfx_yaml.extension",
@@ -54,16 +56,10 @@ pygments_style = 'sphinx'
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "sphinx_rtd_theme"
-
-# Theme options are theme-specific and customize the look and feel of a theme
-# further.  For a list of options available for each theme, see the
-# documentation.
-#
-# html_theme_options = {}
-
+html_theme = "sphinx_modern_theme"
+html_theme_path = [sphinx_modern_theme.get_html_theme_path()]
+html_logo = "../MSFT-Onnx-Runtime-11282019-Logo.png"
 html_static_path = ['_static']
-# html_sidebars = {}
 
 # -- Options for intersphinx extension ---------------------------------------
 
@@ -89,5 +85,6 @@ md_link_replace = {
 def setup(app):
     # Placeholder to initialize the folder before
     # generating the documentation.
+    app.add_stylesheet('_static/gallery.css')
     return app
 
