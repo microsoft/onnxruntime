@@ -25,6 +25,7 @@ apt-get update && apt-get install -y --no-install-recommends \
         sudo \
         gfortran \
         python3-dev \
+        language-pack-en \
         libopenblas-dev \
         liblttng-ust0 \
         libcurl3 \

@@ -87,6 +87,16 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
   }
   return Status::OK();
 }
+
+inline std::locale GetLocale(const std::string& locale_name) {
+  try {
+    std::locale result(locale_name);
+    return result;
+  } catch (const std::runtime_error& e) {
+    ONNXRUNTIME_THROW("Failed to construct locale with name: ",
+                      locale_name, e.what(), " Please, install necessary language-pack-XX");
+  }
+}
 }  // namespace string_normalizer
 
 using namespace string_normalizer;
@@ -118,8 +128,8 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     compare_caseaction_ = (casechangeaction_ == UPPER) ? UPPER : LOWER;
   }
 
-  locale_ = info.GetAttrOrDefault("locale", std::string("en_US.UTF-8"));
-  std::locale locale(locale_);
+  locale_name_ = info.GetAttrOrDefault("locale", std::string("en_US.UTF-8"));
+  std::locale locale = GetLocale(locale_name_);
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
 
   std::vector<std::string> swords = info.GetAttrsOrDefault<std::string>("stopwords");
@@ -165,7 +175,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   }
 
   Status status;
-  std::locale locale(locale_);
+  std::locale locale = GetLocale(locale_name_);
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
   auto const input_data = X->template Data<std::string>();
   using StrRef = std::reference_wrapper<const std::string>;
