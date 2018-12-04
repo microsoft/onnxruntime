@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/graph/graph_base.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 class Function;
