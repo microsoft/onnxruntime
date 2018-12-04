@@ -11,7 +11,7 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 

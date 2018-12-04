@@ -7,7 +7,7 @@
 #include "core/framework/alloc_kind.h"
 #include "core/framework/allocator.h"
 #include "core/framework/sequential_execution_plan.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
 }
