@@ -25,25 +25,11 @@ void InitTestAttr(OpTester& test, bool mark, const std::vector<std::string>& sep
   test.AddAttribute("mark", int64_t{mark});
   test.AddAttribute("separators", seps);
   // Padding for alignment
-  test.AddAttribute("padvalue", padval);
+  test.AddAttribute("pad_value", padval);
   test.AddAttribute("mincharnum", mincharnum);
 }
 
 TEST(ContribOpTest, TokenizerCharLevel) {
-  // Mincharnum is too big for character tokenezation, should be 1
-  {
-    OpTester test("Tokenizer", opset_ver, domain);
-    InitTestAttr(test, false, {""}, 2);
-
-    std::vector<int64_t> dims{1, 2};
-    std::vector<std::string> input = {std::string("s1"), std::string("s2")};
-    test.AddInput<std::string>("T", dims, input);
-    std::vector<std::string> output(input);  // do the same for now
-    test.AddOutput<std::string>("Y", dims, output);
-
-    test.Run(OpTester::ExpectResult::kExpectFailure, "mincharnum is too big for char level tokenezation");
-  }
-
   // Invalid input dimensions
   {
     OpTester test("Tokenizer", opset_ver, domain);

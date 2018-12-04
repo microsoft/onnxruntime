@@ -161,10 +161,66 @@ class TernarySearchTree {
   std::unique_ptr<Node> root_;
 };
 
+// We store the length of the original pattern within the
+// Ternary Tree so on search miss we drop this many characters from the
+// string
+struct SearchValue {
+  size_t w_len;
+  int priority_;
+};
+
 }  // namespace tokenizer_details
 
-Status onnxruntime::contrib::Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
-                                                     const std::vector<int64_t>& input_dims) const {
+using namespace tokenizer_details;
+
+struct Tokenizer::SearchData {
+  TernarySearchTree<wchar_t, SearchValue> tst_;
+};
+
+Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info), search_data_(nullptr) {
+  int64_t mark = 0;
+  auto status = info.GetAttr("mark", &mark);
+  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mark is not set");
+  mark_ = mark != 0;
+  status = info.GetAttr("pad_value", &pad_value_);
+  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute pad_value is not set");
+  status = info.GetAttr("mincharnum", &mincharnum_);
+  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
+
+  std::vector<std::string> separators;
+  status = info.GetAttrs<std::string>("separators", separators);
+  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute separators is not set");
+  ONNXRUNTIME_ENFORCE(!separators.empty(), "Requires at least one separator");
+
+  char_tokenezation_ = (separators.size() == 1 &&
+                        separators[0].empty());
+
+  ONNXRUNTIME_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
+                      "mincharnum is too big for char level tokenezation");
+
+  // Create TST and insert separators
+  if (!char_tokenezation_) {
+    std::unique_ptr<SearchData> sd(new SearchData);
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
+    int priority = 0;  // earlier search patterns get priority
+    for (const auto& sep : separators) {
+      ONNXRUNTIME_ENFORCE(!sep.empty(), "No empty separators allowed");
+      std::wstring wsep = converter.from_bytes(sep);
+      ONNXRUNTIME_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
+      bool result = sd->tst_.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
+      ONNXRUNTIME_ENFORCE(result, "duplicate separator detected");
+      ++priority;
+    }
+    search_data_ = sd.release();
+  }
+}
+
+Tokenizer ::~Tokenizer() {
+  delete search_data_;
+}
+
+Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
+                               const std::vector<int64_t>& input_dims) const {
   using namespace tokenizer_details;
   // With char tokenzation we get as many tokens as the number of
   // utf8 characters in the string. So for every string we calculate its character(utf8) length
@@ -172,19 +228,21 @@ Status onnxruntime::contrib::Tokenizer::CharTokenize(OpKernelContext* ctx, size_
   size_t max_tokens = 0;
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<std::string>();
+  auto curr_input = input_data;
   for (size_t n = 0; n < N; ++n) {
     for (size_t c = 0; c < C; ++c) {
-      const auto* s = input_data + (n * C) + c;
+      const auto& s = *curr_input;
       size_t tokens = 0;  // length in utf8 chars
-      if (!utf8_validate(reinterpret_cast<const unsigned char*>(s->data()), s->size(),
+      if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
                          tokens)) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input string contains invalid utf8 chars: " + *s);
+                      "Input string contains invalid utf8 chars: " + s);
       }
       if (mark_) {
         tokens += 2;  // Start/end markers as separate tokens
       }
       max_tokens = std::max(max_tokens, tokens);
+      ++curr_input;
     }
   }
 
@@ -202,19 +260,20 @@ Status onnxruntime::contrib::Tokenizer::CharTokenize(OpKernelContext* ctx, size_
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->template MutableData<std::string>();
   size_t output_index = 0;
+  curr_input = input_data;
   for (size_t n = 0; n < N; ++n) {
     for (size_t c = 0; c < C; ++c) {
-      const auto* s = input_data + (n * C) + c;
+      const auto& s = *curr_input;
       if (mark_) {
         new (output_data + output_index) std::string(&start_text, 1);
         ++output_index;
       }
       size_t tokens = 0;
-      const size_t str_len = s->size();
+      const size_t str_len = s.size();
       for (size_t token_idx = 0; token_idx < str_len;) {
-        size_t tlen = utf8_bytes(static_cast<unsigned char>((*s)[token_idx]));
+        size_t tlen = utf8_bytes(static_cast<unsigned char>(s[token_idx]));
         assert(token_idx + tlen <= str_len);
-        new (output_data + output_index) std::string(s->substr(token_idx, tlen));
+        new (output_data + output_index) std::string(s.substr(token_idx, tlen));
         ++output_index;
         token_idx += tlen;
         ++tokens;
@@ -223,50 +282,25 @@ Status onnxruntime::contrib::Tokenizer::CharTokenize(OpKernelContext* ctx, size_
       assert(tokens + (mark_ * 2) <= max_tokens);
       const size_t pads = max_tokens - (mark_ * 2) - tokens;
       for (size_t p = 0; p < pads; ++p) {
-        new (output_data + output_index) std::string(padvalue_);
+        new (output_data + output_index) std::string(pad_value_);
         ++output_index;
       }
       if (mark_) {
         new (output_data + output_index) std::string(&end_text, 1);
         ++output_index;
       }
+      ++curr_input;
     }
   }
   return Status::OK();
 }
 
-Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
-                                                          size_t N, size_t C,
-                                                          const std::vector<int64_t>& input_dims) const {
+Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
+                                    size_t N, size_t C,
+                                    const std::vector<int64_t>& input_dims) const {
   using namespace tokenizer_details;
 
-  // We store the length of the original pattern within the
-  // Ternary Tree so on search miss we drop this many characters from the
-  // string
-  struct ValueType {
-    size_t w_len;
-    int priority_;
-  };
-
-  using SearchTree = TernarySearchTree<wchar_t, ValueType>;
-
-  SearchTree stree;
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
-  int priority = 0;  // earlier search patterns get priority
-  for (auto& sep : separators_) {
-    std::wstring wsep = converter.from_bytes(sep);
-    if (wsep.empty()) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "No empty separators allowed");
-    }
-    if (wsep == wconv_error) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Separator strings contains invalid utf8 chars: " + sep);
-    }
-    stree.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
-    ++priority;
-  }
-
   // Scan all strings and attempt to find separators in them
   // collect all the output tokens here
   size_t max_tokens = 0;
@@ -274,15 +308,14 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   tokenized_strings.reserve(N * C);
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<std::string>();
+  auto curr_input = input_data;
   for (size_t n = 0; n < N; ++n) {
     for (size_t c = 0; c < C; ++c) {
-      const size_t input_idx = (n * C) + c;
-      const auto* s = input_data + input_idx;
-
-      std::wstring wstr = converter.from_bytes(*s);
+      const auto& s = *curr_input;
+      std::wstring wstr = converter.from_bytes(s);
       if (wstr == wconv_error) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Invalid utf8 chars in the input: " + *s);
+                      "Invalid utf8 chars in the input: " + s);
       }
 
       struct Match {
@@ -302,7 +335,7 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
       size_t len_remaining = wstr.length();
       size_t offset = 0;
       while (len_remaining > 0) {
-        const auto* val = stree.get(ws, len_remaining);
+        const auto* val = search_data_->tst_.get(ws, len_remaining);
         if (val != nullptr) {
           auto p = matches.insert({val->priority_, offset, val->w_len});
           while (!p.second && val->priority_ < p.first->priority_) {
@@ -342,6 +375,7 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
         tokens += 2;  // Start/end markers as separate tokens
       }
       max_tokens = std::max(max_tokens, tokens);
+      ++curr_input;
     }
   }
 
@@ -380,7 +414,7 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
     }
     const size_t pads = max_tokens - (mark_ * 2) - row.size();
     for (size_t p = 0; p < pads; ++p) {
-      new (output_data + output_index) std::string(padvalue_);
+      new (output_data + output_index) std::string(pad_value_);
       ++output_index;
     }
     if (mark_) {
@@ -397,21 +431,6 @@ Status onnxruntime::contrib::Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
 
 Status Tokenizer::Compute(OpKernelContext* ctx) const {
   using namespace tokenizer_details;
-
-  if (separators_.empty()) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "requires at least one separator");
-  }
-
-  // Special case for a single empty string separator
-  // which means character level tokenization.
-  const bool char_tokenezation = (separators_.size() == 1 &&
-                                  separators_[0].empty());
-
-  if (char_tokenezation && mincharnum_ > 1) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "mincharnum is too big for char level tokenezation");
-  }
 
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
@@ -442,9 +461,8 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
                   "Input dimensions are either [C] or [N][C] allowed");
   }
 
-  // Max tokens in the last axis
   Status s;
-  if (char_tokenezation) {
+  if (char_tokenezation_) {
     s = CharTokenize(ctx, N, C, input_dims);
   } else {
     s = SeparatorTokenize(ctx, N, C, input_dims);
