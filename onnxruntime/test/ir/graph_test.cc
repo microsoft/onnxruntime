@@ -557,10 +557,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 // Validate that an unused initializer doesn't break graph loading/resolution
 // and is removed as expected.
 TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
-  OPERATOR_SCHEMA(Identity_Fake)
-      .SetDoc("Identity.")
-      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+  ASSERT_TRUE(kSchemasRegistered);
 
   Model model("UnusedInitializerIsIgnored");
   auto& graph = model.MainGraph();
