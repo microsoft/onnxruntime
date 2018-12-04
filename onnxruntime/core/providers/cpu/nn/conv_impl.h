@@ -25,8 +25,8 @@
 namespace onnxruntime {
 namespace {
 template <typename T>
-void fuse_activation(const std::string& activation, T* y_data, size_t y_size) {
-  EigenVectorArrayMap<T> y_vec(y_data, y_size);
+void fuse_activation(const std::string& activation, T* y_data, size_t size) {
+  EigenVectorArrayMap<T> y_vec(y_data, size);
   if (activation.empty()) {
     return;
   } else if (activation == "Relu") {
@@ -172,6 +172,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     }
 
     fuse_activation(activation_, Ydata, Y_offset * group_);
+
+    Xdata += X_offset * group_;
+    Ydata += Y_offset * group_;
   }
 
   return Status::OK();

@@ -10,6 +10,8 @@
 #include "core/graph/conv_bn_fusion.h"
 #include "core/graph/conv_mul_fusion.h"
 #include "core/graph/conv_add_fusion.h"
+#include "core/graph/conv_activation_fusion.h"
+#include "core/platform/env.h"
 
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
@@ -71,5 +73,23 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
+TEST(GraphTransformationTests, FuseConvActivation) {
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  std::string activations[] = {"relu", "sigmoid", "softsign", "tanh"};
+
+  for (std::string act : activations) {
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+    std::string model_uri = MODEL_FOLDER + "fusion/conv_" + act + ".onnx";
+    ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+    std::unique_ptr<ConvActivationFusion> ConvActivationFusion_transformer = std::make_unique<ConvActivationFusion>();
+    session_object.RegisterGraphTransformer(std::move(ConvActivationFusion_transformer));
+
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
