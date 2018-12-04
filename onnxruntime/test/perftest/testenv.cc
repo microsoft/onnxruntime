@@ -41,7 +41,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
   for (const std::string& provider : providers_) {
     if (provider == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactory** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
       FACTORY_PTR_HOLDER;
       RegisterExecutionProvider(sess.get(), f);
@@ -50,7 +50,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
 #endif
     } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactory** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena_ ? 1 : 0, &f));
       FACTORY_PTR_HOLDER;
       RegisterExecutionProvider(sess.get(), f);
@@ -59,7 +59,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
 #endif
     } else if (provider == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactory** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
       RegisterExecutionProvider(sess.get(), f);
       FACTORY_PTR_HOLDER;
@@ -68,7 +68,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactory** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
       RegisterExecutionProvider(sess.get(), f);
       FACTORY_PTR_HOLDER;

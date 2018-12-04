@@ -20,7 +20,7 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  ONNXRuntimeProviderFactoryPtr* f;
+  ONNXRuntimeProviderFactory** f;
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
   FACTORY_PTR_HOLDER;
   ONNXRuntimeProviderPtr out;
@@ -33,7 +33,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_arena) {
 #ifdef USE_MKLDNN
-  ONNXRuntimeProviderFactoryPtr* f;
+  ONNXRuntimeProviderFactory** f;
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_arena ? 1 : 0, &f));
   FACTORY_PTR_HOLDER;
   ONNXRuntimeProviderPtr out;
@@ -47,7 +47,7 @@ std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_a
 
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 #ifdef USE_NUPHAR
-  ONNXRuntimeProviderFactoryPtr* f;
+  ONNXRuntimeProviderFactory** f;
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
   FACTORY_PTR_HOLDER;
   ONNXRuntimeProviderPtr out;
@@ -60,7 +60,7 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #ifdef USE_BRAINSLICE
-  ONNXRuntimeProviderFactoryPtr* f;
+  ONNXRuntimeProviderFactory** f;
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
   FACTORY_PTR_HOLDER;
   ONNXRuntimeProviderPtr out;
