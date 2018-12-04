@@ -47,7 +47,7 @@ Looking ahead: To broaden the reach of the runtime, we will continue investments
 * C# for Linux, Mac
 * C# supporting GPU
 * C packages
-* ARM
+* [ARM](BUILD.md##arm-builds)
 
 # Getting Started 
 If you need a model:  

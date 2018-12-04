@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/quantize_linear.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/tensor/cast_op.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -40,51 +41,48 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto& x_zero_point = *ctx->Input<Tensor>(2);
   auto& y = *ctx->Output(0, x.Shape());
 
-  TensorShape shape(0, 0);
-  std::unique_ptr<Tensor> reshaped_zero_point;
-  std::unique_ptr<Tensor> reshaped_scale;
+  const auto& x_shape = x.Shape();
+  const auto& scale_shape = x_scale.Shape();
+  const auto& zero_point_shape = x_zero_point.Shape();
+  const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
-  // if an axis was provided, build the shape necessary for broadcasting across that axis
+  size_t stride = 0;
+  const auto& broadcastDim = x_shape[axis];
+
   if (has_axis_) {
-    ONNXRUNTIME_ENFORCE(axis_ < static_cast<int64_t>(x.Shape().NumDimensions()), "axis greater than input data dimension!");
-    std::vector<int64_t> shape_;
-    shape_.push_back(x_zero_point.Size());
-    if (axis_ > 0) {
-      for (int64_t i = axis_ - 1; i >= 0; i--) {
-        shape_.push_back(1);
-      }
-    }
-    shape = TensorShape(shape_);
-
-    // reshape copies of the inputs for broadcasting.
-    TensorAllocator<T> tensorAllocatorUint8(*ctx);
-    reshaped_zero_point = tensorAllocatorUint8.Allocate(shape);
-    memcpy(reshaped_zero_point->MutableDataRaw(), x_zero_point.DataRaw(), sizeof(T) * x_zero_point.Size());
-
-    TensorAllocator<float> tensorAllocatorFloat(*ctx);
-    reshaped_scale = tensorAllocatorFloat.Allocate(shape);
-    memcpy(reshaped_scale->MutableDataRaw(), x_scale.DataRaw(), sizeof(float) * x_scale.Size());
+    // if an axis was specified, ensure the scale and zero point are compatible
+    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 1 && scale_shape.Size() == broadcastDim, "x_scale must be 1D tensor with size ", broadcastDim);
+    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 1 && zero_point_shape.Size() == broadcastDim, "x_zero_point must be 1D tensor with size ", broadcastDim);
+    stride = 1;
+  } else {
+    // if no axis, enforce that scale and zero point are scalars
+    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 0, "x_scale must be a scalar if no axis is provided");
+    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 0, "x_zero_point must be a scalar if no axis is provided");
   }
 
-  TBroadcaster<T> bc(x, has_axis_ ? *reshaped_zero_point : x_zero_point);
-  TBroadcastOutput<float> output(bc.GetSpanSize(), y);
-  BroadcastLoop(bc, output,
-                [](EigenVectorMap<float> output, T input0, ConstEigenVectorMap<T> input1) {
-                  output = (int32_t(input0) - input1.template cast<int32_t>().array()).template cast<float>();
-                },
-                [](EigenVectorMap<float> output, ConstEigenVectorMap<T> input0, T input1) {
-                  output = (input0.template cast<int32_t>().array() - int32_t(input1)).template cast<float>();
-                },
-                [](EigenVectorMap<float> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) {
-                  output = (input0.template cast<int32_t>() - input1.template cast<int32_t>()).template cast<float>();
-                });
+  size_t N = x_shape.SizeToDimension(axis);
+  const T* zero_point = x_zero_point.template Data<T>();
+  const float* scale = x_scale.template Data<float>();
+  size_t block_size = x_shape.SizeFromDimension(axis + 1);
+  const T* input = x.template Data<T>();
+  float* output = y.template MutableData<float>();
 
-  TBroadcaster<float> bc2(y, has_axis_ ? *reshaped_scale : x_scale);
-  TBroadcastOutput<float> output2(bc2.GetSpanSize(), y);
-  BroadcastLoop(bc2, output2,
-                [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input0 * input1.array(); },
-                [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array() * input1; },
-                [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0.array() * input1.array(); });
+  for (size_t n = 0; n < N; n++) {
+    const float* current_scale = scale;
+    const T* current_zero_point = zero_point;
+
+    for (size_t bd = 0; bd < static_cast<size_t>(broadcastDim); bd++) {
+      auto zp = static_cast<const int>(*current_zero_point);
+      auto sc = *current_scale;
+
+      for (size_t bs = 0; bs < block_size; bs++) {
+        *output++ = static_cast<float>(static_cast<const int>(*input++) - zp) * sc;
+      }
+
+      current_scale += stride;
+      current_zero_point += stride;
+    }
+  }
 
   return Status::OK();
 }
@@ -117,59 +115,48 @@ Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
   auto& y_zero_point = *ctx->Input<Tensor>(2);
   auto& y = *ctx->Output(0, x.Shape());
 
-  TensorShape shape(0, 0);
-  std::unique_ptr<Tensor> reshaped_scale;
+  const auto& x_shape = x.Shape();
+  const auto& scale_shape = y_scale.Shape();
+  const auto& zero_point_shape = y_zero_point.Shape();
+  const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
-  TensorAllocator<float> tensorAllocator(*ctx);
+  size_t stride = 0;
+  const auto& broadcastDim = x_shape[axis];
 
-  // if an axis was provided, build the shape necessary for broadcasting across that axis
   if (has_axis_) {
-    ONNXRUNTIME_ENFORCE(axis_ < static_cast<int64_t>(x.Shape().NumDimensions()), "axis greater than input data dimension!");
-    std::vector<int64_t> shape_;
-    shape_.push_back(y_zero_point.Size());
-    if (axis_ > 0) {
-      for (int64_t i = axis_ - 1; i >= 0; i--) {
-        shape_.push_back(1);
-      }
-    }
-    shape = TensorShape(shape_);
-
-    reshaped_scale = tensorAllocator.Allocate(shape);
-    memcpy(reshaped_scale->MutableDataRaw(), y_scale.DataRaw(), sizeof(float) * y_scale.Size());
+    // if an axis was specified, ensure the scale and zero point are compatible
+    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 1 && scale_shape.Size() == broadcastDim, "x_scale must be 1D tensor with size ", broadcastDim);
+    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 1 && zero_point_shape.Size() == broadcastDim, "x_zero_point must be 1D tensor with size ", broadcastDim);
+    stride = 1;
+  } else {
+    // if no axis, enforce that scale and zero point are scalars
+    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 0, "x_scale must be a scalar if no axis is provided");
+    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 0, "x_zero_point must be a scalar if no axis is provided");
   }
 
-  std::unique_ptr<Tensor> W = tensorAllocator.Allocate(x.Shape());
-  Tensor* pW = W.get();
+  size_t N = x_shape.SizeToDimension(axis);
+  const uint8_t* zero_point = y_zero_point.template Data<uint8_t>();
+  const float* scale = y_scale.template Data<float>();
+  size_t block_size = x_shape.SizeFromDimension(axis + 1);
+  const float* input = x.template Data<float>();
+  uint8_t* output = y.template MutableData<uint8_t>();
 
-  TBroadcaster<float> bc(x, has_axis_ ? *reshaped_scale : y_scale);
-  TBroadcastOutput<float> output2(bc.GetSpanSize(), *pW);
-  BroadcastLoop(bc, output2,
-                [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = (input0 / input1.array()).round(); },
-                [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = (input0.array() / input1).round(); },
-                [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = (input0.array() / input1.array()).round(); });
+  for (size_t n = 0; n < N; n++) {
+    const float* current_scale = scale;
+    const uint8_t* current_zero_point = zero_point;
 
-  std::unique_ptr<Tensor> Zf = tensorAllocator.Allocate(has_axis_ ? shape : y_zero_point.Shape());
-  Tensor* pZf = Zf.get();
-  CastData<uint8_t, float>(&y_zero_point, pZf, has_axis_ ? shape : y_zero_point.Shape());
+    for (size_t bd = 0; bd < static_cast<size_t>(broadcastDim); bd++) {
+      auto zp = static_cast<const float>(*current_zero_point);
+      auto sc = *current_scale;
 
-  TBroadcaster<float> bc2(*pW, *pZf);
-  TBroadcastOutput<uint8_t> output(bc2.GetSpanSize(), y);
-  BroadcastLoop(bc2, output,
-                [](EigenVectorMap<uint8_t> output, float input0, ConstEigenVectorMap<float> input1) {
-                  for (std::ptrdiff_t i = 0; i < output.size(); i++) {
-                    output[i] = uint8_t(clamp(input0 + float(input1[i]), 0.0f, float(UINT8_MAX)));
-                  }
-                },
-                [](EigenVectorMap<uint8_t> output, ConstEigenVectorMap<float> input0, float input1) {
-                  for (std::ptrdiff_t i = 0; i < output.size(); i++) {
-                    output[i] = uint8_t(clamp(input0[i] + float(input1), 0.0f, float(UINT8_MAX)));
-                  }
-                },
-                [](EigenVectorMap<uint8_t> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) {
-                  for (std::ptrdiff_t i = 0; i < output.size(); i++) {
-                    output[i] = uint8_t(clamp(input0[i] + float(input1[i]), 0.0f, float(UINT8_MAX)));
-                  }
-                });
+      for (size_t bs = 0; bs < block_size; bs++) {
+        *output++ = static_cast<uint8_t>(clamp(std::round(static_cast<float>(*input++) / sc) + zp, 0.0f, float(UINT8_MAX)));
+      }
+
+      current_scale += stride;
+      current_zero_point += stride;
+    }
+  }
 
   return Status::OK();
 }
