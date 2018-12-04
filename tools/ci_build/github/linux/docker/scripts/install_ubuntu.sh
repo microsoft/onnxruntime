@@ -39,6 +39,9 @@ apt-get update && apt-get install -y --no-install-recommends \
         rsync libunwind8 libpng16-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest
 
+locale-gen en_US.UTF-8
+update-locale LANG=en_US.UTF-8
+
 if [ $PYTHON_VER != "3.5" ]; then
     apt-get install -y --no-install-recommends \
             python${PYTHON_VER} \
