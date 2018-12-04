@@ -40,7 +40,7 @@ struct ReluParams {
   // Used as the key for Pool Primitive Reuse Pool.
   std::string ToString() const {
     std::string key;
-    key.reserve(128);
+    key.reserve(64);
     key.append("Relu_");
     AddDimsToKey(key, src_dims);
     AddDimsToKey(key, dst_dims);
@@ -72,9 +72,6 @@ class ReluPrimitive final : public PrimitiveBase {
 	  context_.dst_mem->set_data_handle(nullptr);
 	  return;
   }
-
-  mkldnn::memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
-  mkldnn::memory::format GetDstMemoryFormat() const { return context_.dst_fmt; }
 
   std::unique_ptr<mkldnn::memory::desc> 
 	GetDstMemoryDesc() const { return context_.dst_md; }
@@ -162,7 +159,7 @@ class ReluPrimitive final : public PrimitiveBase {
   mkldnn::engine& cpu_engine_;
 };
 
-// Pool which allows for reuse of MKLDNN Conv2d primitives which are expensive 
+// Pool which allows for reuse of MKLDNN Relu primitives which are expensive 
 // to instantiate. To address thread safety, the primitives are stored in a map 
 // on thread local storage.
 template <typename T>
