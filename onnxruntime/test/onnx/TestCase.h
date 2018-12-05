@@ -19,7 +19,7 @@ class ITestCase {
  public:
   //must be called before calling the other functions
   virtual ::onnxruntime::common::Status SetModelPath(_In_ const PATH_CHAR_TYPE* path) ONNXRUNTIME_ALL_ARGS_NONNULL = 0;
-  virtual ::onnxruntime::common::Status LoadTestData(ONNXSessionPtr session, size_t id, std::unordered_map<std::string, ONNXValuePtr>& name_data_map, bool is_input) = 0;
+  virtual ::onnxruntime::common::Status LoadTestData(ONNXSession* session, size_t id, std::unordered_map<std::string, ONNXValue*>& name_data_map, bool is_input) = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetTestCaseName() const = 0;
   //a string to help identify the dataset

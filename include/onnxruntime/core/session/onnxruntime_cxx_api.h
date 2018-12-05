@@ -11,7 +11,7 @@
 //TODO: encode error code in the message?
 #define ONNXRUNTIME_THROW_ON_ERROR(expr)                                                \
   do {                                                                                  \
-    ONNXStatusPtr onnx_status = (expr);                                                 \
+    ONNXStatus* onnx_status = (expr);                                                   \
     if (onnx_status != nullptr) {                                                       \
       std::string onnx_runtime_error_message = ONNXRuntimeGetErrorMessage(onnx_status); \
       ReleaseONNXStatus(onnx_status);                                                   \
@@ -19,9 +19,9 @@
     }                                                                                   \
   } while (0);
 
-#define ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(NAME)    \
-  decltype(ONNXRuntime##NAME(value.get())) NAME() { \
-    return ONNXRuntime##NAME(value.get());          \
+#define ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \
+  decltype(ONNXRuntime##NAME(value.get())) NAME() {     \
+    return ONNXRuntime##NAME(value.get());              \
   }
 
 #define DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME)  \
@@ -40,7 +40,7 @@ DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Allocator);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryPtr);
+DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryInterface*);
 
 #undef DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT
 
@@ -48,12 +48,12 @@ namespace onnxruntime {
 class SessionOptionsWrapper {
  private:
   std::unique_ptr<ONNXRuntimeSessionOptions, decltype(&ONNXRuntimeReleaseObject)> value;
-  ONNXEnvPtr env_;
-  SessionOptionsWrapper(_In_ ONNXEnvPtr env, ONNXRuntimeSessionOptions* p) : value(p, ONNXRuntimeReleaseObject), env_(env){};
+  ONNXRuntimeEnv* env_;
+  SessionOptionsWrapper(_In_ ONNXRuntimeEnv* env, ONNXRuntimeSessionOptions* p) : value(p, ONNXRuntimeReleaseObject), env_(env){};
 
  public:
   //TODO: for the input arg, should we call addref here?
-  SessionOptionsWrapper(_In_ ONNXEnvPtr env) : value(ONNXRuntimeCreateSessionOptions(), ONNXRuntimeReleaseObject), env_(env){};
+  SessionOptionsWrapper(_In_ ONNXRuntimeEnv* env) : value(ONNXRuntimeCreateSessionOptions(), ONNXRuntimeReleaseObject), env_(env){};
   ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(EnableSequentialExecution)
   ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(DisableSequentialExecution)
   ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL(DisableProfiling)
@@ -80,7 +80,7 @@ class SessionOptionsWrapper {
   * on your most preferred execution provider first followed by the less preferred ones.
   * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
   */
-  void AppendExecutionProvider(_In_ ONNXRuntimeProviderFactoryPtr* f) {
+  void AppendExecutionProvider(_In_ ONNXRuntimeProviderFactoryInterface** f) {
     ONNXRuntimeSessionOptionsAppendExecutionProvider(value.get(), f);
   }
 
@@ -124,6 +124,5 @@ inline std::vector<int64_t> GetTensorShape(const ONNXRuntimeTensorTypeAndShapeIn
   return ret;
 }
 }  // namespace onnxruntime
-
 
 #undef ONNXRUNTIME_REDIRECT_SIMPLE_FUNCTION_CALL

@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/allocator.h"
 #include <atomic>
 #include <stdexcept>
-#include "core/framework/allocator_info.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
@@ -52,10 +51,10 @@ MockedONNXRuntimeAllocator() : ref_count_(1), memory_inuse(0) {
 }
 
 public:
- MockedONNXRuntimeAllocator(const MockedONNXRuntimeAllocator&) = delete;
- MockedONNXRuntimeAllocator& operator=(const MockedONNXRuntimeAllocator&) = delete;
- ONNXRuntimeAllocatorInteface** Upcast() {
-   return const_cast<ONNXRuntimeAllocatorInteface**>(&vtable_);
+MockedONNXRuntimeAllocator(const MockedONNXRuntimeAllocator&) = delete;
+MockedONNXRuntimeAllocator& operator=(const MockedONNXRuntimeAllocator&) = delete;
+ONNXRuntimeAllocatorInteface** Upcast() {
+  return const_cast<ONNXRuntimeAllocatorInteface**>(&vtable_);
 }
 static ONNXRuntimeAllocatorInteface** Create() {
   return (ONNXRuntimeAllocatorInteface**)new MockedONNXRuntimeAllocator();
@@ -84,4 +83,3 @@ void LeakCheck() {
     throw std::runtime_error("memory leak!!!");
 }
 ONNXRUNTIME_ALLOCATOR_IMPL_END
-

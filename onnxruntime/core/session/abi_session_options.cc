@@ -7,11 +7,9 @@
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
 
-
-
 ONNXRuntimeSessionOptions::~ONNXRuntimeSessionOptions() {
   assert(ref_count == 0);
-  for (ONNXRuntimeProviderFactoryPtr* p : provider_factories) {
+  for (ONNXRuntimeProviderFactoryInterface** p : provider_factories) {
     ONNXRuntimeReleaseObject(p);
   }
 }
@@ -21,7 +19,7 @@ ONNXRuntimeSessionOptions& ONNXRuntimeSessionOptions::operator=(const ONNXRuntim
 }
 ONNXRuntimeSessionOptions::ONNXRuntimeSessionOptions(const ONNXRuntimeSessionOptions& other)
     : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
-  for (ONNXRuntimeProviderFactoryPtr* p : other.provider_factories) {
+  for (ONNXRuntimeProviderFactoryInterface** p : other.provider_factories) {
     ONNXRuntimeAddRefToObject(p);
   }
 }
@@ -38,7 +36,7 @@ ONNXRUNTIME_API(ONNXRuntimeSessionOptions*, ONNXRuntimeCloneSessionOptions, ONNX
   }
 }
 
-ONNXRUNTIME_API(void, ONNXRuntimeSessionOptionsAppendExecutionProvider, _In_ ONNXRuntimeSessionOptions* options, _In_ ONNXRuntimeProviderFactoryPtr* f) {
+ONNXRUNTIME_API(void, ONNXRuntimeSessionOptionsAppendExecutionProvider, _In_ ONNXRuntimeSessionOptions* options, _In_ ONNXRuntimeProviderFactoryInterface** f) {
   ONNXRuntimeAddRefToObject(f);
   options->provider_factories.push_back(f);
 }
@@ -98,7 +96,6 @@ ONNXRUNTIME_API(int, ONNXRuntimeSetSessionThreadPoolSize, _In_ ONNXRuntimeSessio
   options->value.session_thread_pool_size = session_thread_pool_size;
   return 0;
 }
-
 
 ONNXRUNTIME_API(void, ONNXRuntimeAddCustomOp, _In_ ONNXRuntimeSessionOptions* options, const char* custom_op_path) {
   options->custom_op_paths.emplace_back(custom_op_path);

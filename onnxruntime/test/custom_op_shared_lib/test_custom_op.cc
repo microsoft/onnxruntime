@@ -4,7 +4,7 @@
 // example custom op
 
 #include "core/framework/custom_ops_author.h"
-#include "core/common/visibility_macros.h"
+#include "core/session/onnxruntime_c_api.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
