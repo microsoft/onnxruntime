@@ -391,7 +391,7 @@ ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateInferenceSession, _In_ ONNXRuntimeE
 }
 #else
 ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateInferenceSession, _In_ ONNXRuntimeEnv* env, _In_ const char* model_path,
-                            _In_ const ONNXRuntimeSessionOptions* options, _Out_ ONNXSessionPtr* out) {
+                            _In_ const ONNXRuntimeSessionOptions* options, _Out_ ONNXSession** out) {
   API_IMPL_BEGIN
   return CreateInferenceSessionImpl(env, model_path, options, out);
   API_IMPL_END
