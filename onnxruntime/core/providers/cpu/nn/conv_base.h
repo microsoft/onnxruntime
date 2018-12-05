@@ -95,6 +95,8 @@ class ConvBase {
       activation_ = "";
     }
 
+    alpha_ = info.GetAttrOrDefault("alpha", 0.01f);
+
 #if false
     // TODO: Re-enable when attributes values are guaranteed to be filled.
     std::string auto_pad;
@@ -185,6 +187,7 @@ class ConvBase {
   std::vector<int64_t> pads_;
   std::vector<int64_t> dilations_;
   std::string activation_;
+  float alpha_;
 
  private:
   std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_

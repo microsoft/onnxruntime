@@ -25,22 +25,24 @@
 namespace onnxruntime {
 namespace {
 template <typename T>
-void fuse_activation(const std::string& activation, T* y_data, size_t size) {
+void fuse_activation(const std::string& activation, T* y_data, size_t size, float alpha) {
   EigenVectorArrayMap<T> y_vec(y_data, size);
   if (activation.empty()) {
     return;
   } else if (activation == "Relu") {
-    y_vec.cwiseMax(0);
+    y_vec = y_vec.cwiseMax(0);
   } else if (activation == "Sigmoid") {
     y_vec = (y_vec >= 0).select(1 / (1. + (-y_vec.abs()).exp()), 1 - 1 / (1. + (-y_vec.abs()).exp()));
   } else if (activation == "Softsign") {
     y_vec = (1 + y_vec.abs()).inverse() * y_vec;
   } else if (activation == "Tanh") {
-    y_vec.tanh();
+    y_vec = y_vec.tanh();
+  } else if (activation == "LeakyTanh") {
+    y_vec = (y_vec >= 0).select(y_vec, (T)alpha * y_vec);
   } else {
     ONNXRUNTIME_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
   }
-}
+}  // namespace
 }  // namespace
 
 template <typename T>
@@ -261,7 +263,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              static_cast<float*>(working_buffer.get()),
              Ydata);
 
-    fuse_activation(activation_, Ydata, Y->Shape().Size());
+    fuse_activation(activation_, Ydata, Y->Shape().Size(), alpha_);
 
   } else {
     const int64_t X_offset = C / group_ * input_image_size;
@@ -314,7 +316,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         Ymatrix.rowwise() += Bvec.transpose();
       }
 
-      fuse_activation<float>(activation_, Ydata, Y_offset * group_);
+      fuse_activation<float>(activation_, Ydata, Y_offset * group_, alpha_);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;

@@ -76,7 +76,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 TEST(GraphTransformationTests, FuseConvActivation) {
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  std::string activations[] = {"relu", "sigmoid", "softsign", "tanh"};
+  std::string activations[] = {"relu", "sigmoid", "softsign", "tanh", "leakyrelu"};
 
   for (std::string act : activations) {
     InferenceSession session_object{so, &DefaultLoggingManager()};

@@ -11,20 +11,27 @@ namespace onnxruntime {
 namespace {
 bool IsFusableActivation(const Node& node) {
   const std::string& op_type = node.OpType();
-  return op_type == "Relu" || op_type == "Sigmoid" || op_type == "Softsign" || op_type == "Tanh";
+  return op_type == "LeakyRelu" || op_type == "Relu" || op_type == "Sigmoid" || op_type == "Softsign" || op_type == "Tanh";
+}
+bool IsFusableProvider(const Node& node) {
+  //for now, the fusion only applies to CPU
+  return node.GetExecutionProviderType() == kCpuExecutionProvider;
+}
+bool IsUnfusedConv(const Node& conv) {
+  auto conv_attrs = conv.GetAttributes();
+  return conv_attrs.find("activation") == conv_attrs.end();
 }
 }  // namespace
 
 Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    if (node.OpType() != "Conv" || node.GetOutputEdgesCount() != 1) {
+    if (IsFusableProvider(node) || node.OpType() != "Conv" || !IsUnfusedConv(node) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (!IsFusableActivation(next_node) ||
-        graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    if (!IsFusableActivation(next_node) || graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
     }
 
@@ -34,8 +41,16 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
     AttributeProto act;
     act.set_name("activation");
     act.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-    act.set_s(node.OpType());
+    act.set_s(act_node.OpType());
     node.AddAttribute("activation", act);
+
+    //Add optional attributes for activations
+    if (act_node.OpType() == "LeakyRelu") {
+      const NodeAttributes attrs = act_node.GetAttributes();
+      for (auto it = attrs.begin(); it != attrs.end(); ++it) {
+        node.AddAttribute(it->first, it->second);
+      }
+    }
 
     // Replace the input of the node following mul node
     const NodeArg* act_output_def = act_node.OutputDefs()[0];
