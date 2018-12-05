@@ -8,7 +8,14 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     ConstantFill,
     1,
-    KernelDefBuilder().TypeConstraint("T",
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{
+                                          DataTypeImpl::GetTensorType<float>(),
+                                          DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<bool>(),
+                                      })
+                      .TypeConstraint("T2",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
@@ -54,6 +61,8 @@ Status ConstantFill::ComputeImpl(OpKernelContext* context) const {
       dims = DimsFromInput<int32_t>(t1);
     } else if (t1->DataType() == DataTypeImpl::GetType<int64_t>()) {
       dims = DimsFromInput<int64_t>(t1);
+    } else if (t1->DataType() == DataTypeImpl::GetType<bool>()) {
+      dims = DimsFromInput<bool>(t1);
     } else {
       ONNXRUNTIME_THROW("Unexpected T1 element type");
     }
