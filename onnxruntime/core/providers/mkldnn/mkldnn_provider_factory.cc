@@ -15,12 +15,12 @@ struct MkldnnProviderFactory {
   MkldnnProviderFactory();
 };
 
-ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateMkldnn(void* this_, ONNXRuntimeProviderPtr* out) {
+ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateMkldnn(void* this_, ONNXRuntimeProvider** out) {
   MKLDNNExecutionProviderInfo info;
   MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
   info.create_arena = this_ptr->create_arena;
   MKLDNNExecutionProvider* ret = new MKLDNNExecutionProvider(info);
-  *out = (ONNXRuntimeProviderPtr)ret;
+  *out = (ONNXRuntimeProvider*)ret;
   return nullptr;
 }
 
