@@ -8,7 +8,7 @@
 
 #define ONNXRUNTIME_ABORT_ON_ERROR(expr)                         \
   do {                                                           \
-    ONNXStatusPtr onnx_status = (expr);                          \
+    ONNXStatus* onnx_status = (expr);                            \
     if (onnx_status != NULL) {                                   \
       const char* msg = ONNXRuntimeGetErrorMessage(onnx_status); \
       fprintf(stderr, "%s\n", msg);                              \
