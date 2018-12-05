@@ -182,7 +182,7 @@ void verify_input_output_count(ONNXSession* session) {
 
 #ifdef USE_CUDA
 void enable_cuda(ONNXRuntimeSessionOptions* session_option) {
-  ONNXRuntimeProviderFactoryPtr* factory;
+  ONNXRuntimeProviderFactory** factory;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &factory));
   ONNXRuntimeSessionOptionsAppendExecutionProvider(session_option, factory);
   ONNXRuntimeReleaseObject(factory);
