@@ -22,6 +22,13 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       continue;
     }
 
+    assert(node.Op()->SinceVersion() == 1 && next_node.Op()->SinceVersion() == 7);
+    if ((node.Domain() != kOnnxDomain && node.Domain() != kOnnxDomainAlias) ||
+        node.Op()->Deprecated() || next_node.Op()->Deprecated() ||
+        node.Op()->SinceVersion() != 1 || next_node.Op()->SinceVersion() != 7) {
+      continue;
+    }
+
     auto& conv_node = node;
     const Node& add_node = next_node;
 
