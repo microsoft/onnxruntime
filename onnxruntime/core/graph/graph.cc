@@ -2028,9 +2028,11 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     return false;
   }
   // Remove all input edges.
-  for (auto iter = node->InputEdgesBegin(); iter != node->InputEdgesEnd(); ++iter) {
-    auto& input_node = (*iter).GetNode();
-    auto input_arg = (*iter).GetNodeArg();
+  auto input_edges = node->GetRelationships().input_edges;
+  
+  for (auto& input_edge : input_edges) {
+    auto& input_node = input_edge.GetNode();
+    auto input_arg = input_edge.GetNodeArg();
     RemoveEdge(input_node.Index(), p_index, *input_arg);
   }
   return ReleaseNode(p_index);
