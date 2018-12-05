@@ -9,7 +9,7 @@
 using namespace onnxruntime;
 
 TEST_F(CApiTest, allocation_info) {
-  ONNXRuntimeAllocatorInfo *info1, info2;
+  ONNXRuntimeAllocatorInfo *info1, *info2;
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateAllocatorInfo("Cpu", ONNXRuntimeArenaAllocator, 0, ONNXRuntimeMemTypeDefault, &info1));
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCpuAllocatorInfo(ONNXRuntimeArenaAllocator, ONNXRuntimeMemTypeDefault, &info2));
   ASSERT_EQ(0, ONNXRuntimeCompareAllocatorInfo(info1, info2));
