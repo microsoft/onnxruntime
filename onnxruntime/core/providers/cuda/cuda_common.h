@@ -5,7 +5,7 @@
 #include "cuda_pch.h"
 #include "core/common/status.h"
 #include "core/framework/op_kernel.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "shared_inc/cuda_call.h"
 #include "cuda_execution_provider.h"
 #include "shared_inc/fast_divmod.h"

@@ -14,7 +14,7 @@
 #include "gsl/pointers"
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/op.h"
 #include "core/common/logging/logging.h"

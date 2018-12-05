@@ -6,7 +6,7 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 
