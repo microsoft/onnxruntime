@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/session/onnxruntime_c_api.h"
-#include "core/framework/allocator_info.h"
 #include "providers.h"
 #include <stdio.h>
 #include <assert.h>
