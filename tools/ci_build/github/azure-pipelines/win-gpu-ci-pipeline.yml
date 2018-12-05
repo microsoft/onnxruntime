@@ -27,6 +27,11 @@ jobs:
         filename: build.bat
         arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda"'
         workingFolder: "$(Build.SourcesDirectory)"
+    - task: PowerShell@1
+      displayName: 'Clean up CUDA props files'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion $(CUDA_VERSION)'
     - task: CmdLine@1
       displayName: 'Clean build folders/files'
       inputs:
