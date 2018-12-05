@@ -206,30 +206,31 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
-  const int64_t input_image_size = input_shape.Size();
-  const int64_t output_image_size = output_shape.Size();
-  const int64_t kernel_size = TensorShape(kernel_shape).Size();
-
   AllocatorPtr alloc;
   ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   const float* Xdata = X->template Data<float>();
   float* Ydata = Y->template MutableData<float>();
 
-  MLAS_CONV_PARAMETERS Parameters;
-  size_t WorkingBufferSize;
-  if (MlasConvPrepare(&Parameters,
-                      kernel_shape.size(),
-                      static_cast<size_t>(N),
-                      static_cast<size_t>(group_),
-                      static_cast<size_t>(C / group_),
-                      input_shape.GetDims().data(),
-                      kernel_shape.data(),
-                      dilations.data(),
-                      pads.data(),
-                      strides.data(),
-                      static_cast<size_t>(M / group_),
-                      &WorkingBufferSize)) {
+  const size_t kernel_rank = kernel_shape.size();
+
+  if (kernel_rank == 2 || kernel_rank == 3) {
+    MLAS_CONV_PARAMETERS Parameters;
+    size_t WorkingBufferSize;
+    MlasConvPrepare(&Parameters,
+                    kernel_rank,
+                    static_cast<size_t>(N),
+                    static_cast<size_t>(group_),
+                    static_cast<size_t>(C / group_),
+                    input_shape.GetDims().data(),
+                    kernel_shape.data(),
+                    dilations.data(),
+                    pads.data(),
+                    strides.data(),
+                    output_shape.GetDims().data(),
+                    static_cast<size_t>(M / group_),
+                    &WorkingBufferSize);
+
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
 
@@ -240,6 +241,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              static_cast<float*>(working_buffer.get()),
              Ydata);
   } else {
+    const int64_t input_image_size = input_shape.Size();
+    const int64_t output_image_size = output_shape.Size();
+    const int64_t kernel_size = TensorShape(kernel_shape).Size();
     const int64_t X_offset = C / group_ * input_image_size;
     const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group_;
     const int64_t W_offset = W->Shape().Size() / group_;

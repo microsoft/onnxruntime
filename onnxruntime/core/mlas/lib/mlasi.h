@@ -82,22 +82,24 @@ Abstract:
 #if defined(_OPENMP)
 #include <omp.h>
 #define MLAS_USE_OPENMP
+#define MLAS_HAS_THREADING_SUPPORT
 #elif defined(_WIN32)
 #define MLAS_USE_WIN32_THREADPOOL
+#define MLAS_HAS_THREADING_SUPPORT
 #endif
 
 //
 // Define the maximum number of threads supported by this implementation.
 //
 
-#define MLAS_MAXIMUM_THREAD_COUNT           16
+#define MLAS_MAXIMUM_THREAD_COUNT                   16
 
 //
 // Define the default strides to step through slices of the input matrices.
 //
 
-#define MLAS_SGEMM_STRIDEN                  128
-#define MLAS_SGEMM_STRIDEK                  128
+#define MLAS_SGEMM_STRIDEN                          128
+#define MLAS_SGEMM_STRIDEK                          128
 
 //
 // Define the alignment for segmenting a SGEMM operation across multiple
@@ -108,7 +110,7 @@ Abstract:
 // the effort at this time.
 //
 
-#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN     16
+#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 
 //
 // Define the prototypes of the SGEMM platform optimized routines.
@@ -193,12 +195,12 @@ extern "C" {
 //
 
 #if defined(MLAS_USE_OPENMP)
-#define MLAS_SGEMM_THREAD_COMPLEXITY        (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #else
 #if defined(MLAS_TARGET_AMD64)
-#define MLAS_SGEMM_THREAD_COMPLEXITY        (2 * 1024 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (2 * 1024 * 1024)
 #else
-#define MLAS_SGEMM_THREAD_COMPLEXITY        (1 * 1024 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (1 * 1024 * 1024)
 #endif
 #endif
 
@@ -243,10 +245,10 @@ struct MLAS_PLATFORM {
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
-    uint32_t MaximumThreadCount;
+    int32_t MaximumThreadCount;
 #endif
 
-    uint32_t
+    int32_t
     GetMaximumThreadCount(
         void
         )
@@ -262,6 +264,26 @@ struct MLAS_PLATFORM {
 };
 
 extern MLAS_PLATFORM MlasPlatform;
+
+//
+// Threading support.
+//
+
+typedef
+void
+(MLAS_THREADED_ROUTINE)(
+    void* Context,
+    int32_t Index
+    );
+
+typedef MLAS_THREADED_ROUTINE* PMLAS_THREADED_ROUTINE;
+
+void
+MlasExecuteThreaded(
+    PMLAS_THREADED_ROUTINE ThreadedRoutine,
+    void* Context,
+    int32_t Iterations
+    );
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
