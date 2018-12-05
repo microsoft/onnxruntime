@@ -15,7 +15,7 @@ struct CUDAProviderFactory {
   CUDAProviderFactory();
 };
 
-ONNXStatusPtr ONNXRUNTIME_API_STATUSCALL CreateCuda(void* this_, ONNXRuntimeProvider** out) {
+ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateCuda(void* this_, ONNXRuntimeProvider** out) {
   CUDAExecutionProviderInfo info;
   CUDAProviderFactory* this_ptr = (CUDAProviderFactory*)this_;
   info.device_id = this_ptr->device_id;
