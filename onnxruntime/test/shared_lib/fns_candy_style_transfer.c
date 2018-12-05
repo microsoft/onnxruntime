@@ -145,7 +145,7 @@ int run_inference(ONNXSession* session, const char* input_file, const char* outp
     free(model_input);
     return -1;
   }
-  ONNXRuntimeAllocatorInfoPtr allocator_info;
+  ONNXRuntimeAllocatorInfo* allocator_info;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateCpuAllocatorInfo(ONNXRuntimeArenaAllocator, ONNXRuntimeMemTypeDefault, &allocator_info));
   const size_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
