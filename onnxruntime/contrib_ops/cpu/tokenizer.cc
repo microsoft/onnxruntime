@@ -59,10 +59,6 @@ class TernarySearchTree {
 
  public:
   TernarySearchTree() = default;
-  // XXX: Might need to reconsider
-  // We hope that the search patterns are not
-  // too long. Otherwise, reconsider destruction
-  // and search depth traversals
   ~TernarySearchTree() = default;
 
   /**
@@ -162,8 +158,8 @@ class TernarySearchTree {
 };
 
 // We store the length of the original pattern within the
-// Ternary Tree so on search miss we drop this many characters from the
-// string
+// Ternary Tree. This allows us to cut out the length of the matching
+// separator from the original string.
 struct SearchValue {
   size_t w_len;
   int priority_;
@@ -177,15 +173,18 @@ struct Tokenizer::SearchData {
   TernarySearchTree<wchar_t, SearchValue> tst_;
 };
 
-Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info), search_data_(nullptr) {
+Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   int64_t mark = 0;
   auto status = info.GetAttr("mark", &mark);
   ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mark is not set");
   mark_ = mark != 0;
+
   status = info.GetAttr("pad_value", &pad_value_);
   ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute pad_value is not set");
+
   status = info.GetAttr("mincharnum", &mincharnum_);
   ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
+  ONNXRUNTIME_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
 
   std::vector<std::string> separators;
   status = info.GetAttrs<std::string>("separators", separators);
@@ -200,7 +199,7 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info), search_data_(nu
 
   // Create TST and insert separators
   if (!char_tokenezation_) {
-    std::unique_ptr<SearchData> sd(new SearchData);
+    std::unique_ptr<SearchData> sd(std::make_unique<SearchData>());
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
     int priority = 0;  // earlier search patterns get priority
     for (const auto& sep : separators) {
@@ -211,17 +210,16 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info), search_data_(nu
       ONNXRUNTIME_ENFORCE(result, "duplicate separator detected");
       ++priority;
     }
-    search_data_ = sd.release();
+    search_data_.swap(sd);
   }
 }
 
+// Make SearchData definition available for destruction
 Tokenizer ::~Tokenizer() {
-  delete search_data_;
 }
 
 Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
                                const std::vector<int64_t>& input_dims) const {
-  using namespace tokenizer_details;
   // With char tokenzation we get as many tokens as the number of
   // utf8 characters in the string. So for every string we calculate its character(utf8) length
   // add padding and add start/end test separators if necessary
@@ -298,7 +296,17 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
 Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
                                     size_t N, size_t C,
                                     const std::vector<int64_t>& input_dims) const {
-  using namespace tokenizer_details;
+  struct Match {
+    int priority_;
+    size_t offset_;
+    size_t size_;
+    // create a conflict for overlapping matches
+    // thus if they overlap neither is less than the other
+    // and they are considered equal
+    bool operator<(const Match& o) const {
+      return (offset_ + size_) <= o.offset_;
+    }
+  };
 
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
   // Scan all strings and attempt to find separators in them
@@ -317,18 +325,6 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Invalid utf8 chars in the input: " + s);
     }
-
-    struct Match {
-      int priority_;
-      size_t offset_;
-      size_t size_;
-      // create a conflict for overlapping matches
-      // thus if they overlap neither is less than the other
-      // and they are considered equal
-      bool operator<(const Match& o) const {
-        return (offset_ + size_) <= o.offset_;
-      }
-    };
 
     std::set<Match> matches;
     const wchar_t* ws = wstr.c_str();
@@ -429,8 +425,6 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
 }
 
 Status Tokenizer::Compute(OpKernelContext* ctx) const {
-  using namespace tokenizer_details;
-
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
   if (X->DataType() != DataTypeImpl::GetType<std::string>()) {

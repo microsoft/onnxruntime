@@ -107,7 +107,7 @@ Sample echo operator.)DOC");
           AttributeProto::INT)
       .Attr(
           "pad_value",
-          "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found.",
+          "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.",
           AttributeProto::STRING)
       .Attr(
           "separators",
@@ -115,13 +115,12 @@ Sample echo operator.)DOC");
           AttributeProto::STRINGS)
       .Attr(
           "mincharnum",
-          "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as �A� and �B� would be ignored",
+          "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored",
           AttributeProto::INT)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
       })
-      .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis.)DOC");
+      .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis. All input strings including attributes are UTF-8 encoded.)DOC");
 
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)

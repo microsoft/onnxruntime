@@ -5,9 +5,11 @@
 
 #include "core/framework/op_kernel.h"
 
+#include <memory>
+
 namespace onnxruntime {
 namespace contrib {
-class Tokenizer : public OpKernel {
+class Tokenizer final : public OpKernel {
  public:
   explicit Tokenizer(const OpKernelInfo& info);
   Tokenizer(const Tokenizer&) = delete;
@@ -28,7 +30,7 @@ class Tokenizer : public OpKernel {
   int64_t mincharnum_;
   bool char_tokenezation_;
   struct SearchData;
-  SearchData* search_data_;
+  std::unique_ptr<SearchData> search_data_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime
