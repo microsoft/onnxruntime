@@ -39,6 +39,7 @@ extensions = [
     'sphinx.ext.autodoc',
     "docfx_yaml.extension",
     "docfx_markdown",
+    "pyquickhelper.sphinxext.sphinx_runpython_extension",
 ]
 
 templates_path = ['_templates']
@@ -86,5 +87,17 @@ def setup(app):
     # Placeholder to initialize the folder before
     # generating the documentation.
     app.add_stylesheet('_static/gallery.css')
+    
+    # download examples for the documentation
+    this = os.path.abspath(os.path.dirname(__file__))
+    dest = os.path.join(this, "model.onnx")
+    if not os.path.exists(dest):
+        import urllib.request
+        url = 'https://raw.githubusercontent.com/onnx/onnx/master/onnx/backend/test/data/node/test_sigmoid/model.onnx'
+        urllib.request.urlretrieve(url, dest)
+    loc = os.path.split(dest)[-1]
+    if not os.path.exists(loc):
+        import shutil
+        shutil.copy(dest, loc)
     return app
 

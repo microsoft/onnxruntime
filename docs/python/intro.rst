@@ -41,11 +41,13 @@ This example demonstrates a simple prediction for an
 model. The following file ``model.onnx`` is taken from
 github `onnx...test_sigmoid <https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid>`_.
 
-::
+.. runpython::
+    :showcode:
 
+    import numpy
     import onnxruntime as rt
     sess = rt.InferenceSession("model.onnx")
     input_name = sess.get_inputs()[0].name
     X = numpy.random.random((3,4,5)).astype(numpy.float32)
-    res = sess.run([output_name], {input_name: x})
     pred_onnx = sess.run(None, {input_name: X})
+    print(pred_onnx)
