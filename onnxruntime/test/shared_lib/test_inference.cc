@@ -64,7 +64,7 @@ void TestInference(ONNXRuntimeEnv* env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    ONNXRuntimeProviderFactory** f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
     sf.AppendExecutionProvider(f);
     ONNXRuntimeReleaseObject(f);
@@ -74,7 +74,7 @@ void TestInference(ONNXRuntimeEnv* env, T model_uri,
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_MKLDNN
-    ONNXRuntimeProviderFactory** f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(1, &f));
     sf.AppendExecutionProvider(f);
     ONNXRuntimeReleaseObject(f);
@@ -84,7 +84,7 @@ void TestInference(ONNXRuntimeEnv* env, T model_uri,
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ONNXRuntimeProviderFactory** f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
     sf.AppendExecutionProvider(f);
     ONNXRuntimeReleaseObject(f);

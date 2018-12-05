@@ -46,9 +46,9 @@ constexpr ONNXRuntimeProviderFactoryInterface mkl_cls = {
 MkldnnProviderFactory::MkldnnProviderFactory() : cls(&mkl_cls), ref_count(1), create_arena(true) {}
 }  // namespace
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactory*** out) {
+ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryInterface*** out) {
   MkldnnProviderFactory* ret = new MkldnnProviderFactory();
   ret->create_arena = (use_arena != 0);
-  *out = (ONNXRuntimeProviderFactory**)ret;
+  *out = (ONNXRuntimeProviderFactoryInterface**)ret;
   return nullptr;
 }

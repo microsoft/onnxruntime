@@ -172,7 +172,7 @@ class SessionObjectInitializer {
   }
 };
 
-inline void RegisterExecutionProvider(InferenceSession* sess, ONNXRuntimeProviderFactory** f) {
+inline void RegisterExecutionProvider(InferenceSession* sess, ONNXRuntimeProviderFactoryInterface** f) {
   ONNXRuntimeProvider* p;
   (*f)->CreateProvider(f, &p);
   std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
@@ -183,13 +183,13 @@ inline void RegisterExecutionProvider(InferenceSession* sess, ONNXRuntimeProvide
 }
 
 #define FACTORY_PTR_HOLDER \
-  std::unique_ptr<ONNXRuntimeProviderFactory*, decltype(&ONNXRuntimeReleaseObject)> ptr_holder_(f, ONNXRuntimeReleaseObject);
+  std::unique_ptr<ONNXRuntimeProviderFactoryInterface*, decltype(&ONNXRuntimeReleaseObject)> ptr_holder_(f, ONNXRuntimeReleaseObject);
 
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
 #ifdef USE_CUDA
   {
-    ONNXRuntimeProviderFactory** f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
     RegisterExecutionProvider(sess, f);
     FACTORY_PTR_HOLDER;
@@ -199,7 +199,7 @@ void InitializeSession(InferenceSession* sess) {
 #ifdef USE_MKLDNN
   {
     const bool enable_cpu_mem_arena = true;
-    ONNXRuntimeProviderFactory** f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
     RegisterExecutionProvider(sess, f);
     FACTORY_PTR_HOLDER;
@@ -207,7 +207,7 @@ void InitializeSession(InferenceSession* sess) {
 #endif
 #if 0  //USE_NUPHAR
   {
-    ONNXRuntimeProviderFactory** f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
     RegisterExecutionProvider(sess, f);
     FACTORY_PTR_HOLDER;
