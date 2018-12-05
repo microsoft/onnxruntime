@@ -14,8 +14,7 @@ RUN make
 RUN sudo make install
 
 # Prepare onnxruntime Repo
-# WORKDIR /code/onnxruntime
-# RUN git clone --recursive https://github.com/Microsoft/onnxruntime
+RUN git clone --recursive https://github.com/Microsoft/onnxruntime
 
 WORKDIR /code/onnxruntime
 ARG BUILDTYPE=Debug

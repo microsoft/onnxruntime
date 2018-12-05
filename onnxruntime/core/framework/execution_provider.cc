@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "core/framework/execution_provider.h"
 
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/computation_capacity.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/op_kernel.h"

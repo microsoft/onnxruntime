@@ -4,7 +4,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <memory>
 #include "core/platform/env.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"
