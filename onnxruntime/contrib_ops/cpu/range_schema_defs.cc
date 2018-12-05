@@ -25,7 +25,7 @@ up to but not including `limit`.
 )DOC";
 
 template <typename T>
-static T get_data(const TensorProto* shapeInitializer) {
+static T get_data(const TensorProto*) {
     fail_shape_inference("Unsupported non-raw-data data type!");
 }
 
