@@ -588,6 +588,8 @@ class Graph {
   Node& AddNode(const Node& other);
 
   /** Remove a Node from this Graph and free it. 
+  The output edges of this specified node MUST have been removed before removing the node.
+  The input edges of this specified node is removed while removing the node.
   @returns true if the node_index was valid
   @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
   */

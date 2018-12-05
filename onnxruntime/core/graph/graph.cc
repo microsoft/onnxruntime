@@ -2023,6 +2023,16 @@ Node& Graph::AddNode(const std::string& name,
 }
 
 bool Graph::RemoveNode(NodeIndex p_index) {
+  auto node = GetNode(p_index);
+  if (nullptr == node) {
+    return false;
+  }
+  // Remove all input edges.
+  for (auto iter = node->InputEdgesBegin(); iter != node->InputEdgesEnd(); ++iter) {
+    auto& input_node = (*iter).GetNode();
+    auto input_arg = (*iter).GetNodeArg();
+    RemoveEdge(input_node.Index(), p_index, *input_arg);
+  }
   return ReleaseNode(p_index);
 }
 
