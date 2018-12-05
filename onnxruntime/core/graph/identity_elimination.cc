@@ -3,7 +3,7 @@
 
 #include "core/graph/rewrite_rule.h"
 #include "core/graph/identity_elimination.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
 #include "core/common/logging/logging.h"
 
