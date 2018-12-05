@@ -29,7 +29,7 @@ void InitTestAttr(OpTester& test, bool mark, const std::vector<std::string>& sep
   test.AddAttribute("mincharnum", mincharnum);
 }
 
-TEST(ContribOpTest, TokenizerCharLevel) {
+TEST(ContribOpTest, TokenizerCharLevel_InvalidDim) {
   // Invalid input dimensions
   {
     OpTester test("Tokenizer", opset_ver, domain);
@@ -43,7 +43,9 @@ TEST(ContribOpTest, TokenizerCharLevel) {
 
     test.Run(OpTester::ExpectResult::kExpectFailure, "Input dimensions are either [C] or [N][C] allowed");
   }
+}
 
+TEST(ContribOpTest, TokenizerCharLevel_LatinCharsNoMarkersC) {
   // Char level tokenezation with latin characters and no
   // start/end text markers
   // [C] dimensions
@@ -76,6 +78,9 @@ TEST(ContribOpTest, TokenizerCharLevel) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_LatinCharsWithMarkersC) {
   // Char level tokenezation with latin characters and
   // with start/end text markers
   // [C] dimensions
@@ -104,14 +109,17 @@ TEST(ContribOpTest, TokenizerCharLevel) {
         "b",
         "c",
         "d",
+        end_mark,
         padval,
-        padval,
-        end_mark};
+        padval};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_LatinCharsNoMarkersNC) {
   // Char level tokenezation with latin characters and no
   // start/end text markers
   // [N][C] dimensions
@@ -156,6 +164,9 @@ TEST(ContribOpTest, TokenizerCharLevel) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_LatinCharsWithMarkersNC) {
   // Char level tokenezation with latin characters and
   // with start/end text markers
   // [N][C] dimensions
@@ -176,25 +187,25 @@ TEST(ContribOpTest, TokenizerCharLevel) {
         "b",
         "c",
         "d",
-        padval,
-        padval,
         end_mark,
+        padval,
+        padval,
         start_mark,
         "a",
         "b",
         "c",
         "d",
-        padval,
-        padval,
         end_mark,
+        padval,
+        padval,
         start_mark,
         "a",
         "b",
         "c",
         "d",
-        padval,
-        padval,
         end_mark,
+        padval,
+        padval,
         start_mark,
         "a",
         "b",
@@ -208,6 +219,9 @@ TEST(ContribOpTest, TokenizerCharLevel) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_CyrillicCharsWithMarkersC) {
   // Char level tokenezation with Cyrillic characters and
   // with start/end text markers
   // [C] dimensions
@@ -230,14 +244,17 @@ TEST(ContribOpTest, TokenizerCharLevel) {
         end_mark,
         start_mark,
         u8"К", u8"о", u8"м", u8"а",
+        end_mark,
         padval,
-        padval,
-        end_mark};
+        padval};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_MixedCharsWithMarkersC) {
   // Char level tokenezation with a mix of latin, Spanish, Cyrillic and Chinese
   // characters and
   // with start/end text markers
@@ -261,15 +278,17 @@ TEST(ContribOpTest, TokenizerCharLevel) {
         end_mark,
         start_mark,
         u8"К", u8"о", u8"ñ", u8"ó",
+        end_mark,
         padval,
-        padval,
-        end_mark};
+        padval};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
 
+TEST(ContribOpTest, TokenizerCharLevel_EmptyOutputC) {
   // Special case where empty output is produced
   // For [C] we expect [C][0] output
   {
@@ -288,6 +307,9 @@ TEST(ContribOpTest, TokenizerCharLevel) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_EmptyOutputNC) {
   // Special case where empty output is produced
   // For [N][C] we expect [N][C][0] output
   {
@@ -308,7 +330,7 @@ TEST(ContribOpTest, TokenizerCharLevel) {
   }
 }
 
-TEST(ContribOpTest, TokenizerWithSeparators) {
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersC) {
   // Separators and strings with a mix of latin, Spanish, Cyrillic and Chinese
   // characters and with start/end text markers
   // [C] dimensions
@@ -340,7 +362,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }  // namespace test
+}
 
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersCompleteMatchEmptyOutputC) {
   // Test entire separators match so we get nothing
   // in the output
   {
@@ -364,7 +388,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
 
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersStartMatchC) {
   // Match the start
   {
     std::vector<std::string> separators = {
@@ -393,6 +419,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchC) {
   // Match the end
   {
     std::vector<std::string> separators = {
@@ -421,6 +450,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEndMatchAtLeast4CharsC) {
   // Match the end, require at least 4 chars
   {
     std::vector<std::string> separators = {
@@ -443,13 +475,16 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
         u8"Абсу中",
         end_mark,
         start_mark,
-        padval,
-        end_mark};
+        end_mark,
+        padval};
 
     test.AddOutput<std::string>("Y", output_dims, output);
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEmptyInputEmptyOutputC) {
   // Empty input for [C] should produce [C][0]
   {
     std::vector<std::string> separators = {
@@ -471,6 +506,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsWithMarkersEmptyInputEmptyOutputNC) {
   // Empty input for [N][C] should produce [N][C][0]
   {
     std::vector<std::string> separators = {
@@ -492,6 +530,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapShortFirstC) {
   // Test of the overlapping search patterns
   // The spec mandates that the patterns that appear
   // in the separators earlier must be matched first.
@@ -519,6 +560,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapLongFirstC) {
   // Test of the overlapping search patterns
   // The spec mandates that the patterns that appear
   // in the separators earlier must be matched first.
@@ -546,6 +590,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapLongFirstRepeatedShortC) {
   // Test of the overlapping search patterns
   // The spec mandates that the patterns that appear
   // in the separators earlier must be matched first.
@@ -573,6 +620,9 @@ TEST(ContribOpTest, TokenizerWithSeparators) {
 
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapingMatchC) {
   // Test of the overlapping search patterns
   // The spec mandates that the patterns that appear
   // in the separators earlier must be matched first.

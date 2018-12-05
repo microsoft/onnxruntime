@@ -277,15 +277,15 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
       token_idx += tlen;
       ++tokens;
     }
+    if (mark_) {
+      new (output_data + output_index) std::string(&end_text, 1);
+      ++output_index;
+    }
     // Padding strings
     assert(tokens + (mark_ * 2) <= max_tokens);
     const size_t pads = max_tokens - (mark_ * 2) - tokens;
     for (size_t p = 0; p < pads; ++p) {
       new (output_data + output_index) std::string(pad_value_);
-      ++output_index;
-    }
-    if (mark_) {
-      new (output_data + output_index) std::string(&end_text, 1);
       ++output_index;
     }
     ++curr_input;
@@ -407,13 +407,13 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
       new (output_data + output_index) std::string(converter.to_bytes(token));
       ++output_index;
     }
+    if (mark_) {
+      new (output_data + output_index) std::string(&end_text, 1);
+      ++output_index;
+    }
     const size_t pads = max_tokens - (mark_ * 2) - row.size();
     for (size_t p = 0; p < pads; ++p) {
       new (output_data + output_index) std::string(pad_value_);
-      ++output_index;
-    }
-    if (mark_) {
-      new (output_data + output_index) std::string(&end_text, 1);
       ++output_index;
     }
 #ifdef _DEBUG
