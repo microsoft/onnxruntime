@@ -132,7 +132,7 @@ static void usage() {
   printf("usage: <model_path> <input_file> <output_file> \n");
 }
 
-int run_inference(ONNXSessionPtr session, const char* input_file, const char* output_file) {
+int run_inference(ONNXSession* session, const char* input_file, const char* output_file) {
   size_t input_height;
   size_t input_width;
   float* model_input;
@@ -172,7 +172,7 @@ int run_inference(ONNXSessionPtr session, const char* input_file, const char* ou
   return ret;
 }
 
-void verify_input_output_count(ONNXSessionPtr session) {
+void verify_input_output_count(ONNXSession* session) {
   size_t count;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeInferenceSessionGetInputCount(session, &count));
   assert(count == 1);
@@ -203,7 +203,7 @@ int main(int argc, char* argv[]) {
 #ifdef USE_CUDA
   enable_cuda(session_option);
 #endif
-  ONNXSessionPtr session;
+  ONNXSession* session;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateInferenceSession(env, model_path, session_option, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
