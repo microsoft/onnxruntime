@@ -151,14 +151,14 @@ int run_inference(ONNXSession* session, const char* input_file, const char* outp
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
-  ONNXValuePtr input_tensor = NULL;
+  ONNXValue* input_tensor = NULL;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateTensorWithDataAsONNXValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
   assert(ONNXRuntimeIsTensor(input_tensor) != 0);
   ReleaseONNXRuntimeAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
-  ONNXValuePtr output_tensor = NULL;
+  ONNXValue* output_tensor = NULL;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeRunInference(session, NULL, input_names, (const ONNXValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
   assert(ONNXRuntimeIsTensor(output_tensor) != 0);

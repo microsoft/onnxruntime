@@ -433,7 +433,7 @@ ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateTensorWithDataAsONNXValue, _In_ const ON
                        OnnxRuntimeTensorElementDataType type, _Out_ ONNXValue** out);
 
 /// This function doesn't work with string tensor
-/// this is a no-copy method whose pointer is only valid until the backing ONNXValuePtr is free'd.
+/// this is a no-copy method whose pointer is only valid until the backing ONNXValue is free'd.
 ONNXRUNTIME_API_STATUS(ONNXRuntimeGetTensorMutableData, _Inout_ ONNXValue* value, _Out_ void** out);
 
 /**
