@@ -10,7 +10,7 @@ extern "C" {
  * \param device_id cuda device id, starts from zero.
  * \param out Call ONNXRuntimeReleaseObject() method when you no longer need to use it.
  */
-ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactoryPtr** out);
+ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactory*** out);
 
 #ifdef __cplusplus
 }

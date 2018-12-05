@@ -46,9 +46,9 @@ constexpr ONNXRuntimeProviderFactoryInterface cuda_cls = {
 CUDAProviderFactory::CUDAProviderFactory() : cls(&cuda_cls), ref_count(1), device_id(0) {}
 }  // namespace
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactoryPtr** out) {
+ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactory*** out) {
   CUDAProviderFactory* ret = new CUDAProviderFactory();
   ret->device_id = device_id;
-  *out = (ONNXRuntimeProviderFactoryPtr*)ret;
+  *out = (ONNXRuntimeProviderFactory**)ret;
   return nullptr;
 }
