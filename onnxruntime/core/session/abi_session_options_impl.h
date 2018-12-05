@@ -13,7 +13,7 @@
 struct ONNXRuntimeSessionOptions : public onnxruntime::ObjectBase<ONNXRuntimeSessionOptions> {
   onnxruntime::SessionOptions value;
   std::vector<std::string> custom_op_paths;
-  std::vector<ONNXRuntimeProviderFactoryPtr*> provider_factories;
+  std::vector<ONNXRuntimeProviderFactoryInterface**> provider_factories;
   ONNXRuntimeSessionOptions() = default;
   ~ONNXRuntimeSessionOptions();
   ONNXRuntimeSessionOptions(const ONNXRuntimeSessionOptions& other);

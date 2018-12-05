@@ -6,7 +6,7 @@
 
 #include <string>
 #include <atomic>
-#include "core/framework/onnx_object.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/onnx_object_cxx.h"
 
 /**
