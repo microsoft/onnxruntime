@@ -1,6 +1,6 @@
 jobs:
 - job: Windows_CI_GPU_Dev
-  pool: Win-GPU
+  pool: Win-GPU-CUDA10
   variables:
     CUDA_VERSION: '9.1'
   steps:
