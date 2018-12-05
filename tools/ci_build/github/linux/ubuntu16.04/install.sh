@@ -16,6 +16,7 @@ apt-get update && apt-get install -y --no-install-recommends \
         sudo \
         gfortran \
         python3-dev \
+        language-pack-en \
         libopenblas-dev \
         liblttng-ust0 \
         libcurl3 \
@@ -27,6 +28,9 @@ apt-get update && apt-get install -y --no-install-recommends \
         unzip \
         rsync libunwind8 \
         python3-setuptools python3-numpy python3-wheel python python3-pip
+
+locale-gen en_US.UTF-8
+update-locale LANG=en_US.UTF-8
 
 rm -rf /var/lib/apt/lists/*
 
