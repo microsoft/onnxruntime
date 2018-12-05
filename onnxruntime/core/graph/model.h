@@ -7,7 +7,7 @@
 #include <memory>
 #include <climits>
 #include <string>
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 #include "gsl/pointers"
 

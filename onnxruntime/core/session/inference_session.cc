@@ -11,7 +11,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/task_thread_pool.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/graph_transformer.h"
 #include "core/graph/graph_transformer_mgr.h"
 #include "core/graph/model.h"

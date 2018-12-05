@@ -6,7 +6,7 @@
 #include "core/codegen/tvm/tvm_kernel.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/computation_capacity.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/common/logging/logging.h"

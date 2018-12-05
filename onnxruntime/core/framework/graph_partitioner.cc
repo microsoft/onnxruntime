@@ -5,7 +5,7 @@
 
 #include "core/framework/kernel_registry_manager.h"
 #include "core/graph/function.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/computation_capacity.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"

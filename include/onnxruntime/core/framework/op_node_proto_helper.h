@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "gsl/span"
 
 #ifdef __has_attribute

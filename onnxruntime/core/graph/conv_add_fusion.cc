@@ -36,9 +36,22 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Currently, fusion is only supported for float or double data type.
     if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
-        conv_W_tensor_proto->dims_size() != 4 ||
-        add_B_tensor_proto->dims_size() != 3 ||
+        conv_W_tensor_proto->dims_size() < 4 ||
+        add_B_tensor_proto->dims_size() != conv_W_tensor_proto->dims_size() - 1 ||
         conv_W_tensor_proto->dims(0) != add_B_tensor_proto->dims(0)) {
+      continue;
+    }
+
+    // The dimensions of add_B should be equal to 1 except first dimension.
+    bool flag = false;
+    for (int i = 1; i < add_B_tensor_proto->dims_size(); i++) {
+      if (add_B_tensor_proto->dims(i) != 1) {
+        flag = true;
+        break;
+      }
+    }
+
+    if (flag) {
       continue;
     }
 
@@ -49,7 +62,6 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
           conv_B_tensor_proto->dims_size() != 1 ||
-          add_B_tensor_proto->dims_size() != 3 ||
           conv_B_tensor_proto->dims(0) != add_B_tensor_proto->dims(0)) {
         continue;
       }
@@ -57,6 +69,9 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
       auto add_B = std::make_unique<Initializer>(add_B_tensor_proto);
 
+      if (conv_B->size() != add_B->size()) {
+        continue;
+      }
       // Calculate new value of initializers of conv node
       conv_B->add(*add_B);
 

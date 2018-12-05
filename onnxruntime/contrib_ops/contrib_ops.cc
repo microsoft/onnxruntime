@@ -12,8 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
 using ::ONNX_NAMESPACE::OpSchema;
+using ::ONNX_NAMESPACE::OPTIONAL;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -382,6 +382,109 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           "keepdims",
           "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
           AttributeProto::INT);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NonMaxSuppression)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+Pruning away boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
+Bounding boxes with score less than score_threshold are removed. Bounding boxes are supplied as [y1, x1, y2, x2],
+where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners and the coordinates can be provided
+as normalized (i.e., lying in the interval [0, 1]) or absolute.
+Note that this algorithm is agnostic to where the origin is in the coordinate system and more generally is invariant to
+orthogonal transformations and translations of the coordinate system;
+thus translating or reflections of the coordinate system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
+The bounding box coordinates corresponding to the selected indices can then be obtained using the gather operation.)DOC")
+      .Input(0, "boxes", "An input tensor. 2D tensor with shape [num_boxes, 4]", "T1")
+      .Input(1, "scores", "An input tensor. 1D tensor with shape [num_boxes]", "T1")
+      .Output(0, "selected_indices", "selected indices from the boxes tensor.", "T2")
+      .Output(
+          1,
+          "valid_outputs",
+          "Optional. A 0-D integer tensor representing the number of valid elements in selected_indices, with the valid elements appearing first.",
+          "T2",
+          OpSchema::Optional)
+      .TypeConstraint("T1", {"tensor(float)"}, "Constrain input type to float tensor.")
+      .TypeConstraint("T2",
+                      {"tensor(int32)"},
+                      "Constrain output data type to 32-bit integer tensor.")
+      .Attr(
+          "max_output_size",
+          "Integer representing the maximum number of boxes to be selected by non max suppression.",
+          AttributeProto::INT)
+      .Attr(
+          "iou_threshold",
+          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. Value range [0, 1]. The default is 0.0",
+          AttributeProto::FLOAT,
+          static_cast<float>(0.0f))
+      .Attr(
+          "score_threshold",
+          "Float tensor representing the threshold for deciding when to remove boxes based on score.",
+          AttributeProto::FLOAT)
+      .Attr(
+          "pad_to_max_output_size",
+          "Optional. 1(true) - the output selected_indices is padded to be of length max_output_size. Defaults to 0(false).",
+          AttributeProto::INT,
+          OPTIONAL)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
+        selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+
+        // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
+        auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
+        if (pad_to_max_output_size && 1 == pad_to_max_output_size->i()) {
+          auto max_output_size = ctx.getAttribute("max_output_size")->i();
+          selected_indices_type
+              ->mutable_shape()
+              ->add_dim()
+              ->set_dim_value(max_output_size);
+        }
+
+        // valid_outputs is optional, shape is [1]
+        auto num_outputs = ctx.getNumOutputs();
+        if (num_outputs > 1) {
+          auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
+          valid_outputs_shape->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          valid_outputs_shape
+              ->mutable_shape()
+              ->add_dim()
+              ->set_dim_value(1);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(StringNormalizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "Strings to normalize", "T")
+      .Output(0, "Y", "Normalized strings", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)"},
+          "Input/Output is a string tensor")
+      .Attr(
+          "casechangeaction",
+          "string enum that cases output to be lowercased/uppercases/unchanged. Valid values are \"LOWER\", \"UPPER\", \"NONE\"",
+          AttributeProto::STRING)
+      .Attr(
+          "is_case_sensitive",
+          "Boolean. Whether the identification of stop words in X is case-sensitive.",
+          AttributeProto::INT)
+      .Attr(
+          "stopwords",
+          "List of stop words",
+          AttributeProto::STRINGS,
+          OPTIONAL)
+      .Attr(
+          "locale",
+          "Environment dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
+      })
+      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 }
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
@@ -391,6 +494,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression);
 
 void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp)>());
@@ -403,6 +508,8 @@ void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear)>());
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer)>());
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression)>());
 }
 }  // namespace contrib
 }  // namespace onnxruntime

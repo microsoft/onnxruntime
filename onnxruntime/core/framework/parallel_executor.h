@@ -12,7 +12,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 

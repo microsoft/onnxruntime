@@ -53,8 +53,8 @@ with open(README) as f:
 # Setup
 setup(
     name=package_name,
-    version='0.1.4',
-    description='ONNX Runtime Runtime Python bindings',
+    version='0.1.5',
+    description='ONNX Runtime Python bindings',
     long_description=long_description,
     author='Microsoft Corporation',
     author_email='onnx@microsoft.com',
