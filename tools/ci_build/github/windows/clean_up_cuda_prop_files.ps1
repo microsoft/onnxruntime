@@ -6,7 +6,7 @@ Param(
     [Parameter(Mandatory=$True)]
     [string]$CudaVersion
 )
-$Dst = $(Join-Path $env:VS2017INSTALLDIR "Common7\IDE\VC\VCTargets\BuildCustomizations")
+$Dst = "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\VC\VCTargets\BuildCustomizations")
 
 Write-Host "Clean up CUDA prop files"
 Remove-Item  $(Join-Path $Dst "CUDA ${CudaVersion}.props")  
