@@ -3,7 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/onnx_object.h"
+#include "core/session/onnxruntime_c_api.h"
 #include <atomic>
 
 namespace onnxruntime {

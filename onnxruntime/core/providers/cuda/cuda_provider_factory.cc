@@ -15,12 +15,12 @@ struct CUDAProviderFactory {
   CUDAProviderFactory();
 };
 
-ONNXStatusPtr ONNXRUNTIME_API_STATUSCALL CreateCuda(void* this_, ONNXRuntimeProviderPtr* out) {
+ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateCuda(void* this_, ONNXRuntimeProvider** out) {
   CUDAExecutionProviderInfo info;
   CUDAProviderFactory* this_ptr = (CUDAProviderFactory*)this_;
   info.device_id = this_ptr->device_id;
   CUDAExecutionProvider* ret = new CUDAExecutionProvider(info);
-  *out = (ONNXRuntimeProviderPtr)ret;
+  *out = (ONNXRuntimeProvider*)ret;
   return nullptr;
 }
 
@@ -46,9 +46,9 @@ constexpr ONNXRuntimeProviderFactoryInterface cuda_cls = {
 CUDAProviderFactory::CUDAProviderFactory() : cls(&cuda_cls), ref_count(1), device_id(0) {}
 }  // namespace
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactoryPtr** out) {
+ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactoryInterface*** out) {
   CUDAProviderFactory* ret = new CUDAProviderFactory();
   ret->device_id = device_id;
-  *out = (ONNXRuntimeProviderFactoryPtr*)ret;
+  *out = (ONNXRuntimeProviderFactoryInterface**)ret;
   return nullptr;
 }
