@@ -33,7 +33,7 @@ jobs:
       condition: always()
 
 - job: Ubuntu1604_py_GPU_Wheels
-  pool: Linux-GPU
+  pool: Linux-GPU-CUDA10
   strategy:
     matrix:
       Python35:
@@ -47,7 +47,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
+        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -118,7 +118,7 @@ jobs:
       condition: always()
 
 - job:  Windows_py_GPU_Wheels
-  pool: Win-GPU
+  pool: Win-GPU-CUDA10
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '9.1'
