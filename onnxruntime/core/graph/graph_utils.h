@@ -9,7 +9,10 @@
 namespace onnxruntime {
 
 namespace utils {
-  bool IsSupportedOptypeDomainAndVersion(const Node& node, const std::string& op_type, ONNX_NAMESPACE::OperatorSetVersion version);
+  bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                         const std::string& op_type,
+                                         ONNX_NAMESPACE::OperatorSetVersion version,
+                                         const std::string& domain = kOnnxDomainAlias);
 }
 
 }

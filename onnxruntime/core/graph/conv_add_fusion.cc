@@ -12,12 +12,12 @@ namespace onnxruntime {
 Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    if (!utils::IsSupportedOptypeDomainAndVersion(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
+    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (!utils::IsSupportedOptypeDomainAndVersion(next_node, "Add", 7) ||
+    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
