@@ -29,7 +29,11 @@ echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EX
 cd $SCRIPT_DIR/docker
 if [ $BUILD_DEVICE = "gpu" ]; then
     IMAGE="ubuntu16.04-$CUDA_VER"
-    docker build -t "onnxruntime-$IMAGE" --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_gpu .
+    DOCKER_FILE=Dockerfile.ubuntu_gpu
+    if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
+    DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
+    fi
+    docker build -t "onnxruntime-$IMAGE" --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     IMAGE="ubuntu16.04"
     docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
