@@ -2450,6 +2450,9 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();
   for (auto node_index : sub_graph_ref.nodes) {
     auto node = GetNode(node_index);
+    if (nullptr != node) {
+      continue;
+    }
     auto& output_edges = node->GetRelationships().output_edges;
     for (auto output_edge : output_edges) {
       RemoveEdge(node->Index(), output_edge.GetNode().Index(), *output_edge.GetNodeArg());
