@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/allocator.h"
 #include <atomic>
-#include <stdexcept>
-#include "core/framework/allocator_info.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
@@ -42,7 +39,7 @@
 ONNXRUNTIME_ALLOCATOR_IMPL_BEGIN(ONNXRuntimeDefaultAllocator)
 private:
 ONNXRuntimeAllocatorInfo* cpuAllocatorInfo;
-ONNXRuntimeDefaultAllocator() : ref_count_(1){
+ONNXRuntimeDefaultAllocator() : ref_count_(1) {
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateAllocatorInfo("Cpu", ONNXRuntimeDeviceAllocator, 0, ONNXRuntimeMemTypeDefault, &cpuAllocatorInfo));
 }
 ~ONNXRuntimeDefaultAllocator() {
@@ -62,7 +59,7 @@ static ONNXRuntimeAllocatorInteface** Create() {
 void* Alloc(size_t size) {
   return ::malloc(size);
 }
-void Free(void* p) {  
+void Free(void* p) {
   return ::free(p);
 }
 const ONNXRuntimeAllocatorInfo* Info() const {
@@ -80,9 +77,9 @@ ONNXRUNTIME_ALLOCATOR_IMPL_END
 ONNXRuntimeAllocatorInteface ONNXRuntimeDefaultAllocator::table_ = {
     {ONNXRuntimeDefaultAllocator::AddRef_, ONNXRuntimeDefaultAllocator::Release_}, ONNXRuntimeDefaultAllocator::Alloc_, ONNXRuntimeDefaultAllocator::Free_, ONNXRuntimeDefaultAllocator::Info_};
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateDefaultAllocator, _Out_ ONNXRuntimeAllocator** out){
-    API_IMPL_BEGIN
-    *out = ONNXRuntimeDefaultAllocator::Create();
-    return nullptr;
-    API_IMPL_END
+ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateDefaultAllocator, _Out_ ONNXRuntimeAllocator** out) {
+  API_IMPL_BEGIN
+  *out = ONNXRuntimeDefaultAllocator::Create();
+  return nullptr;
+  API_IMPL_END
 }

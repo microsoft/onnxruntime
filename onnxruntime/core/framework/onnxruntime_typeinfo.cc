@@ -25,9 +25,9 @@ ONNXRUNTIME_API(const struct ONNXRuntimeTensorTypeAndShapeInfo*, ONNXRuntimeCast
   return input->type == ONNXRUNTIME_TYPE_TENSOR ? reinterpret_cast<const struct ONNXRuntimeTensorTypeAndShapeInfo*>(input->data) : nullptr;
 }
 
-ONNXStatusPtr GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTensorTypeAndShapeInfo** out);
+ONNXStatus* GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTensorTypeAndShapeInfo** out);
 
-ONNXStatusPtr ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out) {
+ONNXStatus* ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out) {
   if (input == nullptr) {
     *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_UNKNOWN, nullptr);
     return nullptr;
@@ -35,7 +35,7 @@ ONNXStatusPtr ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeI
   if (input == DataTypeImpl::GetType<Tensor>()) {
     ONNXRuntimeTensorTypeAndShapeInfo* info = nullptr;
     if (tensor_data_type != nullptr) {
-      ONNXStatusPtr st = GetTensorShapeAndType(shape, tensor_data_type, &info);
+      ONNXStatus* st = GetTensorShapeAndType(shape, tensor_data_type, &info);
       if (st != nullptr) return st;
     }
     *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_TENSOR, info);
@@ -85,11 +85,11 @@ const DataTypeImpl* ElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType ty
   }
 }
 
-ONNXStatusPtr ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnx::TypeProto* input, ONNXRuntimeTypeInfo** out) {
+ONNXStatus* ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnx::TypeProto* input, ONNXRuntimeTypeInfo** out) {
   if (input->has_tensor_type()) {
     const ::onnx::TypeProto_Tensor& onnx_tensor_info = input->tensor_type();
     const DataTypeImpl* type = ElementTypeFromProto(onnx_tensor_info.elem_type());
-    ONNXStatusPtr st;
+    ONNXStatus* st;
     ONNXRuntimeTensorTypeAndShapeInfo* info = nullptr;
     if (onnx_tensor_info.has_shape()) {
       const ::onnx::TensorShapeProto& s = onnx_tensor_info.shape();

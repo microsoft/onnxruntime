@@ -41,14 +41,14 @@ class DataRunner {
   ::onnxruntime::TIME_SPEC spent_time_;
 
  private:
-  ONNXSessionPtr session;
+  ONNXSession* session;
   CALL_BACK on_finished;
   ONNXRuntimeAllocatorInteface** const default_allocator;
   EXECUTE_RESULT RunTaskImpl(size_t task_id);
   ONNXRUNTIME_DISALLOW_COPY_AND_ASSIGNMENT(DataRunner);
 
  public:
-  DataRunner(ONNXSessionPtr session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
+  DataRunner(ONNXSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
   virtual void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ONNXRUNTIME_CALLBACK_INSTANCE pci) noexcept = 0;
   void RunTask(size_t task_id, ONNXRUNTIME_CALLBACK_INSTANCE pci, bool store_result);
   virtual ~DataRunner() {
@@ -98,7 +98,7 @@ class SeqTestRunner : public DataRunner {
   size_t repeat_count_;
 
  public:
-  SeqTestRunner(ONNXSessionPtr session1,
+  SeqTestRunner(ONNXSession* session1,
                 ITestCase* c, size_t repeat_count,
                 TestCaseCallBack on_finished1);
 
@@ -115,7 +115,7 @@ class PTestRunner : public DataRunner {
  public:
   void Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
 
-  PTestRunner(ONNXSessionPtr session1,
+  PTestRunner(ONNXSession* session1,
               ITestCase* c, PThreadPool tpool,
               TestCaseCallBack on_finished1);
 

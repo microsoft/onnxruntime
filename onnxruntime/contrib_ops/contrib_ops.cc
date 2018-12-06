@@ -12,8 +12,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
 using ::ONNX_NAMESPACE::OpSchema;
+using ::ONNX_NAMESPACE::OPTIONAL;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -91,6 +91,36 @@ Sample echo operator.)DOC");
           "Constrain outputs to boolean tensor")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetDoc(R"DOC(Returns which elements of the input are NaN.)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "Strings to tokenize", "T")
+      .Output(0, "Y", "Tokenized strings", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)"},
+          "Input/Output is a string tensor")
+      .Attr(
+          "mark",
+          "Boolean whether to mark the beginning/end character with start of text character (0x02)/end of text character (0x03).",
+          AttributeProto::INT)
+      .Attr(
+          "pad_value",
+          "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.",
+          AttributeProto::STRING)
+      .Attr(
+          "separators",
+          "The list of separators, two consecutive segments in X connected by a separator would be divided into two tokens.",
+          AttributeProto::STRINGS)
+      .Attr(
+          "mincharnum",
+          "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored",
+          AttributeProto::INT)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      })
+      .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis. All input strings including attributes are UTF-8 encoded.)DOC");
 
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
@@ -452,15 +482,50 @@ The bounding box coordinates corresponding to the selected indices can then be o
               ->set_dim_value(1);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(StringNormalizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "Strings to normalize", "T")
+      .Output(0, "Y", "Normalized strings", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)"},
+          "Input/Output is a string tensor")
+      .Attr(
+          "casechangeaction",
+          "string enum that cases output to be lowercased/uppercases/unchanged. Valid values are \"LOWER\", \"UPPER\", \"NONE\"",
+          AttributeProto::STRING)
+      .Attr(
+          "is_case_sensitive",
+          "Boolean. Whether the identification of stop words in X is case-sensitive.",
+          AttributeProto::INT)
+      .Attr(
+          "stopwords",
+          "List of stop words",
+          AttributeProto::STRINGS,
+          OPTIONAL)
+      .Attr(
+          "locale",
+          "Environment dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
+      })
+      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 }
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression);
 
 void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
@@ -471,9 +536,11 @@ void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims)>());
   fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN)>());
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear)>());
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression)>());
 }
 }  // namespace contrib
