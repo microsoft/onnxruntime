@@ -2029,7 +2029,7 @@ bool Graph::RemoveNode(NodeIndex p_index) {
   }
   // Remove all input edges.
   auto input_edges = node->GetRelationships().input_edges;
-  
+
   for (auto& input_edge : input_edges) {
     auto& input_node = input_edge.GetNode();
     auto input_arg = input_edge.GetNodeArg();
@@ -2453,7 +2453,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
     auto& output_edges = node->GetRelationships().output_edges;
     for (auto output_edge : output_edges) {
       RemoveEdge(node->Index(), output_edge.GetNode().Index(), *output_edge.GetNodeArg());
-	}
+    }
     RemoveNode(node_index);
   }
   return fused_node;
@@ -2463,6 +2463,10 @@ Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
+  auto output_edges = node.GetRelationships().output_edges;
+  for (auto output_edge : output_edges) {
+    RemoveEdge(node.Index(), output_edge.GetNode().Index(), *output_edge.GetNodeArg());
+  }
   RemoveNode(node.Index());
   for (const auto& subgraph_node : subgraph.Nodes()) {
     AddNode(subgraph_node);
