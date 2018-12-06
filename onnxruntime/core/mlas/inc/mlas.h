@@ -102,7 +102,7 @@ struct MLAS_CONV_PARAMETERS {
     } u;
 };
 
-bool
+void
 MLASCALL
 MlasConvPrepare(
     MLAS_CONV_PARAMETERS* Parameters,
@@ -115,6 +115,7 @@ MlasConvPrepare(
     const int64_t* DilationShape,
     const int64_t* Padding,
     const int64_t* StrideShape,
+    const int64_t* OutputShape,
     size_t FilterCount,
     size_t* WorkingBufferSize
     );

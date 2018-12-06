@@ -32,8 +32,6 @@ Abstract:
 //
 
 struct MLAS_SGEMM_WORK_BLOCK {
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    volatile LONG Counter;
     CBLAS_TRANSPOSE TransA;
     CBLAS_TRANSPOSE TransB;
     size_t K;
@@ -42,7 +40,6 @@ struct MLAS_SGEMM_WORK_BLOCK {
     size_t ldc;
     float alpha;
     float beta;
-#endif
     struct SEGMENT {
         size_t M;
         size_t N;
@@ -1034,14 +1031,10 @@ Return Value:
     }
 }
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
 void
-CALLBACK
-MlasSgemmWorkCallback(
-    PTP_CALLBACK_INSTANCE Instance,
+MlasSgemmOperationThreaded(
     void* Context,
-    PTP_WORK WorkObject
+    int32_t Index
     )
 /*++
 
@@ -1052,11 +1045,9 @@ Routine Description:
 
 Arguments:
 
-    Instance - Supplies the callback instance object.
+    Context - Supplies the pointer to the context for the threaded operation.
 
-    Context - Supplies the pointer to the parameters for the SGEMM operation.
-
-    WorkObject - Supplies the threadpool work object.
+    Index - Supplies the current index of the threaded operation.
 
 Return Value:
 
@@ -1064,12 +1055,7 @@ Return Value:
 
 --*/
 {
-    MLAS_UNREFERENCED_PARAMETER(Instance);
-    MLAS_UNREFERENCED_PARAMETER(WorkObject);
-
     MLAS_SGEMM_WORK_BLOCK* WorkBlock = (MLAS_SGEMM_WORK_BLOCK*)Context;
-
-    LONG Index = InterlockedIncrement(&WorkBlock->Counter) - 1;
 
     MLAS_SGEMM_WORK_BLOCK::SEGMENT* Segment = &WorkBlock->Segments[Index];
 
@@ -1078,8 +1064,6 @@ Return Value:
         Segment->B, WorkBlock->ldb, WorkBlock->beta, Segment->C,
         WorkBlock->ldc);
 }
-
-#endif
 
 inline
 bool
@@ -1142,10 +1126,10 @@ Return Value:
 --*/
 {
 
-#if defined(MLAS_USE_WIN32_THREADPOOL) || defined(MLAS_USE_OPENMP)
+#if defined(MLAS_HAS_THREADING_SUPPORT)
 
     MLAS_SGEMM_WORK_BLOCK WorkBlock;
-    uint32_t TargetThreadCount;
+    int32_t TargetThreadCount;
 
     //
     // Compute the number of target threads given the complexity of the SGEMM
@@ -1155,12 +1139,12 @@ Return Value:
     double Complexity = double(M) * double(N) * double(K);
 
     if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
-        TargetThreadCount = uint32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
+        TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
         TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
     }
 
-    uint32_t MaximumThreadCount = MlasPlatform.GetMaximumThreadCount();
+    int32_t MaximumThreadCount = MlasPlatform.GetMaximumThreadCount();
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
@@ -1170,23 +1154,10 @@ Return Value:
         return false;
     }
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
-    //
-    // Create an object to submit work to the threadpool.
-    //
-
-    PTP_WORK WorkObject = CreateThreadpoolWork(MlasSgemmWorkCallback, &WorkBlock, nullptr);
-
-    if (WorkObject == nullptr) {
-        return false;
-    }
-
     //
     // Initialize the common fields of the work block.
     //
 
-    WorkBlock.Counter = 0;
     WorkBlock.TransA = TransA;
     WorkBlock.TransB = TransB;
     WorkBlock.K = K;
@@ -1196,13 +1167,11 @@ Return Value:
     WorkBlock.alpha = alpha;
     WorkBlock.beta = beta;
 
-#endif
-
     //
     // Segment the operation across multiple threads.
     //
 
-    uint32_t Index = 0;
+    int32_t Index = 0;
 
     if (N > M) {
 
@@ -1231,18 +1200,6 @@ Return Value:
             WorkBlock.Segments[Index].B = B + n * pldb;
             WorkBlock.Segments[Index].C = C + n;
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
-            //
-            // Execute one of the segments on a worker thread.
-            //
-
-            if (Index > 0) {
-                SubmitThreadpoolWork(WorkObject);
-            }
-
-#endif
-
             Index++;
         }
 
@@ -1270,49 +1227,11 @@ Return Value:
             WorkBlock.Segments[Index].B = B;
             WorkBlock.Segments[Index].C = C + m * ldc;
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
-            //
-            // Execute one of the segments on a worker thread.
-            //
-
-            if (Index > 0) {
-                SubmitThreadpoolWork(WorkObject);
-            }
-
-#endif
-
             Index++;
         }
     }
 
-#if defined(MLAS_USE_OPENMP)
-
-    #pragma omp parallel for
-    for (int32_t tid = 0; tid < int32_t(Index); tid++) {
-
-        MLAS_SGEMM_WORK_BLOCK::SEGMENT* Segment = &WorkBlock.Segments[tid];
-
-        MlasSgemmOperation(TransA, TransB, Segment->M, Segment->N, K, alpha,
-            Segment->A, lda, Segment->B, ldb, beta, Segment->C, ldc);
-    }
-
-#elif defined(MLAS_USE_WIN32_THREADPOOL)
-
-    //
-    // Execute the remaining segment on this thread.
-    //
-
-    MlasSgemmWorkCallback(nullptr, &WorkBlock, WorkObject);
-
-    //
-    // Wait for the worker threads to complete.
-    //
-
-    WaitForThreadpoolWorkCallbacks(WorkObject, FALSE);
-    CloseThreadpoolWork(WorkObject);
-
-#endif
+    MlasExecuteThreaded(MlasSgemmOperationThreaded, &WorkBlock, Index);
 
     return true;
 
