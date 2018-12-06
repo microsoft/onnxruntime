@@ -19,14 +19,14 @@ void RunSession(ONNXRuntimeAllocator* env, ONNXSession* session_object,
                 const std::vector<int64_t>& dims_y,
                 const std::vector<float>& values_y) {
   std::unique_ptr<ONNXValue, decltype(&ReleaseONNXValue)> value_x(nullptr, ReleaseONNXValue);
-  std::vector<ONNXValuePtr> inputs(1);
+  std::vector<ONNXValue*> inputs(1);
   inputs[0] = ONNXRuntimeCreateTensorAsONNXValue(env, dims_x, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
   value_x.reset(inputs[0]);
   void* raw_data;
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeGetTensorMutableData(inputs[0], &raw_data));
   memcpy(raw_data, values_x.data(), values_x.size() * sizeof(values_x[0]));
   std::vector<const char*> input_names{"X"};
-  ONNXValuePtr output_tensor = nullptr;
+  ONNXValue* output_tensor = nullptr;
   const char* output_names[] = {"Y"};
   ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeRunInference(session_object, NULL, input_names.data(), inputs.data(), inputs.size(), output_names, 1, &output_tensor));
   ASSERT_NE(output_tensor, nullptr);
@@ -64,7 +64,7 @@ void TestInference(ONNXRuntimeEnv* env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    ONNXRuntimeProviderFactoryPtr* f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
     sf.AppendExecutionProvider(f);
     ONNXRuntimeReleaseObject(f);
@@ -74,7 +74,7 @@ void TestInference(ONNXRuntimeEnv* env, T model_uri,
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_MKLDNN
-    ONNXRuntimeProviderFactoryPtr* f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(1, &f));
     sf.AppendExecutionProvider(f);
     ONNXRuntimeReleaseObject(f);
@@ -84,7 +84,7 @@ void TestInference(ONNXRuntimeEnv* env, T model_uri,
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ONNXRuntimeProviderFactoryPtr* f;
+    ONNXRuntimeProviderFactoryInterface** f;
     ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
     sf.AppendExecutionProvider(f);
     ONNXRuntimeReleaseObject(f);

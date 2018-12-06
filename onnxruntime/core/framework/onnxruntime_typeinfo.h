@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/framework/onnx_object.h"
 #include "core/framework/onnx_object_cxx.h"
-#include "core/framework/tensor_type_and_shape_c_api.h"
 #include <atomic>
 
 namespace onnxruntime {
@@ -30,9 +28,9 @@ struct ONNXRuntimeTypeInfo : public onnxruntime::ObjectBase<ONNXRuntimeTypeInfo>
   ONNXRuntimeTypeInfo(const ONNXRuntimeTypeInfo& other) = delete;
   ONNXRuntimeTypeInfo& operator=(const ONNXRuntimeTypeInfo& other) = delete;
 
-  static ONNXStatusPtr FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
-                                        const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out);
-  static ONNXStatusPtr FromDataTypeImpl(const onnx::TypeProto*, ONNXRuntimeTypeInfo** out);
+  static ONNXStatus* FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
+                                      const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out);
+  static ONNXStatus* FromDataTypeImpl(const onnx::TypeProto*, ONNXRuntimeTypeInfo** out);
 
  private:
   ONNXRuntimeTypeInfo(ONNXRuntimeType type, void* data) noexcept;

@@ -1,8 +1,8 @@
-# Tag: nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
-# Label: com.nvidia.cuda.version: 10.0.130
-# Label: com.nvidia.cudnn.version: 7.3.1.20
+# Tag: nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
+# Label: com.nvidia.cuda.version: 9.1.85
+# Label: com.nvidia.cudnn.version: 7.1.2.21
 # Ubuntu 16.04.5
-FROM nvidia/cuda@sha256:362e4e25aa46a18dfa834360140e91b61cdb0a3a2796c8e09dadb268b9de3f6b
+FROM nvidia/cuda@sha256:e48777124a0217001be8533123fcb8cc12ace38a4add2774b34295e611c99f10
 
 ARG PYTHON_VERSION=3.5
 

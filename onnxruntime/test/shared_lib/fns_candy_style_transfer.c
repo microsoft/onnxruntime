@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/session/onnxruntime_c_api.h"
-#include "core/framework/allocator_info.h"
 #include "providers.h"
 #include <stdio.h>
 #include <assert.h>
@@ -9,7 +8,7 @@
 
 #define ONNXRUNTIME_ABORT_ON_ERROR(expr)                         \
   do {                                                           \
-    ONNXStatusPtr onnx_status = (expr);                          \
+    ONNXStatus* onnx_status = (expr);                            \
     if (onnx_status != NULL) {                                   \
       const char* msg = ONNXRuntimeGetErrorMessage(onnx_status); \
       fprintf(stderr, "%s\n", msg);                              \
@@ -133,7 +132,7 @@ static void usage() {
   printf("usage: <model_path> <input_file> <output_file> \n");
 }
 
-int run_inference(ONNXSessionPtr session, const char* input_file, const char* output_file) {
+int run_inference(ONNXSession* session, const char* input_file, const char* output_file) {
   size_t input_height;
   size_t input_width;
   float* model_input;
@@ -146,20 +145,20 @@ int run_inference(ONNXSessionPtr session, const char* input_file, const char* ou
     free(model_input);
     return -1;
   }
-  ONNXRuntimeAllocatorInfoPtr allocator_info;
+  ONNXRuntimeAllocatorInfo* allocator_info;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateCpuAllocatorInfo(ONNXRuntimeArenaAllocator, ONNXRuntimeMemTypeDefault, &allocator_info));
   const size_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
-  ONNXValuePtr input_tensor = NULL;
+  ONNXValue* input_tensor = NULL;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateTensorWithDataAsONNXValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
   assert(ONNXRuntimeIsTensor(input_tensor) != 0);
   ReleaseONNXRuntimeAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
-  ONNXValuePtr output_tensor = NULL;
+  ONNXValue* output_tensor = NULL;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeRunInference(session, NULL, input_names, (const ONNXValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
   assert(ONNXRuntimeIsTensor(output_tensor) != 0);
@@ -173,7 +172,7 @@ int run_inference(ONNXSessionPtr session, const char* input_file, const char* ou
   return ret;
 }
 
-void verify_input_output_count(ONNXSessionPtr session) {
+void verify_input_output_count(ONNXSession* session) {
   size_t count;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeInferenceSessionGetInputCount(session, &count));
   assert(count == 1);
@@ -183,7 +182,7 @@ void verify_input_output_count(ONNXSessionPtr session) {
 
 #ifdef USE_CUDA
 void enable_cuda(ONNXRuntimeSessionOptions* session_option) {
-  ONNXRuntimeProviderFactoryPtr* factory;
+  ONNXRuntimeProviderFactoryInterface** factory;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &factory));
   ONNXRuntimeSessionOptionsAppendExecutionProvider(session_option, factory);
   ONNXRuntimeReleaseObject(factory);
@@ -204,7 +203,7 @@ int main(int argc, char* argv[]) {
 #ifdef USE_CUDA
   enable_cuda(session_option);
 #endif
-  ONNXSessionPtr session;
+  ONNXSession* session;
   ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateInferenceSession(env, model_path, session_option, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
