@@ -3,6 +3,7 @@ set -e -o -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
+CUDA_VER=cuda10.0-cudnn7.3
 
 while getopts c:o:d:r:p:x: parameter_Option
 do case "${parameter_Option}"
@@ -16,6 +17,8 @@ r) BUILD_DIR=${OPTARG};;
 p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
+# "cuda10.0-cudnn7.3, cuda9.1-cudnn7.1"
+c) CUDA_VER=${OPTARG};;
 esac
 done
 
@@ -25,7 +28,7 @@ echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EX
 
 cd $SCRIPT_DIR/docker
 if [ $BUILD_DEVICE = "gpu" ]; then
-    IMAGE="ubuntu16.04-cuda9.1-cudnn7.1"
+    IMAGE="ubuntu16.04-$CUDA_VER"
     docker build -t "onnxruntime-$IMAGE" --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_gpu .
 else
     IMAGE="ubuntu16.04"
