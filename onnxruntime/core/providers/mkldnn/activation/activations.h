@@ -1,5 +1,5 @@
 // Copyright(C) 2018 Intel Corporation
-// 
+// Licensed under the MIT License
 
 #pragma once
 #include "core/framework/op_kernel.h"

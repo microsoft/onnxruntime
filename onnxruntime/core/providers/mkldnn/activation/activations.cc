@@ -1,5 +1,5 @@
 // Copyright(C) 2018 Intel Corporation
-// 
+// Licensed under the MIT License
 
 #ifdef _WIN32
 #pragma warning(disable : 4244)
