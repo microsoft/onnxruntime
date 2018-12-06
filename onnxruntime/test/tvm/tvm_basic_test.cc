@@ -82,7 +82,7 @@ void FuseAdd(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<
   for (int i = 0; i < add_nodes.size(); ++i) {
     auto node = graph.GetNode(add_nodes[i]);
     for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-      auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it)->Index());
+      auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it).Index());
       if (index_it != add_nodes.end()) {
         set.merge(i, static_cast<int>(index_it - add_nodes.begin()));
       }
