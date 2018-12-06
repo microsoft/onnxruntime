@@ -653,5 +653,56 @@ TEST(ContribOpTest, TokenizerWithSeparators_MixCharsNoMarkersSeparatorsOverlapin
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
+
+TEST(ContribOpTest, TokenizerWithSeparators_MixCharCommonPrefixC) {
+  // Separators and strings with a mix of latin, Spanish, Cyrillic and Chinese
+  // characters and with start/end text markers
+  // [C] dimensions
+  // Output [C][D]
+  std::vector<std::string> separators = {
+      u8";",
+      u8";;;"};
+
+  OpTester test("Tokenizer", opset_ver, domain);
+  InitTestAttr(test, true, separators, 1);
+
+  std::vector<int64_t> dims{4};
+  std::vector<std::string> input{u8"a;b", u8"a;;;b", u8"b;c;;;d;e", u8"a;;b;;;c"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<int64_t> output_dims(dims);
+  // Must split both in 2
+  output_dims.push_back(int64_t(6));
+  std::vector<std::string> output{
+      start_mark,
+      u8"a",
+      u8"b",
+      end_mark,
+      padval,
+      padval,
+      start_mark,
+      u8"a",
+      u8"b",
+      end_mark,
+      padval,
+      padval,
+      start_mark,
+      u8"b",
+      u8"c",
+      u8"d",
+      u8"e",
+      end_mark,
+      start_mark,
+      u8"a",
+      u8"b",
+      u8"c",
+      end_mark,
+      padval,
+  };
+
+  test.AddOutput<std::string>("Y", output_dims, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

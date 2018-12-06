@@ -57,6 +57,13 @@ class TernarySearchTree {
     ~Node() = default;
   };
 
+  struct GetState {
+    const CharT* const str_;
+    const size_t len_;
+    size_t depth_;
+    const Value* result_;
+  };
+
  public:
   TernarySearchTree() = default;
   ~TernarySearchTree() = default;
@@ -69,11 +76,9 @@ class TernarySearchTree {
     if (len == 0) {
       return nullptr;
     }
-    const Node* result = get(root_.get(), str, len, 0);
-    if (result == nullptr || !result->has_val_) {
-      return nullptr;
-    }
-    return &result->value_;
+    GetState get_state{str, len, 0, nullptr};
+    get(root_.get(), get_state);
+    return get_state.result_;
   }
 
   /**
@@ -95,22 +100,37 @@ class TernarySearchTree {
   }
 
  private:
-  const Node* get(const Node* node, const CharT* str, size_t len, size_t depth) const {
-    if (node == nullptr) {
-      return nullptr;
-    }
-    assert(depth < len);
-    CharT c = str[depth];
-    if (c < node->c_) {
-      return get(node->left_.get(), str, len, depth);
-    } else if (c > node->c_) {
-      return get(node->right_.get(), str, len, depth);
-    } else if (depth < (len - 1)) {
-      if (node->mid_ != nullptr) {
-        return get(node->mid_.get(), str, len, depth + 1);
+  void update_state(const Node* node, GetState& state) const {
+    if (node->has_val_) {
+      if (state.result_ == nullptr) {
+        state.result_ = &node->value_;
+      } else if (node->value_ < *state.result_) {
+        state.result_ = &node->value_;
       }
     }
-    return node;
+  }
+  void get(const Node* node, GetState& state) const {
+    if (node == nullptr) {
+      return;
+    }
+    assert(state.depth_ < state.len_);
+    CharT c = state.str_[state.depth_];
+    if (c < node->c_) {
+      get(node->left_.get(), state);
+      return;
+    } else if (c > node->c_) {
+      get(node->right_.get(), state);
+      return;
+    } else if (state.depth_ < (state.len_ - 1)) {
+      // Check if we have a match at this node
+      update_state(node, state);
+      if (node->mid_ != nullptr) {
+        ++state.depth_;
+        get(node->mid_.get(), state);
+      }
+      return;
+    }
+    update_state(node, state);
   }
 
   Node* put(Node* node, const CharT* str, size_t len, const Value& v, size_t depth) {
@@ -163,6 +183,9 @@ class TernarySearchTree {
 struct SearchValue {
   size_t w_len;
   int priority_;
+  bool operator<(const SearchValue& o) const {
+    return priority_ < o.priority_;
+  }
 };
 
 }  // namespace tokenizer_details
@@ -268,9 +291,9 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     const size_t str_len = s.size();
     for (size_t token_idx = 0; token_idx < str_len;) {
       size_t tlen = 0;
-      bool result = false;
-      result = utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen);
+      bool result = utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen);
       assert(result);
+      (void)result;
       assert(token_idx + tlen <= str_len);
       new (output_data + output_index) std::string(s.substr(token_idx, tlen));
       ++output_index;
