@@ -137,7 +137,7 @@ Return Value:
     GetSystemInfo(&SystemInfo);
 
     if (SystemInfo.dwNumberOfProcessors <= MLAS_MAXIMUM_THREAD_COUNT) {
-        this->MaximumThreadCount = SystemInfo.dwNumberOfProcessors;
+        this->MaximumThreadCount = int32_t(SystemInfo.dwNumberOfProcessors);
     } else {
         this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
     }
