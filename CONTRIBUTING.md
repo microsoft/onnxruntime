@@ -1,7 +1,7 @@
 # Contributing
 
 We're always looking for your help to fix bugs and improve the product. Create a pull request and we'll be happy to take a look.
-Start by reading the [Engineering Design](docs/HighLevelDesign.md).
+Start by reading the [Engineering Design](docs/HighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
 
 # Checkin procedure
 1. Fork the repo
