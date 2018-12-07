@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Numerics.Tensors;
+using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 using Microsoft.ML.OnnxRuntime;
 
@@ -73,7 +75,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(1, results.Count);
                 
                 float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-                float errorMargin = 1e-6F; 
                 // validate the results
                 foreach (var r in results)
                 {
@@ -91,16 +92,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                     var resultArray = r.AsTensor<float>().ToArray();
                     Assert.Equal(expectedOutput.Length, resultArray.Length);
-
-                    for (int i = 0; i < expectedOutput.Length; i++)
-                    {
-                        Assert.InRange<float>(resultArray[i], expectedOutput[i] - errorMargin, expectedOutput[i] + errorMargin);
-                    }
+                    Assert.Equal(expectedOutput, resultArray, new floatComparer());
                 }
-
             }
         }
-
 
         [Fact]
         private void ThrowWrongInputName()
@@ -184,17 +179,49 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestMultiThreads()
+        {
+            var numThreads = 10;
+            var loop = 10;
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var tensor = tuple.Item3;
+            var expectedOut = tuple.Item4;
+            var inputMeta = session.InputMetadata;
+            var container = new List<NamedOnnxValue>();
+            container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
+            var tasks = new Task[numThreads];
+            for (int i = 0; i < numThreads; i++)
+            {
+                tasks[i] = Task.Factory.StartNew(() =>
+                {
+                    for (int j = 0; j < loop; j++)
+                    {
+                        var resnov = session.Run(container);
+                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
+                        Assert.Equal(res, expectedOut, new floatComparer());
+                    }
+                });
+            };
+            Task.WaitAll(tasks);  
+            session.Dispose();
+        }
+
+        [Fact]
         private void TestModelInputFloat()
         {
             // model takes 1x5 input of fixed type, echoes back
             string modelPath = Directory.GetCurrentDirectory() + @"\test_types_FLOAT.pb";
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
-            var nov = NamedOnnxValue.CreateFromTensor("input",
-                new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue },
-                new int[] { 1, 5 }));
+            var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
             container.Add(nov);
             var res = session.Run(container);
+            var tensorOut = res.First().AsTensor<float>();
+            Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact(Skip = "Boolean tensor not supported yet")]
@@ -210,6 +237,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<bool>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
         [Fact]
 
@@ -225,6 +253,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<int>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact]
@@ -236,12 +265,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<double>(new double[] { 1.0, 2.0, -3.0, 5, 5 }, new int[] { 1, 5 });
             var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            //new DenseTensor<double>(new double[] { 1.0, 2.0, -3.0, double.MinValue, double.MaxValue},
-            //new int[] { 1, 5 }));
             container.Add(nov);
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<double>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact(Skip = "String tensor not supported yet")]
@@ -257,6 +285,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<string>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact(Skip = "Int8 not supported yet")]
@@ -272,6 +301,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<sbyte>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact]
@@ -287,6 +317,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<byte>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact]
@@ -302,6 +333,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<UInt16>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact]
@@ -317,6 +349,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<Int16>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact]
@@ -332,6 +365,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<Int64>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact]
@@ -347,6 +381,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<UInt32>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
         [Fact]
         private void TestModelInputUINT64()
@@ -361,6 +396,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<UInt64>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
 
         [Fact(Skip = "Boolean FLOAT16 not available in C#")]
@@ -376,9 +412,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var res = session.Run(container);
             var tensorOut = res.First().AsTensor<float>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
+            session.Dispose();
         }
-
-
 
         static float[] LoadTensorFromFile(string filename)
         {
@@ -398,15 +433,28 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
-        static Tuple<InferenceSession, float[], DenseTensor<float>> OpenSessionSqueezeNet()
+        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet()
         {
             string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
             var session = new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
+            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
             var inputMeta = session.InputMetadata;
             var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
-            return new Tuple<InferenceSession, float[], DenseTensor<float>>(session, inputData, tensor);
+            return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
         }
 
+        class floatComparer : IEqualityComparer<float>
+        {
+            private float tol = 1e-7f;
+            public bool Equals(float x, float y)
+            {
+                return (Math.Abs(x - y) < tol) ? true : false;
+            }
+            public int GetHashCode(float x)
+            {
+                return 0;
+            }
+        }
     }
 }
