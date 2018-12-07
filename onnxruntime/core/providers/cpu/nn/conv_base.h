@@ -10,7 +10,6 @@
 #include "core/util/math.h"
 
 namespace onnxruntime {
-namespace {
 
 // helper function
 template <bool ForceSymmetricAutoPadding>
@@ -58,7 +57,6 @@ Status ComputePadAndOutputShape(
   }
   return Status::OK();
 }
-}  // namespace
 
 // base class used by Conv and ConvTranspose
 class ConvBase {
@@ -89,13 +87,6 @@ class ConvBase {
     if (!status.IsOK()) {
       group_ = 1;
     }
-
-    status = info.GetAttr<std::string>("activation", &activation_);
-    if (!status.IsOK()) {
-      activation_ = "";
-    }
-
-    alpha_ = info.GetAttrOrDefault("alpha", 0.01f);
 
 #if false
     // TODO: Re-enable when attributes values are guaranteed to be filled.

@@ -30,6 +30,183 @@ void RegisterContribSchemas() {
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+The fused convolution operator consumes an input tensor, a filter, and a padding value,
+ and computes the output. It can fused an activation op by specifying the attribute 
+activation_type.)DOC")
+      .Attr(
+          "auto_pad",
+          "auto padding pattern",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "The shape of the convolution kernel. If not present, should be inferred from input 'W'.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "dilation value along each axis of the filter. If not present, the dilation defaults to 1 along each axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides", "Stride along each axis. If not present, the stride defaults to 1 along each axis.", AttributeProto::INTS, OPTIONAL)
+      .Attr("pads",
+            "Padding for the beginning and ending along each axis, it can take any value greater than or equal to 0."
+            "The value represent the number of pixels added to the beginning and end part of the corresponding axis."
+            "`pads` format should be as follow [x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of"
+            "pixels added at the beginning of axis `i` and xi_end, the number of pixels added at the end of axis `i`."
+            "This attribute cannot be used simultaneously with auto_pad attribute. If not present, the padding defaults"
+            "to 0 along start and end of each axis.",
+            AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "group",
+          "number of groups input channels and output channels are divided into. default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "activation",
+          "Type of activations. Default is NOACTIVATION.",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Input(
+          0,
+          "X",
+          "Input data tensor from previous layer; "
+          "has size (N x C x H x W), where N is the batch size, "
+          "C is the number of channels, and H and W are the "
+          "height and width. Note that this is for the 2D image. "
+          "Otherwise the size is (N x C x D1 x D2 ... x Dn). "
+          "Optionally, if dimension denotation is "
+          "in effect, the operation expects input data tensor "
+          "to arrive with the dimension denotation of [DATA_BATCH, "
+          "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
+          "T")
+      .Input(
+          1,
+          "W",
+          "The weight tensor that will be used in the "
+          "convolutions; has size (M x C/group x kH x kW), where C "
+          "is the number of channels, and kH and kW are the "
+          "height and width of the kernel, and M is the number "
+          "of feature maps. For more than 2 dimensions, the "
+          "kernel shape will be (M x C/group x k1 x k2 x ... x kn), "
+          "where (k1 x k2 x ... kn) is the dimension of the kernel. "
+          "Optionally, if dimension denotation is in effect, "
+          "the operation expects the weight tensor to arrive "
+          "with the dimension denotation of [FILTER_OUT_CHANNEL, "
+          "FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. "
+          "X.shape[1] == (W.shape[1] * group) == C "
+          "(assuming zero based indices for the shape array). "
+          "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
+          "T")
+      .Input(2, "B", "Optional 1D bias to be added to the convolution.", "T", OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output data tensor that contains the result of the "
+          "convolution. The output dimensions are functions "
+          "of the kernel size, stride size, and pad lengths.",
+          "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape inference
+        // we need the first input shape for this inference.
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // don't bother with legacy auto_pad for now
+        if (ctx.getAttribute("auto_pad")) {
+          return;
+        }
+
+        auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+        if (input_shape.dim_size() < 2) {
+          fail_shape_inference("Input tensor must have atleast 2 dimensions");
+        }
+
+        // first dim is the batch axis and the next is the number of channels.
+        size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+        std::vector<int64_t> dilations;
+
+        if (getRepeatedAttribute(ctx, "dilations", dilations)) {
+          if (dilations.size() != n_input_dims) {
+            fail_shape_inference("Attribute dilations has incorrect size");
+          }
+        }
+
+        std::vector<int64_t> pads;
+        if (getRepeatedAttribute(ctx, "pads", pads)) {
+          if (pads.size() != n_input_dims * 2) {
+            fail_shape_inference("Attribute pads has incorrect size");
+          }
+        } else {
+          pads.assign(n_input_dims * 2, 0);
+        }
+
+        std::vector<int64_t> strides;
+        if (getRepeatedAttribute(ctx, "strides", strides)) {
+          if (strides.size() != n_input_dims) {
+            fail_shape_inference("Attribute strides has incorrect size");
+          }
+        } else {
+          strides.assign(n_input_dims, 1);
+        }
+
+        std::vector<int64_t> kernel_shape;
+        if (getRepeatedAttribute(ctx, "kernel_shape", kernel_shape)) {
+          if (kernel_shape.size() != n_input_dims) {
+            fail_shape_inference("Attribute kernel_shape has incorrect size");
+          }
+        } else {
+          auto second_input_shape = ctx.getInputType(1)->tensor_type().shape();
+          for (int i = 2; i < second_input_shape.dim_size(); ++i) {
+            if (!second_input_shape.dim(i).has_dim_value()) {
+              return;
+            }
+            kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+          }
+        }
+
+        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        *output_shape->add_dim() = input_shape.dim(0);
+        auto& second_input_shape = getInputShape(ctx, 1);
+        if (second_input_shape.dim_size() < 1) {
+          fail_shape_inference("Second input tensor has wrong dimension");
+        }
+        *output_shape->add_dim() = second_input_shape.dim(0);
+
+        int kernel_shape_size = static_cast<int>(kernel_shape.size());
+        for (int i = 0; i < kernel_shape_size; ++i) {
+          auto newdim = output_shape->add_dim();
+          if (!input_shape.dim(2 + i).has_dim_value()) {
+            continue;
+          }
+
+          // how big is the input, including padding
+          int64_t effective_input_size = input_shape.dim(2 + i).dim_value();
+          effective_input_size += pads[i];
+          effective_input_size += pads[i + kernel_shape_size];
+          int64_t effective_kernel_size = kernel_shape[i];
+
+          // accounting for dilation, how big is the kernel in this dimension
+          effective_kernel_size = (effective_kernel_size - 1) * dilations[i] + 1;
+
+          // how many times we can move the kernel from it's initial position, based
+          // on the stride
+          int64_t strided_kernel_positions = (effective_input_size - effective_kernel_size) / strides[i];
+
+          // add in the initial position
+          newdim->set_dim_value(1 + strided_kernel_positions);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ExpandDims)
       .SetDomain(kMSDomain)
@@ -485,9 +662,10 @@ The bounding box coordinates corresponding to the selected indices can then be o
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
       })
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
-}
+}  // namespace contrib
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, FusedConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN);
@@ -501,7 +679,7 @@ void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp)>());
 
   // add more kernels here
-
+  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, FusedConv)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims)>());
   fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN)>());
