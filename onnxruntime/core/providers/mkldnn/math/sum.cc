@@ -69,8 +69,9 @@ class SumPrimitive final : public PrimitiveBase {
     context_.stream->submit(context_.net);
   }
 
-  std::unique_ptr<mkldnn::memory::desc> GetDstMemoryDesc() 
-    const { return context_.dst_md; }
+  std::unique_ptr<mkldnn::memory::desc> GetDstMemoryDesc() const { 
+    return context_.dst_md; 
+  }
 
   std::unique_ptr<mkldnn::sum::primitive_desc>
   GetPrimitiveDesc() const {
