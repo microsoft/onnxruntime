@@ -25,8 +25,7 @@ TEST(EyeLikeOpTest, EyeLike_DifferentDtype) {
 TEST(EyeLikeOpTest, EyeLike_K_EgdeCase_1) {
   OpTester test("EyeLike", 9);
   test.AddInput<int64_t>("T1", {3, 2}, {0, 0, 0, 0, 0, 0});
-  int64_t kVal = 3;
-  test.AddAttribute("k", kVal);
+  test.AddAttribute("k", int64_t(3));
   test.AddAttribute("dtype", int64_t(7));
   test.AddOutput<int64_t>("T2", {3, 2}, {0, 0, 0, 0, 0, 0});
   test.Run();
@@ -35,8 +34,7 @@ TEST(EyeLikeOpTest, EyeLike_K_EgdeCase_1) {
 TEST(EyeLikeOpTest, EyeLike_K_EgdeCase_2) {
   OpTester test("EyeLike", 9);
   test.AddInput<int64_t>("T1", {3, 2}, {0, 0, 0, 0, 0, 0});
-  int64_t kVal = -3;
-  test.AddAttribute("k", kVal);
+  test.AddAttribute("k", int64_t(-3));
   test.AddOutput<int64_t>("T2", {3, 2}, {0, 0, 0, 0, 0, 0});
   test.Run();
 }
@@ -44,8 +42,7 @@ TEST(EyeLikeOpTest, EyeLike_K_EgdeCase_2) {
 TEST(EyeLikeOpTest, EyeLike_UpperDiagonal) {
   OpTester test("EyeLike", 9);
   test.AddInput<float>("T1", {3, 4}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  int64_t kVal = 2;
-  test.AddAttribute("k", kVal);
+  test.AddAttribute("k", int64_t(2));
   test.AddOutput<float>("T2", {3, 4}, {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   test.Run();
 }
@@ -53,8 +50,7 @@ TEST(EyeLikeOpTest, EyeLike_UpperDiagonal) {
 TEST(EyeLikeOpTest, EyeLike_UpperrDiagonal2) {
   OpTester test("EyeLike", 9);
   test.AddInput<float>("T1", {3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  int64_t kVal = 1;
-  test.AddAttribute("k", kVal);
+  test.AddAttribute("k", int64_t(1));
   test.AddOutput<float>("T2", {3, 2}, {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   test.Run();
 }
@@ -62,8 +58,7 @@ TEST(EyeLikeOpTest, EyeLike_UpperrDiagonal2) {
 TEST(EyeLikeOpTest, EyeLike_LowerDiagonal) {
   OpTester test("EyeLike", 9);
   test.AddInput<float>("T1", {3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  int64_t kVal = -1;
-  test.AddAttribute("k", kVal);
+  test.AddAttribute("k", int64_t(-1));
   test.AddAttribute("dtype", int64_t(1));
   test.AddOutput<float>("T2", {3, 2}, {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f});
   test.Run();
@@ -72,8 +67,7 @@ TEST(EyeLikeOpTest, EyeLike_LowerDiagonal) {
 TEST(EyeLikeOpTest, EyeLike_LowerDiagonal2) {
   OpTester test("EyeLike", 9);
   test.AddInput<float>("T1", {3, 4}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  int64_t kVal = -2;
-  test.AddAttribute("k", kVal);
+  test.AddAttribute("k", int64_t(-2));
   test.AddAttribute("dtype", int64_t(1));
   test.AddOutput<float>("T2", {3, 4}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
   test.Run();

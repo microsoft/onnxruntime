@@ -15,7 +15,7 @@ class EyeLike final : public OpKernel {
       k_ = 0;
     }
 
-    has_dtype = info.GetAttr("dtype", &dtype_).IsOK();
+    has_dtype_ = info.GetAttr("dtype", &dtype_).IsOK();
   }
   
   Status Compute(OpKernelContext* context) const override;
@@ -24,7 +24,7 @@ class EyeLike final : public OpKernel {
   template <typename T>
   Status ComputeImpl(OpKernelContext* context) const;
 
-  bool has_dtype;
+  bool has_dtype_;
   int64_t dtype_;
   int64_t k_;
 };
