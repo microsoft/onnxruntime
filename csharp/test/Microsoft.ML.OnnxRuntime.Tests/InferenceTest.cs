@@ -5,12 +5,9 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Numerics.Tensors;
-using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
-using Microsoft.ML.OnnxRuntime;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
@@ -227,8 +224,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
                         var innodedims = innodepair.Value.Dimensions;
-                        var dataIn = LoadTensorFromFile($"{opset}\\{model}\\test_data_0.input.txt", false);
-                        var dataOut = LoadTensorFromFile($"{opset}\\{model}\\test_data_0.output.txt", false);
+                        var dataIn = LoadTensorFromFilePb($"{opset}\\{model}\\test_data_set_0\\input_0.pb");
+                        var dataOut = LoadTensorFromFilePb($"{opset}\\{model}\\test_data_set_0\\output_0.pb");
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
                         nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
@@ -470,6 +467,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
 
             return tensorData.ToArray();
+        }
+
+        static float[] LoadTensorFromFilePb(string filename)
+        {
+            var file = File.OpenRead(filename);
+            var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+            file.Close();
+            var raw = tensor.RawData.ToArray();
+            var floatArr = new float[raw.Length / sizeof(float)];
+            Buffer.BlockCopy(raw, 0, floatArr, 0, raw.Length);
+            return floatArr;
         }
 
         static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet()

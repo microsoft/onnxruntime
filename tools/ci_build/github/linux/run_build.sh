@@ -20,7 +20,7 @@ if [ -z "$AZURE_BLOB_KEY" ]; then
 else
   echo "Downloading test data from azure"
   mkdir -p /home/onnxruntimedev/models/
-  azcopy --recursive --source:https://onnxruntimetestdata.blob.core.windows.net/onnx-model-zoo-20181206 --destination:/home/onnxruntimedev/models/ --source-key:$AZURE_BLOB_KEY
+  azcopy --recursive --source:https://onnxruntimetestdata.blob.core.windows.net/onnx-model-zoo-20181018 --destination:/home/onnxruntimedev/models/ --source-key:$AZURE_BLOB_KEY
   BUILD_EXTR_PAR="${BUILD_EXTR_PAR} --enable_onnx_tests"
 fi
 
