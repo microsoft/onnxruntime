@@ -6,7 +6,7 @@ jobs:
       displayName: 'Get ONNX testdata'
       inputs:
         filename: azcopy
-        arguments: ' /S /Source:https://onnxruntimetestdata.blob.core.windows.net/onnx-model-zoo-20181018 /Dest:$(Build.SourcesDirectory)\build\Windows\Debug\models /SourceKey:%AZURE_BLOB_KEY%'
+        arguments: ' /S /Source:https://onnxruntimetestdata.blob.core.windows.net/onnx-model-zoo-20181206 /Dest:$(Build.SourcesDirectory)\build\Windows\Debug\models /SourceKey:%AZURE_BLOB_KEY%'
       env:
         AZURE_BLOB_KEY: $(onnxruntime-storage-key)
 

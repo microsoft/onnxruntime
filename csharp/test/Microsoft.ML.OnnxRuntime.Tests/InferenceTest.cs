@@ -209,6 +209,44 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
+        private void TestPreTrainedModelsOpset7And8()
+        {
+            var opsets = new[] { "opset7", "opset8" };
+            foreach (var opset in opsets)
+            {
+                var modelRoot = new DirectoryInfo(opset);
+                foreach (var model in modelRoot.EnumerateDirectories())
+                {
+                    // TODO: dims contains 'None'. Session throws error.
+                    if (model.ToString() == "test_tiny_yolov2")
+                        continue;
+                    try
+                    {
+                        var session = new InferenceSession($"{opset}\\{model}\\model.onnx");
+                        var inMeta = session.InputMetadata;
+                        var innodepair = inMeta.First();
+                        var innodename = innodepair.Key;
+                        var innodedims = innodepair.Value.Dimensions;
+                        var dataIn = LoadTensorFromFile($"{opset}\\{model}\\test_data_0.input.txt", false);
+                        var dataOut = LoadTensorFromFile($"{opset}\\{model}\\test_data_0.output.txt", false);
+                        var tensorIn = new DenseTensor<float>(dataIn, innodedims);
+                        var nov = new List<NamedOnnxValue>();
+                        nov.Add( NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
+                        var resnov = session.Run(nov);
+                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
+                        Assert.Equal(res, dataOut, new floatComparer());
+                        session.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        var msg = $"Opset {opset}: Model {model}: error = {ex.Message}";
+                        throw new Exception(msg);
+                    }
+                } //model
+            } //opset
+        }
+
+        [Fact]
         private void TestModelInputFloat()
         {
             // model takes 1x5 input of fixed type, echoes back
@@ -239,8 +277,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.True(tensorOut.SequenceEqual(tensorIn));
             session.Dispose();
         }
-        [Fact]
 
+        [Fact]
         private void TestModelInputINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
@@ -415,15 +453,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        static float[] LoadTensorFromFile(string filename)
+        static float[] LoadTensorFromFile(string filename, bool skipheader=true)
         {
             var tensorData = new List<float>();
 
             // read data from file
             using (var inputFile = new System.IO.StreamReader(filename))
             {
-                inputFile.ReadLine(); //skip the input name
-                string[] dataStr = inputFile.ReadLine().Split(new char[] { ',', '[', ']' }, StringSplitOptions.RemoveEmptyEntries);
+                if (skipheader)
+                    inputFile.ReadLine(); //skip the input name
+                string[] dataStr = inputFile.ReadLine().Split(new char[] { ',', '[', ']', ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 for (int i = 0; i < dataStr.Length; i++)
                 {
                     tensorData.Add(Single.Parse(dataStr[i]));
@@ -446,10 +485,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         class floatComparer : IEqualityComparer<float>
         {
-            private float tol = 1e-7f;
+            private float tol = 1e-6f;
+            private float divtol = 1e-3f;
             public bool Equals(float x, float y)
             {
-                return (Math.Abs(x - y) < tol) ? true : false;
+                if (y == 0)
+                    return (Math.Abs(x - y) < tol);
+                return (Math.Abs(1 - x / y) < divtol);
             }
             public int GetHashCode(float x)
             {
