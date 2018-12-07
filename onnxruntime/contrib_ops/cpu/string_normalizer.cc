@@ -52,8 +52,7 @@ class Locale {
     }
   }
 
-  Locale(const Locale&) = delete;
-  Locale& operator=(const Locale&) = delete;
+  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
 
   void ChangeCase(StringNormalizer::CaseAction caseaction,
                   std::wstring& wstr) const {
@@ -82,8 +81,7 @@ class Locale {
                       name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
   }
 
-  Locale(const Locale&) = delete;
-  Locale& operator=(const Locale&) = delete;
+  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
 
   void ChangeCase(StringNormalizer::CaseAction caseaction,
                   std::wstring& wstr) const {
