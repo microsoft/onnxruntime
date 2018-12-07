@@ -63,6 +63,13 @@
           Pack="true"
           Visible="false"
     />
+
+    <None Include="Microsoft.ML.OnnxRuntime.targets"
+          PackagePath="\build"
+          Pack="true"
+          Visible="false"
+    />
+
   </ItemGroup>
 
   <Target Name="ObtainPackageVersion" BeforeTargets="Build;Pack">
