@@ -73,7 +73,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
 
                 Assert.Equal(1, results.Count);
-                
+
                 float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
                 // validate the results
                 foreach (var r in results)
@@ -83,7 +83,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var resultTensor = r.AsTensor<float>();
                     int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
                     Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
-                    
+
                     var resultDimensions = resultTensor.Dimensions;
                     for (int i = 0; i < expectedDimensions.Length; i++)
                     {
@@ -109,7 +109,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
-            session.Dispose(); 
+            session.Dispose();
         }
 
         [Fact]
@@ -204,7 +204,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 });
             };
-            Task.WaitAll(tasks);  
+            Task.WaitAll(tasks);
             session.Dispose();
         }
 
@@ -231,7 +231,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var dataOut = LoadTensorFromFile($"{opset}\\{model}\\test_data_0.output.txt", false);
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
-                        nov.Add( NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
+                        nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
                         var resnov = session.Run(nov);
                         var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
                         Assert.Equal(res, dataOut, new floatComparer());
@@ -453,7 +453,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        static float[] LoadTensorFromFile(string filename, bool skipheader=true)
+        static float[] LoadTensorFromFile(string filename, bool skipheader = true)
         {
             var tensorData = new List<float>();
 
