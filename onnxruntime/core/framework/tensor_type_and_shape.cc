@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensor_type_and_shape_c_api.h"
-#include "core/framework/onnx_object.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -116,7 +115,7 @@ inline OnnxRuntimeTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementData
 }
 }  // namespace
 
-ONNXStatusPtr GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTensorTypeAndShapeInfo** out) {
+ONNXStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTensorTypeAndShapeInfo** out) {
   OnnxRuntimeTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);
   if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
     return CreateONNXStatus(ONNXRUNTIME_FAIL, "Not implemented");
@@ -152,7 +151,7 @@ ONNXRUNTIME_API(enum ONNXRuntimeType, ONNXRuntimeGetValueType, _In_ const ONNXVa
     auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
     onnxruntime::MLDataType type = v->Type();
     ONNXRuntimeTypeInfo* out;
-    ONNXStatusPtr ptr = ONNXRuntimeTypeInfo::FromDataTypeImpl(type, nullptr, nullptr, &out);
+    ONNXStatus* ptr = ONNXRuntimeTypeInfo::FromDataTypeImpl(type, nullptr, nullptr, &out);
     if (ptr != nullptr) {
       ReleaseONNXStatus(ptr);
       return ONNXRUNTIME_TYPE_UNKNOWN;

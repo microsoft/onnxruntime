@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/run_options_c_api.h"
 #include "test_fixture.h"
 using namespace onnxruntime;
 

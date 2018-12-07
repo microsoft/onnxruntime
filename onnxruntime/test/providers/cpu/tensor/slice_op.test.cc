@@ -134,5 +134,29 @@ TEST(SliceTest, Slice3D) {
   test.Run();
 }
 
+TEST(SliceTest, Slice1D_Int) {
+  OpTester test("Slice");
+
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("starts", std::vector<int64_t>{2});
+  test.AddAttribute("ends", std::vector<int64_t>{4});
+
+  test.AddInput<int32_t>("data", {6}, {0L, 1L, 2L, 3L, 4L, 5L});
+  test.AddOutput<int32_t>("output", {2}, {2L, 3L});
+  test.Run();
+}
+
+TEST(SliceTest, Slice1D_String) {
+  OpTester test("Slice");
+
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("starts", std::vector<int64_t>{2});
+  test.AddAttribute("ends", std::vector<int64_t>{4});
+
+  test.AddInput<std::string>("data", {6}, {"0", "1", "2", "3", "4", "5"});
+  test.AddOutput<std::string>("output", {2}, {"2", "3"});
+  test.Run();
+}
+
 }  // namespace Test
 }  // namespace onnxruntime

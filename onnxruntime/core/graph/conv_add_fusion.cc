@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/initializer.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/conv_add_fusion.h"
 
 using namespace onnx;
@@ -11,12 +12,12 @@ namespace onnxruntime {
 Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    if (node.OpType() != "Conv" || node.GetOutputEdgesCount() != 1) {
+    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (next_node.OpType() != "Add" ||
+    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;

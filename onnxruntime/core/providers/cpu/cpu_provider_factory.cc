@@ -15,12 +15,12 @@ struct CpuProviderFactory {
   CpuProviderFactory();
 };
 
-ONNXStatusPtr ONNXRUNTIME_API_STATUSCALL CreateCpu(void* this_, ONNXRuntimeProviderPtr* out) {
+ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateCpu(void* this_, ONNXRuntimeProvider** out) {
   CPUExecutionProviderInfo info;
   CpuProviderFactory* this_ptr = (CpuProviderFactory*)this_;
   info.create_arena = this_ptr->create_arena;
   CPUExecutionProvider* ret = new CPUExecutionProvider(info);
-  *out = (ONNXRuntimeProviderPtr)ret;
+  *out = (ONNXRuntimeProvider*)ret;
   return nullptr;
 }
 
@@ -46,10 +46,10 @@ constexpr ONNXRuntimeProviderFactoryInterface cpu_cls = {
 CpuProviderFactory::CpuProviderFactory() : cls(&cpu_cls), ref_count(1), create_arena(true) {}
 }  // namespace
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateCpuExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryPtr** out) {
+ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateCpuExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryInterface*** out) {
   CpuProviderFactory* ret = new CpuProviderFactory();
   ret->create_arena = (use_arena != 0);
-  *out = (ONNXRuntimeProviderFactoryPtr*)ret;
+  *out = (ONNXRuntimeProviderFactoryInterface**)ret;
   return nullptr;
 }
 

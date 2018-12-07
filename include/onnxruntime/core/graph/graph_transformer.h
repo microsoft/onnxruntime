@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/rewrite_rule.h"
 
 namespace onnxruntime {

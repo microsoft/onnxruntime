@@ -11,7 +11,7 @@ extern "C" {
  * \param use_arena zero: false. non-zero: true.
  * \param out Call ONNXRuntimeReleaseObject() method when you no longer need to use it.
  */
-ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCpuExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryPtr** out)
+ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCpuExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryInterface*** out)
 ONNXRUNTIME_ALL_ARGS_NONNULL;
 
 ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCpuAllocatorInfo, enum ONNXRuntimeAllocatorType type, enum ONNXRuntimeMemType mem_type1, _Out_ ONNXRuntimeAllocatorInfo** out)

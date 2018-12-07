@@ -3,13 +3,13 @@
 
 #include "core/graph/rewrite_rule.h"
 #include "core/graph/identity_elimination.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(GraphEditor& graph_editor, Node& node, bool& modified) {
+Status EliminateIdentity::Apply(Graph& graph_editor, Node& node, bool& modified) {
   std::map<const NodeArg*, NodeArg*> replacement_defs;
   auto id_input = node.InputDefs()[0];
   auto id_output = node.OutputDefs()[0];

@@ -18,6 +18,8 @@
 #pragma once
 
 #include <algorithm>
+#include <cstring>
+#include <climits>
 #include <functional>
 #include <memory>
 #include <numeric>

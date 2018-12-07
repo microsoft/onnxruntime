@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/onnx_object.h"
+#include "core/session/onnxruntime_c_api.h"
 #include <atomic>
 
 ONNXRUNTIME_API(uint32_t, ONNXRuntimeAddRefToObject, void* ptr) {

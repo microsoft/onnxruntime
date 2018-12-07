@@ -1,14 +1,23 @@
 # Build ONNX Runtime
 
+## Supported architectures
+
+|           | x86_32       | x86_64       | ARM32        | ARM64        |
+|-----------|:------------:|:------------:|:------------:|:------------:|
+|Windows    | YES          | YES          |  YES         | YES          |
+|Linux      | YES          | YES          |  YES         | YES          |
+|Mac OS X   | NO           | YES          |  NO          | NO           |
+
 ## Supported dev environments
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
 |Windows 10   | YES          | YES         |Must use VS 2017 or the latest VS2015|
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
-|Ubuntu 16.x  | YES          | YES         |                            |
+|Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |Ubuntu 17.x  | YES          | YES         |                            |
 |Ubuntu 18.x  | YES          | YES         |                            |
+|Fedora 23    | YES          | YES         |                            |
 |Fedora 24    | YES          | YES         |                            |
 |Fedora 25    | YES          | YES         |                            |
 |Fedora 26    | YES          | YES         |                            |
@@ -22,7 +31,7 @@ OS/Compiler Matrix:
 
 | OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang |
 |-------------|:------------:|:----------------:|:---------------:|
-|Windows 10   | YES          | Not tested       | Not tested      |
+|Windows 10   | YES          | Not tested       | planning      |
 |Linux        | NO           | YES(gcc>=5.0)    | YES             |
 
 ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
@@ -141,3 +150,41 @@ Then run it
 ```
 ./tools/ci_build/github/linux/run_dockerbuild.sh
 ```
+
+## ARM Builds
+We've experimental support for Linux ARM builds. Windows on ARM is well tested.
+
+### Cross compiling on Linux(FASTER)
+1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
+2. Setup env vars
+```bash
+   export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
+   export CC=arm-linux-gnueabihf-gcc
+   export CXX=arm-linux-gnueabihf-g++
+```
+3. Get a pre-compiled protoc: 
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
+4. Save the following content as tool.cmake
+```
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR arm)
+set(CMAKE_CXX_COMPILER arm-linux-gnu-c++)
+set(CMAKE_C_COMPILER arm-linux-gnu-gcc)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+```
+5. append "-DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
+
+### Native compiling on Linux (SLOWER)
+
+Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total. If you want to use [Azure Container Registry Tasks](https://docs.microsoft.com/en-us/azure/container-registry/container-registry-tasks-overview) to build the Docker image in cloud, you may want to split this Dockerfile to two steps:
+
+1. Build environment image creation: steps before onnxruntime repo clone
+2. ONNX Runtime and Python binding creation: the rest of steps in the original Dockerfile with step 1 output as base image.
+
+By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours) 
+
+### Cross compiling on Windows
+(TODO)
