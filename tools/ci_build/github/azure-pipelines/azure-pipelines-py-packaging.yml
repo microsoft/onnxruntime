@@ -33,7 +33,7 @@ jobs:
       condition: always()
 
 - job: Ubuntu1604_py_GPU_Wheels
-  pool: Linux-GPU-CUDA10
+  pool: Linux-GPU
   strategy:
     matrix:
       Python35:
@@ -118,7 +118,7 @@ jobs:
       condition: always()
 
 - job:  Windows_py_GPU_Wheels
-  pool: Win-GPU-CUDA10
+  pool: Win-GPU
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '9.1'
