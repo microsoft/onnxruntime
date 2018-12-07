@@ -1,5 +1,7 @@
 # ONNX Runtime
 
+<p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
+
 | Windows CPU | Windows GPU | Linux CPU | Linux GPU | MacOS CPU |
 |-------------|-------------|-------------|-------------|-------------|
 |[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20GPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=10)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20CPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=11)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)| 
