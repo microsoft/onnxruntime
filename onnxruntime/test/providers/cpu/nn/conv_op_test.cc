@@ -74,7 +74,7 @@ TEST(ConvTest, Conv1D_1) {
   auto expected_vals = {-0.052761781960725784f, 0.11481902748346329f, 0.10833403468132019f, -0.11055534332990646f,
                         -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);  // Conv1d not yet optimized for MKLDNN XP
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 // Conv3
@@ -106,7 +106,7 @@ TEST(ConvTest, Conv1D_2) {
                         -0.042245108634233475f, -0.08389100432395935f, -0.2509208619594574f, -0.18825212121009827f,
                         -0.18779152631759644f, -0.11083387583494186f};
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);  // Conv1d not yet optimized for MKLDNN XP
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 // Conv1
@@ -137,7 +137,7 @@ TEST(ConvTest, Conv1D_Bias) {
   vector<int64_t> Y_shape = {2, 1, 4};
   auto expected_vals = {0.37892162799835205f, 0.4625728130340576f, 0.4934738576412201f, 0.44801419973373413f,
                         0.37892162799835205f, 0.2499445676803589f, 0.31682088971138f, 0.32773756980895996f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);  // Conv1d not yet optimized for MKLDNN XP
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 // Conv47
@@ -396,7 +396,7 @@ TEST(ConvTest, Conv3D_1) {
                         0.10670476406812668f, -0.054437506943941116f, -0.014473143965005875f,
                         -0.13092079758644104f, 0.10221172869205475f, -0.1479327529668808f,
                         -0.011351631954312325f, -0.10867488384246826f, -0.05184098333120346f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);  // Conv3d not yet optimized for MKLDNN XP
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 // Conv22
@@ -437,7 +437,7 @@ TEST(ConvTest, Conv3D_2) {
                         0.0f, 0.09152615070343018f, 0.08054415881633759f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);  // Conv3d not yet optimized for MKLDNN XP
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 // Conv23
@@ -520,7 +520,7 @@ TEST(ConvTest, Conv3D_Bias) {
                         -0.47542816400527954f, -0.5078460574150085f, -0.4205915927886963f, -0.5584549903869629f,
                         -0.39770257472991943f, -0.45317384600639343f, -0.5598302483558655f, -0.2542789578437805f,
                         -0.5359901785850525f, -0.48090484738349915f, -0.38603779673576355f, -0.4991581439971924f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);  // Conv3d not yet optimized for MKLDNN XP
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTest, Conv2D_group) {
