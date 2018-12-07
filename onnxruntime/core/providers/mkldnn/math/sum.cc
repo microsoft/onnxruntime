@@ -15,13 +15,13 @@ namespace mkl_dnn {
 namespace {
 // Struct which encapsulates parameters for MKLDNN Sum primitives.
 struct SumParams {
-  std::vector<mkldnn::memory::dims> src_dims;
+  std::vector<mkldnn::memory::dims>& src_dims;
   mkldnn::memory::dims& dst_dim;
   int num_inputs;
   int num_dimensions;
 
-  SumParams(std::vector<mkldnn::memory::dims> dims,
-    mkldnn::memory::dims& dst_dims, int &numinputs, int &dimensions)
+  SumParams(std::vector<mkldnn::memory::dims>& dims,
+    mkldnn::memory::dims& dst_dims, int numinputs, int dimensions)
     : src_dims(dims),
     dst_dim(dst_dims),
     num_inputs(numinputs),
@@ -51,13 +51,13 @@ class SumPrimitive final : public PrimitiveBase {
 
   ~SumPrimitive() = default;
 
-  void Compute(OpKernelContext* context, int& numinputs) {
+  void Compute(OpKernelContext* context, int numinputs) {
     const Tensor* X1 = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X1->Shape());
     T* dst_data = Y->template MutableData<T>();
 
     context_.dst_mem->set_data_handle(
-      static_cast<void*>(const_cast<T*>(dst_data)));
+      static_cast<void*>(static_cast<T*>(dst_data)));
 
     for (int i = 0; i < numinputs; i++) {
       const Tensor* X = context->Input<Tensor>(i);
@@ -92,15 +92,6 @@ class SumPrimitive final : public PrimitiveBase {
 
     std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
-
-    SumContext()
-      : src_md(nullptr),
-      dst_md(nullptr),
-      dst_mem(nullptr),
-      src_mpd(nullptr),
-      dst_pd(nullptr),
-      sum_pd(nullptr),
-      stream(nullptr) {}
   };
 
   void Initialize(const SumParams& params) {

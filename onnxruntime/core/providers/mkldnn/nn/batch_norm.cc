@@ -116,21 +116,6 @@ class BatchNormPrimitive final : public PrimitiveBase {
 
     std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
-
-    BatchNormContext()
-      : src_mem(nullptr),
-      scale_shift_mem(nullptr),
-      mean_mem(nullptr),
-      var_mem(nullptr),
-      dst_mem(nullptr),
-      src_md(nullptr),
-      scale_shift_md(nullptr),
-      mean_md(nullptr),
-      var_md(nullptr),
-      dst_md(nullptr),
-      batchnorm_fwd(nullptr),
-      batchnorm_fwd_pd(nullptr),
-      stream(nullptr) {}
   };
 
   void Initialize(const BatchNormParams& params) {
