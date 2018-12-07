@@ -246,6 +246,12 @@ if (SingleUnitTestProject)
     list(APPEND all_libs ${onnxruntime_tvm_libs})
     list(APPEND all_dependencies ${onnxruntime_tvm_dependencies})
   endif()
+
+  if (UNIX AND NOT APPLE)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    list(APPEND all_libs stdc++fs)
+  endif()
+
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
   # up everything we need for all tests
   file(GLOB_RECURSE test_mains "${TEST_SRC_DIR}/*/test_main.cc")
