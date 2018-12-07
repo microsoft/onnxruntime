@@ -15,13 +15,14 @@ namespace mkl_dnn {
 namespace {
 // Struct which encapsulates parameters for MKLDNN Sum primitives.
 struct SumParams {
-  std::vector<mkldnn::memory::dims>& src_dims;
-  mkldnn::memory::dims& dst_dim;
-  int num_inputs;
-  int num_dimensions;
+  const std::vector<mkldnn::memory::dims>& src_dims;
+  const mkldnn::memory::dims& dst_dim;
+  const int num_inputs;
+  const int num_dimensions;
 
-  SumParams(std::vector<mkldnn::memory::dims>& dims,
-    mkldnn::memory::dims& dst_dims, int numinputs, int dimensions)
+  SumParams(const std::vector<mkldnn::memory::dims>& dims,
+    const mkldnn::memory::dims& dst_dims, const int numinputs, 
+    const int dimensions)
     : src_dims(dims),
     dst_dim(dst_dims),
     num_inputs(numinputs),

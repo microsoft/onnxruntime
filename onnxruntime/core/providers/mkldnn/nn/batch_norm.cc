@@ -17,20 +17,20 @@ namespace mkl_dnn {
 namespace {
 // Struct which encapsulates parameters for MKLDNN BatchNorm primitive.
 struct BatchNormParams {
-  mkldnn::memory::dims& src_dims;
-  mkldnn::memory::dims& scale_dims;
-  mkldnn::memory::dims& b_dims;
-  mkldnn::memory::dims& mean_dims;
-  mkldnn::memory::dims& var_dims;
-  mkldnn::memory::dims& dst_dims;
-  float epsilon;
-  int num_dimensions;
+  const mkldnn::memory::dims& src_dims;
+  const mkldnn::memory::dims& scale_dims;
+  const mkldnn::memory::dims& b_dims;
+  const mkldnn::memory::dims& mean_dims;
+  const mkldnn::memory::dims& var_dims;
+  const mkldnn::memory::dims& dst_dims;
+  const float epsilon;
+  const int num_dimensions;
 
-  BatchNormParams(mkldnn::memory::dims& src_dims_mkl,
-    mkldnn::memory::dims& scale_dims_mkl,
-    mkldnn::memory::dims& b_dims_mkl, mkldnn::memory::dims& mean_dims_mkl,
-    mkldnn::memory::dims& var_dims_mkl, mkldnn::memory::dims& dst_dims_mkl,
-    float eps, int dimensions)
+  BatchNormParams(const mkldnn::memory::dims& src_dims_mkl,
+    const mkldnn::memory::dims& scale_dims_mkl,
+    const mkldnn::memory::dims& b_dims_mkl, const mkldnn::memory::dims& mean_dims_mkl,
+    const mkldnn::memory::dims& var_dims_mkl, const mkldnn::memory::dims& dst_dims_mkl,
+    const float eps, const int dimensions)
     : src_dims(src_dims_mkl),
     scale_dims(scale_dims_mkl),
     b_dims(b_dims_mkl),
