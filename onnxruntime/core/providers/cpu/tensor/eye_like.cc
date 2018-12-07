@@ -55,7 +55,7 @@ Status EyeLike::ComputeImpl(OpKernelContext* context) const {
   auto* data = T2->MutableData<T>();
   T zero_value = static_cast<T>(0);
   auto out = gsl::make_span(data, T2->Shape().Size());
-  std::for_each(out.begin(), out.end(), [&zero_value](T& v) { v = zero_value; });
+  std::fill(out.begin(), out.end(), zero_value);
 
   int64_t diag_start = 0;
   int64_t diag_end = 0;

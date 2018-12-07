@@ -12,7 +12,7 @@ class EyeLike final : public OpKernel {
  public:
   EyeLike(const OpKernelInfo& info) : OpKernel(info) {
     if (!info.GetAttr("k", &k_).IsOK()) {
-      ONNXRUNTIME_THROW("Missing 'k' attribute value");
+      k_ = 0;
     }
 
     has_dtype = info.GetAttr("dtype", &dtype_).IsOK();
