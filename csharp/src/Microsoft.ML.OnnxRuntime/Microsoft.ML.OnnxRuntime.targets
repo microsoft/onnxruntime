@@ -12,6 +12,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+    <Reference Include="Microsoft.ML.OnnxRuntime">
+		  <HintPath>$(MSBuildThisFileDirectory)..\lib\netstandard1.1\Microsoft.ML.OnnxRuntime.dll</HintPath>
+	  </Reference>
   </ItemGroup>
 
   <Target Name="Microsoft_ML_OnnxRuntime_CheckPrerequisites" BeforeTargets="BeforeBuild">
