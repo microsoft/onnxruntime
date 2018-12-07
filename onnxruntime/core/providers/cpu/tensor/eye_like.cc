@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/tensor/eye_like.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/util/math_cpuonly.h"
 
 using namespace ::onnxruntime::common;
 
@@ -17,18 +18,18 @@ ONNX_CPU_OPERATOR_KERNEL(
                                           DataTypeImpl::GetTensorType<int64_t>(),
                                           DataTypeImpl::GetTensorType<uint64_t>(),
                                       })
-                        .TypeConstraint("T2",
-                                        std::vector<MLDataType>{
-                                            DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                        }),
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{
+                            DataTypeImpl::GetTensorType<float>(),
+                            DataTypeImpl::GetTensorType<uint64_t>(),
+                            DataTypeImpl::GetTensorType<int64_t>(),
+                        }),
     EyeLike);
 
 Status EyeLike::Compute(OpKernelContext* context) const {
   const Tensor* T1 = context->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(T1 != nullptr);  
-  
+  ONNXRUNTIME_ENFORCE(T1 != nullptr);
+
   auto output_tensor_dtype = has_dtype ? static_cast<onnx::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
   switch (output_tensor_dtype) {
     case onnx::TensorProto_DataType_FLOAT:
@@ -52,27 +53,17 @@ Status EyeLike::ComputeImpl(OpKernelContext* context) const {
 
   // set output tensor shape same as input tensor and set all values to zero
   auto* T2 = context->Output(0, input_dims);
-  auto* data = T2->MutableData<T>();
-  T zero_value = static_cast<T>(0);
-  auto out = gsl::make_span(data, T2->Shape().Size());
-  std::fill(out.begin(), out.end(), zero_value);
+  auto output_mat = EigenMatrixMapRowMajor<T>(
+      T2->template MutableData<T>(),
+      input_dims[0],
+      input_dims[1]);
+  output_mat.setZero();
+  
+  if ((k_ >= 0 && k_ >= input_dims[1]) || (k_ < 0 && std::abs(k_) >= input_dims[0])) {
+    return Status::OK();
+  }
+  output_mat.diagonal(k_).array() = static_cast<T>(1);
 
-  int64_t diag_start = 0;
-  int64_t diag_end = 0;
-  if (k_ >= 0) {
-    diag_start = k_;
-    diag_end = (input_dims[1] - k_) * (input_dims[1]);
-  } else {
-    diag_start = (-k_) * input_dims[1];
-    diag_end = diag_start + (input_dims[0] + k_) * input_dims[1];
-  }
-  
-  T one_value = static_cast<T>(1); 
-  for (auto i = diag_start; i < diag_end; i += input_dims[1] + 1) {
-    data[i] = one_value;
-  }
-  
   return Status::OK();
 }
-
 }  // namespace onnxruntime
