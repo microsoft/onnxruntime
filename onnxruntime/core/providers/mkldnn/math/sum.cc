@@ -210,6 +210,7 @@ Status Sum<T>::Compute(OpKernelContext* context) const {
   try {
     SumParams parameters(src_dims, dst_dims_mkl, num_inputs, dimensions);
     SumPrimitive<T>* sum_primitive = SumPrimitivePool<T>::Get(parameters);
+    ONNXRUNTIME_RETURN_IF_NOT(sum_primitive != nullptr);
     sum_primitive->Compute(context, num_inputs);
   } catch (const mkldnn::error& e) {
     return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, 

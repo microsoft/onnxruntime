@@ -11,11 +11,8 @@ namespace mkl_dnn {
 template <typename T>
 class BatchNorm final : public onnxruntime::BatchNorm<T> {
  public:
-   BatchNorm(const OpKernelInfo& info) : onnxruntime::BatchNorm<T>(info) {}
-
+  BatchNorm(const OpKernelInfo& info) : onnxruntime::BatchNorm<T>(info) {}
   Status Compute(OpKernelContext* context) const override;
-
- private:
 };
 }  // namespace mkl_dnn
 }  // namespace onnxruntime

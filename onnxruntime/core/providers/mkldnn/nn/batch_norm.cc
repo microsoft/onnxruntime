@@ -278,6 +278,7 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
       onnxruntime::BatchNorm<T>::epsilon_, num_dimensions);
     BatchNormPrimitive<T>* batchNorm_primitive = 
       BatchNormPrimitivePool<T>::Get(batchNorm_params);
+    ONNXRUNTIME_RETURN_IF_NOT(batchNorm_primitive != nullptr);
     batchNorm_primitive->Compute(src_data, scale_data, b_data, 
       mean_data, var_data, dst_data, scale_dims_mkl[0]);
 
