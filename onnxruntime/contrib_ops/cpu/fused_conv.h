@@ -11,7 +11,7 @@ namespace contrib {
 template <typename T>
 class FusedConv : public Conv<T> {
  public:
-  FusedConv(const OpKernelInfo& info) : Conv(info) {
+  FusedConv(const OpKernelInfo& info) : Conv<T>(info) {
     std::string activation_type;
     activation_ = info.GetAttrOrDefault<std::string>("activation_type", "");
     alpha_ = info.GetAttrOrDefault("alpha", 0.01f);
