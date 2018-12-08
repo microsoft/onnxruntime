@@ -15,7 +15,7 @@
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <PackageLicenseUrl>https://github.com/Microsoft/onnxruntime/blob/master/LICENSE</PackageLicenseUrl>
-
+    <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
     <!--internal build related properties-->
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
@@ -63,6 +63,18 @@
           Pack="true"
           Visible="false"
     />
+
+    <None Include="Microsoft.ML.OnnxRuntime.targets"
+          PackagePath="\build\$(TargetFramework)"
+          Pack="true"
+          Visible="false"
+    />
+    <None Include="Microsoft.ML.OnnxRuntime.props"
+          PackagePath="\build\$(TargetFramework)"
+          Pack="true"
+          Visible="false"
+    />
+
   </ItemGroup>
 
   <Target Name="ObtainPackageVersion" BeforeTargets="Build;Pack">
