@@ -82,7 +82,6 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.6.1" />
     <PackageReference Include="System.Numerics.Tensors" Version="0.1.0" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta-63127-02" PrivateAssets="All"/>
   </ItemGroup>
