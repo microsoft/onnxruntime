@@ -98,10 +98,20 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   */
   Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule);
 
+  /** Register a default rewrite rule, i.e., rules that we will attempt to apply, regardless of its type. */
+  Status Register(std::unique_ptr<RewriteRule> rule) {
+    return Register(kDefaultRewriteRules, std::move(rule));
+  }
+
   /** Check if the given op_type has any rules registered for it 
   @returns true if there are rules registered for this op_type.*/
   bool HasRules(const std::string& op_type) const {
     return op_to_rules_.find(op_type) != op_to_rules_.cend();
+  }
+
+  /** Check if there are default rules registered. */
+  bool HasDefaultRules() const {
+    return HasRules(kDefaultRewriteRules);
   }
 
   /**
@@ -117,7 +127,12 @@ class RuleBasedGraphTransformer : public GraphTransformer {
     return nullptr;
   }
 
+  const std::vector<std::unique_ptr<RewriteRule>>* GetDefaultRewriteRules() const {
+    return GetRewriteRules(kDefaultRewriteRules);
+  }
+
  private:
+  static constexpr const char* kDefaultRewriteRules = "DefaultRewriteRules";
   using RewriteRuleSet = std::unordered_map<std::string, std::vector<std::unique_ptr<RewriteRule>>>;
 
   RewriteRuleSet op_to_rules_;
