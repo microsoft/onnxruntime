@@ -18,7 +18,7 @@ class FusedConv : public Conv<T> {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    return Conv::Compute(context);
+    return Conv<T>::Compute(context);
   }
 };
 }  // namespace contrib
