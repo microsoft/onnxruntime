@@ -12,6 +12,12 @@ namespace str_normalizer_test {
 constexpr const char* domain = onnxruntime::kMSDomain;
 const int opset_ver = 1;
 
+#ifdef _MSC_VER
+const std::string test_locale("en-US");
+#else
+const std::string test_locale("en_US.UTF-8");
+#endif
+
 void InitTestAttr(OpTester& test, const std::string& casechangeaction,
                   bool iscasesensitive,
                   const std::vector<std::string>& stopwords,
@@ -36,7 +42,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - No change case action
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "NONE", true, {}, "en_US.UTF-8");
+    InitTestAttr(test, "NONE", true, {}, test_locale);
     std::vector<int64_t> dims{2, 2};
     std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
     test.AddInput<std::string>("T", dims, input);
@@ -50,7 +56,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - No change case action
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "NONE", true, {}, "en_US.UTF-8");
+    InitTestAttr(test, "NONE", true, {}, test_locale);
     std::vector<int64_t> dims{4};
     std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
                                       std::string("wednesday"), std::string("thursday")};
@@ -64,7 +70,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - No change case action
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "NONE", true, {"monday"}, "en_US.UTF-8");
+    InitTestAttr(test, "NONE", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{4};
     std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
                                       std::string("wednesday"), std::string("thursday")};
@@ -80,7 +86,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - LOWER should produce the same output as they are all lower.
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "LOWER", true, {"monday"}, "en_US.UTF-8");
+    InitTestAttr(test, "LOWER", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{4};
     std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
                                       std::string("wednesday"), std::string("thursday")};
@@ -96,7 +102,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - UPPER should produce the same output as they are all lower.
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "UPPER", true, {"monday"}, "en_US.UTF-8");
+    InitTestAttr(test, "UPPER", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{4};
     std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
                                       std::string("wednesday"), std::string("thursday")};
@@ -114,7 +120,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - UPPER should produce the same output as they are all lower.
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "UPPER", true, {u8"monday"}, "en_US.UTF-8");
+    InitTestAttr(test, "UPPER", true, {u8"monday"}, test_locale);
     std::vector<int64_t> dims{7};
     std::vector<std::string> input = {std::string(u8"monday"),
                                       std::string(u8"tuesday"),
@@ -147,7 +153,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - UPPER should produce the same output as they are all lower.
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "UPPER", false, {u8"monday"}, "en_US.UTF-8");
+    InitTestAttr(test, "UPPER", false, {u8"monday"}, test_locale);
     std::vector<int64_t> dims{7};
     std::vector<std::string> input = {std::string(u8"monday"),
                                       std::string(u8"tuesday"),
@@ -180,7 +186,7 @@ TEST(ContribOpTest, StringNormalizerTest) {
   // - UPPER should produce the same output as they are all lower.
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "UPPER", true, {"monday"}, "en_US.UTF-8");
+    InitTestAttr(test, "UPPER", true, {"monday"}, test_locale);
     std::vector<int64_t> dims{2};
     std::vector<std::string> input = {std::string("monday"),
                                       std::string("monday")};
