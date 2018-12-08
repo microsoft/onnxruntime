@@ -137,7 +137,7 @@ Status BuildSubgraph(const Graph& graph,
       inputs.push_back(&n_input);
       if (graph.GetInitializedTensor(input->Name(), initializer)) {
         subgraph.AddInitializedTensor(*initializer);
-	  }
+      }
     }
     for (auto output : node->OutputDefs()) {
       auto& n_output = subgraph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
