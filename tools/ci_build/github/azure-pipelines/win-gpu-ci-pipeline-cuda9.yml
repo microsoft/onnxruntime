@@ -1,0 +1,41 @@
+jobs:
+- job: Windows_CI_GPU_Dev
+  pool: Win-GPU-CUDA10
+  variables:
+    CUDA_VERSION: '9.1'
+  steps:
+    - task: PowerShell@1
+      displayName: 'Set CUDA path'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion $(CUDA_VERSION)'
+    - task: BatchScript@1
+      displayName: 'Setup VS2017 env vars'
+      inputs:
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
+        arguments: 'amd64 -vcvars_ver=14.11'
+        modifyEnvironment: true
+    - task: CmdLine@1
+      displayName: 'Get ONNX testdata'
+      inputs:
+        filename: azcopy
+        arguments: ' /S /Source:https://onnxruntimetestdata.blob.core.windows.net/onnx-model-zoo-20181018 /Dest:$(Build.SourcesDirectory)\build\Windows\Debug\models /SourceKey:%AZURE_BLOB_KEY%'
+      env:
+        AZURE_BLOB_KEY: $(onnxruntime-storage-key)
+    - task: BatchScript@1
+      inputs:
+        filename: build.bat
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda"'
+        workingFolder: "$(Build.SourcesDirectory)"
+    - task: PowerShell@1
+      displayName: 'Clean up CUDA props files'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion $(CUDA_VERSION)'
+    - task: CmdLine@1
+      displayName: 'Clean build folders/files'
+      inputs:
+        filename: rd
+        arguments: '/s /q $(Agent.BuildDirectory)'
+      continueOnError: true
+      condition: always()

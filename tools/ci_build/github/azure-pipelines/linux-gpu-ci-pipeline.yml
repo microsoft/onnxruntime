@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_CI_GPU_Dev
-  pool: Linux-GPU
+  pool: Linux-GPU-CUDA10
   steps:
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)'
       displayName: 'Command Line Script'

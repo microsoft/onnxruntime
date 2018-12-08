@@ -162,7 +162,7 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<ONNXRuntimeEnv> env;
   {
     ONNXRuntimeEnv* t;
-    ONNXStatusPtr ost = ONNXRuntimeInitialize(logging_level, "Default", &t);
+    ONNXStatus* ost = ONNXRuntimeInitialize(logging_level, "Default", &t);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", ONNXRuntimeGetErrorMessage(ost));
       ReleaseONNXStatus(ost);
@@ -176,7 +176,7 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<ONNXRuntimeAllocator> default_allocator;
   {
     ONNXRuntimeAllocator* p;
-    ONNXStatusPtr ost = ONNXRuntimeCreateDefaultAllocator(&p);
+    ONNXStatus* ost = ONNXRuntimeCreateDefaultAllocator(&p);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", ONNXRuntimeGetErrorMessage(ost));
       ReleaseONNXStatus(ost);
@@ -200,7 +200,7 @@ int real_main(int argc, char* argv[]) {
       sf.DisableSequentialExecution();
     if (enable_cuda) {
 #ifdef USE_CUDA
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactoryInterface** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
       sf.AppendExecutionProvider(f);
       ONNXRuntimeReleaseObject(f);
@@ -211,7 +211,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactoryInterface** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
       sf.AppendExecutionProvider(f);
       ONNXRuntimeReleaseObject(f);
@@ -222,7 +222,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_mkl) {
 #ifdef USE_MKLDNN
-      ONNXRuntimeProviderFactoryPtr* f;
+      ONNXRuntimeProviderFactoryInterface** f;
       ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
       sf.AppendExecutionProvider(f);
       ONNXRuntimeReleaseObject(f);

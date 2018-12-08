@@ -90,7 +90,7 @@ class ParametricSoftplus final : public OpKernel {
 };
 
 template <typename T>
-class Relu final : public OpKernel {
+class Relu : public OpKernel {
  public:
   Relu(const OpKernelInfo& info) : OpKernel(info) {}
 
