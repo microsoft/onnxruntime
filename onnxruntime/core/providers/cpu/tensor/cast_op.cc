@@ -340,7 +340,13 @@ Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
       void* target = Y->MutableDataRaw(X_type);
       // if source and target pointers are not equal, we need to copy the data.
       if (target != source) {
-        memcpy(target, source, shape.Size() * X_type->Size());
+        size_t out;
+        if (!IAllocator::CalcMemSizeForArray(shape.Size(), X_type->Size(), &out))
+          st = Status(common::ONNXRUNTIME, common::FAIL, "size overflow");
+        else {
+          memcpy(target, source, out);
+          st = Status::OK();
+        }
       }
       st = Status::OK();
       break;
