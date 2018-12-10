@@ -285,7 +285,7 @@ set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
 # fix a warning in onnx code we can't do anything about
 if (MSVC)
     target_compile_options(onnx_proto PRIVATE /wd4146) # unary minus operator applied to unsigned type
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W1 -DEIGEN_HAS_C99_MATH /MP")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
 endif()
 set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto)
 
