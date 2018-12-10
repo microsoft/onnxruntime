@@ -42,14 +42,14 @@ class UpsampleBase {
     }
   }
 
-  void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode_) const {
-    for (auto& scale : scales_) {
+  void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
+    for (auto& scale : scales) {
       ONNXRUNTIME_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
     }
 
-    if (UpsampleMode::LINEAR == mode_) {
-      ONNXRUNTIME_ENFORCE(scales_.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
-      ONNXRUNTIME_ENFORCE(((scales_[0] == 1) && (scales_[1] == 1)),
+    if (UpsampleMode::LINEAR == mode) {
+      ONNXRUNTIME_ENFORCE(scales.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
+      ONNXRUNTIME_ENFORCE(((scales[0] == 1) && (scales[1] == 1)),
                           "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
     }
   }
