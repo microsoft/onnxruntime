@@ -72,7 +72,7 @@ class Upsample : public UpsampleBase, public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-  Status BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const;
+  Status BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const;
 
 private:
   void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
