@@ -56,7 +56,7 @@ class Node {
     or the destination node if this is an output edge from the current node.
     @param node_arg The NodeArg to use for the edge.
     */
-    EdgeEnd(const Node& node, const NodeArg& node_arg, int src_slot_index, int dst_slot_index) noexcept;
+    EdgeEnd(const Node& node, int src_slot_index, int dst_slot_index) noexcept;
 
     /** Construct a control edge.
     @param node The node the edge joins to the current node.
@@ -65,10 +65,6 @@ class Node {
 
     /** Gets the Node that this EdgeEnd refers to. */
     const Node& GetNode() const noexcept;
-
-    /** Gets the NodeArg that this edge end refers to.
-    @returns NodeArg pointer or nullptr if this is a control edge. */
-    //const NodeArg* GetNodeArg() const noexcept;
 
     /** Gets the source slot index.
 	@returns the source slot index of <*this> edge.*/
@@ -80,7 +76,6 @@ class Node {
 
    private:
     const Node* node_;
-    const NodeArg* node_arg_;
     int src_slot_index_;
     int dst_slot_index_;
   };

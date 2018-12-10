@@ -223,24 +223,19 @@ bool NodeArg::Exists() const noexcept {
   return exists_;
 }
 
-Node::EdgeEnd::EdgeEnd(const Node& node, const NodeArg& node_arg, int src_slot_index, int dst_slot_index) noexcept
+Node::EdgeEnd::EdgeEnd(const Node& node, int src_slot_index, int dst_slot_index) noexcept
     : node_(&node),
-      node_arg_(&node_arg),
       src_slot_index_(src_slot_index),
       dst_slot_index_(dst_slot_index) {
 }
 
 Node::EdgeEnd::EdgeEnd(const Node& node) noexcept
-    : node_(&node), node_arg_(nullptr) {
+    : EdgeEnd(node, INT_MAX, INT_MAX) {
 }
 
 const Node& Node::EdgeEnd::GetNode() const noexcept {
   return *node_;
 }
-
-//const NodeArg* Node::EdgeEnd::GetNodeArg() const noexcept {
-//  return node_arg_;
-//}
 
 int Node::EdgeEnd::GetSourceSlotIndex() const {
   return src_slot_index_;
@@ -726,7 +721,7 @@ Status Graph::VerifyNoDuplicateName() {
     node_name_to_index[node_name] = node.Index();
 
     // Verify node outputs' name should be unique.
-    int output_index = 0;
+    int output_index = -1;
     for (const auto* output_def : node.OutputDefs()) {
       ++output_index;
       if (output_def->Exists()) {
@@ -832,8 +827,8 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
     ONNXRUNTIME_THROW("Argument type mismatch when adding edge.");
   }
 
-  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index], *src_arg, src_arg_slot, dst_arg_slot));
-  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index], *src_arg, src_arg_slot, dst_arg_slot));
+  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
+  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
 }
 
 void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
@@ -872,8 +867,8 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     ONNXRUNTIME_THROW("Argument type mismatch when removing edge.");
   }
 
-  nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], *src_arg, src_arg_slot, dst_arg_slot));
-  nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], *src_arg, src_arg_slot, dst_arg_slot));
+  nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
+  nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
 
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
@@ -960,7 +955,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
     if (input_args.size() > 0) {
       // This node needs inputs.
 
-      int input_slot_index = 0;
+      int input_slot_index = -1;
       for (const auto* input_arg : input_args) {
         ++input_slot_index;
         if (!input_arg->Exists()) {
@@ -2478,7 +2473,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();
   for (auto node_index : sub_graph_ref.nodes) {
     auto node = GetNode(node_index);
-    if (nullptr != node) {
+    if (nullptr == node) {
       continue;
     }
     auto& output_edges = node->GetRelationships().output_edges;
