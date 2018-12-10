@@ -1,0 +1,1 @@
+CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -Donnxruntime_ENABLE_PYTHON=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Deigen_SOURCE_PATH=/usr/include/eigen3 -Donnxruntime_USE_PREINSTALLED_EIGEN=ON -Donnxruntime_BUILD_SHARED_LIB=ON $HOME/src/Lotus/cmake
