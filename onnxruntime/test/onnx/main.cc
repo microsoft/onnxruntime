@@ -328,7 +328,7 @@ int real_main(int argc, char* argv[]) {
       {"sign_model", "opset 9 not supported yet"},
       {"erf", "opset 9 not supported yet"},
       {"sign", "opset 9 not supported yet"},
-      {"scatter_with_azis", "opset 9 not supported yet"},
+      {"scatter_with_axis", "opset 9 not supported yet"},
       {"scatter_without_axis", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"isnan", "opset 9 not supported yet"}};
