@@ -54,7 +54,8 @@ class Node {
     Construct an EdgeEnd
     @param node The source node if this is an input edge to the current node, 
     or the destination node if this is an output edge from the current node.
-    @param node_arg The NodeArg to use for the edge.
+    @param src_slot_index The node arg slot of source node of the edge.
+	@param dst_slot_index The node arg slot of destination node of the edge.
     */
     EdgeEnd(const Node& node, int src_slot_index, int dst_slot_index) noexcept;
 
@@ -606,17 +607,17 @@ class Graph {
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
-  @param node_arg NodeArg to use for the edge.
+  @param src_arg_slot node arg slot of source node.
+  @param dst_arg_slot node arg slot of destination node.
   */
-  //void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
   void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot);
 
   /** Remove an edge between two Nodes.
   @param src_node_index NodeIndex of source Node to remove an output edge from.
   @param dst_node_index NodeIndex of destination Node to remove an input edge from.
-  @param node_arg NodeArg that is used by the edge that is being removed.
+  @param src_arg_slot node arg slot of source node.
+  @param dst_arg_slot node arg slot of destination node.
   */
-  //void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
   void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot);
 
   /**
