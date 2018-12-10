@@ -15,7 +15,6 @@ enum UpsampleMode {
   LINEAR = 1,  // linear interpolation
 };
 
-template <typename T>
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) {
@@ -28,8 +27,6 @@ class UpsampleBase {
       ScalesValidation(scales_, mode_);
     }
   }
-
-  Status BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const;
 
   UpsampleMode mode_;
   std::vector<float> scales_;
@@ -59,9 +56,9 @@ class UpsampleBase {
 };
 
 template <typename T>
-class Upsample : public UpsampleBase<T>, public OpKernel {
+class Upsample : public UpsampleBase, public OpKernel {
  public:
-  Upsample(OpKernelInfo info) : UpsampleBase<T>(info), OpKernel(info), scales_cached_(false) {
+  Upsample(OpKernelInfo info) : UpsampleBase(info), OpKernel(info), scales_cached_(false) {
     if (info.GetInputCount() > 1) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(1, &scale);
@@ -74,6 +71,8 @@ class Upsample : public UpsampleBase<T>, public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+  Status BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const;
 
 private:
   void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {

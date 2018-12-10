@@ -191,7 +191,7 @@ void upsampleBilinear(
 }
 
 template <typename T>
-Status UpsampleBase<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const {
+Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const {
   const Tensor* X = context->Input<Tensor>(0);
   ONNXRUNTIME_ENFORCE(X != nullptr);
 
