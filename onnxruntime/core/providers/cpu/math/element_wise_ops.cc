@@ -883,7 +883,9 @@ Status Scale<float>::Compute(OpKernelContext* ctx) const {
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
-  auto& X = *context->Input<Tensor>(0);
+  auto X_ptr = context->Input<Tensor>(0);
+  ONNXRUNTIME_ENFORCE(X_ptr != nullptr);
+  auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
 
   EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
