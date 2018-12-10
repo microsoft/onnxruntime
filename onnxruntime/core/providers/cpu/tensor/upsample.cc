@@ -8,16 +8,16 @@ using namespace ::onnxruntime::common;
 using namespace std;
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Upsample,
-    7,
+    7, 9,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Upsample<float>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Upsample,
-    7,
+    7, 9,
     int32_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
     Upsample<int32_t>);
@@ -191,7 +191,7 @@ void upsampleBilinear(
 }
 
 template <typename T>
-Status Upsample<T>::Compute(OpKernelContext* context) const {
+Status UpsampleBase<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const {
   const Tensor* X = context->Input<Tensor>(0);
   ONNXRUNTIME_ENFORCE(X != nullptr);
 
@@ -226,6 +226,21 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     default:
       return Status(ONNXRUNTIME, FAIL, "Upsample: unexpected mode");
   }
+}
+
+
+template <typename T>
+Status Upsample<T>::Compute(OpKernelContext* context) const {
+  if (OpKernel::Node().InputDefs().size() == 1 || scales_cached_) {
+    return BaseCompute(context, scales_);
+  }
+
+  const Tensor* scales = context->Input<Tensor>(1);
+  ONNXRUNTIME_ENFORCE(scales != nullptr);
+  int64_t scales_size = scales->Shape().Size();
+  std::vector<float> scales_arrary(scales_size);
+  ParseScalesData(scales, scales_arrary);
+  return BaseCompute(context, scales_arrary);
 }
 
 }  // namespace onnxruntime

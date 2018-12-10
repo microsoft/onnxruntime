@@ -10,33 +10,28 @@ namespace onnxruntime {
 constexpr const char* UpsampleModeNN = "nearest";
 constexpr const char* UpsampleModeLinear = "linear";
 
+enum UpsampleMode {
+  NN = 0,      // nearest neighbour
+  LINEAR = 1,  // linear interpolation
+};
 
-  enum UpsampleMode {
-    NN = 0,      // nearest neighbour
-    LINEAR = 1,  // linear interpolation
-  };
-
+template <typename T>
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) {
     std::string mode;
     ONNXRUNTIME_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
-
     mode_ = StringToUpsampleMode(mode);
 
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
-    for (auto& scale : scales_) {
-      ONNXRUNTIME_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
-    }
-
-    if (UpsampleMode::LINEAR == mode_) {
-      ONNXRUNTIME_ENFORCE(((scales_[0] == 1) && (scales_[1] == 1)),
-          "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
+    if (info.GetInputCount() == 1) {
+      ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
+      ScalesValidation(scales_, mode_);
     }
   }
 
-  UpsampleMode mode_;
+  Status BaseCompute(OpKernelContext* context, const std::vector<float>& scales_) const;
 
+  UpsampleMode mode_;
   std::vector<float> scales_;
 
   UpsampleMode StringToUpsampleMode(const std::string& mode) {
@@ -49,15 +44,48 @@ class UpsampleBase {
                         UpsampleModeNN + "(default) or " + UpsampleModeLinear + ".");
     }
   }
+
+  void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode_) const {
+    for (auto& scale : scales_) {
+      ONNXRUNTIME_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
+    }
+
+    if (UpsampleMode::LINEAR == mode_) {
+      ONNXRUNTIME_ENFORCE(scales_.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
+      ONNXRUNTIME_ENFORCE(((scales_[0] == 1) && (scales_[1] == 1)),
+                          "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
+    }
+  }
 };
 
 template <typename T>
-class Upsample : public UpsampleBase, public OpKernel {
+class Upsample : public UpsampleBase<T>, public OpKernel {
  public:
-  Upsample(OpKernelInfo info) : UpsampleBase(info), OpKernel(info) {
+  Upsample(OpKernelInfo info) : UpsampleBase<T>(info), OpKernel(info), scales_cached_(false) {
+    if (info.GetInputCount() > 1) {
+      const Tensor* scale;
+      bool get_scale = info.TryGetConstantInput(1, &scale);
+
+      if (get_scale) {
+        ParseScalesData(scale, scales_);
+        scales_cached_ = true;
+      }
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+private:
+  void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
+    const float* scale_data = scale->template Data<float>();
+    int64_t scales_size = scale->Shape().Size();
+    ONNXRUNTIME_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
+    memcpy(scales.data(), scale_data, scales_size * sizeof(float));
+    ScalesValidation(scales, mode_);
+  }
+
+private:
+  bool scales_cached_;
 };
 
 }  // namespace onnxruntime

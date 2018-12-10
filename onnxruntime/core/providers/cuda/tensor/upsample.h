@@ -10,12 +10,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-struct TVMState;
-
 template <typename T>
-class Upsample : public UpsampleBase, public CudaKernel {
+class Upsample : public UpsampleBase<T>, public CudaKernel {
  public:
-  Upsample(OpKernelInfo info) : UpsampleBase(info), CudaKernel(info) {
+  Upsample(OpKernelInfo info) : UpsampleBase<T>(info), CudaKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
