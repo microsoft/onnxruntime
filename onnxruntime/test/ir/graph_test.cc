@@ -165,8 +165,8 @@ TEST(GraphTraversalTest, ReverseDFS) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   // Remove/Add edge should not ask for resolving again.
-  graph.RemoveEdge(node_1.Index(), node_3.Index(), *graph.GetNodeArg("node_1_out_1"));
-  graph.AddEdge(node_1.Index(), node_3.Index(), *graph.GetNodeArg("node_1_out_1"));
+  graph.RemoveEdge(node_1.Index(), node_3.Index(), 0, 0);
+  graph.AddEdge(node_1.Index(), node_3.Index(), 0, 0);
 
   std::vector<const Node*> from;
   for (auto& node : graph.Nodes()) {

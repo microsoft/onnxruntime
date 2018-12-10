@@ -56,7 +56,7 @@ class Node {
     or the destination node if this is an output edge from the current node.
     @param node_arg The NodeArg to use for the edge.
     */
-    EdgeEnd(const Node& node, const NodeArg& node_arg) noexcept;
+    EdgeEnd(const Node& node, const NodeArg& node_arg, int src_slot_index, int dst_slot_index) noexcept;
 
     /** Construct a control edge.
     @param node The node the edge joins to the current node.
@@ -68,11 +68,21 @@ class Node {
 
     /** Gets the NodeArg that this edge end refers to.
     @returns NodeArg pointer or nullptr if this is a control edge. */
-    const NodeArg* GetNodeArg() const noexcept;
+    //const NodeArg* GetNodeArg() const noexcept;
+
+    /** Gets the source slot index.
+	@returns the source slot index of <*this> edge.*/
+    int GetSourceSlotIndex() const;
+
+    /** Gets the destination slot index.
+	@returns the destination slot index of <*this> edge.*/
+    int GetDstSlotIndex() const;
 
    private:
     const Node* node_;
     const NodeArg* node_arg_;
+    int src_slot_index_;
+    int dst_slot_index_;
   };
 
   /** Gets the Node's NodeIndex. */
@@ -160,11 +170,10 @@ class Node {
   struct EdgeEndCompare {
     bool operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const {
       if (lhs.GetNode().Index() == rhs.GetNode().Index()) {
-        auto lhs_arg = lhs.GetNodeArg();
-        auto rhs_arg = rhs.GetNodeArg();
-        std::string lhs_arg_name = lhs_arg == nullptr ? "" : lhs_arg->Name();
-        std::string rhs_arg_name = rhs_arg == nullptr ? "" : rhs_arg->Name();
-        return lhs_arg_name.compare(rhs_arg_name) < 0;
+        if (lhs.GetSourceSlotIndex() == rhs.GetSourceSlotIndex()) {
+          return lhs.GetDstSlotIndex() < rhs.GetDstSlotIndex();
+        }
+        return lhs.GetSourceSlotIndex() < rhs.GetSourceSlotIndex();
       }
       return lhs.GetNode().Index() < rhs.GetNode().Index();
     }
@@ -391,7 +400,7 @@ class Node {
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
   Node::Type node_type_ = Node::Type::Primitive;
-  
+
   // The function body is owned by graph_
   const Function* func_body_ = nullptr;
 
@@ -604,14 +613,16 @@ class Graph {
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
   @param node_arg NodeArg to use for the edge.
   */
-  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  //void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot);
 
   /** Remove an edge between two Nodes.
   @param src_node_index NodeIndex of source Node to remove an output edge from.
   @param dst_node_index NodeIndex of destination Node to remove an input edge from.
   @param node_arg NodeArg that is used by the edge that is being removed.
   */
-  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  //void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot);
 
   /**
   Add a control edge between two Nodes in this Graph.
@@ -785,7 +796,7 @@ class Graph {
   struct ResolveContext {
     ResolveContext() = default;
 
-    std::unordered_map<std::string, Node*> output_args;
+    std::unordered_map<std::string, std::pair<Node*, int>> output_args;
     std::unordered_set<std::string> inputs_and_initializers;
     std::unordered_set<std::string> outer_scope_node_args;
     std::unordered_map<std::string, NodeIndex> node_name_to_index;
