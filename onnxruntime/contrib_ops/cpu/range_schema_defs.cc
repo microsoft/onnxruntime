@@ -5,7 +5,7 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
-
+#include <cmath>
 #include <type_traits>
 
 namespace onnxruntime {
