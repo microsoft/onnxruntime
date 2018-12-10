@@ -10,8 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-struct TVMState;
-
 template <typename T>
 class Upsample : public UpsampleBase, public CudaKernel {
  public:
