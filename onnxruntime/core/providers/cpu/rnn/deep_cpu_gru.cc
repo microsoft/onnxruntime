@@ -374,21 +374,6 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
-    // run backward first as it needs an extra reverse sequence operation
-    std::packaged_task<void()> task_bw{
-        [&]() {
-          std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
-              alloc, logger,
-              seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
-              bias_2, initial_hidden_2,
-              activation_funcs_.Entries()[2],
-              activation_funcs_.Entries()[3],
-              clip_, ttp_);
-          bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
-        }};
-    auto task_results_bw = task_bw.get_future();
-    ttp_.RunTask(std::move(task_bw));
-
     std::packaged_task<void()> task_fw{
         [&]() {
           std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
@@ -403,8 +388,16 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     auto task_results_fw = task_fw.get_future();
     ttp_.RunTask(std::move(task_fw));
 
+    std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
+        alloc, logger,
+        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+        bias_2, initial_hidden_2,
+        activation_funcs_.Entries()[2],
+        activation_funcs_.Entries()[3],
+        clip_, ttp_);
+    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+
     task_results_fw.get();
-    task_results_bw.get();
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
