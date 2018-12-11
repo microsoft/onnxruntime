@@ -353,6 +353,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                            padding_left_mkl, padding_right_mkl);
     ConvPrimitive<T>* conv_primitive = ConvPrimitivePool<T>::Get(conv_params);
 
+<<<<<<< HEAD
+=======
+    std::string convString = conv_params.ToString();
+
+>>>>>>> using Conv Parameters key to make weights id unique
     auto conv_fwd_pd = conv_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
@@ -406,16 +411,10 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // Reorder filter memory layout if necessary
     // Avoid data reordering. Save filter memory in mkldnn format from first iteration 
     // in execution provider mapped by weight name.
-<<<<<<< HEAD
-    std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
+
+    std::string weightKey = convString + "-" + OpKernel::Node().InputDefs()[1]->Name();
     std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
     filter_dst_mem = provider_->GetWeightMemory(weightKey);
-=======
-    std::string weightName = OpKernel::Node().InputDefs()[1]->Name();
-    std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
-    if(provider_ != nullptr)
-      filter_dst_mem = provider_->GetWeightMemory(weightName);
->>>>>>> check provider_ for nullptr
 
     if (filter_dst_mem == nullptr) {
       if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
@@ -428,16 +427,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         MemoryReorderParams params(src, *filter_dst_mem);
         DoReorder<T>(params);
         filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-<<<<<<< HEAD
         {
           // make assignment threadsafe
           std::lock_guard<std::mutex> lock(mutex_);
           provider_->GetWeightsMap()[weightKey] = filter_dst_mem;
         }
-=======
-        if (provider_ != nullptr)
-          provider_->weights_mem_map[weightName] = filter_dst_mem;
->>>>>>> check provider_ for nullptr
       }
     } else {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
