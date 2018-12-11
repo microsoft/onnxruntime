@@ -157,25 +157,27 @@ We've experimental support for Linux ARM builds. Windows on ARM is well tested.
 ### Cross compiling on Linux(FASTER)
 1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
 2. Setup env vars
-```bash
-   export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
-   export CC=arm-linux-gnueabihf-gcc
-   export CXX=arm-linux-gnueabihf-g++
-```
+    ```bash
+       export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
+       export CC=arm-linux-gnueabihf-gcc
+       export CXX=arm-linux-gnueabihf-g++
+    ```
 3. Get a pre-compiled protoc: 
    You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
-4. Save the following content as tool.cmake
-```
-set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR arm)
-set(CMAKE_CXX_COMPILER arm-linux-gnu-c++)
-set(CMAKE_C_COMPILER arm-linux-gnu-gcc)
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-```
-5. append "-DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
+4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
+5. Save the following content as tool.cmake
+    ```
+    set(CMAKE_SYSTEM_NAME Linux)
+    set(CMAKE_SYSTEM_PROCESSOR arm)
+    set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-c++)
+    set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+    ```
+6. Append "-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
+
 
 ### Native compiling on Linux (SLOWER)
 
