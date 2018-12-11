@@ -78,7 +78,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
     alignSkip += pads_[i] * output_pitches[i];
 
   size_t inner_axis = dimension_count - 1;
-  TensorAxisCounters input_counters(input_tensor);
+  ExtentAxisCounters input_counters(input_extents);
 
   switch (mode_) {
     case Mode::Constant:
