@@ -37,14 +37,21 @@ OS/Compiler Matrix:
 ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
 
 ## Build
-Install cmake-3.11 or better from https://cmake.org/download/.
+1. Checkout the source tree:
+   ```
+   git clone --recursive https://github.com/Microsoft/onnxruntime
+   cd onnxruntime
+   ```
+2. Install cmake-3.11 or better from https://cmake.org/download/.
+3. (optional) Install protobuf 3.6.1 from source code(cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
+4. (optional) Install onnx from source code(cmake/external/onnx)
+    ```
+    export ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
+5. Run './build.sh --config RelWithDebInfo --enable\_pybind' for Linux (or './build.bat --config RelWithDebInfo --enable\_pybind' for Windows)
 
-Checkout the source tree:
-```
-git clone --recursive https://github.com/Microsoft/onnxruntime
-cd onnxruntime
-./build.sh for Linux (or ./build.bat for Windows)
-```
 The build script runs all unit tests by default.
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`

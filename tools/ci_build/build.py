@@ -109,7 +109,7 @@ def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None, check=True):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None):
     log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
@@ -122,9 +122,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, check=True):
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
     if (capture):
-        result = subprocess.run(args, cwd=cwd, check=check, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
+        result = subprocess.run(args, cwd=cwd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
     else:
-        result = subprocess.run(args, cwd=cwd, check=check, env=my_env)
+        result = subprocess.run(args, cwd=cwd, check=True, env=my_env)
 
     return result
 
@@ -409,8 +409,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),'--output_dir','test_models'], cwd=cwd)
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
-                #The following one may fail
-                run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path, check=False)
+                if config != 'Debug':
+                    run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
             try:
                 import onnxmltools
                 import keras
