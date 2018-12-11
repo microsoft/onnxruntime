@@ -86,6 +86,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              B != nullptr ? B->template Data<float>() : nullptr,
              static_cast<float*>(working_buffer.get()),
              Ydata);
+
+    //TODO: this will be replaced with Tracy's changes.
+    fuse_activation(activation_, Ydata, Y->Shape().Size(), alpha_);
+
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -139,6 +143,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         auto Bvec = ConstEigenVectorMap<float>(B->template Data<float>(), M);
         Ymatrix.rowwise() += Bvec.transpose();
       }
+
+      fuse_activation(activation_, Ydata, Y_offset * group_, alpha_);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;
