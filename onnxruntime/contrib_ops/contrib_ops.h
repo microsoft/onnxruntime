@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
-#include "core/framework/kernel_registry.h"
+#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,6 +26,5 @@ namespace contrib {
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 void RegisterContribSchemas();
-void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> create_fn);
 } // namespace contrib
 }  // namespace onnxruntime
