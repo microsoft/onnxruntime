@@ -352,6 +352,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                            dst_dims_mkl, strides_mkl, dilations_mkl,
                            padding_left_mkl, padding_right_mkl);
     ConvPrimitive<T>* conv_primitive = ConvPrimitivePool<T>::Get(conv_params);
+
+    std::string convString = conv_params.ToString();
+
     auto conv_fwd_pd = conv_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
@@ -405,9 +408,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // Reorder filter memory layout if necessary
     // Avoid data reordering. Save filter memory in mkldnn format from first iteration 
     // in execution provider mapped by weight name.
-    std::string weightName = OpKernel::Node().InputDefs()[1]->Name();
+    std::string weightKey = convString + "-" + OpKernel::Node().InputDefs()[1]->Name();
     std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
-    filter_dst_mem = provider_->GetWeightMemory(weightName);
+    filter_dst_mem = provider_->GetWeightMemory(weightKey);
 
     if (filter_dst_mem == nullptr) {
       if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
@@ -423,7 +426,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         {
           // make assignment threadsafe
           std::lock_guard<std::mutex> lock(mutex_);
-          provider_->GetWeightsMap()[weightName] = filter_dst_mem;
+          provider_->GetWeightsMap()[weightKey] = filter_dst_mem;
         }
       }
     } else {
