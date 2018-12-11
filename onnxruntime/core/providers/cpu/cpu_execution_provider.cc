@@ -4,7 +4,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
-#include "contrib_ops/contrib_ops.h"
+#include "contrib_ops/contrib_kernels.h"
 #include "core/framework/computation_capacity.h"
 
 namespace onnxruntime {
