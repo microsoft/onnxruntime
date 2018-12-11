@@ -23,6 +23,7 @@ using ORT_CALLBACK_FUNCTION = PTP_WORK_CALLBACK;
 inline PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env&) {
   return nullptr;
 }
+inline void CloseDefaultThreadPool() {}
 #else
 #define ORT_CALLBACK
 namespace Eigen {
@@ -38,10 +39,11 @@ using ORT_CALLBACK_INSTANCE = OnnxRuntimeCallbackInstance*;
 using ORT_CALLBACK_FUNCTION = void ORT_CALLBACK (*)(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work);
 //Do nothing
 inline void OnnxRuntimeCloseThreadpoolWork(ORT_WORK) {}
-#endif
-
+void CloseDefaultThreadPool();
 //The returned value will be used with CreateAndSubmitThreadpoolWork function
 PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env& env);
+#endif
+
 //On Windows, the last parameter can be null, in that case it will use the default thread pool.
 //On Linux, there is no per process default thread pool. You have to pass a non-null pointer.
 //Caller must delete the data pointer if this function returns a non-ok status. Otherwise, the ownership is transferred

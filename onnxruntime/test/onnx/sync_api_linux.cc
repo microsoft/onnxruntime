@@ -63,6 +63,10 @@ PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   return default_pool.get();
 }
 
+void CloseDefaultThreadPool() {
+  default_pool.reset();
+}
+
 Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
