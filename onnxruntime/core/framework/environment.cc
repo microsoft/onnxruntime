@@ -4,9 +4,8 @@
 #include "core/framework/environment.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
-#include "contrib_ops/contrib_ops.h"
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;

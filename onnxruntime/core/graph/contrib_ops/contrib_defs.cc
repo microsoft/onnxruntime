@@ -1,14 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/contrib_ops.h"
-
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
+<<<<<<< HEAD:onnxruntime/contrib_ops/contrib_ops.cc
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 #include "./cpu/attnlstm/attn_lstm_schema_defs.h"
 #include "./cpu/range_schema_defs.h"
+=======
+>>>>>>> master:onnxruntime/core/graph/contrib_ops/contrib_defs.cc
 
 namespace ONNX_NAMESPACE {
 void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape);
@@ -560,6 +564,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
       })
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
+<<<<<<< HEAD:onnxruntime/contrib_ops/contrib_ops.cc
 }  // namespace contrib
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
@@ -588,6 +593,8 @@ void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer)>());
   fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression)>());
   fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, Range)>());
+=======
+>>>>>>> master:onnxruntime/core/graph/contrib_ops/contrib_defs.cc
 }
 }  // namespace contrib
 }  // namespace onnxruntime
