@@ -139,7 +139,7 @@ class Log final : public OpKernel {
 };
 
 template <typename T>
-class Sum_6 final : public OpKernel {
+class Sum_6 : public OpKernel {
  public:
   Sum_6(const OpKernelInfo& info) : OpKernel(info) {
   }
@@ -315,6 +315,15 @@ class Scale final : public OpKernel {
 
  private:
   float scale_;
+};
+
+template <typename T>
+class Erf final : public OpKernel {
+ public:
+  Erf(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
 };
 
 template <typename T>

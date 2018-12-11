@@ -47,7 +47,7 @@ Status PerformanceRunner::Run() {
 
   std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
             << "Total iterations:" << performance_result_.time_costs.size() << std::endl
-            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() << std::endl;
+            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
   return Status::OK();
 }
 

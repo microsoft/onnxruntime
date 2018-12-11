@@ -6,12 +6,10 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-namespace contrib {
 template <typename T>
 class IsNaN : public OpKernel {
  public:
   explicit IsNaN(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
-}  // namespace contrib
 }  // namespace onnxruntime

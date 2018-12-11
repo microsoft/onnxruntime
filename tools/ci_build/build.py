@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import warnings
+import hashlib
+from os.path import expanduser
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("Build")
@@ -172,7 +174,41 @@ def install_python_deps():
     dep_packages = ['setuptools', 'wheel', 'numpy']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
+def check_md5(filename, expected_md5):
+    if not os.path.exists(filename):
+        return False
+    hash_md5 = hashlib.md5()
+    BLOCKSIZE = 1024*64
+    with open(filename, "rb") as f:
+        buf = f.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hash_md5.update(buf)
+            buf = f.read(BLOCKSIZE)
+    hex = hash_md5.hexdigest()
+    if hex != expected_md5:
+        log.info('md5 mismatch, expect %s, got %s' % (expected_md5, hex))
+        os.remove(filename)
+        return False
+    return True
+
+#the last part of src_url should be unique, across all the builds
+def download_test_data(build_dir, src_url, expected_md5):
+    if not is_windows() and shutil.which('aria2c'):
+        cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
+        os.makedirs(cache_dir, exist_ok=True)
+        local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
+        if not check_md5(local_zip_file, expected_md5):
+            log.info("Downloading test data")
+            run_subprocess(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+        models_dir = os.path.join(build_dir,'models')
+        if os.path.exists(models_dir):
+            log.info('deleting %s' % models_dir)
+            shutil.rmtree(models_dir)
+        run_subprocess(['unzip','-qd', models_dir, local_zip_file])
+
+
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
+    download_test_data(build_dir,'https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip','a966def7447f4ff04f5665bca235b3f3')
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
