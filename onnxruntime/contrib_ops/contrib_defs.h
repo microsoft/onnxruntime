@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "onnxruntime/core/graph/onnx_protobuf.h"
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,11 +20,11 @@ namespace contrib {
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
-#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)         \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce( \
-      op_schema_register_once##name##Counter) ONNX_UNUSED =      \
+#define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func) \
+  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(                \
+      op_schema_register_once##name##Counter) ONNX_UNUSED =                     \
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 void RegisterContribSchemas();
-} // namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime
