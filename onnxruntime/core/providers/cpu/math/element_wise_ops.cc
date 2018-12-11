@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 
@@ -310,6 +311,12 @@ ONNX_CPU_OPERATOR_KERNEL(
     1,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Scale<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Erf,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Erf<float>);
 
 template <typename T>
 Status Add<T>::Compute(OpKernelContext* context) const {
@@ -871,6 +878,18 @@ Status Scale<float>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
   EigenMap<float>(Y) = scale_ * EigenMap<float>(X);
+  return Status::OK();
+}
+
+template <>
+Status Erf<float>::Compute(OpKernelContext* context) const {
+  auto X_ptr = context->Input<Tensor>(0);
+  ONNXRUNTIME_ENFORCE(X_ptr != nullptr);
+  auto& X = *X_ptr;
+  auto& Y = *context->Output(0, X.Shape());
+
+  EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
+
   return Status::OK();
 }
 
