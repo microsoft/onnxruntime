@@ -26,7 +26,7 @@ class Model {
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only = false,
                  const ModelMetaData& model_metadata = ModelMetaData(),
-                 const IOnnxRuntimeOpSchemaRegistryList local_registries = {},
+                 IOnnxRuntimeOpSchemaRegistryList local_registries = {},
                  const std::unordered_map<std::string, int>& domain_to_version = {},
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions = {});
 
