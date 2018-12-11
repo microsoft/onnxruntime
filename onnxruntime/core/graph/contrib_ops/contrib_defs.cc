@@ -214,6 +214,90 @@ activation.)DOC")
       })
       .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis. All input strings including attributes are UTF-8 encoded.)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Ngram)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "Input for n-gram extraction", "T")
+      .Output(0, "Y", "NGram results", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)", "tensor(int32)", "tensor(int64)"},
+          "Input is ether string UTF-8 or int32/int64")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "1-D tensor of floats")
+      .Attr(
+          "N",
+          "Maximum n-gram length",
+          AttributeProto::INT)
+      .Attr(
+          "M",
+          "Minimum n-gram length",
+          AttributeProto::INT)
+      .Attr(
+          "all",
+          "Boolean to store all n-gram lengths [M-N] or only N.",
+          AttributeProto::INT)
+      .Attr(
+          "S",
+          "Maximum number of items(integers/strings) to be skipped when constructing an n-gram from X.",
+          AttributeProto::INT)
+      .Attr(
+          "pool_strings",
+          "List of strings n-grams learned from the training set. Either this or pool_int64s attributes must be present but not both."
+          "It's an 1-D tensor starting with the collections of all 1-grams and ending with the collections of n-grams."
+          "The i-th element in pool stores the n-gram that should be mapped to index ngram_indexes[i] in the output vector.",
+          AttributeProto::STRINGS,
+          OPTIONAL)
+      .Attr(
+          "pool_int64s",
+          "List of int64 n-grams learned from the training set. Either this or pool_strings attributes must be present but not both."
+          "It's an 1-D tensor starting with the collections of all 1-grams and ending with the collections of n-grams."
+          "The i-th element in pool stores the n-gram that should be mapped to index ngram_indexes[i] in the output vector.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "ngram_counts",
+          "The starting indexes of 1-grams, 2-grams, and so on in pool."
+          "It is useful when determining the boundary between two consecutive collections of n-grams."
+          "For example, if ngram_counts is [0, 17, 36], the first index (zero-based) of 1-gram/2-gram/3-gram"
+          "in pool are 0/17/36",
+          AttributeProto::INTS)
+      .Attr(
+          "ngram_indexes",
+          "list of int64s (type: AttributeProto::INTS). This list is parallel to the specified 'pool_*' attribute."
+          "The i-th element in ngram_indexes indicate the coordinate of the i-th n-gram in the output tensor.",
+          AttributeProto::INTS)
+      .Attr(
+          "weights",
+          "list of floats. This attribute stores the weight of each n-gram in pool. The i-th element in weights"
+          "is the weight of the i-th n-gram in pool. Its length equals to the size of ngram_indexes."
+          "By default, weights is an all-one tensor.This attribute is used when mode is \"IDF\" or \"TFIDF\""
+          "to scale the associated word counts.",
+          AttributeProto::FLOATS,
+          OPTIONAL)
+      .Attr(
+          "mode",
+          "The weighting criteria. It can be one of \"TF\" (term frequency),"
+          "\"IDF\" (inverse document frequency), and \"TFIDF\" (the combination of TF and IDF)",
+          AttributeProto::STRING)
+      .SetDoc(R"DOC(
+This transform extracts n-grams from the input integer sequence and save them as a vector.
+ In contract to standard n-gram extraction, here, the indexes of extracting an n-gram from the original
+ sequence are not necessarily consecutive numbers. The discontinuity between indexes are controlled by the number of skips. 
+ If the number of skips is 2, we should skip two tokens when scanning through the original sequence.
+ Let's consider an example. Assume that input sequence is [94, 17, 36, 12, 28] and the number of skips is 2.
+ The associated 2-grams are [94, 12] and [17, 28] respectively indexed by [0, 3] and [1, 4].
+ If the number of skips becomes 0, the 2-grams generated are [94, 17], [17, 36], [36, 12], [12, 28]
+ indexed by [0, 1], [1, 2], [2, 3], [3, 4], respectively. The output vector stores the count of each n-gram;
+ Y[i] indicates the times that the i-th n-gram is found. The attribute "ngrams" is used to determine the mapping
+ between index i and the corresponding n-gram. If "ngrams" is [ [94 , 17] , [ 17, 36 ] ], then the Y[0] (first element in Y)
+ and Y[1] (second element in Y) are the counts of [94, 17] and [17, 36], respectively.
+ An n-gram which cannot be found in gramPool should be ignored and has no effect on the output.
+ Note that we may consider all skips up to skipLength when generating the n-grams. 
+)DOC");
+
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
       .SetDomain(kMSDomain)
