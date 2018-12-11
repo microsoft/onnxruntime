@@ -1,5 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+#include "core/graph/graph.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 
@@ -122,32 +126,32 @@ bool IsConstantInputsNode(const Graph& graph, const Node& node) {
 Status BuildSubgraph(const Graph& graph,
                      const std::vector<onnxruntime::NodeIndex>& subgraph_nodes,
                      Graph& subgraph) {
-  std::vector<onnxruntime::NodeIndex> subgraph_nodes;
-  subgraph_nodes.push_back(node.Index());
-
-  // Add nodes to subgraph.
+  // Add nodes and initializers to subgraph.
+  // TODO Can we directly copy the node instead of re-creating it?
   for (auto& node_index : subgraph_nodes) {
-    // TODO Can we directly copy the node instead of re-creating it?
+    auto node = graph.GetNode(node_index);
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
-    for (auto input : node.InputDefs()) {
+    const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+    for (auto input : node->InputDefs()) {
       auto& n_input = subgraph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
+      if (graph.GetInitializedTensor(input->Name(), initializer)) {
+        subgraph.AddInitializedTensor(*initializer);
+	  }
     }
-    for (auto output : node.OutputDefs()) {
+    for (auto output : node->OutputDefs()) {
       auto& n_output = subgraph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
       outputs.push_back(&n_output);
     }
-    subgraph.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
+    subgraph.AddNode(node->Name(), node->OpType(), node->Description(),
+                     inputs, outputs, &node->GetAttributes(), node->Domain());
   }
 
   //TODO Check if we don't need to resolve the graph.
   ORT_ENFORCE(subgraph.Resolve().IsOK());
 
-  // TODO Add initializers?
-
-	return Status::OK();
+  return Status::OK();
 }
-
 
 }  // namespace graph_edit_utils
 
