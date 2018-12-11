@@ -13,17 +13,15 @@ template <typename T>
 class Conv final : public onnxruntime::Conv<T> {
  public:
   Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info) {
-    if (info.GetExecutionProvider()->Type() == kMklDnnExecutionProvider) {
       provider_ = (const_cast<MKLDNNExecutionProvider*>(
         dynamic_cast<const MKLDNNExecutionProvider*>(info.GetExecutionProvider())));
-    }
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
    MKLDNNExecutionProvider * provider_;
-
+   mutable std::mutex mutex_;
 };
 }  // namespace mkl_dnn
 }  // namespace onnxruntime
