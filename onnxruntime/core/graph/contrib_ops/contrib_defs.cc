@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/contrib_defs.h"
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
-#include "./cpu/attnlstm/attn_lstm_schema_defs.h"
-#include "./cpu/range_schema_defs.h"
 
 namespace onnxruntime {
 namespace contrib {
