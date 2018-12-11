@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/contrib_ops.h"
-
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
-
-#include "./cpu/attnlstm/attn_lstm_schema_defs.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -75,22 +73,7 @@ Sample echo operator.)DOC");
       .SetDoc(R"DOC(ExpandDims echo operator.)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsNaN)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "input", "T1")
-      .Output(0, "Y", "output", "T2")
-      .TypeConstraint(
-          "T1",
-          ONNX_NAMESPACE::OpSchema::numeric_types_for_math_reduction(),
-          "Constrain to any numeric tensor type. If the dtype attribute is not provided this must be a valid output type.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain outputs to boolean tensor")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
-      .SetDoc(R"DOC(Returns which elements of the input are NaN.)DOC");
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
       .SetDomain(kMSDomain)
@@ -201,8 +184,8 @@ should be equal to the number of columns of input 'b'.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(
-The convolution operator consumes a quantized input tensor, its scale and zero point, 
-a quantized filter, its scale and zero point, and output's scale and zero point, 
+The convolution operator consumes a quantized input tensor, its scale and zero point,
+a quantized filter, its scale and zero point, and output's scale and zero point,
 and computes the quantized output. Each scale and zero point pair must have same shape.
 It means they must be either scalars (per tensor) or 1-D tensors (per channel).)DOC")
       .Input(
@@ -515,33 +498,6 @@ The bounding box coordinates corresponding to the selected indices can then be o
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
       })
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
-}
-
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression);
-
-void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp)>());
-
-  // add more kernels here
-
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims)>());
-  fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression)>());
 }
 }  // namespace contrib
 }  // namespace onnxruntime
