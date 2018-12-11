@@ -53,7 +53,7 @@ class DeepCpuAttnLstmOp final : public OpKernel {
       }
     }
 
-    ONNXRUNTIME_ENFORCE(activation_func_names.size() == num_directions_ * 3);
+    ONNXRUNTIME_ENFORCE(static_cast<int>(activation_func_names.size()) == num_directions_ * 3);
 
     activation_funcs_ = ActivationFuncs(activation_func_names,
                                         activation_func_alphas,

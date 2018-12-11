@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/contrib_ops.h"
+#include "contrib_ops/contrib_defs.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "./cpu/attnlstm/attn_lstm_schema_defs.h"
