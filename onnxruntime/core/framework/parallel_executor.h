@@ -47,7 +47,7 @@ class ParallelExecutor : public IExecutor {
     bool finished = false;
     {
       //Because we have a mutex here, it's not possible another thread is doing the test("while (out_standings_ > 0)"
-      std::unique_lock<std::mutex> lock(complete_mutex_);
+      std::lock_guard<std::mutex> lock(complete_mutex_);
       finished = --out_standings_ == 0;
     }
     if (finished) {
