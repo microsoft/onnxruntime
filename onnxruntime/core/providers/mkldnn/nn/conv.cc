@@ -353,8 +353,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                            padding_left_mkl, padding_right_mkl);
     ConvPrimitive<T>* conv_primitive = ConvPrimitivePool<T>::Get(conv_params);
 
-    std::string convString = conv_params.ToString();
-
     auto conv_fwd_pd = conv_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
