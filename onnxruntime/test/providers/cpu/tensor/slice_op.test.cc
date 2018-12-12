@@ -24,12 +24,12 @@ TEST(SliceTest, Slice1D_Perf) {
 
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("starts", std::vector<int64_t>{2});
-  test.AddAttribute("ends", std::vector<int64_t>{502});
+  test.AddAttribute("ends", std::vector<int64_t>{500002});
 
-  std::vector<float> input(1000, 2.0f);
-  std::vector<float> output(500, 2.0f);
-  test.AddInput<float>("data", {1000}, input);
-  test.AddOutput<float>("output", {500}, output);
+  std::vector<float> input(1000000, 2.0f);
+  std::vector<float> output(500000, 2.0f);
+  test.AddInput<float>("data", {1000000}, input);
+  test.AddOutput<float>("output", {500000}, output);
   test.Run();
 }
 
@@ -85,6 +85,30 @@ TEST(SliceTest, Slice2D_TwoAxes) {
   test.Run();
 }
 
+TEST(SliceTest, Slice2D_SelectAll) {
+  OpTester test("Slice");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1, 0});
+  test.AddAttribute("starts", std::vector<int64_t>{0, 0});
+  test.AddAttribute("ends", std::vector<int64_t>{1000, 6});
+
+  test.AddInput<float>("data", {6, 4},
+                       {00.0f, 01.0f, 02.0f, 03.0f,
+                        10.0f, 11.0f, 12.0f, 13.0f,
+                        20.0f, 21.0f, 22.0f, 23.0f,
+                        30.0f, 31.0f, 32.0f, 33.0f,
+                        40.0f, 41.0f, 42.0f, 43.0f,
+                        50.0f, 51.0f, 52.0f, 53.0f});
+  test.AddOutput<float>("output", {6, 4},
+                       {00.0f, 01.0f, 02.0f, 03.0f,
+                        10.0f, 11.0f, 12.0f, 13.0f,
+                        20.0f, 21.0f, 22.0f, 23.0f,
+                        30.0f, 31.0f, 32.0f, 33.0f,
+                        40.0f, 41.0f, 42.0f, 43.0f,
+                        50.0f, 51.0f, 52.0f, 53.0f});
+  test.Run();
+}
+
 TEST(SliceTest, Slice2D_TwoAxesEque) {
   OpTester test("Slice");
 
@@ -133,6 +157,54 @@ TEST(SliceTest, Slice3D) {
                          332.0f, 333.0f});
   test.Run();
 }
+
+TEST(SliceTest, Slice4D) {
+  OpTester test("Slice");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("starts", std::vector<int64_t>{1, 1});
+  test.AddAttribute("ends", std::vector<int64_t>{1000, 1000});
+
+  test.AddInput<float>("data", {2, 3, 3, 3},
+                       {111.0f, 112.0f, 113.0f,
+                        121.0f, 122.0f, 123.0f,
+                        131.0f, 132.0f, 133.0f,
+
+                        211.0f, 212.0f, 213.0f,
+                        221.0f, 222.0f, 223.0f,
+                        231.0f, 232.0f, 233.0f,
+
+                        311.0f, 312.0f, 313.0f,
+                        321.0f, 322.0f, 323.0f,
+                        331.0f, 332.0f, 333.0f,
+
+                        2111.0f, 2112.0f, 2113.0f,
+                        2121.0f, 2122.0f, 2123.0f,
+                        2131.0f, 2132.0f, 2133.0f,
+
+                        2211.0f, 2212.0f, 2213.0f,
+                        2221.0f, 2222.0f, 2223.0f,
+                        2231.0f, 2232.0f, 2233.0f,
+
+                        2311.0f, 2312.0f, 2313.0f,
+                        2321.0f, 2322.0f, 2323.0f,
+                        2331.0f, 2332.0f, 2333.0f});
+
+  test.AddOutput<float>("output", {2, 2, 2, 3},
+                        {221.0f, 222.0f, 223.0f,
+                         231.0f, 232.0f, 233.0f,
+
+                         321.0f, 322.0f, 323.0f,
+                         331.0f, 332.0f, 333.0f,
+
+                         2221.0f, 2222.0f, 2223.0f,
+                         2231.0f, 2232.0f, 2233.0f,
+
+                         2321.0f, 2322.0f, 2323.0f,
+                         2331.0f, 2332.0f, 2333.0f});
+  test.Run();
+}
+
 
 TEST(SliceTest, Slice1D_Int) {
   OpTester test("Slice");

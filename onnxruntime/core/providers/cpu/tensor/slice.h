@@ -24,18 +24,18 @@ class SliceBase {
   }
 
   Status PrepareForCompute(const size_t dimension_count, const std::vector<int64_t>& input_dimensions,
-                           std::vector<int64_t>& starts, std::vector<int64_t>& output_dims) const;
+                           std::vector<int64_t>& starts, std::vector<int64_t>& output_dims,
+                           int64_t& min_axis, int64_t& max_axis) const;
 
   std::vector<int64_t> axes_;
   bool has_axes_;
   std::vector<int64_t> starts_, ends_;
 };
 
-template <typename T>
 struct Slice final : public OpKernel, public SliceBase {
   Slice(const OpKernelInfo& info) : OpKernel(info), SliceBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
-};  // namespace onnxruntime
+};
 
 }  // namespace onnxruntime
