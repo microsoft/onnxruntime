@@ -47,7 +47,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
   // Wait for finish.
   {
     std::unique_lock<std::mutex> lock(complete_mutex_);
-    while (out_standings_.load() > 0) complete_cv_.wait(lock);
+    while (out_standings_ > 0) complete_cv_.wait(lock);
   }
 
   VLOGS(logger, 1) << "Fetching output.";
@@ -223,7 +223,10 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
 }
 
 void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger) {
-  out_standings_++;
+  {
+    std::unique_lock<std::mutex> lock(complete_mutex_);
+    out_standings_++;
+  }
   //std::cout << "Enqueue async node: " << p_node_index << ", out_standings: " << out_standings_ << std::endl;
   std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
   session_state.GetThreadPool()->RunTask(std::move(task));

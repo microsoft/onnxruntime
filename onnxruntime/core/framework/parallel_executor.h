@@ -44,7 +44,13 @@ class ParallelExecutor : public IExecutor {
                      const logging::Logger& logger);
 
   void FinishNodeRun() {
-    if (--out_standings_ == 0) {
+    bool finished = false;
+    {
+      //Because we have a mutex here, it's not possible another thread is doing the test("while (out_standings_ > 0)"
+      std::unique_lock<std::mutex> lock(complete_mutex_);
+      finished = --out_standings_ == 0;
+    }
+    if (finished) {
       //std::cout << "all out standing nodes are completed." << std::endl;
       complete_cv_.notify_all();
     }
@@ -53,7 +59,7 @@ class ParallelExecutor : public IExecutor {
   std::unique_ptr<ExecutionFrame> root_frame_;
   std::vector<size_t> node_refs_;
   std::mutex ref_mutex_;
-  std::atomic<int> out_standings_;
+  int out_standings_;  //protected by complete_mutex_
   std::mutex complete_mutex_;
   std::condition_variable complete_cv_;
 
