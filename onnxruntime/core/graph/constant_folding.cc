@@ -13,7 +13,8 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
   // TODO Can we reuse the model across calls of the constant folding rule?
   // TODO Instead of computing one node at a time, we can traverse the whole graph and
   // find constant parts of it. Then we can create bigger subgraphs to compute directly.
-  // This will most likely be done with a Transformer rather than a RewriteRule.
+  // This will most likely be done with a Transformer rather than a RewriteRule, so it needs
+  // mode thought.
   auto p_model = std::make_unique<onnxruntime::Model>("ConstantFoldingModel", false, ModelMetaData(),
                                                       IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
                                                       graph.DomainToVersionMap());
@@ -27,6 +28,8 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
 
   SessionOptions so;
   so.session_logid = "ConstantFoldingSession";
+  // Disable default graph transformers for the constant node.
+  so.enable_default_transformers = false;
   InferenceSession session_object{so};
   // TODO Can we directly pass the model to the session object instead of having to dump it to a stream?
   std::stringstream model_istream;
@@ -43,9 +46,10 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
   std::unordered_map<std::string, MLValue> feeds;
   std::vector<MLValue> fetches;
 
-  // Now run.
+  // Execute the subgraph.
   Status st = session_object.Run(feeds, output_names, &fetches);
 
+  // Go over all output node args and substitute them with the computed initializers.
   ONNXRUNTIME_ENFORCE(fetches.size() == node.OutputDefs().size());
   for (int fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
     MLValue& mlvalue = fetches[fetch_idx];
@@ -56,9 +60,10 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
     ONNXRUNTIME_ENFORCE(mlvalue.IsTensor());
     const Tensor& out_tensor = mlvalue.Get<Tensor>();
 
-    // The out arg of the constant subgraph (i.e., node) that was precomputed.
-    const auto* constant_arg_out = subgraph.GetOutputs()[0];
+    // The output arg of the constant subgraph (i.e., node) that was precomputed.
+    const auto* constant_arg_out = subgraph.GetOutputs()[fetch_idx];
 
+    // Build the TensorProto that will be added as an initializer.
     ONNX_NAMESPACE::TensorProto out_tensorproto;
     out_tensorproto.set_name(constant_arg_out->Name());
 
@@ -66,21 +71,20 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
       out_tensorproto.add_dims(dim);
     }
     auto tensorproto_type = constant_arg_out->TypeAsProto()->tensor_type().elem_type();
-    ONNXRUNTIME_ENFORCE(tensorproto_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
     out_tensorproto.set_data_type(tensorproto_type);
     auto tensor_shape_size = out_tensor.Shape().Size();
-    /*const float* float_data = out_tensor.Data<float>();
-      for (int i = 0; i < tensor_shape_size; i++) {
-      float dat = float_data[i];
-      out_tensorproto.add_float_data(dat);
-     }*/
     auto data_size = out_tensor.DataType()->Size() * tensor_shape_size;
     out_tensorproto.set_raw_data(out_tensor.DataRaw(out_tensor.DataType()), data_size);
 
     graph.AddInitializedTensor(out_tensorproto);
 
-    // Should we remove the input initializers to the node? Would be good to remove to free up memory, but have to be
-    // careful that they are not used by any other node.
+    /*ONNXRUNTIME_ENFORCE(tensorproto_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    const float* float_data = out_tensor.Data<float>();
+    for (int i = 0; i < tensor_shape_size; i++) {
+      float dat = float_data[i];
+      out_tensorproto.add_float_data(dat);
+    }*/
 
     // Remove the output edges of the constant node.
     std::vector<onnxruntime::NodeIndex> edge_nodes_to_remove;
@@ -94,10 +98,11 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
     }
   }
 
-  // The output nodes already have the right input arg, since we used the same name in the initializer.
-
   // Remove the constant node.
   graph.RemoveNode(node.Index());
+
+  // The output nodes already have the right input arg, since we used the same name in the initializer.
+  // We could remove unused graph initializers here, but Graph::Resolve() will do it.
 
   modified = true;
 

@@ -82,33 +82,24 @@ TEST(GraphTransformationTests, SliceElimination) {
 }
 
 TEST(GraphTransformationTests, ConstantFolding) {
-  string model_uri = MODEL_FOLDER + "coreml_MNIST-dq-no-axis.onnx";
+  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  //ASSERT_TRUE(op_to_count["Cast"] == 4);
-
-  /*SessionOptions so;
-  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());*/
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
   std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
 
   rule_transformer->Register(std::make_unique<ConstantFolding>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, true};
 
   graph_transformation_mgr.Register(std::move(rule_transformer));
   ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  //ASSERT_TRUE(op_to_count["Slice"] == 3);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
