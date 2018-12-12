@@ -116,7 +116,7 @@ TEST(MathOpTest, Concat3D_1) {
 
 TEST(MathOpTest, Concat3D_1_negative_axis) {
   OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{-2});
+  test.AddAttribute("axis", int64_t{-3});
 
   std::vector<int64_t> dims{1, 3, 3};
   test.AddInput<float>("input1", dims,
