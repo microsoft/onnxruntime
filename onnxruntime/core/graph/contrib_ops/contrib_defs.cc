@@ -502,53 +502,53 @@ The bounding box coordinates corresponding to the selected indices can then be o
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
     .SetDomain(kMSDomain)
     .SinceVersion(1)
-    .Input(0, "data", "Tensor of rank r > 1.", "T")
-    .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
-    .Output(0, "output", "Tensor of rank r - 1 + q - indices[-1].", "T")
+    .Input  (0,  "data",    "Tensor of rank r >= 1.",            "T"    )
+    .Input  (1,  "indices", "Tensor of rank q >= 1.",            "Tind" )
+    .Output (0,  "output",  "Tensor of rank q-1+r-indices[-1].", "T"    )
     .TypeConstraint(
-        "T",
-        OpSchema::all_tensor_types(),
-        "Constrain input and output types to any tensor type.")
+       "T",
+       OpSchema::all_tensor_types(),
+       "Constrain input and output types to any tensor type.")
     .TypeConstraint(
-        "Tind",
-        {"tensor(int32)", "tensor(int64)"},
-        "Constrain input and output types to any tensor type.")
+       "Tind",
+       {"tensor(int32)", "tensor(int64)"},
+       "Constrain indice type to int32 or int64")
     .TypeAndShapeInferenceFunction( [] (ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (hasNInputShapes(ctx, 2)) {
-            return;
-	}
-        const ONNX_NAMESPACE::TensorShapeProto& data_shape    = ctx.getInputType(0)->tensor_type().shape();
-        const ONNX_NAMESPACE::TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-        int64_t data_rank    = data_shape.dim_size();
-	int64_t indices_rank = indices_shape.dim_size();
-	if (indices_rank < 2) {
-	  fail_shape_inference("rank of indices must be bigger than 1.");
-	}
-	int64_t last_indice_dimension  = indices_shape.dim(indices_rank - 1).dim_value();
-	if (last_indice_dimension > data_rank) {
-	  fail_shape_inference("last indice must not be bigger and rank of input shape.");
-	}
-        for (int64_t i = 0; i < indices_rank - 1; ++i) {
-	  *ctx.getOutputType(0)
-             ->mutable_tensor_type()
-             ->mutable_shape()
-	     ->add_dim() = indices_shape.dim(i);
-	}
-	for (int64_t i = last_indice_dimension; i < data_rank; ++i) {
-          *ctx.getOutputType(0)
-             ->mutable_tensor_type()
-	     ->mutable_shape()
-	     ->add_dim() = data_shape.dim(i);
-	}
+       propagateElemTypeFromInputToOutput(ctx, 0, 0);
+       if (hasNInputShapes(ctx, 2)) {
+         return;
+       }
+       auto& data_shape    = ctx.getInputType(0)->tensor_type().shape();
+       auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+       auto  data_rank     = data_shape.dim_size();
+       auto  indices_rank  = indices_shape.dim_size();
+       if (data_rank < 1 || indices_rank < 1) {
+         fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
+       }
+       auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
+       if (last_indice_dimension > data_rank) {
+         fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
+       }
+       for (int64_t i = 0; i < indices_rank - 1; ++i) {
+         *ctx.getOutputType(0)
+            ->mutable_tensor_type()
+            ->mutable_shape()
+            ->add_dim() = indices_shape.dim(i);
+       }
+       for (int64_t i = last_indice_dimension; i < data_rank; ++i) {
+         *ctx.getOutputType(0)
+            ->mutable_tensor_type()
+            ->mutable_shape()
+            ->add_dim() = data_shape.dim(i);
+       }
     })
     .SetDoc(R"DOC(
-Given `data` tensor of rank r > 1, and `indices` tensor of rank q, gather
-slices of `data` into an output tensor of rank r - 1 + q - indices[-1].
+Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
+slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
 Example 1:
   data    = [[0,1],[2,3]]
   indices = [[0,0],[1,1]]
-  output  = [1,3]
+  output  = [0,3]
 Example 2:
   data    = [[0,1],[2,3]]
   indices = [[1],[0]]
