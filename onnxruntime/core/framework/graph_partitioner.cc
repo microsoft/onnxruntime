@@ -6,7 +6,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/graph/function.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/computation_capacity.h"
+#include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
@@ -66,17 +66,17 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
   for (auto& provider : providers_) {
     auto capability_results = provider->GetCapability(GraphViewer(graph), kernel_registries);
     int count = 0;
-    for (auto& capacity : capability_results) {
-      if (nullptr == capacity || nullptr == capacity->sub_graph_) {
+    for (auto& capability : capability_results) {
+      if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
       }
-      if (nullptr == capacity->sub_graph_->GetMetaDef()) {
+      if (nullptr == capability->sub_graph->GetMetaDef()) {
         // The <provider> can run a single node in the <graph> if not using meta-defs.
         // A fused kernel is not supported in this case.
-        ONNXRUNTIME_ENFORCE(1 == capacity->sub_graph_->nodes.size());
-        ONNXRUNTIME_ENFORCE(capacity->fuse_kernel_function_ == nullptr);
+        ONNXRUNTIME_ENFORCE(1 == capability->sub_graph->nodes.size());
+        ONNXRUNTIME_ENFORCE(capability->fuse_kernel_function == nullptr);
 
-        auto node = graph.GetNode(capacity->sub_graph_->nodes[0]);
+        auto node = graph.GetNode(capability->sub_graph->nodes[0]);
         if (nullptr != node && node->GetExecutionProviderType().empty()) {
           node->SetExecutionProviderType(provider->Type());
         }
@@ -84,11 +84,11 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         // The <provider> can run a fused <sub_graph> in the <graph>.
         //
         // Add fused node into <graph>
-        ONNXRUNTIME_ENFORCE(nullptr != capacity->sub_graph_->GetMetaDef());
-        std::string node_name = provider->Type() + "_" + capacity->sub_graph_->GetMetaDef()->name + "_" + std::to_string(count++);
-        auto& fused_node = graph.FuseSubGraph(std::move(capacity->sub_graph_), node_name);
+        ONNXRUNTIME_ENFORCE(nullptr != capability->sub_graph->GetMetaDef());
+        std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
+        auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
         fused_node.SetExecutionProviderType(provider->Type());
-        auto fused_kernel_func = capacity->fuse_kernel_function_;
+        auto fused_kernel_func = capability->fuse_kernel_function;
         if (fused_kernel_func != nullptr) {
           // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
           KernelDefBuilder builder;
