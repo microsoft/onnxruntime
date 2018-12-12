@@ -6,7 +6,11 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
+#include "onnx/defs/shape_inference.h"
 
+namespace ONNX_NAMESPACE {
+void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape);
+}
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
@@ -28,6 +32,62 @@ void RegisterContribSchemas() {
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+The fused convolution operator schema is the same as Conv besides it includes an attribute 
+activation.)DOC")
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("pads",
+            "",
+            AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "group",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "activation",
+          "",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Input(
+          0,
+          "X",
+          "",
+          "T")
+      .Input(
+          1,
+          "W",
+          "",
+          "T")
+      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "",
+          "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ExpandDims)
       .SetDomain(kMSDomain)
