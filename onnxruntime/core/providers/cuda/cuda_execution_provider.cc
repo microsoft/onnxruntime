@@ -8,7 +8,7 @@
 #include "cuda_fence.h"
 #include "cuda_allocator.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/computation_capacity.h"
+#include "core/framework/compute_capability.h"
 
 using namespace onnxruntime::common;
 
@@ -62,12 +62,12 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 
-  DeviceAllocatorRegistrationInfo default_allocator_info({ONNXRuntimeMemTypeDefault,
-                                                          [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo default_allocator_info(
+    {ONNXRuntimeMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
 
-  DeviceAllocatorRegistrationInfo pinned_allocator_info({ONNXRuntimeMemTypeCPUOutput,
-                                                         [](int) { return std::make_unique<CUDAPinnedAllocator>(); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo pinned_allocator_info(
+    {ONNXRuntimeMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 }
 
@@ -824,10 +824,10 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
   return false;
 }
 
-std::vector<std::unique_ptr<ComputationCapacity>>
+std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputationCapacity>> result = IExecutionProvider::GetCapability(graph, kernel_registries);
+  std::vector<std::unique_ptr<ComputeCapability>> result = IExecutionProvider::GetCapability(graph, kernel_registries);
 
   for (auto& node : graph.Nodes()) {
     bool fallback_to_cpu_provider = false;
