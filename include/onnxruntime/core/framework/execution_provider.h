@@ -13,7 +13,7 @@ class GraphViewer;
 }  // namespace onnxruntime
 namespace onnxruntime {
 
-struct ComputationCapacity;
+struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
 
@@ -50,7 +50,7 @@ class IExecutionProvider {
      have overlap, and it's ONNXRuntime's responsibility to do the partition
      and decide whether a node will be assigned to <*this> execution provider.
   */
-  virtual std::vector<std::unique_ptr<ComputationCapacity>>
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& kernel_registries) const;
 
