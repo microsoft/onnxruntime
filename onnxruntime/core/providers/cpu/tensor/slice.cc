@@ -133,9 +133,8 @@ Status Slice::Compute(OpKernelContext* ctx) const {
     for (int slice_step = 0; slice_step < slice_steps; ++slice_step) {
       int64_t initial = slice_step * copy_block_size;
       int64_t offset = 0;
-      lldiv_t div_result;
       for (int64_t axis = 0; axis <= max_axis; ++axis) {
-        div_result = div(initial, output_pitches[axis]);
+        lldiv_t div_result = lldiv(initial, output_pitches[axis]);
         initial = div_result.rem;
         offset += (starts[axis] + div_result.quot) * input_pitches[axis];
       }
