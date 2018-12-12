@@ -5,29 +5,30 @@
 #include <vector>
 
 namespace onnxruntime {
+namespace contrib {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     GatherND,
     1,
     string_int32_t,
     KernelDefBuilder().TypeConstraint("T",DataTypeImpl::GetTensorType<std::string>()).TypeConstraint("Tind",DataTypeImpl::GetTensorType<int32_t>()),
     GatherNDString<int32_t>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     GatherND,
     1,
     string_int64_t,
     KernelDefBuilder().TypeConstraint("T",DataTypeImpl::GetTensorType<std::string>()).TypeConstraint("Tind",DataTypeImpl::GetTensorType<int64_t>()),
     GatherNDString<int64_t>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     GatherND,
     1,
     non_string_int32_t,
     KernelDefBuilder().TypeConstraint("T",DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind",DataTypeImpl::GetTensorType<int32_t>()),
     GatherNDNonString<int32_t>);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     GatherND,
     1,
     non_string_int64_t,
@@ -126,4 +127,5 @@ Status GatherNDNonString<Tind>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+}
 }

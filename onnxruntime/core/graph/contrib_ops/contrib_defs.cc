@@ -498,6 +498,67 @@ The bounding box coordinates corresponding to the selected indices can then be o
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
       })
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .Input(0, "data", "Tensor of rank r > 1.", "T")
+    .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
+    .Output(0, "output", "Tensor of rank r - 1 + q - indices[-1].", "T")
+    .TypeConstraint(
+        "T",
+        OpSchema::all_tensor_types(),
+        "Constrain input and output types to any tensor type.")
+    .TypeConstraint(
+        "Tind",
+        {"tensor(int32)", "tensor(int64)"},
+        "Constrain input and output types to any tensor type.")
+    .TypeAndShapeInferenceFunction( [] (ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (hasNInputShapes(ctx, 2)) {
+            return;
+	}
+        const ONNX_NAMESPACE::TensorShapeProto& data_shape    = ctx.getInputType(0)->tensor_type().shape();
+        const ONNX_NAMESPACE::TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        int64_t data_rank    = data_shape.dim_size();
+	int64_t indices_rank = indices_shape.dim_size();
+	if (indices_rank < 2) {
+	  fail_shape_inference("rank of indices must be bigger than 1.");
+	}
+	int64_t last_indice_dimension  = indices_shape.dim(indices_rank - 1).dim_value();
+	if (last_indice_dimension > data_rank) {
+	  fail_shape_inference("last indice must not be bigger and rank of input shape.");
+	}
+        for (int64_t i = 0; i < indices_rank - 1; ++i) {
+	  *ctx.getOutputType(0)
+             ->mutable_tensor_type()
+             ->mutable_shape()
+	     ->add_dim() = indices_shape.dim(i);
+	}
+	for (int64_t i = last_indice_dimension; i < data_rank; ++i) {
+          *ctx.getOutputType(0)
+             ->mutable_tensor_type()
+	     ->mutable_shape()
+	     ->add_dim() = data_shape.dim(i);
+	}
+    })
+    .SetDoc(R"DOC(
+Given `data` tensor of rank r > 1, and `indices` tensor of rank q, gather
+slices of `data` into an output tensor of rank r - 1 + q - indices[-1].
+Example 1:
+  data    = [[0,1],[2,3]]
+  indices = [[0,0],[1,1]]
+  output  = [1,3]
+Example 2:
+  data    = [[0,1],[2,3]]
+  indices = [[1],[0]]
+  output  = [[2,3],[0,1]]
+Example 3:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[0,1],[1,0]]
+  output  = [[2,3],[4,5]]
+)DOC");
+
 }
 }  // namespace contrib
 }  // namespace onnxruntime

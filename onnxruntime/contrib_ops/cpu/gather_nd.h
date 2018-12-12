@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
+namespace contrib {
 
 class GatherNDBase
 {
@@ -40,4 +41,5 @@ public:
   Status Compute(OpKernelContext* context) const override;
 };
 
+} // namespace contrib
 } // namespace onnxruntime
