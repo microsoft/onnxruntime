@@ -12,7 +12,6 @@ template <typename T>
 class FusedConv : public Conv<T> {
  public:
   FusedConv(const OpKernelInfo& info) : Conv<T>(info) {
-    std::string activation_type;
     Conv<T>::activation_ = info.GetAttrOrDefault<std::string>("activation", "");
     Conv<T>::alpha_ = info.GetAttrOrDefault("alpha", 0.01f);
   }
