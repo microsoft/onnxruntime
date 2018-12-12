@@ -10,7 +10,6 @@
 #include "core/util/math.h"
 
 namespace onnxruntime {
-namespace {
 
 // helper function
 template <bool ForceSymmetricAutoPadding>
@@ -58,7 +57,6 @@ Status ComputePadAndOutputShape(
   }
   return Status::OK();
 }
-}  // namespace
 
 // base class used by Conv and ConvTranspose
 class ConvBase {
@@ -122,21 +120,21 @@ class ConvBase {
 
     if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                             " X: ", X->Shape().ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+                                     " X: ", X->Shape().ToString().c_str(),
+                                     " W: ", W->Shape().ToString().c_str());
     }
 
     if (C != W->Shape()[1] * group_) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
-                             " C: ", C,
-                             " kernel channels: ", W->Shape()[1],
-                             " group: ", group_);
+                                     " C: ", C,
+                                     " kernel channels: ", W->Shape()[1],
+                                     " group: ", group_);
     }
 
     if (M % group_ != 0) {
       return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
-                             " M: ", M,
-                             " group: ", group_);
+                                     " M: ", M,
+                                     " group: ", group_);
     }
     return Status::OK();
   }
@@ -179,6 +177,8 @@ class ConvBase {
   std::vector<int64_t> strides_;
   std::vector<int64_t> pads_;
   std::vector<int64_t> dilations_;
+  std::string activation_;
+  float alpha_;
 
  private:
   std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_
