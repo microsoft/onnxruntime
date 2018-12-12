@@ -126,7 +126,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
         }
       }
     }
-
+    
     removed_nodes.push_back(mul_node.Index());
   }
 

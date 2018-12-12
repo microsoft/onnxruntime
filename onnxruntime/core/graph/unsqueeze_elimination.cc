@@ -82,6 +82,7 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
         }
       }
     }
+
     removed_nodes.push_back(node.Index());
   }
 

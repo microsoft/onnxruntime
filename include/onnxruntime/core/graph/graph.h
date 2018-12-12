@@ -54,10 +54,10 @@ class Node {
     Construct an EdgeEnd
     @param node The source node if this is an input edge to the current node, 
     or the destination node if this is an output edge from the current node.
-    @param src_slot_index The node arg slot of source node of the edge.
-	@param dst_slot_index The node arg slot of destination node of the edge.
+    @param src_arg_index The node arg index of source node of the edge.
+	@param dst_arg_index The node arg index of destination node of the edge.
     */
-    EdgeEnd(const Node& node, int src_slot_index, int dst_slot_index) noexcept;
+    EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept;
 
     /** Construct a control edge.
     @param node The node the edge joins to the current node.
@@ -67,18 +67,18 @@ class Node {
     /** Gets the Node that this EdgeEnd refers to. */
     const Node& GetNode() const noexcept;
 
-    /** Gets the source slot index.
-	@returns the source slot index of <*this> edge.*/
-    int GetSourceSlotIndex() const;
+    /** Gets the source arg index.
+	@returns the source arg index of <*this> edge.*/
+    int GetSrcArgIndex() const;
 
-    /** Gets the destination slot index.
-	@returns the destination slot index of <*this> edge.*/
-    int GetDstSlotIndex() const;
+    /** Gets the destination arg index.
+	@returns the destination arg index of <*this> edge.*/
+    int GetDstArgIndex() const;
 
    private:
     const Node* node_;
-    int src_slot_index_;
-    int dst_slot_index_;
+    int src_arg_index_;
+    int dst_arg_index_;
   };
 
   /** Gets the Node's NodeIndex. */
@@ -152,7 +152,7 @@ class Node {
   /** Gets the implicit inputs to this Node.  
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that 
   subgraph. e.g. If and Loop operators.*/
-  const std::vector<const NodeArg*>& ImplicitInputDefs() const noexcept {
+  const std::vector<NodeArg*>& ImplicitInputDefs() const noexcept {
     return definitions_.implicit_input_defs;
   }
 
@@ -166,10 +166,10 @@ class Node {
   struct EdgeEndCompare {
     bool operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const {
       if (lhs.GetNode().Index() == rhs.GetNode().Index()) {
-        if (lhs.GetSourceSlotIndex() == rhs.GetSourceSlotIndex()) {
-          return lhs.GetDstSlotIndex() < rhs.GetDstSlotIndex();
+        if (lhs.GetSrcArgIndex() == rhs.GetSrcArgIndex()) {
+          return lhs.GetDstArgIndex() < rhs.GetDstArgIndex();
         }
-        return lhs.GetSourceSlotIndex() < rhs.GetSourceSlotIndex();
+        return lhs.GetSrcArgIndex() < rhs.GetSrcArgIndex();
       }
       return lhs.GetNode().Index() < rhs.GetNode().Index();
     }
@@ -310,7 +310,7 @@ class Node {
     @remarks For example, a subgraph in an 'If' node gets all its input values via this mechanism rather than 
     there being explicit inputs to the 'If' node that are passed to the subgraph. 
     They are pseudo-inputs to this Node as it has an implicit dependency on them. */
-    std::vector<const NodeArg*> implicit_input_defs;
+    std::vector<NodeArg*> implicit_input_defs;
 
    private:
     ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
@@ -607,18 +607,18 @@ class Graph {
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
-  @param src_arg_slot node arg slot of source node.
-  @param dst_arg_slot node arg slot of destination node.
+  @param src_arg_index node arg index of source node.
+  @param dst_arg_index node arg index of destination node.
   */
-  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot);
+  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
 
   /** Remove an edge between two Nodes.
   @param src_node_index NodeIndex of source Node to remove an output edge from.
   @param dst_node_index NodeIndex of destination Node to remove an input edge from.
-  @param src_arg_slot node arg slot of source node.
-  @param dst_arg_slot node arg slot of destination node.
+  @param src_arg_index node arg index of source node.
+  @param dst_arg_index node arg index of destination node.
   */
-  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot);
+  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
 
   /**
   Add a control edge between two Nodes in this Graph.
@@ -811,7 +811,7 @@ class Graph {
   };
 
   // search this and up through any parent_graph_ instance for a NodeArg
-  const NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const;
+  NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
 
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
