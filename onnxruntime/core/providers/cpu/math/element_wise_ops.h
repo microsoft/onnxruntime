@@ -139,7 +139,7 @@ class Log final : public OpKernel {
 };
 
 template <typename T>
-class Sum_6 : public OpKernel {
+class Sum_6 final : public OpKernel {
  public:
   Sum_6(const OpKernelInfo& info) : OpKernel(info) {
   }
