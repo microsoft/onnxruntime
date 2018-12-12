@@ -223,20 +223,26 @@ bool NodeArg::Exists() const noexcept {
   return exists_;
 }
 
-Node::EdgeEnd::EdgeEnd(const Node& node, const NodeArg& node_arg) noexcept
-    : node_(&node), node_arg_(&node_arg) {
+Node::EdgeEnd::EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept
+    : node_(&node),
+      src_arg_index_(src_arg_index),
+      dst_arg_index_(dst_arg_index) {
 }
 
 Node::EdgeEnd::EdgeEnd(const Node& node) noexcept
-    : node_(&node), node_arg_(nullptr) {
+    : EdgeEnd(node, INT_MAX, INT_MAX) {
 }
 
 const Node& Node::EdgeEnd::GetNode() const noexcept {
   return *node_;
 }
 
-const NodeArg* Node::EdgeEnd::GetNodeArg() const noexcept {
-  return node_arg_;
+int Node::EdgeEnd::GetSrcArgIndex() const {
+  return src_arg_index_;
+}
+
+int Node::EdgeEnd::GetDstArgIndex() const {
+  return dst_arg_index_;
 }
 
 Node::NodeConstIterator::NodeConstIterator(EdgeConstIterator p_iter) {
@@ -692,9 +698,9 @@ Graph::Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto)
 }
 
 Status Graph::VerifyNoDuplicateName() {
-  const std::unordered_set<std::string>& inputs_and_initializers = resolve_context_.inputs_and_initializers;
-  std::unordered_map<std::string, Node*>& output_args = resolve_context_.output_args;
-  std::unordered_map<std::string, NodeIndex>& node_name_to_index = resolve_context_.node_name_to_index;
+  auto& inputs_and_initializers = resolve_context_.inputs_and_initializers;
+  auto& output_args = resolve_context_.output_args;
+  auto& node_name_to_index = resolve_context_.node_name_to_index;
 
   output_args.clear();
   node_name_to_index.clear();
@@ -715,7 +721,9 @@ Status Graph::VerifyNoDuplicateName() {
     node_name_to_index[node_name] = node.Index();
 
     // Verify node outputs' name should be unique.
+    int output_index = -1;
     for (const auto* output_def : node.OutputDefs()) {
+      ++output_index;
       if (output_def->Exists()) {
         auto& output_arg_name = output_def->Name();
         if (inputs_and_initializers.count(output_arg_name)) {
@@ -723,7 +731,7 @@ Status Graph::VerifyNoDuplicateName() {
                         "Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
-        auto result = output_args.insert({output_arg_name, &node});
+        auto result = output_args.insert({output_arg_name, {&node, output_index}});
         if (!result.second) {
           // Two outputs with same name, so that insertion fails.
           Status status(ONNXRUNTIME, FAIL,
@@ -760,7 +768,7 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
 
     std::transform(resolve_context_.output_args.cbegin(), resolve_context_.output_args.cend(),
                    std::inserter(node_args_in_scope_for_subgraph, node_args_in_scope_for_subgraph.end()),
-                   [](const std::pair<std::string, Node*>& entry) { return entry.first; });
+                   [](const std::pair<std::string, std::pair<Node*, int>>& entry) { return entry.first; });
 
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
@@ -773,8 +781,8 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
   return Status::OK();
 }
 
-const NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const {
-  const NodeArg* node_arg = GetNodeArg(node_arg_name);
+NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) {
+  NodeArg* node_arg = GetNodeArg(node_arg_name);
 
   if (!node_arg && parent_graph_) {
     node_arg = parent_graph_->GetNodeArgIncludingParentGraphs(node_arg_name);
@@ -783,7 +791,7 @@ const NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_ar
   return node_arg;
 }
 
-void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg) {
+void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
   if (nodes_.size() <= src_node_index ||
       nodes_.size() <= dst_node_index ||
       nullptr == nodes_[src_node_index] ||
@@ -791,34 +799,47 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const No
     // Invalid node indexes specified.
     ONNXRUNTIME_THROW("Invalid node indexes specified when adding edge.");
   }
-  // Verify whether the node_arg is input of dst and output of src firstly.
-  bool valid = false;
-  for (auto arg : nodes_[src_node_index]->OutputDefs()) {
-    if (arg == &node_arg) {
-      valid = true;
-      break;
+
+  NodeArg *src_arg = nullptr, *dst_arg = nullptr;
+  if (nodes_[src_node_index]->MutableDefinitions().output_defs.size() > src_arg_slot) {
+    src_arg = nodes_[src_node_index]->MutableDefinitions().output_defs[src_arg_slot];
+  }
+
+  if (nullptr == src_arg) {
+    ONNXRUNTIME_THROW("Invalid source node arg slot specified when adding edge.");
+  }
+
+  auto& dst_node_defs = nodes_[dst_node_index]->MutableDefinitions();
+  NodeArg** dst_arg_pointer = nullptr;
+  if (dst_node_defs.input_defs.size() > dst_arg_slot) {
+    dst_arg_pointer = &dst_node_defs.input_defs[dst_arg_slot];
+    dst_arg = *dst_arg_pointer;
+  } else {
+    auto num_of_explicit_inputs = dst_node_defs.input_defs.size();
+    if (num_of_explicit_inputs + dst_node_defs.implicit_input_defs.size() > dst_arg_slot) {
+      dst_arg_pointer = &dst_node_defs.implicit_input_defs[dst_arg_slot - num_of_explicit_inputs];
+      dst_arg = *dst_arg_pointer;
     }
   }
-  ONNXRUNTIME_ENFORCE(valid);
-  valid = false;
-  for (auto arg : nodes_[dst_node_index]->InputDefs()) {
-    if (arg == &node_arg) {
-      valid = true;
-      break;
+  if (nullptr == dst_arg) {
+    ONNXRUNTIME_THROW("Invalid destination node arg slot specified when adding edge.");
+  }
+
+  if (src_arg != dst_arg) {
+    if (src_arg->Type() != dst_arg->Type()) {
+      // The output type of source node arg does not match the input type of destination node arg.
+      ONNXRUNTIME_THROW("Argument type mismatch when adding edge.");
+    } else {
+      src_arg->UpdateTypeAndShape(*dst_arg);
+      *dst_arg_pointer = src_arg;
     }
   }
-  for (auto arg : nodes_[dst_node_index]->ImplicitInputDefs()) {
-    if (arg == &node_arg) {
-      valid = true;
-      break;
-    }
-  }
-  ONNXRUNTIME_ENFORCE(valid);
-  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index], node_arg));
-  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index], node_arg));
+
+  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
+  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
 }
 
-void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg) {
+void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
   if (nodes_.size() <= src_node_index ||
       nodes_.size() <= dst_node_index ||
       nullptr == nodes_[src_node_index] ||
@@ -826,31 +847,36 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const
     // Invalid node indexes specified.
     ONNXRUNTIME_THROW("Invalid node indexes specified when removing edge.");
   }
-  // Verify whether the node_arg is input of dst and output of src firstly.
-  bool valid = false;
-  for (auto arg : nodes_[src_node_index]->OutputDefs()) {
-    if (arg == &node_arg) {
-      valid = true;
-      break;
+
+  const NodeArg *src_arg = nullptr, *dst_arg = nullptr;
+  if (nodes_[src_node_index]->GetDefinitions().output_defs.size() > src_arg_slot) {
+    src_arg = nodes_[src_node_index]->GetDefinitions().output_defs[src_arg_slot];
+  }
+
+  if (nullptr == src_arg) {
+    ONNXRUNTIME_THROW("Invalid source node arg slot specified when removing edge.");
+  }
+
+  auto& dst_node_defs = nodes_[dst_node_index]->GetDefinitions();
+  if (dst_node_defs.input_defs.size() > dst_arg_slot) {
+    dst_arg = dst_node_defs.input_defs[dst_arg_slot];
+  } else {
+    auto num_of_explicit_inputs = dst_node_defs.input_defs.size();
+    if (num_of_explicit_inputs + dst_node_defs.implicit_input_defs.size() > dst_arg_slot) {
+      dst_arg = dst_node_defs.implicit_input_defs[dst_arg_slot - num_of_explicit_inputs];
     }
   }
-  ONNXRUNTIME_ENFORCE(valid);
-  valid = false;
-  for (auto arg : nodes_[dst_node_index]->InputDefs()) {
-    if (arg == &node_arg) {
-      valid = true;
-      break;
-    }
+  if (nullptr == dst_arg) {
+    ONNXRUNTIME_THROW("Invalid destination node arg slot specified when removing edge.");
   }
-  for (auto arg : nodes_[dst_node_index]->ImplicitInputDefs()) {
-    if (arg == &node_arg) {
-      valid = true;
-      break;
-    }
+  if (src_arg != dst_arg) {
+    // The edge ends specified by source and destination arg slot are not referring to same node arg.
+    // It means there was no edge between these two slots before.
+    ONNXRUNTIME_THROW("Argument type mismatch when removing edge.");
   }
-  ONNXRUNTIME_ENFORCE(valid);
-  nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], node_arg));
-  nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], node_arg));
+
+  nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
+  nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
 
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
@@ -867,7 +893,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
         for (auto& node_arg_name : node_args_consumed) {
           bool node_arg_in_parent_graph = false;
-          const auto* node_arg = GetNodeArg(node_arg_name);
+          auto node_arg = GetNodeArg(node_arg_name);
 
           if (node_arg == nullptr) {
             // it's a node arg from outside this graph's scope, so add that to the list we return
@@ -897,8 +923,13 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
           // add it to the Node's list of implicit inputs
           auto& implicit_inputs = node->MutableDefinitions().implicit_input_defs;
-          if (std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg) == implicit_inputs.cend()) {
+          int input_slot_index = static_cast<int>(node->GetDefinitions().input_defs.size());
+          auto iter = std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg);
+          if (implicit_inputs.cend() == iter) {
             implicit_inputs.push_back(node_arg);
+            input_slot_index += static_cast<int>(implicit_inputs.size() - 1);
+          } else {
+            input_slot_index += static_cast<int>(iter - implicit_inputs.cbegin());
           }
 
           if (node_arg_in_parent_graph ||
@@ -914,8 +945,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             ONNXRUNTIME_ENFORCE(entry != resolve_context_.output_args.end());
 
             // Create relationship between this node (node), and the node providing the output (output_node).
-            Node& output_node = *entry->second;
-            AddEdge(output_node.Index(), node->Index(), *node_arg);
+            Node& output_node = *entry->second.first;
+            AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
             inner_nodes.insert(&output_node);
           }
@@ -932,7 +963,9 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
     if (input_args.size() > 0) {
       // This node needs inputs.
 
+      int input_slot_index = -1;
       for (const auto* input_arg : input_args) {
+        ++input_slot_index;
         if (!input_arg->Exists()) {
           // This input could be optional and it does not exist in this case.
           continue;
@@ -953,8 +986,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
         }
 
         // Create relationship between this node (node), and the node providing the output (output_node).
-        Node& output_node = *output_arg_iter->second;
-        AddEdge(output_node.Index(), node.Index(), *input_arg);
+        Node& output_node = *output_arg_iter->second.first;
+        AddEdge(output_node.Index(), node.Index(), output_arg_iter->second.second, input_slot_index);
 
         inner_nodes.insert(&output_node);
       }
@@ -2023,6 +2056,19 @@ Node& Graph::AddNode(const std::string& name,
 }
 
 bool Graph::RemoveNode(NodeIndex p_index) {
+  auto node = GetNode(p_index);
+  if (nullptr == node /*|| 0 != node->GetRelationships().output_edges.size()*/) {
+    // Node should be removed after all out edges are removed.
+	// TODO: add the check commented out back.
+    return false;
+  }
+
+  // Remove all input edges.
+  auto input_edges = node->GetRelationships().input_edges;
+
+  for (auto& input_edge : input_edges) {
+    RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
+  }
   return ReleaseNode(p_index);
 }
 
@@ -2437,6 +2483,14 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
   // Remove nodes fused above.
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();
   for (auto node_index : sub_graph_ref.nodes) {
+    auto node = GetNode(node_index);
+    if (nullptr == node) {
+      continue;
+    }
+    auto output_edges = node->GetRelationships().output_edges;
+    for (auto output_edge : output_edges) {
+      RemoveEdge(node->Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+    }
     RemoveNode(node_index);
   }
   return fused_node;
@@ -2446,6 +2500,10 @@ Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
+  auto output_edges = node.GetRelationships().output_edges;
+  for (auto output_edge : output_edges) {
+    RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+  }
   RemoveNode(node.Index());
   for (const auto& subgraph_node : subgraph.Nodes()) {
     AddNode(subgraph_node);
