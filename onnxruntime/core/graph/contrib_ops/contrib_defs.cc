@@ -529,13 +529,13 @@ The bounding box coordinates corresponding to the selected indices can then be o
        if (last_indice_dimension > data_rank) {
          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
        }
-       for (int64_t i = 0; i < indices_rank - 1; ++i) {
+       for (int i = 0; i < indices_rank - 1; ++i) {
          *ctx.getOutputType(0)
             ->mutable_tensor_type()
             ->mutable_shape()
             ->add_dim() = indices_shape.dim(i);
        }
-       for (int64_t i = last_indice_dimension; i < data_rank; ++i) {
+       for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
          *ctx.getOutputType(0)
             ->mutable_tensor_type()
             ->mutable_shape()
