@@ -17,6 +17,7 @@
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
+#include "core/framework/environment.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/insert_cast_transformer.h"
@@ -50,6 +51,9 @@ class InferenceSession::Impl {
         logging_manager_{logging_manager},
         session_state_{execution_providers_},
         insert_cast_transformer_{"CastFloat16Transformer"} {
+    ONNXRUNTIME_ENFORCE(Environment::IsInitialized(),
+                        "Environment must be initialized before creating an InferenceSession.");
+
     InitLogger(logging_manager);
 
     // currently the threadpool is used by the parallel executor only and hence
