@@ -207,6 +207,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   using namespace string_normalizer;
 
   auto X = ctx->Input<Tensor>(0);
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   auto& input_dims = X->Shape().GetDims();
 
   size_t N = 0;

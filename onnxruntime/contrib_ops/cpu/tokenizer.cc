@@ -450,6 +450,7 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
 Status Tokenizer::Compute(OpKernelContext* ctx) const {
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   if (X->DataType() != DataTypeImpl::GetType<std::string>()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "tensor(string) expected as input");
