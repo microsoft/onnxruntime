@@ -38,11 +38,11 @@ extern "C" {
 #else
 #define ONNX_RUNTIME_EXPORT
 #endif
-#define ONNXRUNTIME_API_STATUSCALL _stdcall
+#define ONNXRUNTIME_API_CALL _stdcall
 #define ONNX_RUNTIME_MUST_USE_RESULT
 #else
 #define ONNX_RUNTIME_EXPORT
-#define ONNXRUNTIME_API_STATUSCALL
+#define ONNXRUNTIME_API_CALL
 #define ONNX_RUNTIME_MUST_USE_RESULT __attribute__((warn_unused_result))
 #endif
 
@@ -79,14 +79,14 @@ typedef void ONNXStatus;
 
 // __VA_ARGS__ on Windows and Linux are different
 #define ONNXRUNTIME_API(RETURN_TYPE, NAME, ...) \
-  ONNX_RUNTIME_EXPORT RETURN_TYPE ONNXRUNTIME_API_STATUSCALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ONNX_RUNTIME_EXPORT RETURN_TYPE ONNXRUNTIME_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ONNXRUNTIME_API_STATUS(NAME, ...) \
-  ONNX_RUNTIME_EXPORT ONNXStatus* ONNXRUNTIME_API_STATUSCALL NAME(__VA_ARGS__) NO_EXCEPTION ONNX_RUNTIME_MUST_USE_RESULT
+  ONNX_RUNTIME_EXPORT ONNXStatus* ONNXRUNTIME_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ONNX_RUNTIME_MUST_USE_RESULT
 
 // Used in *.cc files. Almost as same as ONNXRUNTIME_API_STATUS, except without ONNX_RUNTIME_MUST_USE_RESULT
 #define ONNXRUNTIME_API_STATUS_IMPL(NAME, ...) \
-  ONNX_RUNTIME_EXPORT ONNXStatus* ONNXRUNTIME_API_STATUSCALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ONNX_RUNTIME_EXPORT ONNXStatus* ONNXRUNTIME_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define DEFINE_RUNTIME_CLASS2(NAME, TYPE) \
   ONNXRUNTIME_API(void, Release##NAME, _Frees_ptr_opt_ TYPE* input);
@@ -237,9 +237,9 @@ DEFINE_RUNTIME_CLASS(ONNXRuntimeProvider);
  */
 typedef struct ONNXObject {
   ///returns the new reference count.
-  uint32_t(ONNXRUNTIME_API_STATUSCALL* AddRef)(void* this_);
+  uint32_t(ONNXRUNTIME_API_CALL* AddRef)(void* this_);
   ///returns the new reference count.
-  uint32_t(ONNXRUNTIME_API_STATUSCALL* Release)(void* this_);
+  uint32_t(ONNXRUNTIME_API_CALL* Release)(void* this_);
   //TODO: implement QueryInterface?
 } ONNXObject;
 
@@ -263,7 +263,7 @@ ONNXRUNTIME_API(uint32_t, ONNXRuntimeReleaseObject, _Inout_opt_ void* ptr);
 //Inherented from ONNXObject
 typedef struct ONNXRuntimeProviderFactoryInterface {
   ONNXObject parent;
-  ONNXStatus*(ONNXRUNTIME_API_STATUSCALL* CreateProvider)(void* this_, ONNXRuntimeProvider** out);
+  ONNXStatus*(ONNXRUNTIME_API_CALL* CreateProvider)(void* this_, ONNXRuntimeProvider** out);
 } ONNXRuntimeProviderFactoryInterface;
 
 struct ONNXRuntimeSessionOptions;
@@ -350,9 +350,9 @@ ONNXRUNTIME_API(ONNXRuntimeAllocatorType, ONNXRuntimeAllocatorInfoGetType, _In_ 
 //inherented from ONNXObject
 typedef struct ONNXRuntimeAllocatorInteface {
   struct ONNXObject parent;
-  void*(ONNXRUNTIME_API_STATUSCALL* Alloc)(void* this_, size_t size);
-  void(ONNXRUNTIME_API_STATUSCALL* Free)(void* this_, void* p);
-  const struct ONNXRuntimeAllocatorInfo*(ONNXRUNTIME_API_STATUSCALL* Info)(const void* this_);
+  void*(ONNXRUNTIME_API_CALL* Alloc)(void* this_, size_t size);
+  void(ONNXRUNTIME_API_CALL* Free)(void* this_, void* p);
+  const struct ONNXRuntimeAllocatorInfo*(ONNXRUNTIME_API_CALL* Info)(const void* this_);
 } ONNXRuntimeAllocatorInteface;
 
 typedef ONNXRuntimeAllocatorInteface* ONNXRuntimeAllocator;
@@ -372,7 +372,7 @@ typedef enum ONNXRuntimeLoggingLevel {
   ONNXRUNTIME_LOGGING_LEVEL_kFATAL = 4
 } ONNXRuntimeLoggingLevel;
 
-typedef void(ONNXRUNTIME_API_STATUSCALL* ONNXRuntimeLoggingFunction)(
+typedef void(ONNXRUNTIME_API_CALL* ONNXRuntimeLoggingFunction)(
     void* param, ONNXRuntimeLoggingLevel severity, const char* category, const char* logid, const char* code_location,
     const char* message);
 /**

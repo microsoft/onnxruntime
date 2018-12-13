@@ -15,7 +15,7 @@ struct MkldnnProviderFactory {
   MkldnnProviderFactory();
 };
 
-ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateMkldnn(void* this_, ONNXRuntimeProvider** out) {
+ONNXStatus* ONNXRUNTIME_API_CALL CreateMkldnn(void* this_, ONNXRuntimeProvider** out) {
   MKLDNNExecutionProviderInfo info;
   MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
   info.create_arena = this_ptr->create_arena;
@@ -24,14 +24,14 @@ ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateMkldnn(void* this_, ONNXRuntimeProv
   return nullptr;
 }
 
-uint32_t ONNXRUNTIME_API_STATUSCALL ReleaseMkldnn(void* this_) {
+uint32_t ONNXRUNTIME_API_CALL ReleaseMkldnn(void* this_) {
   MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
   if (--this_ptr->ref_count == 0)
     delete this_ptr;
   return 0;
 }
 
-uint32_t ONNXRUNTIME_API_STATUSCALL AddRefMkldnn(void* this_) {
+uint32_t ONNXRUNTIME_API_CALL AddRefMkldnn(void* this_) {
   MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
   ++this_ptr->ref_count;
   return 0;
