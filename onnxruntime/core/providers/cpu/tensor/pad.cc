@@ -53,6 +53,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t dimension_count = output_dims.size();
 
+  ONNXRUNTIME_ENFORCE(dimension_count > 0, "Input tensor has no dimensions");
   ONNXRUNTIME_ENFORCE(dimension_count * 2 == pads_.size(), "'pads' attribute has wrong number of values");
 
   std::vector<int64_t> input_starts;
@@ -78,7 +79,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
     alignSkip += pads_[i] * output_pitches[i];
 
   size_t inner_axis = dimension_count - 1;
-  TensorAxisCounters input_counters(input_tensor);
+  ExtentAxisCounters input_counters(input_extents);
 
   switch (mode_) {
     case Mode::Constant:
