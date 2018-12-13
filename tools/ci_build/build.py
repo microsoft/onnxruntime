@@ -21,6 +21,9 @@ from os.path import expanduser
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("Build")
 
+test_data_url = 'https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip'
+test_data_checksum = 'a966def7447f4ff04f5665bca235b3f3'
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
                                      usage='''
@@ -92,6 +95,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_llvm", action="store_true", help="Build tvm with llvm")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
+    parser.add_argument("--azure_sas_key", help="azure storage sas key, starts with '?'")
     parser.add_argument("--use_brainslice", action="store_true", help="Build with brain slice")
     parser.add_argument("--brain_slice_package_path", help="Path to brain slice pacakges")
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice pakcages")
@@ -192,16 +196,18 @@ def check_md5(filename, expected_md5):
     return True
 
 #the last part of src_url should be unique, across all the builds
-def download_test_data(build_dir, src_url, expected_md5):
+def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
     os.makedirs(cache_dir, exist_ok=True)
     local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
     if not check_md5(local_zip_file, expected_md5):
         log.info("Downloading test data")
+        if azure_sas_key:
+            src_url += azure_sas_key
         if shutil.which('aria2c'):
-            run_subprocess(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+            subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir], check=True)
         elif shutil.which('curl'):
-            run_subprocess(['curl', '-s', src_url, '-o', local_zip_file])
+            subprocess.run(['curl', '-s', src_url, '-o', local_zip_file], check=True)
         else:
             log.error("No downloading tool for use")
             return False
@@ -219,9 +225,18 @@ def download_test_data(build_dir, src_url, expected_md5):
         return False
     return True
 
-
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
-    has_test_data = download_test_data(build_dir,'https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip','a966def7447f4ff04f5665bca235b3f3')
+    has_test_data = download_test_data(build_dir, test_data_url, test_data_checksum, args.azure_sas_key)
+    #create a shortcut for test models if there is a 'models' folder in build_dir
+    if has_test_data and is_windows():
+        src_model_dir = os.path.join(build_dir, 'models')
+        for config in configs:
+            config_build_dir = get_config_build_dir(build_dir, config)
+            os.makedirs(config_build_dir, exist_ok=True)
+            dest_model_dir = os.path.join(config_build_dir, 'models')
+            if os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
+                log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
+                subprocess.run(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True, check=True)
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
@@ -286,12 +301,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             os.environ["PATH"] += os.pathsep + os.path.join(config_build_dir, "external", "tvm", config)
 
         run_subprocess(cmake_args  + ["-DCMAKE_BUILD_TYPE={}".format(config)], cwd=config_build_dir)
-        #create a shortcut for test models if there is a 'models' folder in build_dir
-        if is_windows():
-           dest_model_dir = os.path.join(config_build_dir, 'models')
-           src_model_dir = os.path.join(build_dir, 'models')
-           if os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
-               subprocess.run(['mklink', '/D', '/J', dest_model_dir, src_model_dir],shell=True, check=True)
 
 
 def clean_targets(cmake_path, build_dir, configs):
