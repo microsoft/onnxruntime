@@ -51,6 +51,20 @@ TEST(GatherNDOpTest, GatherND_matrice_int64_int32) {
   test.Run();
 }
 
+TEST(GatherNDOpTest, GatherND_matrice_string_int32) {
+  OpTester test1("GatherND", 1, onnxruntime::kMSDomain);
+  test1.AddInput<std::string>("data", {2,2,2}, {"egg","dance","air","bob","terry","smart","laugh","kite"});
+  test1.AddInput<int32_t>("indices", {2,1,2}, {0,1,1,0});
+  test1.AddOutput<std::string>("output", {2,1,2}, {"air","bob","terry","smart"});
+  test1.Run();
+
+  OpTester test2("GatherND", 1, onnxruntime::kMSDomain);
+  test2.AddInput<std::string>("data", {3,3}, {"egg","dance","air","bob","terry","smart","laugh","kite","hop"});
+  test2.AddInput<int32_t>("indices", {3,2}, {2,1,1,0,0,1});
+  test2.AddOutput<std::string>("output", {3}, {"kite","bob","dance"});
+  test2.Run();
+}
+
 TEST(GatherNDOpTest, GatherND_slice_float_int64_t) {
   OpTester test("GatherND", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {2,2}, {0.0f,0.1f,0.2f,0.3f});
