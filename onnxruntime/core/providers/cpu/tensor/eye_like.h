@@ -22,7 +22,7 @@ class EyeLike final : public OpKernel {
 
  private:
   template <typename T>
-  Status ComputeImpl(OpKernelContext* context) const;
+  Status ComputeImpl(OpKernelContext* context, const Tensor* T1) const;
 
   bool has_dtype_;
   int64_t dtype_;

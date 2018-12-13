@@ -170,14 +170,13 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
         }
       }
     }
-
     removed_nodes.push_back(bn_node.Index());
   }
 
   for (auto i : removed_nodes) {
     graph.RemoveNode(i);
   }
-
+   
   if (!removed_nodes.empty()) {
     modified = true;
     ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
