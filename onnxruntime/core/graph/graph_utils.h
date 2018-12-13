@@ -43,15 +43,14 @@ bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
 /** Checks if the given node has only constant inputs (initializers). */
 bool IsConstantInputsNode(const Graph& graph, const Node& node);
 
-/** Builds a subgraph given a Graph and the indices of the nodes of the Graph that will
+/** Build a subgraph given a Graph and the indices of the nodes of the Graph that will
     be added to the subgraph. */
 Status BuildSubgraph(const Graph& graph,
-                     const std::vector<onnxruntime::NodeIndex>& subgraph_nodes,
+                     const std::vector<NodeIndex>& subgraph_nodes,
                      Graph& subgraph);
 
-/** Removes all output edges from the given Node of the Graph. */
-int RemoveNodeOutputEdges(const Graph& graph,
-                          const Node& node);
+/** Remove all output edges from the given Node of the Graph. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
 }  // namespace graph_edit_utils
 

@@ -15,7 +15,8 @@ class GraphTransformerManager {
     // Register default transformers.
     if (enable_default_transformers) {
       std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
-          std::make_unique<TopDownRuleBasedTransformer>("DefaultRuleTransformer", "Default rule-based graph transformer");
+          std::make_unique<TopDownRuleBasedTransformer>("DefaultRuleTransformer",
+                                                        "Default rule-based graph transformer");
       rule_transformer->Register(std::make_unique<ConstantFolding>());
       Register(std::move(rule_transformer));
     }

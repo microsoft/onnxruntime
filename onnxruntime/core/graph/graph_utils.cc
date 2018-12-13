@@ -124,7 +124,7 @@ bool IsConstantInputsNode(const Graph& graph, const Node& node) {
 }
 
 Status BuildSubgraph(const Graph& graph,
-                     const std::vector<onnxruntime::NodeIndex>& subgraph_nodes,
+                     const std::vector<NodeIndex>& subgraph_nodes,
                      Graph& subgraph) {
   // Add nodes and initializers to subgraph.
   // TODO Can we directly copy the node instead of re-creating it?
@@ -153,22 +153,21 @@ Status BuildSubgraph(const Graph& graph,
   return Status::OK();
 }
 
-int RemoveNodeOutputEdges(const Graph& graph,
-                          const Node& node) {
-  (void)graph, node;
-  // Implement the method.
-  //// Remove the output edges of the constant node.
-  //std::vector<onnxruntime::NodeIndex> edge_nodes_to_remove;
-  //for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-  //  edge_nodes_to_remove.push_back((*it).Index());
-  //}
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
+  std::vector<std::tuple<NodeIndex, int, int>> edges_to_remove;
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
+    edges_to_remove.emplace_back(std::make_tuple(it->GetNode().Index(),
+                                                 it->GetSrcArgIndex(),
+                                                 it->GetDstArgIndex()));
+  }
+  for (auto& edge_to_remove : edges_to_remove) {
+    graph.RemoveEdge(node.Index(),
+                     std::get<0>(edge_to_remove),
+                     std::get<1>(edge_to_remove),
+                     std::get<2>(edge_to_remove));
+  }
 
-  //const auto* node_out_arg = node.OutputDefs()[fetch_idx];
-  //for (auto& edge_node_idx : edge_nodes_to_remove) {
-  //  (void)edge_node_idx, node_out_arg;
-  //  //graph.RemoveEdge(node.Index(), edge_node_idx, *node_out_arg);
-  //}
-  return 0;
+  return edges_to_remove.size();
 }
 
 }  // namespace graph_edit_utils
