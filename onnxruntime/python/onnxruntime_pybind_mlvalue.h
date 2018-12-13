@@ -22,7 +22,7 @@ namespace python {
 
 namespace py = pybind11;
 
-int OnnxRuntimeTensorToNumpyType(const MLDataType& tensor_type);
+int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
 void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, MLValue* p_mlvalue);
 
