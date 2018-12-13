@@ -193,20 +193,31 @@ def check_md5(filename, expected_md5):
 
 #the last part of src_url should be unique, across all the builds
 def download_test_data(build_dir, src_url, expected_md5):
-    if not is_windows() and shutil.which('aria2c'):
-        cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
-        os.makedirs(cache_dir, exist_ok=True)
-        local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
-        if not check_md5(local_zip_file, expected_md5):
-            log.info("Downloading test data")
+    cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
+    os.makedirs(cache_dir, exist_ok=True)
+    local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
+    if not check_md5(local_zip_file, expected_md5):
+        log.info("Downloading test data")
+        if shutil.which('aria2c'):
             run_subprocess(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
-        models_dir = os.path.join(build_dir,'models')
-        if os.path.exists(models_dir):
-            log.info('deleting %s' % models_dir)
-            shutil.rmtree(models_dir)
+        elif shutil.which('curl'):
+            run_subprocess(['curl', '-s', src_url, '-o', local_zip_file])
+        else:
+            log.error("No downloading tool for use")
+            return False
+    models_dir = os.path.join(build_dir,'models')
+    if os.path.exists(models_dir):
+        log.info('deleting %s' % models_dir)
+        shutil.rmtree(models_dir)
+    if shutil.which('unzip'):
         run_subprocess(['unzip','-qd', models_dir, local_zip_file])
-        return True
-    return False
+    elif shutil.which('7za'):
+        run_subprocess(['7za','x', local_zip_file, '-o' + models_dir])
+    else:
+        #TODO: use python for unzip
+        log.error("No unzip tool for use")
+        return False
+    return True
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
