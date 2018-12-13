@@ -10,20 +10,20 @@
    private:                                                                                         \
     const ONNXRuntimeAllocatorInteface* vtable_ = &table_;                                          \
     std::atomic_int ref_count_;                                                                     \
-    static void* ONNXRUNTIME_API_STATUSCALL Alloc_(void* this_ptr, size_t size) {                   \
+    static void* ONNXRUNTIME_API_CALL Alloc_(void* this_ptr, size_t size) {                   \
       return ((CLASS_NAME*)this_ptr)->Alloc(size);                                                  \
     }                                                                                               \
-    static void ONNXRUNTIME_API_STATUSCALL Free_(void* this_ptr, void* p) {                         \
+    static void ONNXRUNTIME_API_CALL Free_(void* this_ptr, void* p) {                         \
       return ((CLASS_NAME*)this_ptr)->Free(p);                                                      \
     }                                                                                               \
-    static const ONNXRuntimeAllocatorInfo* ONNXRUNTIME_API_STATUSCALL Info_(const void* this_ptr) { \
+    static const ONNXRuntimeAllocatorInfo* ONNXRUNTIME_API_CALL Info_(const void* this_ptr) { \
       return ((const CLASS_NAME*)this_ptr)->Info();                                                 \
     }                                                                                               \
-    static uint32_t ONNXRUNTIME_API_STATUSCALL AddRef_(void* this_) {                               \
+    static uint32_t ONNXRUNTIME_API_CALL AddRef_(void* this_) {                               \
       CLASS_NAME* this_ptr = (CLASS_NAME*)this_;                                                    \
       return ++this_ptr->ref_count_;                                                                \
     }                                                                                               \
-    static uint32_t ONNXRUNTIME_API_STATUSCALL Release_(void* this_) {                              \
+    static uint32_t ONNXRUNTIME_API_CALL Release_(void* this_) {                              \
       CLASS_NAME* this_ptr = (CLASS_NAME*)this_;                                                    \
       uint32_t ret = --this_ptr->ref_count_;                                                        \
       if (ret == 0)                                                                                 \

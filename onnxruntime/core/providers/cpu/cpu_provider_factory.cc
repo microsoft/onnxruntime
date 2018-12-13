@@ -15,7 +15,7 @@ struct CpuProviderFactory {
   CpuProviderFactory();
 };
 
-ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateCpu(void* this_, ONNXRuntimeProvider** out) {
+ONNXStatus* ONNXRUNTIME_API_CALL CreateCpu(void* this_, ONNXRuntimeProvider** out) {
   CPUExecutionProviderInfo info;
   CpuProviderFactory* this_ptr = (CpuProviderFactory*)this_;
   info.create_arena = this_ptr->create_arena;
@@ -24,14 +24,14 @@ ONNXStatus* ONNXRUNTIME_API_STATUSCALL CreateCpu(void* this_, ONNXRuntimeProvide
   return nullptr;
 }
 
-uint32_t ONNXRUNTIME_API_STATUSCALL ReleaseCpu(void* this_) {
+uint32_t ONNXRUNTIME_API_CALL ReleaseCpu(void* this_) {
   CpuProviderFactory* this_ptr = (CpuProviderFactory*)this_;
   if (--this_ptr->ref_count == 0)
     delete this_ptr;
   return 0;
 }
 
-uint32_t ONNXRUNTIME_API_STATUSCALL AddRefCpu(void* this_) {
+uint32_t ONNXRUNTIME_API_CALL AddRefCpu(void* this_) {
   CpuProviderFactory* this_ptr = (CpuProviderFactory*)this_;
   ++this_ptr->ref_count;
   return 0;
