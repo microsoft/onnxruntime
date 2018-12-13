@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -20,14 +21,21 @@ class Environment {
   static Status Create(std::unique_ptr<Environment>& environment);
 
   /**
-  * This function will call ::google::protobuf::ShutdownProtobufLibrary
+     This function will call ::google::protobuf::ShutdownProtobufLibrary
   */
   ~Environment();
+
+  /**
+     Returns whether any runtime environment instance has been initialized.
+  */
+  static bool IsInitialized() { return is_initialized_; }
 
  private:
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
 
   Environment() = default;
   Status Initialize();
+
+  static std::atomic<bool> is_initialized_;
 };
 }  // namespace onnxruntime

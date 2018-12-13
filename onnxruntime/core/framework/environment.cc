@@ -13,6 +13,8 @@ using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
 
+std::atomic<bool> Environment::is_initialized_{false};
+
 Status Environment::Create(std::unique_ptr<Environment>& environment) {
   environment = std::unique_ptr<Environment>(new Environment());
   auto status = environment->Initialize();
@@ -88,6 +90,8 @@ Internal copy node
     // Register contributed schemas.
     // The corresponding kernels are registered inside the appropriate execution provider.
     contrib::RegisterContribSchemas();
+
+    is_initialized_ = true;
   } catch (std::exception& ex) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
   } catch (...) {
