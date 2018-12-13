@@ -55,6 +55,11 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
 }
 
 Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
+  // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
+  // 1. Execution providers' capabilities are checked one by one.
+  // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
+  // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider preference.
+
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
@@ -82,18 +87,31 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         }
       } else {
         // The <provider> can run a fused <sub_graph> in the <graph>.
-        //
-        // Add fused node into <graph>
         ONNXRUNTIME_ENFORCE(nullptr != capability->sub_graph->GetMetaDef());
-        std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
-        auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
-        fused_node.SetExecutionProviderType(provider->Type());
-        auto fused_kernel_func = capability->fuse_kernel_function;
-        if (fused_kernel_func != nullptr) {
-          // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
-          KernelDefBuilder builder;
-          BuildFusedKernelDef(builder, fused_node);
-          fused_kernel_registry->Register(builder, fused_kernel_func);
+
+        // Check whether any node in the <sub_graph> was already assigned.
+        bool sub_graph_available_for_assignment = true;
+        for (auto node_index : capability->sub_graph->nodes) {
+          auto node = graph.GetNode(node_index);
+          if (nullptr == node || !node->GetExecutionProviderType().empty()) {
+            // There's invalid node or a node was assigned.
+            sub_graph_available_for_assignment = false;
+            break;
+          }
+        }
+
+        if (sub_graph_available_for_assignment) {
+          // Add fused node into <graph>
+          std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
+          auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
+          fused_node.SetExecutionProviderType(provider->Type());
+          auto fused_kernel_func = capability->fuse_kernel_function;
+          if (fused_kernel_func != nullptr) {
+            // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
+            KernelDefBuilder builder;
+            BuildFusedKernelDef(builder, fused_node);
+            fused_kernel_registry->Register(builder, fused_kernel_func);
+          }
         }
       }
     }
@@ -126,10 +144,10 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
     this->Partition(graph);
   }
 
-  //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
-  //But we will insert cast op to run the model, so skip the error checking here.
-  //If after graph transform phase, the node still not assigned, we will report error
-  //during kernel creation phase.
+    //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
+    //But we will insert cast op to run the model, so skip the error checking here.
+    //If after graph transform phase, the node still not assigned, we will report error
+    //during kernel creation phase.
 #ifdef COUNT_NON_CUDA_OPS
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType() != kCudaExecutionProvider &&
