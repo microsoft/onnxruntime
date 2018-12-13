@@ -157,6 +157,8 @@ class Sigmoid final : public OpKernel {
   }
 };
 
+Status Sigmoid<float>::Compute(OpKernelContext* context) const;
+
 template <typename T>
 class Softsign final : public OpKernel {
  public:
@@ -183,6 +185,8 @@ class Tanh final : public OpKernel {
     return Status::OK();
   }
 };
+
+Status Tanh<float>::Compute(OpKernelContext* context) const;
 
 template <typename T>
 class ThresholdedRelu final : public OpKernel {
