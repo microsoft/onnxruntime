@@ -92,8 +92,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_fence_before",
                                                    sync_time_begin,
-                                                   std::unordered_map<std::string,
-                                                                      std::string>{{"op_name", op_name}});
+                                                   {{"op_name", op_name}});
 
     // call compute on the kernel
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
@@ -103,7 +102,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_kernel_time",
                                                    kernel_begin_time,
-                                                   std::unordered_map<std::string, std::string>{{"op_name", op_name}});
+                                                   {{"op_name", op_name}});
 
     sync_time_begin = session_state.Profiler().StartTime();
     // sync after compute for outputs
@@ -130,7 +129,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_fence_after",
                                                    sync_time_begin,
-                                                   std::unordered_map<std::string, std::string>{{"op_name", op_name}});
+                                                   {{"op_name", op_name}});
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
