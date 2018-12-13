@@ -7,8 +7,6 @@ jobs:
   steps:
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml"'
       displayName: 'Command Line Script'
-      env:
-        AZURE_BLOB_KEY: $(onnxruntime-storage-key)
 
     - script: 'sudo rm -rf $(Agent.BuildDirectory)'
       displayName: 'Clean build folders/files'
@@ -21,8 +19,6 @@ jobs:
   steps:
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)'
       displayName: 'Command Line Script'
-      env:
-        AZURE_BLOB_KEY: $(onnxruntime-storage-key)
 
     - script: 'sudo rm -rf $(Agent.BuildDirectory)'
       displayName: 'Clean build folders/files'
