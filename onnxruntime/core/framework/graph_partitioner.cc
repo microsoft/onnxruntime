@@ -68,10 +68,17 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
   // Partitioning <graph> based on provider preference and their capabilities.
   auto kernel_registries = kernel_registry_mgr_.GetAllKernelRegistries();
+
+  std::vector<std::vector<std::unique_ptr<ComputeCapability>>> capabilities_of_all_providers;
+  GraphViewer graph_viewer(graph);
   for (auto& provider : providers_) {
-    auto capability_results = provider->GetCapability(GraphViewer(graph), kernel_registries);
+    capabilities_of_all_providers.push_back(provider->GetCapability(graph_viewer, kernel_registries));
+  }
+
+  int i = 0;
+  for (auto& provider : providers_) {
     int count = 0;
-    for (auto& capability : capability_results) {
+    for (auto& capability : capabilities_of_all_providers[i++]) {
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
       }
@@ -83,6 +90,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
 
         auto node = graph.GetNode(capability->sub_graph->nodes[0]);
         if (nullptr != node && node->GetExecutionProviderType().empty()) {
+          // The node was not fused or assigned. Assign it to this <provider>.
           node->SetExecutionProviderType(provider->Type());
         }
       } else {
@@ -94,7 +102,8 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         for (auto node_index : capability->sub_graph->nodes) {
           auto node = graph.GetNode(node_index);
           if (nullptr == node || !node->GetExecutionProviderType().empty()) {
-            // There's invalid node or a node was assigned.
+            // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
+            // The assumption is that this <provider> can only run the sub-graph as a whole unit.
             sub_graph_available_for_assignment = false;
             break;
           }
@@ -115,10 +124,9 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         }
       }
     }
-    // all done with this provider, resolve the graph before we move on to the next provider.
-    // This is needed since we create a new GraphViewer() that we pass into the next provider's GetCapability().
-    ONNXRUNTIME_ENFORCE(graph.Resolve().IsOK());
   }
+
+  ONNXRUNTIME_ENFORCE(graph.Resolve().IsOK());
 
   // To see if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
