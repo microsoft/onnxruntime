@@ -157,6 +157,7 @@ class Sigmoid final : public OpKernel {
   }
 };
 
+template <>
 Status Sigmoid<float>::Compute(OpKernelContext* context) const;
 
 template <typename T>
@@ -186,6 +187,7 @@ class Tanh final : public OpKernel {
   }
 };
 
+template <>
 Status Tanh<float>::Compute(OpKernelContext* context) const;
 
 template <typename T>

@@ -31,7 +31,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(Tanh, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 1);
 
 template <>
-Status Sigmoid<float>::Compute(OpKernelContext* context) const override {
+Status Sigmoid<float>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   Tensor* Y = context->Output(0, x_shape);
@@ -40,7 +40,7 @@ Status Sigmoid<float>::Compute(OpKernelContext* context) const override {
 }
 
 template <>
-Status Tanh<float>::Compute(OpKernelContext* context) const override {
+Status Tanh<float>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   Tensor* Y = context->Output(0, x_shape);
