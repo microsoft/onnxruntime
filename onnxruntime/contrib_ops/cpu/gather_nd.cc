@@ -110,8 +110,8 @@ Status GatherNDString<Tind>::Compute(OpKernelContext* context) const {
   Prepare p;
   ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute<Tind>(context, p));
 #pragma omp parallel for
-  for (size_t i = 0; i < p.element_offsets.size(); ++i) {
-    for (size_t j = 0; j < p.element_to_copy; ++j) {
+  for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
+    for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
       p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
     }
   }
@@ -123,7 +123,7 @@ Status GatherNDNonString<Tind>::Compute(OpKernelContext* context) const {
   Prepare p;
   ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute<Tind>(context, p));
 #pragma omp parallel for
-  for (size_t i = 0; i < p.element_offsets.size(); ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
     memcpy(p.output_base + i * p.bytes_to_copy,
            p.input_base + p.element_offsets[i] * p.element_bytes,
            p.bytes_to_copy);
