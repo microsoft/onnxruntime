@@ -153,6 +153,24 @@ Status BuildSubgraph(const Graph& graph,
   return Status::OK();
 }
 
+int RemoveNodeOutputEdges(const Graph& graph,
+                          const Node& node) {
+  (void)graph, node;
+  // Implement the method.
+  //// Remove the output edges of the constant node.
+  //std::vector<onnxruntime::NodeIndex> edge_nodes_to_remove;
+  //for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+  //  edge_nodes_to_remove.push_back((*it).Index());
+  //}
+
+  //const auto* node_out_arg = node.OutputDefs()[fetch_idx];
+  //for (auto& edge_node_idx : edge_nodes_to_remove) {
+  //  (void)edge_node_idx, node_out_arg;
+  //  //graph.RemoveEdge(node.Index(), edge_node_idx, *node_out_arg);
+  //}
+  return 0;
+}
+
 }  // namespace graph_edit_utils
 
 }  // namespace onnxruntime

@@ -49,56 +49,27 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
   // Execute the subgraph.
   Status st = session_object.Run(feeds, output_names, &fetches);
 
-  // Go over all output node args and substitute them with the computed initializers.
+  // Go over all output node args and substitute them with the newly computed tensors, which will be
+  // added to the graph as initializers.
   ONNXRUNTIME_ENFORCE(fetches.size() == node.OutputDefs().size());
   for (int fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
     MLValue& mlvalue = fetches[fetch_idx];
     if (mlvalue.Fence()) {  // TODO Is this needed?
       mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
     }
-    // TODO Can it be anything else than a tensor here?
-    ONNXRUNTIME_ENFORCE(mlvalue.IsTensor());
-    const Tensor& out_tensor = mlvalue.Get<Tensor>();
-
-    // The output arg of the constant subgraph (i.e., node) that was precomputed.
+    
+    // The output arg of the constant subgraph (i.e., node) that was computed.
     const auto* constant_arg_out = subgraph.GetOutputs()[fetch_idx];
 
-    // Build the TensorProto that will be added as an initializer.
+    // Build the TensorProto that corresponds to the computed MLValue and add it as an initializer.
     ONNX_NAMESPACE::TensorProto out_tensorproto;
-    out_tensorproto.set_name(constant_arg_out->Name());
-
-    for (auto& dim : out_tensor.Shape().GetDims()) {
-      out_tensorproto.add_dims(dim);
-    }
-    auto tensorproto_type = constant_arg_out->TypeAsProto()->tensor_type().elem_type();
-
-    out_tensorproto.set_data_type(tensorproto_type);
-    auto tensor_shape_size = out_tensor.Shape().Size();
-    auto data_size = out_tensor.DataType()->Size() * tensor_shape_size;
-    out_tensorproto.set_raw_data(out_tensor.DataRaw(out_tensor.DataType()), data_size);
-
-    graph.AddInitializedTensor(out_tensorproto);
-
-    /*ONNXRUNTIME_ENFORCE(tensorproto_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    const float* float_data = out_tensor.Data<float>();
-    for (int i = 0; i < tensor_shape_size; i++) {
-      float dat = float_data[i];
-      out_tensorproto.add_float_data(dat);
-    }*/
-
-    // Remove the output edges of the constant node.
-    std::vector<onnxruntime::NodeIndex> edge_nodes_to_remove;
-    for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-      edge_nodes_to_remove.push_back((*it).Index());
-    }
-
-    const auto* node_out_arg = node.OutputDefs()[fetch_idx];
-    for (auto& edge_node_idx : edge_nodes_to_remove) {
-      graph.RemoveEdge(node.Index(), edge_node_idx, *node_out_arg);
-    }
+    BuildTensorProtoForInitializer(mlvalue, *constant_arg_out, out_tensorproto);
+    
+	graph.AddInitializedTensor(out_tensorproto);
   }
 
-  // Remove the constant node.
+  // Remove the output edges of the constant node and then remove the node itself.
+  graph_edit_utils::RemoveNodeOutputEdges(graph, node);
   graph.RemoveNode(node.Index());
 
   // The output nodes already have the right input arg, since we used the same name in the initializer.
@@ -111,6 +82,27 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
   return graph_edit_utils::IsConstantInputsNode(graph, node);
+}
+
+void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,
+                                                     const NodeArg& constant_node_arg,
+                                                     ONNX_NAMESPACE::TensorProto& tensorproto) {
+  // TODO Can it be anything else than a tensor here?
+  ONNXRUNTIME_ENFORCE(mlvalue.IsTensor());
+  const Tensor& out_tensor = mlvalue.Get<Tensor>();
+
+  // Set name, dimensions, type, and data of the TensorProto.
+  tensorproto.set_name(constant_node_arg.Name());
+
+  for (auto& dim : out_tensor.Shape().GetDims()) {
+    tensorproto.add_dims(dim);
+  }
+  auto tensorproto_type = constant_node_arg.TypeAsProto()->tensor_type().elem_type();
+
+  tensorproto.set_data_type(tensorproto_type);
+  auto tensor_shape_size = out_tensor.Shape().Size();
+  auto data_size = out_tensor.DataType()->Size() * tensor_shape_size;
+  tensorproto.set_raw_data(out_tensor.DataRaw(out_tensor.DataType()), data_size);
 }
 
 }  // namespace onnxruntime
