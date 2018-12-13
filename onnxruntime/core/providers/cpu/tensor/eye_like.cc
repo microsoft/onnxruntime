@@ -33,19 +33,18 @@ Status EyeLike::Compute(OpKernelContext* context) const {
   auto output_tensor_dtype = has_dtype_ ? static_cast<onnx::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
   switch (output_tensor_dtype) {
     case onnx::TensorProto_DataType_FLOAT:
-      return ComputeImpl<float>(context);
+      return ComputeImpl<float>(context, T1);
     case onnx::TensorProto_DataType_INT64:
-      return ComputeImpl<int64_t>(context);
+      return ComputeImpl<int64_t>(context, T1);
     case onnx::TensorProto_DataType_UINT64:
-      return ComputeImpl<uint64_t>(context);
+      return ComputeImpl<uint64_t>(context, T1);
     default:
       ONNXRUNTIME_THROW("Unsupported 'dtype' value: ", output_tensor_dtype);
   }
 }
 
 template <typename T>
-Status EyeLike::ComputeImpl(OpKernelContext* context) const {
-  const Tensor* T1 = context->Input<Tensor>(0);
+Status EyeLike::ComputeImpl(OpKernelContext* context, const Tensor* T1) const {
   const std::vector<int64_t>& input_dims = T1->Shape().GetDims();
   if (input_dims.size() != 2) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "EyeLike : Input tensor dimension is not 2");
