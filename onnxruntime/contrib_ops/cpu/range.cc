@@ -48,7 +48,9 @@ static Status ComputeRange(OpKernelContext* ctx) {
 }
 
 Status Range::Compute(OpKernelContext* ctx) const {
-  auto data_type = ctx->Input<Tensor>(0)->DataType();
+  auto input_tensor = ctx->Input<Tensor>(0);
+  if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  auto data_type = input_tensor->DataType();
   if (data_type == DataTypeImpl::GetType<int32_t>()) {
       return ComputeRange<int32_t>(ctx);
   }
