@@ -219,7 +219,8 @@ it computes the nearest integer value to arg (in floating-point format), roundin
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per row for a and per column for b).
 If scale and zero point are 1D tensor, the number of elements of scale and zero point tensor of input 'a' and output 'y'
 should be equal to the number of rows of input 'a', and the number of elements of scale and zero point tensor of input 'b'
-should be equal to the number of columns of input 'b'.)DOC")
+should be equal to the number of columns of input 'b'. The production MUST never overflow. The accumulation may overflow in 32 bits
+if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
       .Input(0, "a", "N-dimensional quantized matrix a", "T1")
       .Input(1, "a_scale", "scale of quantized input a", "tensor(float)")
       .Input(2, "a_zero_point", "zero point of quantized input a", "T1")
@@ -229,9 +230,9 @@ should be equal to the number of columns of input 'b'.)DOC")
       .Input(6, "y_scale", "scale of quantized output y", "tensor(float)")
       .Input(7, "y_zero_point", "zero point of quantized output y", "T3")
       .Output(0, "y", "Quantized matrix multiply results from a * b", "T3")
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input a and its zero point data types as 8-bit integer tensor")
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input b and its zero point data types as 8-bit integer tensor")
-      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output y and its zero point data types as 8-bit integer tensor.");
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain input a and its zero point data types as 8-bit or 16-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain input b and its zero point data types as 8-bit or 16-bit integer tensor")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain output y and its zero point data types as 8-bit or 16-bit integer tensor.");
 
   const char* auto_pad_doc =
       "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
@@ -247,7 +248,9 @@ should be equal to the number of columns of input 'b'.)DOC")
 The convolution operator consumes a quantized input tensor, its scale and zero point,
 a quantized filter, its scale and zero point, and output's scale and zero point,
 and computes the quantized output. Each scale and zero point pair must have same shape.
-It means they must be either scalars (per tensor) or 1-D tensors (per channel).)DOC")
+It means they must be either scalars (per tensor) or 1-D tensors (per channel).
+The production MUST never overflow. The accumulation may overflow in 32 bits
+if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
       .Input(
           0,
           "x",
@@ -261,7 +264,7 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "to arrive with the dimension denotation of [DATA_BATCH, "
           "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
           "T1")
-      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T3")
+      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "tensor(float)")
       .Input(2, "x_zero_point", "Zero point tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T1")
       .Input(
           3,
@@ -281,9 +284,9 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "(assuming zero based indices for the shape array). "
           "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
           "T1")
-      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T3")
+      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "tensor(float)")
       .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T1")
-      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T3")
+      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "tensor(float)")
       .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T1")
       .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T2", OpSchema::Optional)
       .Output(
@@ -295,10 +298,9 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "T1")
       .TypeConstraint(
           "T1",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input, filter, and output types to 8-bit integer tensors.")
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain input, filter, and output types to 8-bit or 16-bit integer tensors.")
       .TypeConstraint("T2", {"tensor(int32)", "tensor(uint32)"}, "Constrain bias type to 32-bit integer tensor.")
-      .TypeConstraint("T3", {"tensor(float)"}, "Constrain scale of input, filter and output to float tensor.")
       .Attr(
           "auto_pad",
           auto_pad_doc,
