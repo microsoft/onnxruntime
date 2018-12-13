@@ -61,9 +61,15 @@ function(AddTest)
 endfunction(AddTest)
 
 #Check whether C++17 header file <filesystem> is present
-include(CheckIncludeFiles)
-check_include_files("filesystem" HAS_FILESYSTEM_H LANGUAGE CXX)
-check_include_files("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANGUAGE CXX)
+if (${CMAKE_VERSION} VERSION_LESS 3.11)
+  include(CheckIncludeFileCXX)
+  check_include_file_cxx("filesystem" HAS_FILESYSTEM_H)
+  check_include_file_cxx("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H)
+else()
+  include(CheckIncludeFiles)
+  check_include_files("filesystem" HAS_FILESYSTEM_H LANGUAGE CXX)
+  check_include_files("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANGUAGE CXX)
+endif()
 
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
@@ -245,11 +251,6 @@ if (SingleUnitTestProject)
     list(APPEND all_tests ${onnxruntime_test_tvm_src})
     list(APPEND all_libs ${onnxruntime_tvm_libs})
     list(APPEND all_dependencies ${onnxruntime_tvm_dependencies})
-  endif()
-
-  if (UNIX AND NOT APPLE)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    list(APPEND all_libs stdc++fs)
   endif()
 
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
