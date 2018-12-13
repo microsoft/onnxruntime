@@ -7,6 +7,16 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(TensorOpTest, Pad_Spec_Example) {
+  OpTester test("Pad");
+
+  test.AddAttribute("pads", std::vector<int64_t>{0, 2, 0, 0});
+  test.AddAttribute("value", 0.0f);
+  test.AddInput<float>("data", {3, 2}, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f});
+  test.AddOutput<float>("output", {3, 4}, {0.0f, 0.0f, 1.0f, 1.2f, 0.0f, 0.0f, 2.3f, 3.4f, 0.0f, 0.0f, 4.5f, 5.7f});
+  test.Run();
+}
+
 TEST(TensorOpTest, Pad_Constant_1D) {
   OpTester test("Pad");
 
@@ -40,6 +50,42 @@ TEST(TensorOpTest, Pad_Constant_2D) {
                          1234.0f, 1234.0f, 11.0f, 21.0f, 1234.0f, 1234.0f,
                          1234.0f, 1234.0f, 12.0f, 22.0f, 1234.0f, 1234.0f,
                          1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f});
+  test.Run();
+}
+
+TEST(TensorOpTest, Pad_Constant_2D_negative) {
+  OpTester test("Pad");
+
+  test.AddAttribute("pads", std::vector<int64_t>{1, 2, 1, -1});
+  test.AddAttribute("value", 1234.0f);
+  test.AddInput<float>("data", {2, 3},
+                       {11.0f, 21.0f, 31.0f,
+                        12.0f, 22.0f, 32.0f});
+  test.AddOutput<float>("output", {4, 4},
+                        {1234.0f, 1234.0f, 1234.0f, 1234.0f,
+                         1234.0f, 1234.0f, 11.0f, 21.0f,
+                         1234.0f, 1234.0f, 12.0f, 22.0f,
+                         1234.0f, 1234.0f, 1234.0f, 1234.0f});
+  test.Run();
+}
+
+TEST(TensorOpTest, Pad_3D_complex) {
+  OpTester test("Pad");
+
+  test.AddAttribute("pads", std::vector<int64_t>{1, 0, 0, -1, 0, 0});
+  test.AddAttribute("value", 0.0f);
+  test.AddInput<float>("data", {2, 2, 2},
+                       {111.0f, 112.0f,
+                        121.0f, 122.0f,
+
+                        211.0f, 212.0f,
+                        221.0f, 222.0f});
+  test.AddOutput<float>("output", {2, 2, 2},
+                        {0.0f, 0.0f,
+                         0.0f, 0.0f,
+
+                         111.0f, 112.0f,
+                         121.0f, 122.0f});
   test.Run();
 }
 
