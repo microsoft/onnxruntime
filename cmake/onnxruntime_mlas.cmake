@@ -8,6 +8,8 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/bias.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
 )
 
 if (MSVC)
@@ -61,6 +63,8 @@ if (MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/SgemmKernelAvx512F.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/sgemma.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/cvtfp16a.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
     )
 
   endif()
