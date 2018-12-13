@@ -218,7 +218,7 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     if shutil.which('unzip'):
         run_subprocess(['unzip','-qd', models_dir, local_zip_file])
     elif shutil.which('7za'):
-        run_subprocess(['7za','x', local_zip_file, '-o' + models_dir])
+        run_subprocess(['7za','x', local_zip_file, '-y', '-o' + models_dir])
     else:
         #TODO: use python for unzip
         log.error("No unzip tool for use")
