@@ -40,14 +40,14 @@ protected:
 template<typename Tind>
 class GatherNDString final : public OpKernel, protected GatherNDBase {
 public:
-  GatherNDString(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit GatherNDString(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
 
 template<typename Tind>
 class GatherNDNonString final : public OpKernel, protected GatherNDBase {
 public:
-  GatherNDNonString(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit GatherNDNonString(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
 
