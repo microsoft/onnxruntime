@@ -53,8 +53,8 @@ Return Value:
     this->KernelAddRoutine = MlasSgemmKernelAddSse;
 #if defined(MLAS_TARGET_AMD64)
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
-    this->TanhKernelRoutine = MlasTanhKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->TanhKernelRoutine = MlasTanhKernel;
 #endif
 
     //
@@ -111,8 +111,8 @@ Return Value:
                     this->KernelAddRoutine = MlasSgemmKernelAddFma3;
                 }
 
-                this->TanhKernelRoutine = MlasTanhKernelFma3;
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
+                this->TanhKernelRoutine = MlasTanhKernelFma3;
 
             } else {
 

@@ -79,7 +79,7 @@ LogisticKernelFrame ENDS
 ;
 ; Routine Description:
 ;
-;   This routine implements the a vectorized kernel for the logistic funcition.
+;   This routine implements the a vectorized kernel for the logistic function.
 ;
 ; Arguments:
 ;
@@ -182,7 +182,6 @@ ProcessRemainingCount:
         vxorps  ymm3,ymm3,ymm3
         vaddps  ymm0,ymm7,ymm0                  ; logistic = p / q + 0.5
         vmaxps  ymm0,ymm3,ymm0                  ; clamp lower bound
-        vmovups YMMWORD PTR [rdx],ymm0
         vmaskmovps YMMWORD PTR [rdx],ymm2,ymm0
 
 ExitKernel:

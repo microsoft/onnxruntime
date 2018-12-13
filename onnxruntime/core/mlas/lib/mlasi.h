@@ -158,16 +158,6 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 
 typedef
 void
-(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
-    const float* Input,
-    float* Output,
-    size_t N
-    );
-
-typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
-
-typedef
-void
 (MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
@@ -175,6 +165,16 @@ void
     );
 
 typedef MLAS_LOGISTIC_KERNEL_ROUTINE* PMLAS_LOGISTIC_KERNEL_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
 
 extern "C" {
 
@@ -203,11 +203,11 @@ extern "C" {
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
 #endif
 
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
+    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
+    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
 #endif
 
 }
@@ -269,8 +269,8 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
-    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
+    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)

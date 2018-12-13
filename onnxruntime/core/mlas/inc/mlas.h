@@ -175,7 +175,7 @@ MlasBiasAdd(
 
 void
 MLASCALL
-MlasComputeTanh(
+MlasComputeLogistic(
     const float* Input,
     float* Output,
     size_t N
@@ -183,7 +183,7 @@ MlasComputeTanh(
 
 void
 MLASCALL
-MlasComputeLogistic(
+MlasComputeTanh(
     const float* Input,
     float* Output,
     size_t N
