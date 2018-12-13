@@ -98,7 +98,8 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   */
   Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule);
 
-  /** Register a default rewrite rule, i.e., rules that we will attempt to apply, regardless of its type. */
+  /** Register a default rewrite rule, i.e., a rule that we will attempt to apply to all 
+  graph nodes, regardless of their type. */
   Status Register(std::unique_ptr<RewriteRule> rule) {
     return Register(kDefaultRewriteRules, std::move(rule));
   }

@@ -11,10 +11,9 @@ namespace onnxruntime {
 /**
 @class ConstantFolding
 
-Rewrite rule that performs constant folding to the graph. 
-The rule gets applied to nodes that have only initializers as inputs. It statically computes 
-these nodes and replaces their output with an initializer that corresponds
-to the result of the computation.
+Rewrite rule that performs constant folding to the graph.
+The rule gets applied to nodes that have only initializers as inputs. It statically computes these 
+nodes and replaces their output with an initializer that corresponds to the result of the computation.
 */
 class ConstantFolding : public RewriteRule {
  public:
