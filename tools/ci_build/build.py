@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import warnings
+import hashlib
+from os.path import expanduser
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("Build")
@@ -107,7 +109,7 @@ def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None, check=True):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None):
     log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
@@ -120,9 +122,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, check=True):
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
     if (capture):
-        result = subprocess.run(args, cwd=cwd, check=check, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
+        result = subprocess.run(args, cwd=cwd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
     else:
-        result = subprocess.run(args, cwd=cwd, check=check, env=my_env)
+        result = subprocess.run(args, cwd=cwd, check=True, env=my_env)
 
     return result
 
@@ -172,13 +174,49 @@ def install_python_deps():
     dep_packages = ['setuptools', 'wheel', 'numpy']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
+def check_md5(filename, expected_md5):
+    if not os.path.exists(filename):
+        return False
+    hash_md5 = hashlib.md5()
+    BLOCKSIZE = 1024*64
+    with open(filename, "rb") as f:
+        buf = f.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hash_md5.update(buf)
+            buf = f.read(BLOCKSIZE)
+    hex = hash_md5.hexdigest()
+    if hex != expected_md5:
+        log.info('md5 mismatch, expect %s, got %s' % (expected_md5, hex))
+        os.remove(filename)
+        return False
+    return True
+
+#the last part of src_url should be unique, across all the builds
+def download_test_data(build_dir, src_url, expected_md5):
+    if not is_windows() and shutil.which('aria2c'):
+        cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
+        os.makedirs(cache_dir, exist_ok=True)
+        local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
+        if not check_md5(local_zip_file, expected_md5):
+            log.info("Downloading test data")
+            run_subprocess(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+        models_dir = os.path.join(build_dir,'models')
+        if os.path.exists(models_dir):
+            log.info('deleting %s' % models_dir)
+            shutil.rmtree(models_dir)
+        run_subprocess(['unzip','-qd', models_dir, local_zip_file])
+        return True
+    return False
+
+
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
+    has_test_data = download_test_data(build_dir,'https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip','a966def7447f4ff04f5665bca235b3f3')
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
-                 "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
+                 "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if has_test_data else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=ON",
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
@@ -373,8 +411,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),'--output_dir','test_models'], cwd=cwd)
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
-                #The following one may fail
-                run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path, check=False)
+                if config != 'Debug':
+                    run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
             try:
                 import onnxmltools
                 import keras
@@ -385,13 +423,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             if onnxml_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-        # shared lib tests - both simple + custom op
-        if args.build_shared_lib:
-            if is_ubuntu_1604():
-                run_subprocess([cwd+'/onnxruntime_shared_lib_test'], cwd=cwd, dll_path=dll_path)
-
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider):
-    #TODO: enable multiple threaded executor test
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -400,14 +432,16 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider):
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
-        cmd = [exe]
+        cmd = []
         if provider:
           cmd += ["-e", provider]
         if config != 'Debug' and os.path.exists(model_dir):
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
-        run_subprocess(cmd, cwd=cwd)
+        run_subprocess([exe] + cmd, cwd=cwd)
+        if enable_parallel_executor_test:
+          run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -495,11 +529,11 @@ def main():
     # run the onnx model tests if requested explicitly.
     if (args.enable_onnx_tests):
         if args.use_cuda:
-          run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda')
+          run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
         else:
-          run_onnx_tests(build_dir, configs, onnx_test_data_dir, None)
+          run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
           if args.use_mkldnn:
-            run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn')
+            run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
 
     if args.build_wheel:
         build_python_wheel(source_dir, build_dir, configs, args.use_cuda)

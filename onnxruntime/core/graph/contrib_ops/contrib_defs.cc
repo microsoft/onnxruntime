@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/contrib_ops.h"
-
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
+#include "onnx/defs/shape_inference.h"
 
-#include "./cpu/attnlstm/attn_lstm_schema_defs.h"
-
+namespace ONNX_NAMESPACE {
+void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape);
+}
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
@@ -30,6 +32,62 @@ void RegisterContribSchemas() {
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+The fused convolution operator schema is the same as Conv besides it includes an attribute 
+activation.)DOC")
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("pads",
+            "",
+            AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "group",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "activation",
+          "",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Input(
+          0,
+          "X",
+          "",
+          "T")
+      .Input(
+          1,
+          "W",
+          "",
+          "T")
+      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "",
+          "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ExpandDims)
       .SetDomain(kMSDomain)
@@ -75,22 +133,7 @@ Sample echo operator.)DOC");
       .SetDoc(R"DOC(ExpandDims echo operator.)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsNaN)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "input", "T1")
-      .Output(0, "Y", "output", "T2")
-      .TypeConstraint(
-          "T1",
-          ONNX_NAMESPACE::OpSchema::numeric_types_for_math_reduction(),
-          "Constrain to any numeric tensor type. If the dtype attribute is not provided this must be a valid output type.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain outputs to boolean tensor")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
-      .SetDoc(R"DOC(Returns which elements of the input are NaN.)DOC");
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
       .SetDomain(kMSDomain)
@@ -176,7 +219,8 @@ it computes the nearest integer value to arg (in floating-point format), roundin
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per row for a and per column for b).
 If scale and zero point are 1D tensor, the number of elements of scale and zero point tensor of input 'a' and output 'y'
 should be equal to the number of rows of input 'a', and the number of elements of scale and zero point tensor of input 'b'
-should be equal to the number of columns of input 'b'.)DOC")
+should be equal to the number of columns of input 'b'. The production MUST never overflow. The accumulation may overflow in 32 bits
+if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
       .Input(0, "a", "N-dimensional quantized matrix a", "T1")
       .Input(1, "a_scale", "scale of quantized input a", "tensor(float)")
       .Input(2, "a_zero_point", "zero point of quantized input a", "T1")
@@ -186,9 +230,9 @@ should be equal to the number of columns of input 'b'.)DOC")
       .Input(6, "y_scale", "scale of quantized output y", "tensor(float)")
       .Input(7, "y_zero_point", "zero point of quantized output y", "T3")
       .Output(0, "y", "Quantized matrix multiply results from a * b", "T3")
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input a and its zero point data types as 8-bit integer tensor")
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input b and its zero point data types as 8-bit integer tensor")
-      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output y and its zero point data types as 8-bit integer tensor.");
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain input a and its zero point data types as 8-bit or 16-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain input b and its zero point data types as 8-bit or 16-bit integer tensor")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain output y and its zero point data types as 8-bit or 16-bit integer tensor.");
 
   const char* auto_pad_doc =
       "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
@@ -201,10 +245,12 @@ should be equal to the number of columns of input 'b'.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(
-The convolution operator consumes a quantized input tensor, its scale and zero point, 
-a quantized filter, its scale and zero point, and output's scale and zero point, 
+The convolution operator consumes a quantized input tensor, its scale and zero point,
+a quantized filter, its scale and zero point, and output's scale and zero point,
 and computes the quantized output. Each scale and zero point pair must have same shape.
-It means they must be either scalars (per tensor) or 1-D tensors (per channel).)DOC")
+It means they must be either scalars (per tensor) or 1-D tensors (per channel).
+The production MUST never overflow. The accumulation may overflow in 32 bits
+if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
       .Input(
           0,
           "x",
@@ -218,7 +264,7 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "to arrive with the dimension denotation of [DATA_BATCH, "
           "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
           "T1")
-      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T3")
+      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "tensor(float)")
       .Input(2, "x_zero_point", "Zero point tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T1")
       .Input(
           3,
@@ -238,9 +284,9 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "(assuming zero based indices for the shape array). "
           "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
           "T1")
-      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T3")
+      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "tensor(float)")
       .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T1")
-      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T3")
+      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "tensor(float)")
       .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T1")
       .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T2", OpSchema::Optional)
       .Output(
@@ -252,10 +298,9 @@ It means they must be either scalars (per tensor) or 1-D tensors (per channel).)
           "T1")
       .TypeConstraint(
           "T1",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input, filter, and output types to 8-bit integer tensors.")
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain input, filter, and output types to 8-bit or 16-bit integer tensors.")
       .TypeConstraint("T2", {"tensor(int32)", "tensor(uint32)"}, "Constrain bias type to 32-bit integer tensor.")
-      .TypeConstraint("T3", {"tensor(float)"}, "Constrain scale of input, filter and output to float tensor.")
       .Attr(
           "auto_pad",
           auto_pad_doc,
@@ -515,33 +560,6 @@ The bounding box coordinates corresponding to the selected indices can then be o
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
       })
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
-}
-
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression);
-
-void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> fn) {
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, SampleOp)>());
-
-  // add more kernels here
-
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, ExpandDims)>());
-  fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, AttnLSTM)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, IsNaN)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, Tokenizer)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, uint8_t, DequantizeLinear)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, int8_t, DequantizeLinear)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, QuantizeLinear)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, string, StringNormalizer)>());
-  fn(BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, NonMaxSuppression)>());
 }
 }  // namespace contrib
 }  // namespace onnxruntime

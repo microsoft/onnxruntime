@@ -3,7 +3,7 @@
 #include "core/framework/execution_provider.h"
 
 #include "core/graph/graph_viewer.h"
-#include "core/framework/computation_capacity.h"
+#include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
@@ -24,16 +24,16 @@ AllocatorPtr IExecutionProvider::GetAllocator(int id, ONNXRuntimeMemType mem_typ
   return nullptr;
 }
 
-std::vector<std::unique_ptr<ComputationCapacity>>
+std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputationCapacity>> result;
+  std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
       if (registry->TryFindKernel(node, Type()) != nullptr) {
         std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputationCapacity>(std::move(sub_graph), nullptr));
+        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph), nullptr));
       }
     }
   }

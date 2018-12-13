@@ -204,7 +204,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
         new_attr_map[attr.name()] = attr;
       }
     }
-    sub_graph.AddNode(node.name(), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
+    sub_graph.AddNode(node.name() + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
   }
   auto status = sub_graph.Resolve();
   ONNXRUNTIME_ENFORCE(status.IsOK());

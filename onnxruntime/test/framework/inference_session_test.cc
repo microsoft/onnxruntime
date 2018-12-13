@@ -16,7 +16,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/computation_capacity.h"
+#include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -67,16 +67,17 @@ void RegisterOperatorKernels(std::function<void(KernelCreateInfo&&)> fn) {
 class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() {
-    DeviceAllocatorRegistrationInfo device_info({ONNXRuntimeMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+    DeviceAllocatorRegistrationInfo device_info({ONNXRuntimeMemTypeDefault,
+          [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
         std::make_unique<DummyArena>(device_info.factory(0))));
   }
 
-  std::vector<std::unique_ptr<ComputationCapacity>>
+  std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
-    std::vector<std::unique_ptr<ComputationCapacity>> result;
+    std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
@@ -89,12 +90,13 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputationCapacity>(std::move(sub_graph), nullptr));
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph), nullptr));
     return result;
   }
 
   std::shared_ptr<::onnxruntime::KernelRegistry> GetKernelRegistry() const override {
-    static std::shared_ptr<::onnxruntime::KernelRegistry> kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
+    static std::shared_ptr<::onnxruntime::KernelRegistry>
+      kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
     return kernel_registry;
   }
 
