@@ -23,19 +23,19 @@ protected:
     uint64_t              element_to_copy;
     std::vector<uint64_t> element_offsets;
 
-    Prepare():input_base(nullptr),
-              input_str_base(nullptr),
-              output_base(nullptr),
-              output_str_base(nullptr),
-              bytes_to_copy(0),
-              element_bytes(0),
-              element_to_copy(0),
-              element_offsets(0){}
-  };
+    Prepare(): input_base      (nullptr),
+               input_str_base  (nullptr),
+               output_base     (nullptr),
+               output_str_base (nullptr),
+               bytes_to_copy   (0),
+               element_bytes   (0),
+               element_to_copy (0),
+               element_offsets (0) {}
+  }; // struct Prepare
 
   template<typename Tind>
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
-};
+}; // class GatherNDBase
 
 template<typename Tind>
 class GatherNDString final : public OpKernel, protected GatherNDBase {
