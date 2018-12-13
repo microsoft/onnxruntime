@@ -146,7 +146,7 @@ Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
     const uint8_t* current_zero_point = zero_point;
 
     for (size_t bd = 0; bd < static_cast<size_t>(broadcastDim); bd++) {
-      auto zp = static_cast<const float>(*current_zero_point);
+      float zp = *current_zero_point;
       auto sc = *current_scale;
 
       for (size_t bs = 0; bs < block_size; bs++) {
