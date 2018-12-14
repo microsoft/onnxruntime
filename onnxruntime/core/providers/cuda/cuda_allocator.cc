@@ -59,7 +59,7 @@ void CUDAPinnedAllocator::Free(void* p) {
 }
 
 const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
-  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, 0, ONNXRuntimeMemTypeCPUOutput);
+  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
   return cuda_allocator_info;
 }
 

@@ -27,14 +27,14 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   auto cuda_addr = cuda_arena->Alloc(size);
   EXPECT_TRUE(cuda_addr);
 
-  DeviceAllocatorRegistrationInfo pinned_allocator_info({ONNXRuntimeMemTypeCPUOutput,
+  DeviceAllocatorRegistrationInfo pinned_allocator_info({OrtMemTypeCPUOutput,
                                                          [](int) { return std::make_unique<CUDAPinnedAllocator>(); }, std::numeric_limits<size_t>::max()});
 
   auto pinned_allocator = CreateAllocator(pinned_allocator_info);
 
   EXPECT_STREQ(pinned_allocator->Info().name, CUDA_PINNED);
   EXPECT_EQ(pinned_allocator->Info().id, 0);
-  EXPECT_EQ(pinned_allocator->Info().mem_type, ONNXRuntimeMemTypeCPUOutput);
+  EXPECT_EQ(pinned_allocator->Info().mem_type, OrtMemTypeCPUOutput);
   EXPECT_EQ(pinned_allocator->Info().type, OrtArenaAllocator);
 
   //test pinned allocation

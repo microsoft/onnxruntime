@@ -12,7 +12,7 @@ const OrtAllocatorInfo& MKLDNNAllocator::Info() const {
 }
 
 const OrtAllocatorInfo& MKLDNNCPUAllocator::Info() const {
-  static constexpr OrtAllocatorInfo mkl_cpu_allocator_info(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, ONNXRuntimeMemTypeCPUOutput);
+  static constexpr OrtAllocatorInfo mkl_cpu_allocator_info(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
   return mkl_cpu_allocator_info;
 }
 }  // namespace onnxruntime

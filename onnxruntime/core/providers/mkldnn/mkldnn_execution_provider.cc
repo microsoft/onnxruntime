@@ -17,7 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     1,
     kMklDnnExecutionProvider,
-    KernelDefBuilder().InputMemoryType<ONNXRuntimeMemTypeCPUInput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -25,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     1,
     kMklDnnExecutionProvider,
-    KernelDefBuilder().OutputMemoryType<ONNXRuntimeMemTypeCPUOutput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().OutputMemoryType<OrtMemTypeCPUOutput>(0).TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Memcpy);
 
 }  // namespace mkl_dnn
@@ -35,7 +35,7 @@ MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderIn
                                                           [](int) { return std::make_unique<MKLDNNAllocator>(); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info));
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({ONNXRuntimeMemTypeCPUOutput,
+  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
                                                       [](int) { return std::make_unique<MKLDNNCPUAllocator>(); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(cpu_allocator_info));
 }
