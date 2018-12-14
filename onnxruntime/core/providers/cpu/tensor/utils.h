@@ -83,6 +83,42 @@ struct TensorAxisCounters {
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
 };
 
+struct ExtentAxisCounters {
+  ExtentAxisCounters(gsl::span<const int64_t> extents) : extents_(extents) {
+    indices_.resize(extents_.size() - 1, 0);
+    axis_ = indices_.size();
+
+    // If a tensor has a shape, but one of the axes is 0 in size, there are no elements, so nothing to iterate
+    if (std::find(extents.cbegin(), extents.cend(), 0) != extents.cend())
+      running_ = false;
+  }
+
+  // Returns true if there was a carry to the next axis
+  bool Increment() {
+    if (axis_-- == 0) {
+      running_ = false;
+      return false;
+    }
+
+    if (++indices_[axis_] != extents_[axis_]) {
+      axis_ = indices_.size();
+      return false;
+    }
+
+    indices_[axis_] = 0;  // Reset the counter for this axis
+    return true;          // There was a carry
+  }
+
+  size_t Axis() const { return axis_; }
+  operator bool() const { return running_; }
+
+ private:
+  bool running_{true};
+  size_t axis_;
+  std::vector<int64_t> indices_;      // There is no index for innermost axis since it's a special case
+  gsl::span<const int64_t> extents_;  // The extents of each axis
+};
+
 // A std::vector that holds the number of entries to skip to go to the next axis start given an extent in each axis
 // This is used by the SliceIterator to iterate over a slice of a tensor
 struct SliceSkips : std::vector<int64_t> {

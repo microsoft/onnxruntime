@@ -47,7 +47,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
   // Wait for finish.
   {
     std::unique_lock<std::mutex> lock(complete_mutex_);
-    while (out_standings_.load() > 0) complete_cv_.wait(lock);
+    while (out_standings_ > 0) complete_cv_.wait(lock);
   }
 
   VLOGS(logger, 1) << "Fetching output.";
@@ -147,8 +147,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_fence_before",
                                                    sync_time_begin,
-                                                   std::unordered_map<std::string,
-                                                                      std::string>{{"op_name", op_name}});
+                                                   {{"op_name", op_name}});
 
     // call compute on the kernel
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
@@ -164,7 +163,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_kernel_time",
                                                    kernel_begin_time,
-                                                   std::unordered_map<std::string, std::string>{{"op_name", op_name}});
+                                                   {{"op_name", op_name}});
 
     sync_time_begin = session_state.Profiler().StartTime();
     // sync after compute for outputs
@@ -191,7 +190,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_fence_after",
                                                    sync_time_begin,
-                                                   std::unordered_map<std::string, std::string>{{"op_name", op_name}});
+                                                   {{"op_name", op_name}});
 
     //std::cout << "Run async node finish: " << p_node_index << std::endl;
 
@@ -223,7 +222,10 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
 }
 
 void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger) {
-  out_standings_++;
+  {
+    std::unique_lock<std::mutex> lock(complete_mutex_);
+    out_standings_++;
+  }
   //std::cout << "Enqueue async node: " << p_node_index << ", out_standings: " << out_standings_ << std::endl;
   std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
   session_state.GetThreadPool()->RunTask(std::move(task));

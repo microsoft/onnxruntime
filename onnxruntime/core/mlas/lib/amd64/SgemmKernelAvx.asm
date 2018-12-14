@@ -18,7 +18,7 @@
 ;--
 
         .xlist
-INCLUDE macamd64.inc
+INCLUDE mlasi.inc
 INCLUDE SgemmKernelCommon.inc
         .list
 

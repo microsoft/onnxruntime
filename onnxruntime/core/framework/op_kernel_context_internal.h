@@ -17,7 +17,7 @@ class OpKernelContextInternal : public OpKernelContext {
   explicit OpKernelContextInternal(ExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const std::vector<const NodeArg*>& implicit_inputs,
+                                   const std::vector<NodeArg*>& implicit_inputs,
                                    const bool& terminate_flag)
       : OpKernelContext(&frame, &kernel, logger),
         implicit_inputs_{implicit_inputs},
@@ -51,7 +51,7 @@ class OpKernelContextInternal : public OpKernelContext {
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
  private:
-  const std::vector<const NodeArg*>& implicit_inputs_;
+  const std::vector<NodeArg*>& implicit_inputs_;
   const bool& terminate_flag_;
 };
 

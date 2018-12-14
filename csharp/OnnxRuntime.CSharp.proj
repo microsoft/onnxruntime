@@ -55,7 +55,9 @@ CMake creates a target to this project
 
   <Target Name="RunTest" AfterTargets="Build">
     <Message Importance="High" Text="Running CSharp tests..." />
-    <Exec Command="dotnet test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" />
+    <Exec Command="dotnet test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
   </Target>
 
   <Target Name="CreatePackage">

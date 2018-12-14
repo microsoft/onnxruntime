@@ -28,7 +28,7 @@ namespace onnxruntime {
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
-             const IOnnxRuntimeOpSchemaRegistryList local_registries,
+             const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions) {
   model_proto_ = std::make_unique<ModelProto>();

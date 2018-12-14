@@ -70,7 +70,7 @@ SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
 
 common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
                                                    const InsertCastTransformer& insert_cast_transformer,
-                                                   const std::vector<const NodeArg*>& outer_scope_node_args,
+                                                   const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
   ONNXRUNTIME_RETURN_IF_ERROR(TransformGraph(graph_, graph_transformation_manager,
                                              execution_providers_, kernel_registry_manager_,
