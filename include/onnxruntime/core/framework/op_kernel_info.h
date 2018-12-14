@@ -40,8 +40,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
  private:
-  ONNXRUNTIME_DISALLOW_MOVE(OpKernelInfo);
-  ONNXRUNTIME_DISALLOW_ASSIGNMENT(OpKernelInfo);
+  ORT_DISALLOW_MOVE(OpKernelInfo);
+  ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
 
   const onnxruntime::Node& node_;
   const KernelDef& kernel_def_;

@@ -102,7 +102,7 @@ void Gemm<float, CPUMathUtil>(
                              A, &lda,
                              &beta, C, &N_);
   if (status != mkldnn_success) {
-    ONNXRUNTIME_THROW("mkldnn_sgemm failed with status: ", status);
+    ORT_THROW("mkldnn_sgemm failed with status: ", status);
   }
 #elif defined(USE_MLAS)
   int lda = (int)((TransA == CblasNoTrans) ? K : M);
@@ -127,7 +127,7 @@ void Gemm<float, CPUMathUtil>(
                                       ConstEigenMatrixMap<float>(A, K, M));
           return;
         default:
-          ONNXRUNTIME_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     case CblasTrans: {
@@ -141,11 +141,11 @@ void Gemm<float, CPUMathUtil>(
                                       ConstEigenMatrixMap<float>(A, M, K).transpose());
           return;
         default:
-          ONNXRUNTIME_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     default:
-      ONNXRUNTIME_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
 #endif
 }
@@ -175,7 +175,7 @@ void GemmEx<float, CPUMathUtil>(
                              A, &lda,
                              &beta, C, &ldc);
   if (status != mkldnn_success) {
-    ONNXRUNTIME_THROW("mkldnn_sgemm failed with status: ", status);
+    ORT_THROW("mkldnn_sgemm failed with status: ", status);
   }
 #elif defined(USE_MLAS)
   MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
@@ -203,7 +203,7 @@ void GemmEx<float, CPUMathUtil>(
                        ConstStridedMap(A, K, M, OuterStride(lda)));
           return;
         default:
-          ONNXRUNTIME_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     case CblasTrans: {
@@ -219,11 +219,11 @@ void GemmEx<float, CPUMathUtil>(
                        ConstStridedMap(A, M, K, OuterStride(lda)).transpose());
           return;
         default:
-          ONNXRUNTIME_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     default:
-      ONNXRUNTIME_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
 #endif
 }
@@ -260,7 +260,7 @@ void Gemv<float, CPUMathUtil>(
       return;
     }
     default:
-      ONNXRUNTIME_THROW("Gemv float found an unexpected CBLAS_TRANSPOSE input of", TransA);
+      ORT_THROW("Gemv float found an unexpected CBLAS_TRANSPOSE input of", TransA);
   }
 }
 
@@ -745,8 +745,8 @@ void RandUniform<float, CPUMathUtil>(
     CPUMathUtil* /*provider*/) {
   std::uniform_real_distribution<float> distribution(a, b);
   //todo: need implmenet "RandGenerator()" in execution provider
-  ONNXRUNTIME_UNUSED_PARAMETER(n);
-  ONNXRUNTIME_UNUSED_PARAMETER(r);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(r);
   ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
@@ -759,8 +759,8 @@ void RandUniform<int, CPUMathUtil>(
     CPUMathUtil* /*provider*/) {
   std::uniform_int_distribution<int> distribution(a, b);
   //todo: need implmenet "RandGenerator()" in execution provider
-  ONNXRUNTIME_UNUSED_PARAMETER(n);
-  ONNXRUNTIME_UNUSED_PARAMETER(r);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(r);
   ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
@@ -806,8 +806,8 @@ void RandGaussian<float, CPUMathUtil>(
     const int n, const float mean, const float std, float* r,
     CPUMathUtil* /*provider*/) {
   std::normal_distribution<float> distribution(mean, std);
-  ONNXRUNTIME_UNUSED_PARAMETER(n);
-  ONNXRUNTIME_UNUSED_PARAMETER(r);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(r);
   ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
@@ -850,7 +850,7 @@ void Select<float, CPUMathUtil>(
     float* y,
     CPUMathUtil* /*context*/) {
   for (int i = 0; i < N; ++i) {
-    ONNXRUNTIME_ENFORCE(idx[i] < D);
+    ORT_ENFORCE(idx[i] < D);
     y[i] = x[i * D + idx[i]];
   }
 }
@@ -916,7 +916,7 @@ void Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>(
       incremented = false;
       for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
         const int64_t d_max = col_shape[d_i + 1];
-        ONNXRUNTIME_ENFORCE(d_iter[d_i] < d_max);
+        ORT_ENFORCE(d_iter[d_i] < d_max);
         if (d_iter[d_i] == d_max - 1) {
           d_iter[d_i] = 0;
         } else {  // d_iter[d_i] < d_max - 1

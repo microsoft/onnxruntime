@@ -120,7 +120,7 @@ class Node {
       auto arg = node_args[index];
       if (!arg->Exists())
         continue;
-      ONNXRUNTIME_RETURN_IF_ERROR(func(*arg, index));
+      ORT_RETURN_IF_ERROR(func(*arg, index));
     }
     return common::Status::OK();
   }
@@ -313,7 +313,7 @@ class Node {
     std::vector<NodeArg*> implicit_input_defs;
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
   };
 
   /**
@@ -340,11 +340,11 @@ class Node {
     std::set<std::string> control_inputs;
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
   };
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
@@ -707,7 +707,7 @@ class Graph {
   when the Graph is resolved.
   */
   void AddOuterScopeNodeArg(const std::string& name) {
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
+    ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
   /** When programmatically constructing a Graph, explicitly set the order to use for graph inputs when the graph is
@@ -742,7 +742,7 @@ class Graph {
   virtual ~Graph();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
@@ -807,7 +807,7 @@ class Graph {
     }
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
   };
 
   // search this and up through any parent_graph_ instance for a NodeArg
@@ -884,9 +884,9 @@ class Graph {
   Node* NodeAtIndexImpl(NodeIndex node_index) const {
     // if we are trying to access a node that doesn't exist there's (most
     // likely) either a logic issue or a graph consistency/correctness issue.
-    // use ONNXRUNTIME_ENFORCE to prove that or uncover scenarios where we actually
+    // use ORT_ENFORCE to prove that or uncover scenarios where we actually
     // expect attempts to retrieve a non-existent node.
-    ONNXRUNTIME_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index.");
+    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index.");
     return nodes_[node_index].get();
   }
 

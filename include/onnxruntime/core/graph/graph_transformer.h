@@ -39,7 +39,7 @@ class GraphTransformer {
   virtual common::Status Apply(Graph& graph, bool& modified) const = 0;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
 
   const std::string name_;
   const std::string desc_;

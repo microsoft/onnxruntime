@@ -101,8 +101,8 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ONNXRUNTIME_UNUSED_PARAMETER(src);
-    ONNXRUNTIME_UNUSED_PARAMETER(dst);
+    ORT_UNUSED_PARAMETER(src);
+    ORT_UNUSED_PARAMETER(dst);
     return Status::OK();
   }
 
@@ -245,7 +245,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
 #endif
     } else {
-      ONNXRUNTIME_THROW("Unsupported provider");
+      ORT_THROW("Unsupported provider");
     }
   }
   io_binding->BindOutput("Y", output_ml_value);
@@ -271,7 +271,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
     void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-    ONNXRUNTIME_ENFORCE(buffer);
+    ORT_ENFORCE(buffer);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   buffer,
@@ -324,7 +324,7 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunModel(session_object, run_options);
 }
 
-#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
     cout << "Sizes differ: f_arg size: " << f_arg.size() << " s_arg size: " << s_arg.size() << endl;
@@ -908,7 +908,7 @@ static common::Status RunOptionalInputTest(bool add_required_input,
     const auto& tensor = output.Get<Tensor>();
     float output_value = *tensor.Data<float>();
     if (output_value != expected_value) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output of ", output_value, " != ", expected_value);
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output of ", output_value, " != ", expected_value);
     }
   }
 

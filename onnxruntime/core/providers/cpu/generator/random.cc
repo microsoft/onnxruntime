@@ -104,12 +104,12 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
   Tensor* Y = nullptr;
 
   auto status = CreateOutputTensorFromTensorShape(ctx, X, &Y);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(X);
 
   if (dtype == TensorProto_DataType_UNDEFINED)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
 
@@ -125,12 +125,12 @@ Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
   Tensor* Y = nullptr;
 
   auto status = CreateOutputTensorFromTensorShape(ctx, X, &Y);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(X);
 
   if (dtype == TensorProto_DataType_UNDEFINED)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
   status = RandomUniformCompute(low_, high_, generator_, dtype, *Y);
@@ -251,7 +251,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
       break;
     }
     default:
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid data type of ", output_dtype_);
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid data type of ", output_dtype_);
   }
 
   return status;
@@ -268,7 +268,7 @@ static Status CreateOutputTensorFromTensorValues(OpKernelContext* ctx, const Ten
   auto num_dims = shape.NumDimensions();
 
   if (num_dims != 1) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected 1 dimension tensor with shape information. Dimensions=", num_dims);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected 1 dimension tensor with shape information. Dimensions=", num_dims);
   }
 
   std::vector<int64_t> dims;
@@ -325,7 +325,7 @@ static Status RandomNormalCompute(float mean, float scale,
       break;
     }
     default:
-      ONNXRUNTIME_THROW("Invalid data type of ", dtype);
+      ORT_THROW("Invalid data type of ", dtype);
   }
 
   return Status::OK();
@@ -350,7 +350,7 @@ static Status RandomUniformCompute(float low, float high,
       break;
     }
     default:
-      ONNXRUNTIME_THROW("Invalid data type of ", dtype);
+      ORT_THROW("Invalid data type of ", dtype);
   }
 
   return Status::OK();

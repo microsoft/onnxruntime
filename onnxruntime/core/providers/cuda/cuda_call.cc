@@ -88,13 +88,13 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
                hostname,
                exprString, msg);
       if (THRW) {
-        ONNXRUNTIME_THROW(str);
+        ORT_THROW(str);
       } else {
         LOGS_DEFAULT(ERROR) << str;
       }
     } catch (const std::exception& e) {  // catch, log, and rethrow since CUDA code sometimes hangs in destruction, so we'd never get to see the error
       if (THRW) {
-        ONNXRUNTIME_THROW(e.what());
+        ORT_THROW(e.what());
       } else {
         LOGS_DEFAULT(ERROR) << e.what();
       }

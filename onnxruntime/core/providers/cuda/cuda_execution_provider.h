@@ -66,7 +66,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   cudaStream_t GetStream(int queue_id) const {
-    ONNXRUNTIME_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
+    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
     return streams_[queue_id];
   }
 

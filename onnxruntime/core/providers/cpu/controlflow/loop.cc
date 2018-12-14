@@ -132,12 +132,12 @@ class LoopImpl {
 Status Loop::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
-  ONNXRUNTIME_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
+  ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
   LoopImpl loop_impl{*ctx_internal, *session_state};
 
   auto status = loop_impl.Initialize();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   status = loop_impl.Execute();
 
@@ -186,7 +186,7 @@ Status LoopImpl::Initialize() {
   // and that value is in num_subgraph_inputs_.
   // validate that the subgraph has that many inputs.
   if (num_subgraph_inputs_ != subgraph_inputs.size()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                    "Graph in 'body' attribute of Loop should have ",
                                    num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
   }
@@ -196,14 +196,14 @@ Status LoopImpl::Initialize() {
 
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
   if (num_subgraph_outputs - 1 != num_outputs_) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' node has ", num_outputs_,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' node has ", num_outputs_,
                                    " outputs so the subgraph requires ", num_outputs_ + 1,
                                    " but has ", num_subgraph_outputs);
   }
 
   AllocatorPtr allocator;
   status = context_.GetTempSpaceAllocator(&allocator);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_);
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0);
@@ -241,7 +241,7 @@ NameMLValMap LoopImpl::CreateInitialFeeds() {
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
-    ONNXRUNTIME_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
+    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
                         entry.first, " did not.");
     feeds[entry.first] = *entry.second;
   }
@@ -289,7 +289,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
 
     // sanity check
     if (bytes_per_iteration != iteration_data.Size()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output ", output_index,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output ", output_index,
                                      " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
@@ -318,7 +318,7 @@ Status LoopImpl::Execute() {
 
     SequentialExecutor executor{context_.GetTerminateFlag()};
     status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
 
@@ -346,7 +346,7 @@ Status LoopImpl::Execute() {
       auto& per_iteration_outputs = loop_output_tensors_[i - num_loop_carried_vars_];
       per_iteration_outputs.push_back(fetches[i + 1]);  // skip cond
 
-      ONNXRUNTIME_RETURN_IF_ERROR(ConcatenateLoopOutput(per_iteration_outputs, i));
+      ORT_RETURN_IF_ERROR(ConcatenateLoopOutput(per_iteration_outputs, i));
     }
   } else {
     // no iterations.
@@ -358,7 +358,7 @@ Status LoopImpl::Execute() {
     // create empty outputs for loop outputs
     TensorShape empty;
     for (int i = num_loop_carried_vars_; i < num_outputs_; ++i) {
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(context_.Output(i, empty));
+      ORT_IGNORE_RETURN_VALUE(context_.Output(i, empty));
     }
   }
   return status;

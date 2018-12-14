@@ -36,7 +36,7 @@ class IdGenerator {
 
 // This is a special compiler step for the test case that sum two 1-D tensors
 static void Compile1DAddToTVM(const onnxruntime::Node& node, std::unordered_map<const onnxruntime::NodeArg*, TVMGraph::TensorDescriptor>& tvm_tensors, onnxruntime::ProviderType execution_provider_type, IdGenerator& generator) {
-  ONNXRUNTIME_ENFORCE(node.OpType() == "Add");
+  ORT_ENFORCE(node.OpType() == "Add");
   tvm::Array<tvm::Expr> shape;
   shape.push_back(tvm::var("n1"));
 

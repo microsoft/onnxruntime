@@ -51,19 +51,19 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
 
   if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
                                    " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
                                    " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_shape.size(); ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
                                      " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
                                      " W: ", W->Shape().ToString().c_str());
     }
@@ -86,7 +86,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ONNXRUNTIME_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -100,7 +100,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   auto col_data = alloc->Alloc(sizeof(T) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));

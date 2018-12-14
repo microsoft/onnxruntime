@@ -45,7 +45,7 @@ common::Status IExecutionProvider::CopyTensor(const Tensor& src,
                                               Tensor& dst,
                                               int exec_queue_id) const {
   // execution provider may override this to support different exec queues
-  ONNXRUNTIME_ENFORCE(exec_queue_id == 0);
+  ORT_ENFORCE(exec_queue_id == 0);
   return CopyTensor(src, dst);
 }
 
@@ -60,7 +60,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const int key = MakeKey(info.id, info.mem_type);
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {
-    ONNXRUNTIME_THROW("duplicated allocator");
+    ORT_THROW("duplicated allocator");
   }
   allocators_.insert(iter, {key, allocator});
 }

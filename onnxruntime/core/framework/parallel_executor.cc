@@ -51,7 +51,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
   }
 
   VLOGS(logger, 1) << "Fetching output.";
-  ONNXRUNTIME_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), *root_frame_, output_names, fetches, logger));
+  ORT_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), *root_frame_, output_names, fetches, logger));
 
   if (root_frame_->HasPlan()) {
     std::vector<TensorShape> input_shapes;
@@ -67,8 +67,8 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
 
     if (all_tensors) {
       auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-      ONNXRUNTIME_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
-      ONNXRUNTIME_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }
   }
 
@@ -101,14 +101,14 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     // to also handle exception propagation
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
-      ONNXRUNTIME_THROW("Exiting due to terminate flag being set to true.");
+      ORT_THROW("Exiting due to terminate flag being set to true.");
     }
 
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr) {
-      ONNXRUNTIME_THROW("Got nullptr from GetKernel for node: ",
+      ORT_THROW("Got nullptr from GetKernel for node: ",
                         graph_viewer->GetNode(node_index)->Name());
     }
 
@@ -158,7 +158,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     // Execute the kernel.
     auto status = p_op_kernel->Compute(&op_kernel_context);
     if (!status.IsOK()) {
-      ONNXRUNTIME_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
+      ORT_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
     }
 
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
@@ -241,7 +241,7 @@ Status ParallelExecutor::FetchOutput(const MLValueNameIdxMap& name_idx_map,
     fetches.resize(output_names.size());
   } else {
     // this should've been checked before already
-    ONNXRUNTIME_ENFORCE(output_names.size() == fetches.size(),
+    ORT_ENFORCE(output_names.size() == fetches.size(),
                         "output_names vector size: " + std::to_string(output_names.size()) +
                             " does not match that of fetches vector: " + std::to_string(fetches.size()));
   }
@@ -251,7 +251,7 @@ Status ParallelExecutor::FetchOutput(const MLValueNameIdxMap& name_idx_map,
   for (const auto& oname : output_names) {
     VLOGS(logger, 1) << "Attempting to fetch output with name: " << oname;
     int mlvalue_index;
-    ONNXRUNTIME_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
+    ORT_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
     const MLValue& output_mlvalue = frame.GetMLValue(mlvalue_index);
     VLOGS(logger, 1) << "Copying fetched MLValue to output vector";
     fetches[idx++] = output_mlvalue;

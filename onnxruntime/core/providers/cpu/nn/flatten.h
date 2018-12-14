@@ -13,7 +13,7 @@ namespace onnxruntime {
 class Flatten final : public OpKernel {
  public:
   Flatten(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -21,7 +21,7 @@ class Flatten final : public OpKernel {
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
     const TensorShape& X_shape = X->Shape();
-    ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis_, "The rank of input tensor must be >= axis");
+    ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis_, "The rank of input tensor must be >= axis");
 
     Tensor* Y = context->Output(0, TensorShape({X_shape.SizeToDimension(axis_), X_shape.SizeFromDimension(axis_)}));
 

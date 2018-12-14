@@ -23,7 +23,7 @@ OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
 
 const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType mem_type) const {
   AllocatorPtr alloc = execution_provider_->GetAllocator(device_id, mem_type);
-  if (alloc == nullptr) ONNXRUNTIME_THROW("cannot find allocator");
+  if (alloc == nullptr) ORT_THROW("cannot find allocator");
   return alloc->Info();
 }
 

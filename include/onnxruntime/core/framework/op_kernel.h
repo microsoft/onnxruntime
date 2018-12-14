@@ -53,7 +53,7 @@ class OpKernel {
   const OpKernelInfo& Info() const { return op_kernel_info_; }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
 };
 
@@ -90,7 +90,7 @@ class OpKernelContext {
       return nullptr;
 
     MLValue* p_ml_value = nullptr;
-    ONNXRUNTIME_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
@@ -174,7 +174,7 @@ class OpKernelContext {
 template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   MLValue* p_ml_value = GetOutputMLValue(index);
-  ONNXRUNTIME_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
+  ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
   return p_ml_value->GetMutable<Tensor>();
 }
 

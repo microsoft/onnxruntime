@@ -47,7 +47,7 @@ common::Status GetTensorByTypeFromTensorProto(const TensorProto& tensor_proto,
   int64_t tensor_size = tensor_shape.Size();
   //tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
   if (tensor_size < 0) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid shape ", tensor_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid shape ", tensor_shape);
   }
   size_t size_to_allocate;
   if (!IAllocator::CalcMemSizeForArrayWithAlignment<256>(static_cast<size_t>(tensor_size), sizeof(T), &size_to_allocate)) {
@@ -55,10 +55,10 @@ common::Status GetTensorByTypeFromTensorProto(const TensorProto& tensor_proto,
   }
 
   if (preallocated && preallocated_size != size_to_allocate)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size, expected ", size_to_allocate, ", got ", preallocated_size);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size, expected ", size_to_allocate, ", got ", preallocated_size);
   //TODO(): size_to_allocate could be zero. We shouldn't pass zero to alloc->Alloc()
   T* p_data = static_cast<T*>(preallocated ? preallocated : alloc->Alloc(size_to_allocate));
-  ONNXRUNTIME_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
+  ORT_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
   *p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                        tensor_shape,
                                        static_cast<void*>(p_data),
@@ -102,7 +102,7 @@ common::Status GetTensorByTypeFromTensorProto<std::string>(const TensorProto& te
   however restricting it to string types only alleviates this concern for other types at least. Hence the template
   specialization for string.
   */
-  ONNXRUNTIME_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
+  ORT_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
 
   return common::Status::OK();
 }
@@ -128,7 +128,7 @@ common::Status GetTensorByTypeFromTensorProto<MLFloat16>(const TensorProto& tens
     return Status(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size");
 
   MLFloat16* p_data = static_cast<MLFloat16*>(preallocated ? preallocated : alloc->Alloc(size_to_allocate));
-  ONNXRUNTIME_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
+  ORT_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
   *p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<MLFloat16>(),
                                        tensor_shape,
                                        static_cast<void*>(p_data),
@@ -141,7 +141,7 @@ common::Status GetTensorByTypeFromTensorProto<MLFloat16>(const TensorProto& tens
 Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& input, AllocatorPtr allocator, void* preallocated,
                             size_t preallocated_size, MLValue& value) {
   std::unique_ptr<Tensor> p_tensor;
-  ONNXRUNTIME_RETURN_IF_ERROR(GetTensorFromTensorProto(input, &p_tensor, allocator, preallocated, preallocated_size));
+  ORT_RETURN_IF_ERROR(GetTensorFromTensorProto(input, &p_tensor, allocator, preallocated, preallocated_size));
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());

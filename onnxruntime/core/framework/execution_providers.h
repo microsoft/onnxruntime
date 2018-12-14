@@ -25,14 +25,14 @@ class ExecutionProviders {
   common::Status Add(const std::string& provider_id, std::unique_ptr<IExecutionProvider> p_exec_provider) {
     // make sure there are no issues before we change any internal data structures
     if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-      auto status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
       LOGS_DEFAULT(ERROR) << status.ErrorMessage();
       return status;
     }
 
     for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
       if (allocator_idx_map_.find(allocator->Info()) != allocator_idx_map_.end()) {
-        auto status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, allocator->Info(), " allocator already registered.");
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, allocator->Info(), " allocator already registered.");
         LOGS_DEFAULT(ERROR) << status.ErrorMessage();
         return status;
       }
@@ -41,10 +41,10 @@ class ExecutionProviders {
     // index that provider will have after insertion
     auto new_provider_idx = exec_providers_.size();
 
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
 
     for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
+      ORT_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
     }
 
     exec_providers_.push_back(std::move(p_exec_provider));

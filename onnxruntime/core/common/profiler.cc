@@ -12,12 +12,12 @@ using namespace std::chrono;
 }
 
 void Profiler::Initialize(const logging::Logger* session_logger) {
-  ONNXRUNTIME_ENFORCE(session_logger != nullptr);
+  ORT_ENFORCE(session_logger != nullptr);
   session_logger_ = session_logger;
 }
 
 void Profiler::StartProfiling(const logging::Logger* custom_logger) {
-  ONNXRUNTIME_ENFORCE(custom_logger != nullptr);
+  ORT_ENFORCE(custom_logger != nullptr);
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
   profiling_start_time_ = StartTime();

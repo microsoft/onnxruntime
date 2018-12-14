@@ -44,8 +44,8 @@ template <typename T>
 class Affine final : public UnaryElementwise {
  public:
   Affine(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -61,7 +61,7 @@ template <typename T>
 class Elu final : public UnaryElementwise {
  public:
   Elu(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -76,8 +76,8 @@ template <typename T>
 class HardSigmoid final : public UnaryElementwise {
  public:
   HardSigmoid(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -93,7 +93,7 @@ template <typename T>
 class LeakyRelu final : public UnaryElementwise {
  public:
   LeakyRelu(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -108,8 +108,8 @@ template <typename T>
 class ParametricSoftplus final : public UnaryElementwise {
  public:
   ParametricSoftplus(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -136,8 +136,8 @@ template <typename T>
 class ScaledTanh final : public UnaryElementwise {
  public:
   ScaledTanh(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -153,8 +153,8 @@ template <typename T>
 class Selu final : public UnaryElementwise {
  public:
   Selu(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("gamma", &gamma_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("gamma", &gamma_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -214,7 +214,7 @@ template <typename T>
 class ThresholdedRelu final : public UnaryElementwise {
  public:
   ThresholdedRelu(const OpKernelInfo& info) : UnaryElementwise(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

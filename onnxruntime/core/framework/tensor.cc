@@ -15,7 +15,7 @@ Tensor::Tensor(MLDataType p_type,
                AllocatorPtr deleter,
                const int64_t offset)
     : alloc_info_(alloc) {
-  ONNXRUNTIME_ENFORCE(p_type != nullptr);
+  ORT_ENFORCE(p_type != nullptr);
   Init(p_type, shape, p_data, alloc, std::move(deleter), offset);
 }
 
@@ -83,7 +83,7 @@ Tensor::Tensor(const Tensor& src)
     : shape_(src.shape_), dtype_(src.dtype_), alloc_info_(src.alloc_info_), byte_offset_(src.byte_offset_) {
   // it may be better to refactor it a little bit to make it a compile error
   // but right now just keep it simple first.
-  ONNXRUNTIME_ENFORCE(src.buffer_deleter_ == nullptr,
+  ORT_ENFORCE(src.buffer_deleter_ == nullptr,
               "Can't copy tensor with its owned buffer. Please transfer ownership by move.");
 
   p_data_ = src.p_data_;
@@ -96,7 +96,7 @@ Tensor::~Tensor() {
 
 Tensor& Tensor::ShallowCopy(const Tensor& other) {
   // similar as above
-  ONNXRUNTIME_ENFORCE(other.buffer_deleter_ == nullptr,
+  ORT_ENFORCE(other.buffer_deleter_ == nullptr,
               "Can't copy tensor with its owned buffer. Please transfer ownership by move.");
 
   if (this != &other) {

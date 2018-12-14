@@ -70,7 +70,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     kernel_registries.SearchKernelRegistry(node, &kci);
     const auto* input_mem_types = kci ? &kci->kernel_def->InputMemoryType() : nullptr;
     const auto* output_mem_types = kci ? &kci->kernel_def->InputMemoryType() : nullptr;
-    ONNXRUNTIME_ENFORCE(onnxruntime::Node::ForEachWithIndex(
+    ORT_ENFORCE(onnxruntime::Node::ForEachWithIndex(
                             node.InputDefs(),
                             [this, &input_mem_types](const onnxruntime::NodeArg& arg, size_t index) {
                               if (input_mem_types && MemTypeOnCpuExplicitly(*input_mem_types, index))
@@ -94,7 +94,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
   } else {
     // TODO: copy between devices? i.e. multiple GPUs
     if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider && !node.GetExecutionProviderType().empty()) {
-      ONNXRUNTIME_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
+      ORT_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
     }
 
     for (const auto* arg : node.InputDefs()) {
@@ -159,7 +159,7 @@ void TransformerMemcpyImpl::ProcessInitializers() {
 
       const TensorProto* tensor_proto = nullptr;
       bool found = graph_.GetInitializedTensor(name, tensor_proto);
-      ONNXRUNTIME_ENFORCE(found, "Failed to get initialized tensor ", name);
+      ORT_ENFORCE(found, "Failed to get initialized tensor ", name);
 
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;

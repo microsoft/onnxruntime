@@ -236,7 +236,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const auto& x_dims = x_shape.GetDims();
 
   if (x_shape.NumDimensions() < 3) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
   if (x_shape.NumDimensions() == 3) {
@@ -276,7 +276,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   mkldnn::memory::dims padding_right_mkl(pads.begin() + (pads.size() / 2), pads.end());
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   IAllocatorUniquePtr<void> src_reorder_buffer;
   IAllocatorUniquePtr<void> dst_reorder_buffer;
 
@@ -327,7 +327,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       DoReorder<T>(params);
     }
   } catch (mkldnn::error& e) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 
   return Status::OK();

@@ -40,7 +40,7 @@ std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_a
   ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
   return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
 #else
-  ONNXRUNTIME_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
 #endif
 }

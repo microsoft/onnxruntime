@@ -26,7 +26,7 @@ class GraphTransformerManager {
 
  private:
   GraphTransformerManager() = default;
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
 
   std::vector<std::unique_ptr<GraphTransformer>> transformers_;
   const unsigned steps_;

@@ -98,7 +98,7 @@ static inline CAST_TO MakeCast(const std::string& input) {
   } else if (input == "TO_INT64") {
     return CAST_TO::TO_INT64;
   } else {
-    ONNXRUNTIME_THROW("Invalid CAST_TO value of ", input, " Expected TO_FLOAT, TO_STRING or TO_INT64");
+    ORT_THROW("Invalid CAST_TO value of ", input, " Expected TO_FLOAT, TO_STRING or TO_INT64");
   }
 }
 
@@ -113,7 +113,7 @@ static inline PACK_MAP MakePack(const std::string& input) {
   } else if (input == "SPARSE") {
     return PACK_MAP::SPARSE;
   } else {
-    ONNXRUNTIME_THROW("Invalid PACK_MAP value of ", input, " Expected DENSE or SPARSE");
+    ORT_THROW("Invalid PACK_MAP value of ", input, " Expected DENSE or SPARSE");
   }
 }
 
@@ -150,7 +150,7 @@ static inline NORMALIZE MakeNormalize(const std::string& input) {
   } else if (input == "L2") {
     return NORMALIZE::L2;
   } else {
-    ONNXRUNTIME_THROW("Invalid normalize value of ", input);
+    ORT_THROW("Invalid normalize value of ", input);
   }
 }
 

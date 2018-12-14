@@ -46,7 +46,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
       FACTORY_PTR_HOLDER;
       RegisterExecutionProvider(sess.get(), f);
 #else
-      ONNXRUNTIME_THROW("CUDA is not supported in this build");
+      ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
@@ -55,7 +55,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
       FACTORY_PTR_HOLDER;
       RegisterExecutionProvider(sess.get(), f);
 #else
-      ONNXRUNTIME_THROW("CUDA is not supported in this build");
+      ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
@@ -64,7 +64,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
       RegisterExecutionProvider(sess.get(), f);
       FACTORY_PTR_HOLDER;
 #else
-      ONNXRUNTIME_THROW("CUDA is not supported in this build");
+      ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
@@ -73,14 +73,14 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
       RegisterExecutionProvider(sess.get(), f);
       FACTORY_PTR_HOLDER;
 #else
-      ONNXRUNTIME_THROW("This executable was not built with BrainSlice");
+      ORT_THROW("This executable was not built with BrainSlice");
 #endif
     }
     //TODO: add more
   }
 
   status = sess->Load(model_url.string());
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
   LOGS_DEFAULT(INFO) << "successfully loaded model from " << model_url;
   status = sess->Initialize();
   if (status.IsOK())

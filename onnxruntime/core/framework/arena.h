@@ -69,7 +69,7 @@ class DummyArena : public IArenaAllocator {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DummyArena);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DummyArena);
 
   std::unique_ptr<IDeviceAllocator> allocator_;
   OrtAllocatorInfo info_;

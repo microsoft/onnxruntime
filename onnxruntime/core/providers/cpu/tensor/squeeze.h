@@ -14,7 +14,7 @@ class SqueezeBase {
   SqueezeBase(const OpKernelInfo& info) {
     std::vector<int64_t> axes;
     Status status = info.GetAttrs<int64_t>("axes", axes);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), "Attribute axes is not set.");
+    ORT_ENFORCE(status.IsOK(), "Attribute axes is not set.");
 
     // Handle out of order and repeating dims.
     std::sort(axes.begin(), axes.end());
@@ -29,7 +29,7 @@ class SqueezeBase {
     std::vector<int64_t> output_shape;
     for (size_t i = 0; i < input_shape.size(); ++i) {
       if (j < axes.size() && axes[j] == static_cast<int64_t>(i)) {
-        ONNXRUNTIME_ENFORCE(input_shape[i] == 1, "Dimension of input ", i,
+        ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i,
                     " must be 1 instead of ", input_shape[i]);
         ++j;
         continue;

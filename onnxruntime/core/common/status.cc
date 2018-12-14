@@ -18,7 +18,7 @@ namespace onnxruntime {
 namespace common {
 Status::Status(StatusCategory category, int code, const std::string& msg) {
   // state_ will be allocated here causing the status to be treated as a failure
-  ONNXRUNTIME_ENFORCE(code != static_cast<int>(MLStatus::OK));
+  ORT_ENFORCE(code != static_cast<int>(MLStatus::OK));
 
   state_ = std::make_unique<State>(category, code, msg);
 }

@@ -20,7 +20,7 @@ void CUDAAllocator::CheckDevice() const {
   // if it's expected to change, call cudaSetDevice instead of the check
   int current_device;
   CUDA_CALL_THROW(cudaGetDevice(&current_device));
-  ONNXRUNTIME_ENFORCE(current_device == device_id_);
+  ORT_ENFORCE(current_device == device_id_);
 #endif
 }
 

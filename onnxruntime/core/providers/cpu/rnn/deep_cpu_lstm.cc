@@ -316,7 +316,7 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
     status = ComputeImpl<double>(*context); */
     ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");
   } else
-    ONNXRUNTIME_THROW("Invalid data type for LSTM operator of ", data_type);
+    ORT_THROW("Invalid data type for LSTM operator of ", data_type);
 
   return status;
 }
@@ -350,7 +350,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   int input_size = gsl::narrow<int>(X_shape[2]);
 
   Status status = ValidateInputs(X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // LSTM outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
@@ -364,7 +364,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   gsl::span<const T> input_weights = W.DataAsSpan<T>();
   gsl::span<const T> recurrent_weights = R.DataAsSpan<T>();
@@ -507,7 +507,7 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
                                      const Tensor* P, int batch_size) const {
   auto status = rnn::detail::ValidateCommonRnnInputs(X, W, R, B, 4, sequence_lens, initial_h,
                                                      num_directions_, hidden_size_);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   if (initial_c != nullptr) {
     auto& initial_c_shape = initial_c->Shape();
@@ -517,7 +517,7 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
                                      num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
@@ -528,7 +528,7 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
                                      num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 

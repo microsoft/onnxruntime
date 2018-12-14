@@ -51,8 +51,8 @@ class InferenceSession::Impl {
         logging_manager_{logging_manager},
         session_state_{execution_providers_},
         insert_cast_transformer_{"CastFloat16Transformer"} {
-    ONNXRUNTIME_ENFORCE(Environment::IsInitialized(),
-                        "Environment must be initialized before creating an InferenceSession.");
+    ORT_ENFORCE(Environment::IsInitialized(),
+                "Environment must be initialized before creating an InferenceSession.");
 
     InitLogger(logging_manager);
 
@@ -99,11 +99,11 @@ class InferenceSession::Impl {
     }
     for (auto& dso_file_path : dso_list) {
       std::shared_ptr<CustomRegistry> custom_registry;
-      ONNXRUNTIME_RETURN_IF_ERROR(custom_ops_loader_.LoadCustomOps(dso_file_path, custom_registry));
+      ORT_RETURN_IF_ERROR(custom_ops_loader_.LoadCustomOps(dso_file_path, custom_registry));
       if (!custom_registry) {
         return Status(common::ONNXRUNTIME, common::FAIL, "Null custom_registry after loading custom ops.");
       }
-      ONNXRUNTIME_RETURN_IF_ERROR(RegisterCustomRegistry(custom_registry));
+      ORT_RETURN_IF_ERROR(RegisterCustomRegistry(custom_registry));
     }
     return Status::OK();
   }
@@ -130,11 +130,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(model_uri, p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_uri, p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -159,11 +159,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -190,11 +190,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(std::move(p_model_proto), p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(std::move(p_model_proto), p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -227,11 +227,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -266,7 +266,7 @@ class InferenceSession::Impl {
         // check if it has a subgraph
         if (proto.has_g()) {
           Graph* subgraph = node.GetMutableGraphAttribute(name);
-          ONNXRUNTIME_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+          ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
           SubgraphMemory subgraph_info;
           // create SessionState for executing subgraph
@@ -277,13 +277,13 @@ class InferenceSession::Impl {
           SessionStateInitializer initializer{*subgraph, *subgraph_info.session_state,
                                               execution_providers_, kernel_registry_manager_, *session_logger_};
 
-          ONNXRUNTIME_RETURN_IF_ERROR(
+          ORT_RETURN_IF_ERROR(
               initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
                                      node.ImplicitInputDefs(),
                                      session_options_.enable_sequential_execution));
 
-          ONNXRUNTIME_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                                    subgraph_info.weights_buffers));
+          ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
+                                                            subgraph_info.weights_buffers));
 
           // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
           // by Compute() via OpKernelContextInternal.
@@ -293,7 +293,7 @@ class InferenceSession::Impl {
           //                                                   &*subgraph_info.session_state);
 
           // recurse
-          ONNXRUNTIME_RETURN_IF_ERROR(InitializeSubgraphSessions(*subgraph, *subgraph_info.session_state));
+          ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(*subgraph, *subgraph_info.session_state));
 
           // save subgraph_info as InferenceSession owns these so they remain valid
           // for the entire InferenceSession.
@@ -347,26 +347,26 @@ class InferenceSession::Impl {
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_, *session_logger_};
 
-      ONNXRUNTIME_RETURN_IF_ERROR(session_initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                                                 {}, session_options_.enable_sequential_execution));
+      ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
+                                                         {}, session_options_.enable_sequential_execution));
 
-      ONNXRUNTIME_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                                        weights_buffers_));
+      ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
+                                                                weights_buffers_));
 
       // handle any subgraphs
-      ONNXRUNTIME_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
+      ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
 
       is_inited_ = true;
 
       LOGS(*session_logger_, INFO) << "Session successfully initialized.";
     } catch (const NotImplementedException& ex) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     } catch (const std::exception& ex) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception during initialization: ", ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception during initialization: ", ex.what());
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     } catch (...) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     }
 
@@ -438,8 +438,8 @@ class InferenceSession::Impl {
                   });
 
     if (!missing_required_inputs.empty()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Missing required inputs: ", missing_required_inputs);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Missing required inputs: ", missing_required_inputs);
     }
 
     bool valid = true;
@@ -458,18 +458,18 @@ class InferenceSession::Impl {
                     [&ostr](const std::string& elem) {
                       ostr << elem << " ";
                     });
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Invalid Feed Input Names:", invalid_names.str(),
-                                     ". Valid input names are: ", ostr.str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid Feed Input Names:", invalid_names.str(),
+                             ". Valid input names are: ", ostr.str());
     }
 
     return Status::OK();
   }
 
   common::Status ValidateInputs(const NameMLValMap& feeds) {
-    ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputNames(feeds));
+    ORT_RETURN_IF_ERROR(ValidateInputNames(feeds));
     //TODO: It should also validate the input shapes?
-    ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputTypes(feeds));
+    ORT_RETURN_IF_ERROR(ValidateInputTypes(feeds));
     return Status::OK();
   }
 
@@ -527,10 +527,10 @@ class InferenceSession::Impl {
       MLValue new_mlvalue;
       auto& input_name = pair.first;
       auto& orig_mlvalue = pair.second;
-      ONNXRUNTIME_RETURN_IF_ERROR(IOBinding::CopyOneInputAcrossDevices(session_state,
-                                                                       input_name,
-                                                                       orig_mlvalue,
-                                                                       new_mlvalue));
+      ORT_RETURN_IF_ERROR(IOBinding::CopyOneInputAcrossDevices(session_state,
+                                                               input_name,
+                                                               orig_mlvalue,
+                                                               new_mlvalue));
       new_feeds[input_name] = new_mlvalue;
     }
     return Status::OK();
@@ -547,7 +547,7 @@ class InferenceSession::Impl {
 
     std::set<std::string> seen_outputs;
     auto p_graph = session_state_.GetGraphViewer();
-    ONNXRUNTIME_ENFORCE(p_graph);
+    ORT_ENFORCE(p_graph);
 
     std::pair<bool, size_t> found;
     for (auto& node : p_graph->Nodes()) {  // TODO optimize this
@@ -617,7 +617,7 @@ class InferenceSession::Impl {
       auto& def_name = one_def->Name();
       size_t idx = found.second;
       int mlvalue_idx;
-      ONNXRUNTIME_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
+      ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
       if (!weights.count(mlvalue_idx)) {
         LOGS(*session_logger_, INFO) << "Output with name " << def_name << " is not a weight.";
         continue;
@@ -628,8 +628,8 @@ class InferenceSession::Impl {
     }
 
     if (seen_outputs.size() != output_names.size())  // make sure we've seen all outputs
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
-                                     " got ", seen_outputs.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
+                             " got ", seen_outputs.size());
 
     return Status::OK();
   }
@@ -680,7 +680,7 @@ class InferenceSession::Impl {
       auto* p_fetched_provider = execution_providers_.Get(fetched_tensor_location);
       if (!p_fetched_provider) {
         p_fetched_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-        ONNXRUNTIME_ENFORCE(p_fetched_provider);
+        ORT_ENFORCE(p_fetched_provider);
       }
 
       auto fetched_provider_type = p_fetched_provider->Type();
@@ -688,9 +688,9 @@ class InferenceSession::Impl {
       auto& output_mlvalue = user_fetches[idx];
       if (!output_mlvalue.IsAllocated()) {
         if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-          ONNXRUNTIME_RETURN_IF_ERROR(AllocateHelper(onnxruntime::kCpuExecutionProvider, 0,
-                                                     fetched_tensor,
-                                                     output_mlvalue));
+          ORT_RETURN_IF_ERROR(AllocateHelper(onnxruntime::kCpuExecutionProvider, 0,
+                                             fetched_tensor,
+                                             output_mlvalue));
         } else {
           user_fetches[idx] = fetched_mlvalue;
           continue;
@@ -702,7 +702,7 @@ class InferenceSession::Impl {
       auto* p_output_provider = execution_providers_.Get(output_tensor_loc);
       if (!p_output_provider) {
         p_output_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-        ONNXRUNTIME_ENFORCE(p_output_provider);
+        ORT_ENFORCE(p_output_provider);
       }
 
       auto output_provider_type = p_output_provider->Type();
@@ -714,9 +714,9 @@ class InferenceSession::Impl {
 
       // our CPU exec provider doesn't support copy from GPU->CPU
       if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-        ONNXRUNTIME_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
+        ORT_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
       } else {
-        ONNXRUNTIME_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
+        ORT_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
       }
     }
 
@@ -739,10 +739,10 @@ class InferenceSession::Impl {
         }
       }
 
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(ValidateInputs(feeds));
+      ORT_CHECK_AND_SET_RETVAL(ValidateInputs(feeds));
 
       // if the output vector is non-empty, ensure that its the same size as the output_names
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(ValidateOutputs(output_names, p_fetches));
+      ORT_CHECK_AND_SET_RETVAL(ValidateOutputs(output_names, p_fetches));
 
       if (!run_options.run_tag.empty()) {
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
@@ -760,13 +760,13 @@ class InferenceSession::Impl {
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_)
-        ONNXRUNTIME_CHECK_AND_SET_RETVAL(xp->OnRunStart());
+        ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
 
       NameMLValMap copied_feeds;
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(CopyInputsAcrossDevices(session_state_, feeds, copied_feeds));
+      ORT_CHECK_AND_SET_RETVAL(CopyInputsAcrossDevices(session_state_, feeds, copied_feeds));
 
       std::vector<MLValue> new_fetches;
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(MatchOutputsWithProviders(output_names, *p_fetches, new_fetches));
+      ORT_CHECK_AND_SET_RETVAL(MatchOutputsWithProviders(output_names, *p_fetches, new_fetches));
 
       std::unique_ptr<IExecutor> p_exec;
 
@@ -778,8 +778,8 @@ class InferenceSession::Impl {
         }
       }
 
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(p_exec->Execute(session_state_, copied_feeds, output_names, new_fetches, run_logger));
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(CopyOutputsAcrossDevices(new_fetches, *p_fetches));
+      ORT_CHECK_AND_SET_RETVAL(p_exec->Execute(session_state_, copied_feeds, output_names, new_fetches, run_logger));
+      ORT_CHECK_AND_SET_RETVAL(CopyOutputsAcrossDevices(new_fetches, *p_fetches));
 
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -789,7 +789,7 @@ class InferenceSession::Impl {
 
     // info all execution providers InferenceSession:Run ended
     for (auto& xp : execution_providers_)
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
+      ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
 
     --current_num_runs_;
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);

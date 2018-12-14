@@ -25,14 +25,14 @@
 using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
-void ONNXRUNTIME_CALLBACK RunTestCase(ONNXRUNTIME_CALLBACK_INSTANCE pci, void* context, ONNXRUNTIME_WORK work) {
+void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work) {
   OnnxRuntimeCloseThreadpoolWork(work);
   assert(context != nullptr);
   TestCaseTask* task((TestCaseTask*)context);
   ITestCase* info = task->env.tests[task->task_id];
   std::shared_ptr<TestCaseResult> ret;
   try {
-    RunSingleTestCase(info, task->env.sf, task->concurrent_runs, task->repeat_count, task->pool, pci, [task](std::shared_ptr<TestCaseResult> result, ONNXRUNTIME_CALLBACK_INSTANCE pci) {
+    RunSingleTestCase(info, task->env.sf, task->concurrent_runs, task->repeat_count, task->pool, pci, [task](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
       return OnTestCaseFinished(pci, task, result);
     });
     return;
@@ -49,7 +49,7 @@ void ONNXRUNTIME_CALLBACK RunTestCase(ONNXRUNTIME_CALLBACK_INSTANCE pci, void* c
   }
 }
 
-void PTestRunner::Start(ONNXRUNTIME_CALLBACK_INSTANCE, size_t concurrent_runs) {
+void PTestRunner::Start(ORT_CALLBACK_INSTANCE, size_t concurrent_runs) {
   concurrent_runs = std::min<size_t>(std::max<size_t>(1, concurrent_runs), c_->GetDataCount());
   next_test_to_run = 0;
   for (size_t i = 0; i != concurrent_runs; ++i) {
@@ -72,7 +72,7 @@ bool PTestRunner::ScheduleNew() {
   return true;
 }
 
-void PTestRunner::OnTaskFinished(size_t, EXECUTE_RESULT, ONNXRUNTIME_CALLBACK_INSTANCE pci) noexcept {
+void PTestRunner::OnTaskFinished(size_t, EXECUTE_RESULT, ORT_CALLBACK_INSTANCE pci) noexcept {
   try {
     ScheduleNew();
     if (++finished == c_->GetDataCount()) {
@@ -93,7 +93,7 @@ PTestRunner::PTestRunner(ONNXSession* session1,
                          TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), next_test_to_run(0), finished(0), tpool_(tpool) {
 }
 
-void ONNXRUNTIME_CALLBACK RunSingleDataItem(ONNXRUNTIME_CALLBACK_INSTANCE instance, void* context, ONNXRUNTIME_WORK work) {
+void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work) {
   OnnxRuntimeCloseThreadpoolWork(work);
   DataTask* task((DataTask*)context);
   PTestRunner* env = task->env;
@@ -102,7 +102,7 @@ void ONNXRUNTIME_CALLBACK RunSingleDataItem(ONNXRUNTIME_CALLBACK_INSTANCE instan
   env->RunTask(task_id, instance, true);
 }
 
-Status OnTestCaseFinished(ONNXRUNTIME_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result) {
+Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result) {
   FixedCountFinishCallback* finished = task->env.finished;
   auto task_id = task->task_id;
   bool failed = false;
@@ -159,16 +159,16 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
   });
   std::vector<std::shared_ptr<TestCaseResult>> results;
   if (p_models > 1 && env.tests.size() > 1) {
-    ONNXRUNTIME_RETURN_IF_ERROR(ParallelRunTests(env, p_models, concurrent_runs, repeat_count, tpool));
+    ORT_RETURN_IF_ERROR(ParallelRunTests(env, p_models, concurrent_runs, repeat_count, tpool));
     results = env.finished->getResults();
   } else {
     //run models one by one
     for (size_t i = 0; i != env.tests.size(); ++i) {
       const char* test_case_name = env.tests[i]->GetTestCaseName().c_str();
-      ONNXRUNTIME_EVENT ev;
-      ONNXRUNTIME_RETURN_IF_ERROR(CreateOnnxRuntimeEvent(&ev));
+      ORT_EVENT ev;
+      ORT_RETURN_IF_ERROR(CreateOnnxRuntimeEvent(&ev));
       try {
-        RunSingleTestCase(env.tests[i], env.sf, concurrent_runs, repeat_count, tpool, nullptr, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result, ONNXRUNTIME_CALLBACK_INSTANCE pci) {
+        RunSingleTestCase(env.tests[i], env.sf, concurrent_runs, repeat_count, tpool, nullptr, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
           //TODO:output this information to a xml
           if (concurrent_runs == 1) {
             TIME_SPEC ts = result->GetSpentTime();
@@ -179,7 +179,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
           results.push_back(result);
           return OnnxRuntimeSetEventWhenCallbackReturns(pci, ev);
         });
-        ONNXRUNTIME_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
+        ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
       } catch (std::exception& ex) {
         LOGF_DEFAULT(ERROR, "Test %s failed:%s", test_case_name, ex.what());
         std::string node_name;
@@ -235,7 +235,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
           if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
           break;
         default:
-          return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown result");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown result");
       }
     }
   }
@@ -259,10 +259,10 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
         return true;
       }
       std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-      if (!HasExtensionOf(filename_str, ONNXRUNTIME_TSTR("onnx"))) return true;
+      if (!HasExtensionOf(filename_str, ORT_TSTR("onnx"))) return true;
 
       std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
-      if (test_case_name.compare(0, 5, ONNXRUNTIME_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
+      if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
       if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(), test_case_name) == whitelisted_test_cases.end()) {
         return true;
       }
@@ -294,7 +294,7 @@ DataRunner::DataRunner(ONNXSession* session1, const std::string& test_case_name1
   SetTimeSpecToZero(&spent_time_);
 }
 
-void DataRunner::RunTask(size_t task_id, ONNXRUNTIME_CALLBACK_INSTANCE pci, bool store_result) {
+void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result) {
   EXECUTE_RESULT res = EXECUTE_RESULT::UNKNOWN_ERROR;
   try {
     res = RunTaskImpl(task_id);
@@ -469,7 +469,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   return res;
 }
 
-void SeqTestRunner::Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t) {
+void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
   const size_t data_count = c_->GetDataCount();
   for (size_t idx_repeat = 0; idx_repeat != repeat_count_; ++idx_repeat)
     for (size_t idx_data = 0; idx_data != data_count; ++idx_data) {
@@ -478,7 +478,7 @@ void SeqTestRunner::Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t) {
   finish(pci);
 }
 
-void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ONNXRUNTIME_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
+void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
   {

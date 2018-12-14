@@ -228,7 +228,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  ONNXRUNTIME_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -247,7 +247,7 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  ONNXRUNTIME_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -260,11 +260,11 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, con
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model failed. File doesn't exist");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model failed. File doesn't exist");
         case EINVAL:
-          return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT);
         default:
-          return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }
     }
   }
@@ -272,12 +272,12 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, con
     status = Model::Load(fd, p_model, local_registries);
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
   return Env::Default().FileClose(fd);
@@ -287,17 +287,17 @@ template <typename T>
 static Status SaveModel(Model& model, const T& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
   try {
     status = Model::Save(model, fd);
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
   return Env::Default().FileClose(fd);
@@ -335,7 +335,7 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
 
   p_model = std::make_shared<Model>(std::move(modelProto), local_registries);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -366,7 +366,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
 
   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
   return Status::OK();
 }
@@ -376,7 +376,7 @@ Status Model::Save(Model& model, int p_fd) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> is less than 0.");
   }
 
-  ONNXRUNTIME_RETURN_IF_ERROR(model.MainGraph().Resolve());
+  ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToProto();
   const bool result = model_proto.SerializeToFileDescriptor(p_fd);

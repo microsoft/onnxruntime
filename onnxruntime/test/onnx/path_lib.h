@@ -18,10 +18,10 @@
 
 #ifdef _WIN32
 typedef wchar_t PATH_CHAR_TYPE;
-#define ONNXRUNTIME_TSTR(X) L##X
+#define ORT_TSTR(X) L##X
 #else
 typedef char PATH_CHAR_TYPE;
-#define ONNXRUNTIME_TSTR(X) (X)
+#define ORT_TSTR(X) (X)
 #endif
 
 template <typename T>

@@ -45,7 +45,7 @@ int GetNumCpuCores() {
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
     if (sysInfo.dwNumberOfProcessors <= 0) {
-      ONNXRUNTIME_THROW("Fatal error: 0 count processors from GetSystemInfo");
+      ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
     }
     // This is the number of logical processors in the current group
     return sysInfo.dwNumberOfProcessors;
@@ -57,7 +57,7 @@ int GetNumCpuCores() {
       ++processorCoreCount;
     }
   }
-  if (!processorCoreCount) ONNXRUNTIME_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
+  if (!processorCoreCount) ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
   return processorCoreCount;
 }
 #else
@@ -85,7 +85,7 @@ int real_main(int argc, char* argv[]) {
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_kWARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ONNXRUNTIME_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -123,13 +123,13 @@ int real_main(int argc, char* argv[]) {
           whitelisted_test_cases.emplace_back(optarg);
           break;
         case 'e':
-          if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("cpu"))) {
+          if (!MyStrCmp(optarg, ORT_TSTR("cpu"))) {
             //do nothing
-          } else if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("cuda"))) {
+          } else if (!MyStrCmp(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("mkldnn"))) {
+          } else if (!MyStrCmp(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
-          } else if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("nuphar"))) {
+          } else if (!MyStrCmp(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else {
             usage();

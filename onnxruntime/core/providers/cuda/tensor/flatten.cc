@@ -19,7 +19,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status Flatten::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
-  ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis_, "The rank of input tensor must be >= axis");
+  ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis_, "The rank of input tensor must be >= axis");
 
   Tensor* Y = ctx->Output(0, TensorShape({X_shape.SizeToDimension(axis_), X_shape.SizeFromDimension(axis_)}));
   //If source and target pointers are not equal (non-inplace operation), we need to copy the data.

@@ -144,7 +144,7 @@ TEST_F(CApiTest, DISABLED_custom_op) {
 }
 #endif
 
-#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
   ONNXSession* ret;

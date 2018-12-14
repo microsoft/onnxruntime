@@ -19,7 +19,7 @@ class ObjectBase {
   static ONNXObject static_cls;
 
  protected:
-  const ONNXObject* const ONNXRUNTIME_ATTRIBUTE_UNUSED cls_;
+  const ONNXObject* const ORT_ATTRIBUTE_UNUSED cls_;
   std::atomic_int ref_count;
   ObjectBase() : cls_(&static_cls), ref_count(1) {
   }
@@ -43,5 +43,5 @@ ONNXObject ObjectBase<T>::static_cls = {ObjectBase<T>::OrtAddRefImpl, ObjectBase
 
 }  // namespace onnxruntime
 
-#define ONNXRUNTIME_CHECK_C_OBJECT_LAYOUT \
+#define ORT_CHECK_C_OBJECT_LAYOUT \
   { assert((char*)&ref_count == (char*)this + sizeof(this)); }

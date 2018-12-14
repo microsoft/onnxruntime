@@ -90,9 +90,9 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
 }
 
 Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) const {
-  ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_ERROR(graph.Resolve());
   if (force_cpu_fp32_)
-    ONNXRUNTIME_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
+    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -163,7 +163,7 @@ Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) c
   }
 
   //Resolve it to build the edges.
-  ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_ERROR(graph.Resolve());
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {

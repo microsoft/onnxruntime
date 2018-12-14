@@ -19,11 +19,11 @@ class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) {
     std::string mode;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
+    ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
 
     if (info.GetInputCount() == 1) {
-      ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
+      ORT_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
       ScalesValidation(scales_, mode_);
     }
   }
@@ -37,19 +37,19 @@ class UpsampleBase {
     } else if (strcmp(mode.c_str(), UpsampleModeLinear) == 0) {
       return UpsampleMode::LINEAR;
     } else {
-      ONNXRUNTIME_THROW("mode attribute is " + mode + ". It can only be " +
+      ORT_THROW("mode attribute is " + mode + ". It can only be " +
                         UpsampleModeNN + "(default) or " + UpsampleModeLinear + ".");
     }
   }
 
   void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
     for (auto& scale : scales) {
-      ONNXRUNTIME_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
+      ORT_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
     }
 
     if (UpsampleMode::LINEAR == mode) {
-      ONNXRUNTIME_ENFORCE(scales.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
-      ONNXRUNTIME_ENFORCE(((scales[0] == 1) && (scales[1] == 1)),
+      ORT_ENFORCE(scales.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
+      ORT_ENFORCE(((scales[0] == 1) && (scales[1] == 1)),
                           "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
     }
   }
@@ -78,7 +78,7 @@ private:
   void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
     const float* scale_data = scale->template Data<float>();
     int64_t scales_size = scale->Shape().Size();
-    ONNXRUNTIME_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
+    ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
     memcpy(scales.data(), scale_data, scales_size * sizeof(float));
     ScalesValidation(scales, mode_);
   }

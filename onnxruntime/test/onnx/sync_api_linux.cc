@@ -15,14 +15,14 @@ using onnxruntime::common::Status;
 //OnnxRuntimeSetEventWhenCallbackReturns
 class OnnxRuntimeCallbackInstance {
  private:
-  std::vector<ONNXRUNTIME_EVENT> events_to_signal_;
+  std::vector<ORT_EVENT> events_to_signal_;
 
  public:
-  void AddEvent(ONNXRUNTIME_EVENT event);
+  void AddEvent(ORT_EVENT event);
   onnxruntime::common::Status SignalAllEvents();
 };
 
-Status WaitAndCloseEvent(ONNXRUNTIME_EVENT finish_event) {
+Status WaitAndCloseEvent(ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
   pthread_mutex_lock(&finish_event->finish_event_mutex);
@@ -34,7 +34,7 @@ Status WaitAndCloseEvent(ONNXRUNTIME_EVENT finish_event) {
   return Status::OK();
 }
 
-Status CreateAndSubmitThreadpoolWork(ONNXRUNTIME_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
+Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
   if (callback == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "callback cannot be NULL");
   if (pool == nullptr)
@@ -63,52 +63,52 @@ PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   return default_pool.get();
 }
 
-Status OnnxRuntimeSetEventWhenCallbackReturns(ONNXRUNTIME_CALLBACK_INSTANCE pci, ONNXRUNTIME_EVENT finish_event) {
+Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
 
   if (pci == nullptr) {
     if (pthread_mutex_lock(&finish_event->finish_event_mutex)) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "lock failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "lock failed");
     }
     finish_event->finished = true;
     if (pthread_mutex_unlock(&finish_event->finish_event_mutex))
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "unlock failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unlock failed");
     if (!pthread_cond_broadcast(&finish_event->finish_event_data))
       return Status::OK();
     else
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "pthread_cond_broadcast failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pthread_cond_broadcast failed");
   } else {
     pci->AddEvent(finish_event);
     return Status::OK();
   }
 }
 
-void OnnxRuntimeCallbackInstance::AddEvent(ONNXRUNTIME_EVENT event) {
+void OnnxRuntimeCallbackInstance::AddEvent(ORT_EVENT event) {
   events_to_signal_.push_back(event);
 }
 
 Status OnnxRuntimeCallbackInstance::SignalAllEvents() {
-  for (ONNXRUNTIME_EVENT finish_event : events_to_signal_) {
+  for (ORT_EVENT finish_event : events_to_signal_) {
     if (pthread_mutex_lock(&finish_event->finish_event_mutex)) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "lock failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "lock failed");
     }
     finish_event->finished = true;
     if (pthread_mutex_unlock(&finish_event->finish_event_mutex))
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "unlock failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unlock failed");
     if (pthread_cond_broadcast(&finish_event->finish_event_data))
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "pthread_cond_broadcast failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pthread_cond_broadcast failed");
   }
   return Status::OK();
 }
 
-Status CreateOnnxRuntimeEvent(ONNXRUNTIME_EVENT* out) {
+Status CreateOnnxRuntimeEvent(ORT_EVENT* out) {
   if (out == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
   *out = new OnnxRuntimeEvent();
   return Status::OK();
 }
 
-void OrtCloseEvent(ONNXRUNTIME_EVENT finish_event) {
+void OrtCloseEvent(ORT_EVENT finish_event) {
   delete finish_event;
 }

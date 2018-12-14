@@ -35,7 +35,7 @@ class MLValueNameIdxMap {
 
     auto it = map_.find(name);
     if (it == map_.end()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find MLValue with name: ", name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find MLValue with name: ", name);
     }
 
     idx = it->second;
@@ -49,7 +49,7 @@ class MLValueNameIdxMap {
   const_iterator end() const noexcept { return map_.cend(); }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MLValueNameIdxMap);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MLValueNameIdxMap);
 
   int mlvalue_max_idx_ = 0;
   std::unordered_map<std::string, int> map_;

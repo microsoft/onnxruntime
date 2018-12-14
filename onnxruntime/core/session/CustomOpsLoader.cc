@@ -76,12 +76,12 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
     using GetAllKernelsFn = KernelsContainer* (*)();
     using GetAllSchemasFn = SchemasContainer* (*)();
     void* lib_handle = nullptr;
-    ONNXRUNTIME_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(dso_file_path, &lib_handle));
+    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(dso_file_path, &lib_handle));
     dso_name_data_map_[dso_file_path].lib_handle = lib_handle;
 
     // get symbol for GetAllKernels
     void* get_all_kernels_symbol_handle = nullptr;
-    ONNXRUNTIME_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(lib_handle,
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(lib_handle,
                                                             kGetAllKernelsSymbol,
                                                             &get_all_kernels_symbol_handle));
     if (!get_all_kernels_symbol_handle) {
@@ -102,12 +102,12 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
     custom_registry = std::make_shared<CustomRegistry>();
 
     for (auto& i : kernels_container->kernels_list) {
-      ONNXRUNTIME_RETURN_IF_ERROR(custom_registry->RegisterCustomKernel(i));
+      ORT_RETURN_IF_ERROR(custom_registry->RegisterCustomKernel(i));
     }
 
     // get symbol for GetAllSchemas
     void* get_all_schemas_symbol_handle = nullptr;
-    ONNXRUNTIME_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(lib_handle,
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(lib_handle,
                                                             kGetAllSchemasSymbol,
                                                             &get_all_schemas_symbol_handle));
 
@@ -124,7 +124,7 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
     dso_name_data_map_[dso_file_path].schemas_container = schemas_container;
 
     // register the schemas if present
-    ONNXRUNTIME_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
+    ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
                                                        schemas_container->domain,
                                                        schemas_container->baseline_opset_version,
                                                        schemas_container->opset_version));

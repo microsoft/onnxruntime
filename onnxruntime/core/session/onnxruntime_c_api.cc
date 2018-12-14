@@ -38,10 +38,10 @@ using onnxruntime::Tensor;
 using onnxruntime::ToONNXStatus;
 using onnxruntime::common::Status;
 
-#define ONNXRUNTIME_API_RETURN_IF_ERROR(expr) \
-  do {                                        \
-    auto _status = (expr);                    \
-    if (_status) return _status;              \
+#define ORT_API_RETURN_IF_ERROR(expr) \
+  do {                                \
+    auto _status = (expr);            \
+    if (_status) return _status;      \
   } while (0)
 
 struct OrtEnv : public onnxruntime::ObjectBase<OrtEnv> {
@@ -51,7 +51,7 @@ struct OrtEnv : public onnxruntime::ObjectBase<OrtEnv> {
   friend class onnxruntime::ObjectBase<OrtEnv>;
 
   OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
-    ONNXRUNTIME_CHECK_C_OBJECT_LAYOUT;
+    ORT_CHECK_C_OBJECT_LAYOUT;
   }
   /**
   * This function will call ::google::protobuf::ShutdownProtobufLibrary
@@ -61,7 +61,7 @@ struct OrtEnv : public onnxruntime::ObjectBase<OrtEnv> {
     delete loggingManager;
     delete value;
   }
-  ONNXRUNTIME_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
 };
 
 #define API_IMPL_BEGIN try {
@@ -230,43 +230,43 @@ ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsONNXValue, _In_ const OrtAllocatorI
   std::unique_ptr<Tensor> tensor;
   switch (type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<float>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<float>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint8_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint8_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int8_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int8_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint16_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint16_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int16_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int16_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int32_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int32_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int64_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int64_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<std::string>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<std::string>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<bool>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<bool>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint32_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint32_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint64_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint64_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
@@ -293,43 +293,43 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsONNXValue, _Inout_ OrtAllocator* allocator,
   std::unique_ptr<Tensor> tensor;
   switch (type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<float>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<float>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint8_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint8_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int8_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int8_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint16_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint16_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int16_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int16_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int32_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int32_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<int64_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<int64_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<std::string>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<std::string>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<bool>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<bool>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint32_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint32_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      ONNXRUNTIME_API_RETURN_IF_ERROR(CreateTensorImpl<uint64_t>(shape, shape_len, allocator, &tensor));
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint64_t>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:

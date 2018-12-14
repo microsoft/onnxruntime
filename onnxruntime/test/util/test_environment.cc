@@ -20,14 +20,14 @@ namespace test {
 static std::unique_ptr<::onnxruntime::logging::LoggingManager> s_default_logging_manager;
 
 ::onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
-  ONNXRUNTIME_ENFORCE(s_default_logging_manager != nullptr,
+  ORT_ENFORCE(s_default_logging_manager != nullptr,
               "Need a TestEnvironment instance to provide the default logging manager.");
 
   return *s_default_logging_manager;
 }
 
 TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logging_manager) {
-  ONNXRUNTIME_ENFORCE(s_default_logging_manager == nullptr,
+  ORT_ENFORCE(s_default_logging_manager == nullptr,
               "Only expected one instance of TestEnvironment to be created.");
 
   std::clog << "Initializing unit testing." << std::endl;
@@ -49,7 +49,7 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
 
 #ifdef HAVE_FRAMEWORK_LIB
   auto status = Environment::Create(runtime_environment_);
-  ONNXRUNTIME_ENFORCE(status == Status::OK(), "Failed creating runtime environment. ", status.ErrorMessage());
+  ORT_ENFORCE(status == Status::OK(), "Failed creating runtime environment. ", status.ErrorMessage());
 #endif
 }
 

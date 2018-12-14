@@ -141,7 +141,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   if (current_deferred_release_event) {
     std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
     auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
-    ONNXRUNTIME_ENFORCE(iter != deferred_release_cpu_ptr_.end());
+    ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
     iter->second.cpu_ptrs.push_back(p);
   }
 }
@@ -184,7 +184,7 @@ Status CUDAExecutionProvider::OnRunStart() {
 }
 
 Status CUDAExecutionProvider::OnRunEnd() {
-  ONNXRUNTIME_RETURN_IF_NOT(per_thread_context_ != nullptr);
+  ORT_RETURN_IF_NOT(per_thread_context_ != nullptr);
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
@@ -205,7 +205,7 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
 
   if (strcmp(src.Location().name, CUDA) != 0 && strcmp(src.Location().name, CUDA_PINNED) != 0 &&
       strcmp(dst.Location().name, CUDA) != 0 && strcmp(dst.Location().name, CUDA_PINNED) != 0) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
   }
 
   size_t bytes = src.DataType()->Size() * src.Shape().Size();
