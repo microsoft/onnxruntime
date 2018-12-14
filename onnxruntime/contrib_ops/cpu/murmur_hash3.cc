@@ -109,15 +109,15 @@ ONNX_OPERATOR_KERNEL_EX(
 
 void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, void* out) const {
 
-  const uint8_t* data = (const uint8_t*)key;
+  const uint8_t* data = reinterpret_cast<const uint8_t*>(key);
   const int nblocks = len / 4;
   uint32_t h1 = seed;
-  uint32_t c1 = 0xcc9e2d51;
-  uint32_t c2 = 0x1b873593;
+  const uint32_t c1 = 0xcc9e2d51;
+  const uint32_t c2 = 0x1b873593;
 
   //----------
   // body
-  const uint32_t* blocks = (const uint32_t*)(data + (int64_t)nblocks * 4);
+  const uint32_t* blocks = reinterpret_cast<const uint32_t*>(data + static_cast<int64_t>(nblocks) * 4);
 
   for (int i = -nblocks; i; i++) {
     uint32_t k1 = getblock(blocks, i);
@@ -133,7 +133,7 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
 
   //----------
   // tail
-  const uint8_t* tail = (const uint8_t*)(data + (int64_t)nblocks * 4);
+  const uint8_t* tail = reinterpret_cast<const uint8_t*>(data + static_cast<int64_t>(nblocks) * 4);
 
   uint32_t k1 = 0;
 
@@ -166,30 +166,29 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
   const TensorShape& input_shape = keys->Shape();
   Tensor* output_tensor = ctx->Output(0, input_shape);
 
-  auto keys_type = keys->DataType();
-  int input_element_bytes = static_cast<int>(keys->DataType()->Size());
-  int output_element_bytes = static_cast<int>(output_tensor->DataType()->Size());
-  auto input_count = input_shape.Size();
+  const MLDataType keys_type = keys->DataType();
+  const int input_element_bytes = static_cast<int>(keys->DataType()->Size());
+  const int output_element_bytes = static_cast<int>(output_tensor->DataType()->Size());
+  const int64_t input_count = input_shape.Size();
   for (int i = 0; i < input_count; ++i) {
     if (DataTypeImpl::GetType<std::string>() == keys_type) {
       auto input = keys->DataRaw();
       auto output = output_tensor->MutableDataRaw();
       auto input_string = reinterpret_cast<const std::string*>(input)[i];
-      input_string.length();
       MurmurHash3_x86_32(input_string.c_str(),
                          static_cast<int>(input_string.length()),
                          seed_,
-                         reinterpret_cast<uint32_t*>(output) + (int64_t)i * output_element_bytes);
+                         reinterpret_cast<uint32_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
     } else {
       auto output_type = output_tensor->DataType();
       if ((DataTypeImpl::GetType<int32_t>() == keys_type || DataTypeImpl::GetType<uint32_t>() == keys_type) &&
           (DataTypeImpl::GetType<int32_t>() == output_type || DataTypeImpl::GetType<uint32_t>() == output_type)) {
         auto input = keys->DataRaw();
         auto output = output_tensor->MutableDataRaw();
-        MurmurHash3_x86_32(reinterpret_cast<const uint8_t*>(input) + (int64_t)i * input_element_bytes,
+        MurmurHash3_x86_32(reinterpret_cast<const uint8_t*>(input) + static_cast<int64_t>(i) * input_element_bytes,
                            input_element_bytes,
                            seed_,
-                           reinterpret_cast<uint8_t*>(output) + (int64_t)i * output_element_bytes);
+                           reinterpret_cast<uint8_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
       } else {
         return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type not supported.");
       }
