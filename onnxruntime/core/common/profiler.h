@@ -4,6 +4,8 @@
 #pragma once
 #include <iostream>
 #include <fstream>
+#include <tuple>
+#include <initializer_list>
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -45,7 +47,7 @@ class Profiler {
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
                              TimePoint& start_time,
-                             std::unordered_map<std::string, std::string>&& event_args = std::unordered_map<std::string, std::string>(),
+                             const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
                              bool sync_gpu = false);
 
   /*
