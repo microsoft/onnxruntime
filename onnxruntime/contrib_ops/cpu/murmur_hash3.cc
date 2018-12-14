@@ -139,9 +139,9 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
 
   switch (len & 3) {
     case 3:
-      k1 ^= tail[2] << 16;
+      k1 ^= tail[2] << 16;  // Fallthrough.
     case 2:
-      k1 ^= tail[1] << 8;
+      k1 ^= tail[1] << 8;  // Fallthrough.
     case 1:
       k1 ^= tail[0];
       k1 *= c1;
