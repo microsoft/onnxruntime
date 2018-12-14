@@ -747,7 +747,7 @@ void RandUniform<float, CPUMathUtil>(
   //todo: need implmenet "RandGenerator()" in execution provider
   ONNXRUNTIME_UNUSED_PARAMETER(n);
   ONNXRUNTIME_UNUSED_PARAMETER(r);
-  ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
             }*/
@@ -761,7 +761,7 @@ void RandUniform<int, CPUMathUtil>(
   //todo: need implmenet "RandGenerator()" in execution provider
   ONNXRUNTIME_UNUSED_PARAMETER(n);
   ONNXRUNTIME_UNUSED_PARAMETER(r);
-  ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
             }*/
@@ -808,7 +808,7 @@ void RandGaussian<float, CPUMathUtil>(
   std::normal_distribution<float> distribution(mean, std);
   ONNXRUNTIME_UNUSED_PARAMETER(n);
   ONNXRUNTIME_UNUSED_PARAMETER(r);
-  ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
             }*/

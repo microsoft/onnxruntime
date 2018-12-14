@@ -238,11 +238,11 @@ class WinMLRuntime {
         if (*type == "tensor(double)" || *type == "tensor(float)") {
           // If double is used in the following statement, following error occurs.
           // Tensor type mismatch, caller expects elements to be float while tensor contains double Error from operator
-          mlvalue = ReadTensor<float>(TestCPUExecutionProvider().GetAllocator(0, ONNXRuntimeMemTypeDefault), inputs_reader, feature_size, shape, variable_batch_size);
+          mlvalue = ReadTensor<float>(TestCPUExecutionProvider().GetAllocator(0, OrtMemTypeDefault), inputs_reader, feature_size, shape, variable_batch_size);
         } else if (*type == "tensor(int64)")
-          mlvalue = ReadTensor<int64_t>(TestCPUExecutionProvider().GetAllocator(0, ONNXRuntimeMemTypeDefault), inputs_reader, feature_size, shape, variable_batch_size);
+          mlvalue = ReadTensor<int64_t>(TestCPUExecutionProvider().GetAllocator(0, OrtMemTypeDefault), inputs_reader, feature_size, shape, variable_batch_size);
         else if (*type == "tensor(string)")
-          mlvalue = ReadTensorStrings(TestCPUExecutionProvider().GetAllocator(0, ONNXRuntimeMemTypeDefault), inputs_reader, feature_size, shape, variable_batch_size);
+          mlvalue = ReadTensorStrings(TestCPUExecutionProvider().GetAllocator(0, OrtMemTypeDefault), inputs_reader, feature_size, shape, variable_batch_size);
         else
           throw DataValidationException("Unsupported input type: " + std::string(*type));
 

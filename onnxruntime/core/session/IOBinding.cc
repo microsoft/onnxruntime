@@ -28,7 +28,7 @@ static common::Status AllocateHelper(const SessionState& session_state,
                                      MLValue& output_mlvalue) {
   auto* p_provider = session_state.GetExecutionProviders().Get(provider_type);
   ONNXRUNTIME_ENFORCE(p_provider);
-  auto allocator = p_provider->GetAllocator(id, ONNXRuntimeMemTypeDefault);
+  auto allocator = p_provider->GetAllocator(id, OrtMemTypeDefault);
   ONNXRUNTIME_ENFORCE(allocator != nullptr);
   auto& fetched_tensor = fetched_mlvalue.Get<Tensor>();
   void* buffer = allocator->Alloc(fetched_tensor.Size());
@@ -81,13 +81,13 @@ common::Status IOBinding::CopyOneInputAcrossDevices(const SessionState& session_
     }
 
     auto input_provider_type = p_input_provider->Type();
-    if (input_provider_type == required_provider_type && input_tensor_loc.mem_type == ONNXRuntimeMemTypeDefault) {
+    if (input_provider_type == required_provider_type && input_tensor_loc.mem_type == OrtMemTypeDefault) {
       new_mlvalue = orig_mlvalue;
       return Status::OK();
     }
 
     //If node require input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
-    if (node_input_on_cpu && (input_tensor_loc.mem_type == ONNXRuntimeMemTypeCPU || input_tensor_loc.mem_type == ONNXRuntimeMemTypeCPUOutput)) {
+    if (node_input_on_cpu && (input_tensor_loc.mem_type == OrtMemTypeCPU || input_tensor_loc.mem_type == OrtMemTypeCPUOutput)) {
       new_mlvalue = orig_mlvalue;
       return Status::OK();
     }
@@ -177,14 +177,14 @@ AllocatorPtr IOBinding::GetCPUAllocator(int id, onnxruntime::ProviderType provid
   auto& exec_providers = session_state_.GetExecutionProviders();
   auto* p_provider = exec_providers.Get(provider_type);
   ONNXRUNTIME_ENFORCE(p_provider);
-  auto allocator = p_provider->GetAllocator(id, ONNXRuntimeMemTypeCPU);
+  auto allocator = p_provider->GetAllocator(id, OrtMemTypeCPU);
 
   // if the provider does not implement CPU allocator, fall back to CPU
   if (allocator)
     return allocator;
 
   auto* cpu_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
-  return cpu_provider->GetAllocator(0, ONNXRuntimeMemTypeDefault);
+  return cpu_provider->GetAllocator(0, OrtMemTypeDefault);
 }
 
 }  // namespace onnxruntime

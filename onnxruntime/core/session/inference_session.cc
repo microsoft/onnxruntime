@@ -250,7 +250,7 @@ class InferenceSession::Impl {
   // memory allocations for a subgraph that are owned by InferenceSession
   struct SubgraphMemory {
     std::unique_ptr<SessionState> session_state;
-    std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr> weights_buffers;
+    std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers;
   };
 
   /// iterate nodes in graph looking for ones with graph attribute/s
@@ -642,7 +642,7 @@ class InferenceSession::Impl {
     if (!p_provider)
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "invalid provider_type");
 
-    auto allocator = p_provider->GetAllocator(device_id, ONNXRuntimeMemTypeDefault);
+    auto allocator = p_provider->GetAllocator(device_id, OrtMemTypeDefault);
     if (!allocator)
       return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
 
@@ -707,7 +707,7 @@ class InferenceSession::Impl {
 
       auto output_provider_type = p_output_provider->Type();
 
-      if (output_provider_type == fetched_provider_type || fetched_tensor_location.mem_type == ONNXRuntimeMemTypeCPUOutput) {
+      if (output_provider_type == fetched_provider_type || fetched_tensor_location.mem_type == OrtMemTypeCPUOutput) {
         user_fetches[idx] = fetched_mlvalue;
         continue;
       }
@@ -1006,7 +1006,7 @@ class InferenceSession::Impl {
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
     if (timeout_in_ms > 0) {
-      ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
+      ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
     }
     p_executor_done->WaitForNotification();
 
@@ -1075,7 +1075,7 @@ class InferenceSession::Impl {
   bool is_model_loaded_ = false;      // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;            // GUARDED_BY(session_mutex_)
 
-  std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr> weights_buffers_;
+  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   InsertCastTransformer insert_cast_transformer_;
 
   // memory allocations for any subgraphs

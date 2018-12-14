@@ -109,6 +109,6 @@ Status CreateOnnxRuntimeEvent(ONNXRUNTIME_EVENT* out) {
   return Status::OK();
 }
 
-void ONNXRuntimeCloseEvent(ONNXRUNTIME_EVENT finish_event) {
+void OrtCloseEvent(ONNXRUNTIME_EVENT finish_event) {
   delete finish_event;
 }

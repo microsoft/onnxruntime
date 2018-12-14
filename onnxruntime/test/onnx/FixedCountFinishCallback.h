@@ -30,7 +30,7 @@ class FixedCountFinishCallbackImpl {
   }
 
   ~FixedCountFinishCallbackImpl() {
-    if (finish_event_) ONNXRuntimeCloseEvent(finish_event_);
+    if (finish_event_) OrtCloseEvent(finish_event_);
   }
 
   ::onnxruntime::common::Status fail(ONNXRUNTIME_CALLBACK_INSTANCE pci) {

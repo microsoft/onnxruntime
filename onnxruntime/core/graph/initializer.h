@@ -42,7 +42,7 @@ class Initializer final {
         break;
       }
       default:
-        ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+        ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
         break;
     }
   }
@@ -80,7 +80,7 @@ class Initializer final {
           break;
         }
         default:
-          ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+          ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
           break;
       }
     }
@@ -122,7 +122,7 @@ class Initializer final {
           break;
         }
         default:
-          ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+          ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
           break;
       }
     }
@@ -342,7 +342,7 @@ class Initializer final {
       num *= dims_[k];
     }
 
-    int64_t n = size()/num;
+    int64_t n = size() / num;
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();

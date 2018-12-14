@@ -9,7 +9,7 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
     : device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      info_(device_allocator_->Info().name, ONNXRuntimeAllocatorType::ONNXRuntimeArenaAllocator, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
+      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
   // Allocate the requested amount of memory.

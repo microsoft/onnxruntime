@@ -43,10 +43,10 @@ class OpKernel {
 
   virtual Status ComputeAsync(OpKernelContext*,
                               DoneCallback) const {
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const ONNXRuntimeAllocatorInfo& Allocator(int id, ONNXRuntimeMemType mem_type) const {
+  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
     return op_kernel_info_.GetAllocatorInfo(id, mem_type);
   }
 
@@ -116,7 +116,7 @@ class OpKernelContext {
   }
 
   /**
-   * return an allocator on device 0, with memtype of ONNXRuntimeMemTypeDefault
+   * return an allocator on device 0, with memtype of OrtMemTypeDefault
    *
    */
   Status GetTempSpaceAllocator(AllocatorPtr* output) const;

@@ -37,7 +37,7 @@ void fuse_activation(const std::string& activation, T* y_data, size_t size, floa
   } else if (activation == "LeakyRelu") {
     y_vec = (y_vec >= 0).select(y_vec, (T)alpha * y_vec);
   } else {
-    ONNXRUNTIME_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
+    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
   }
 }
 

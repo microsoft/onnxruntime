@@ -50,6 +50,6 @@ Status OnnxRuntimeSetEventWhenCallbackReturns(ONNXRUNTIME_CALLBACK_INSTANCE pci,
   return Status::OK();
 }
 
-void ONNXRuntimeCloseEvent(ONNXRUNTIME_EVENT finish_event) {
+void OrtCloseEvent(ONNXRUNTIME_EVENT finish_event) {
   (void)CloseHandle(finish_event);
 }

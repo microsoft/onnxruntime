@@ -18,7 +18,7 @@ using namespace common;
 
 template <typename ERRTYPE>
 const char* CudaErrString(ERRTYPE x) {
-  ONNXRUNTIME_NOT_IMPLEMENTED();
+  ORT_NOT_IMPLEMENTED();
 }
 
 #define CASE_ENUM_TO_STR(x) \

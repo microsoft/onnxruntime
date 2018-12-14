@@ -50,7 +50,7 @@ int OpKernelContext::NumVariadicInputs(size_t arg_num) const {
 }
 
 Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
-  *output = execution_frame_->GetAllocator(kernel_->Allocator(0, ONNXRuntimeMemTypeDefault));
+  *output = execution_frame_->GetAllocator(kernel_->Allocator(0, OrtMemTypeDefault));
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
   return Status::OK();

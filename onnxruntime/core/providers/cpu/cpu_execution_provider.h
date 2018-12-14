@@ -25,7 +25,7 @@ using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vect
 class CPUExecutionProvider : public IExecutionProvider {
  public:
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({ONNXRuntimeMemTypeDefault, [](int) {
+    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {
           return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
 #ifdef USE_JEMALLOC
     ONNXRUNTIME_UNUSED_PARAMETER(info);
@@ -57,7 +57,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
     // Todo: support copy with different devices.
     if (strcmp(src.Location().name, CPU) != 0) {
-      ONNXRUNTIME_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
+      ORT_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
     }
 
     // no really copy needed if is copy to cpu.

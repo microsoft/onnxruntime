@@ -21,7 +21,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.session_state_) {}
 
-const ONNXRuntimeAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, ONNXRuntimeMemType mem_type) const {
+const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType mem_type) const {
   AllocatorPtr alloc = execution_provider_->GetAllocator(device_id, mem_type);
   if (alloc == nullptr) ONNXRUNTIME_THROW("cannot find allocator");
   return alloc->Info();

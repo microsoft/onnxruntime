@@ -11,7 +11,7 @@ TVMGraph::TensorDescriptor::TensorDescriptor(MLDataType type, onnxruntime::Provi
     ctx_.device_type = DLDeviceType::kDLCPU;
     ctx_.device_id = 0;
   } else {
-    ONNXRUNTIME_NOT_IMPLEMENTED("Non-cpu execution provider not supported on TVM now.");
+    ORT_NOT_IMPLEMENTED("Non-cpu execution provider not supported on TVM now.");
   }
 
   if (DataTypeImpl::GetTensorType<double>() == type) {
@@ -19,7 +19,7 @@ TVMGraph::TensorDescriptor::TensorDescriptor(MLDataType type, onnxruntime::Provi
     dtype_.bits = 64;
     dtype_.lanes = 1;
   } else {
-    ONNXRUNTIME_NOT_IMPLEMENTED("Non-double type not supported on TVM now.");
+    ORT_NOT_IMPLEMENTED("Non-double type not supported on TVM now.");
   }
 }
 

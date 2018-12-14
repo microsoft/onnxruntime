@@ -179,7 +179,7 @@ static Status SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>
   return Status::OK();
 }
 
-Status LoopDataFile(int test_data_pb_fd, ONNXRuntimeAllocator* env,
+Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
                     const std::vector<onnx::ValueInfoProto> value_info, std::unordered_map<std::string, ONNXValue*>& name_data_map, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
@@ -225,7 +225,7 @@ Status LoopDataFile(int test_data_pb_fd, ONNXRuntimeAllocator* env,
       case proto::TraditionalMLData::kTensor: {
         ONNXValue* temp_value;
         std::string s = data.tensor().SerializeAsString();
-        ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeTensorProtoToONNXValue(env, s.data(), (int)s.size(), &temp_value));
+        ORT_THROW_ON_ERROR(OrtTensorProtoToONNXValue(env, s.data(), (int)s.size(), &temp_value));
         gvalue.reset(temp_value);
         is_tensor = true;
       } break;
@@ -273,7 +273,7 @@ class OnnxTestCase : public ITestCase {
  private:
   std::string test_case_name_;
   std::basic_string<PATH_CHAR_TYPE> model_url_;
-  ONNXRuntimeAllocator* allocator;
+  OrtAllocator* allocator;
   std::vector<std::string> debuginfo_strings;
   std::mutex m_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
@@ -305,7 +305,7 @@ class OnnxTestCase : public ITestCase {
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
-  OnnxTestCase(ONNXRuntimeAllocator* env, const std::string& test_case_name);
+  OnnxTestCase(OrtAllocator* env, const std::string& test_case_name);
   explicit OnnxTestCase(const std::string& test_case_name) : test_case_name_(test_case_name) {}
   Status GetPerSampleTolerance(double* value) override;
   Status GetRelativePerSampleTolerance(double* value) override;
@@ -348,7 +348,7 @@ Status OnnxTestCase::loadModelFile(const PATH_CHAR_TYPE* model_url, ONNX_NAMESPA
   *model_pb = ret;
   return Status::OK();
 }
-ITestCase* CreateOnnxTestCase(ONNXRuntimeAllocator* ptr, const std::string& test_case_name) {
+ITestCase* CreateOnnxTestCase(OrtAllocator* ptr, const std::string& test_case_name) {
   return new OnnxTestCase(ptr, test_case_name);
 }
 
@@ -531,18 +531,18 @@ Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onn
   if (!has_valid_names) {
     size_t count;
     if (is_input) {
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetInputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputCount(session, &count));
     } else {
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &count));
     }
     if (count != test_data_pbs.size())
       ONNXRUNTIME_THROW("data count mismatch");
     for (size_t i = 0; i != count; ++i) {
       char* temp_name;
       if (is_input) {
-        ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetInputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputName(session, i, allocator, &temp_name));
       } else {
-        ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, allocator, &temp_name));
       }
       var_names[i] = temp_name;
       (*allocator)->Free(allocator, temp_name);
@@ -553,11 +553,11 @@ Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onn
     const onnx::TensorProto& input = test_data_pbs[input_index];
     std::string s = input.SerializeAsString();
     MLValue* v1;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeTensorProtoToONNXValue(allocator, s.data(), (int)s.size(), (ONNXValue**)&v1));
+    ORT_THROW_ON_ERROR(OrtTensorProtoToONNXValue(allocator, s.data(), (int)s.size(), (ONNXValue**)&v1));
     out.insert(std::make_pair(name, (ONNXValue*)v1));
   }
   return Status::OK();
 }
 
-OnnxTestCase::OnnxTestCase(ONNXRuntimeAllocator* ptr, const std::string& test_case_name) : test_case_name_(test_case_name), allocator(ptr) {
+OnnxTestCase::OnnxTestCase(OrtAllocator* ptr, const std::string& test_case_name) : test_case_name_(test_case_name), allocator(ptr) {
 }

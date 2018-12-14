@@ -186,7 +186,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
         (void)env.tests[i]->GetNodeName(&node_name);
         results.push_back(
             std::make_shared<TestCaseResult>(env.tests[i]->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name));
-        ONNXRuntimeCloseEvent(ev);
+        OrtCloseEvent(ev);
       }
     }
   }
@@ -244,7 +244,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
 
 std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                                   const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  ONNXRuntimeAllocator* env) {
+                                  OrtAllocator* env) {
   std::vector<ITestCase*> tests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -287,7 +287,7 @@ SeqTestRunner::SeqTestRunner(ONNXSession* session1,
                              TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), repeat_count_(repeat_count) {
 }
 
-DataRunner::DataRunner(ONNXSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(MockedONNXRuntimeAllocator::Create()) {
+DataRunner::DataRunner(ONNXSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(MockedOrtAllocator::Create()) {
   std::string s;
   c->GetNodeName(&s);
   result = std::make_shared<TestCaseResult>(c->GetDataCount(), EXECUTE_RESULT::UNKNOWN_ERROR, s);
@@ -322,11 +322,11 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   // Create output feed
   size_t output_count;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputCount(session, &output_count));
+  ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = nullptr;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputName(session, i, default_allocator, &output_name));
+    ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, default_allocator, &output_name));
     assert(output_name != nullptr);
     output_names[i] = output_name;
     (*default_allocator)->Free(default_allocator, output_name);
@@ -348,9 +348,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     for (size_t i = 0; i != output_count; ++i) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
-    auto onnx_status = ONNXRuntimeRunInference(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
+    auto onnx_status = OrtRunInference(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
     if (onnx_status != nullptr) {
-      std::string onnx_runtime_error_message = ONNXRuntimeGetErrorMessage(onnx_status);
+      std::string onnx_runtime_error_message = OrtGetErrorMessage(onnx_status);
       ReleaseONNXStatus(onnx_status);
       for (auto& kvp : feeds) {
         ReleaseONNXValue(kvp.second);
@@ -493,7 +493,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     auto sf2 = sf.clone();
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());
     std::unique_ptr<ONNXSession, decltype(&ReleaseONNXSession)> session_object(
-        sf2.ONNXRuntimeCreateInferenceSession(info->GetModelUrl()), ReleaseONNXSession);
+        sf2.OrtCreateInferenceSession(info->GetModelUrl()), ReleaseONNXSession);
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
     //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
     if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")

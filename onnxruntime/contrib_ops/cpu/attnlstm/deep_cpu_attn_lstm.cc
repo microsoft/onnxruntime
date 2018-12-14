@@ -43,7 +43,7 @@ DeepCpuAttnLstmOp::Compute(OpKernelContext* context) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
-    ONNXRUNTIME_NOT_IMPLEMENTED("LSTM operator does not support double yet");
+    ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");
   } else
     ONNXRUNTIME_THROW("Invalid data type for LSTM operator of ", data_type);
 

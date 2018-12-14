@@ -31,7 +31,7 @@ Status Split::Compute(OpKernelContext* context) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update CopyMatrix to support double...
     status = ComputeImpl<double>(*context, input); */
-    ONNXRUNTIME_NOT_IMPLEMENTED("Split operator does not support double yet");
+    ORT_NOT_IMPLEMENTED("Split operator does not support double yet");
   } else
     ONNXRUNTIME_THROW("Invalid data type for Split operator of ", data_type);
 

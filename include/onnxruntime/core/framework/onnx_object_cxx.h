@@ -24,14 +24,14 @@ class ObjectBase {
   ObjectBase() : cls_(&static_cls), ref_count(1) {
   }
 
-  static uint32_t ONNXRUNTIME_API_CALL ONNXRuntimeReleaseImpl(void* this_) {
+  static uint32_t ORT_API_CALL OrtReleaseImpl(void* this_) {
     T* this_ptr = reinterpret_cast<T*>(this_);
     if (--this_ptr->ref_count == 0)
       delete this_ptr;
     return 0;
   }
 
-  static uint32_t ONNXRUNTIME_API_CALL ONNXRuntimeAddRefImpl(void* this_) {
+  static uint32_t ORT_API_CALL OrtAddRefImpl(void* this_) {
     T* this_ptr = reinterpret_cast<T*>(this_);
     ++this_ptr->ref_count;
     return 0;
@@ -39,7 +39,7 @@ class ObjectBase {
 };
 
 template <typename T>
-ONNXObject ObjectBase<T>::static_cls = {ObjectBase<T>::ONNXRuntimeAddRefImpl, ObjectBase<T>::ONNXRuntimeReleaseImpl};
+ONNXObject ObjectBase<T>::static_cls = {ObjectBase<T>::OrtAddRefImpl, ObjectBase<T>::OrtReleaseImpl};
 
 }  // namespace onnxruntime
 

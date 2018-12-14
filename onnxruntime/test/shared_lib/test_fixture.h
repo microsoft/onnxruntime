@@ -13,7 +13,7 @@ typedef const char* PATH_TYPE;
 #endif
 
 //empty
-static inline void ONNXRUNTIME_API_CALL MyLoggingFunction(void*, ONNXRuntimeLoggingLevel, const char*, const char*, const char*, const char*) {
+static inline void ORT_API_CALL MyLoggingFunction(void*, ONNXRuntimeLoggingLevel, const char*, const char*, const char*, const char*) {
 }
 template <bool use_customer_logger>
 class CApiTestImpl : public ::testing::Test {
@@ -22,9 +22,9 @@ class CApiTestImpl : public ::testing::Test {
 
   void SetUp() override {
     if (use_customer_logger) {
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInitializeWithCustomLogger(MyLoggingFunction, nullptr, ONNXRUNTIME_LOGGING_LEVEL_kINFO, "Default", &env));
+      ORT_THROW_ON_ERROR(ONNXRuntimeInitializeWithCustomLogger(MyLoggingFunction, nullptr, ONNXRUNTIME_LOGGING_LEVEL_kINFO, "Default", &env));
     } else {
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInitialize(ONNXRUNTIME_LOGGING_LEVEL_kINFO, "Default", &env));
+      ORT_THROW_ON_ERROR(ONNXRuntimeInitialize(ONNXRUNTIME_LOGGING_LEVEL_kINFO, "Default", &env));
     }
   }
 

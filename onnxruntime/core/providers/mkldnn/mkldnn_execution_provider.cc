@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
 }  // namespace mkl_dnn
 
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& /*info*/) {
-  DeviceAllocatorRegistrationInfo default_allocator_info({ONNXRuntimeMemTypeDefault,
+  DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
                                                           [](int) { return std::make_unique<MKLDNNAllocator>(); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info));
 
@@ -48,7 +48,7 @@ Status MKLDNNExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const
   if (!(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
       !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, MKLDNN) == 0) &&
       !(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, MKLDNN_CPU) == 0)) {
-    ONNXRUNTIME_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
+    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
   }
 
   // Todo: Copy for now. May optimize later to avoid copy.

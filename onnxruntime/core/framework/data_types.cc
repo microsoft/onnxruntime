@@ -541,7 +541,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
         case TensorProto_DataType_FLOAT16:
           return DataTypeImpl::GetTensorType<MLFloat16>();
         default:
-          ONNXRUNTIME_NOT_IMPLEMENTED("tensor type ", tensor_type.elem_type(), " is not supported");
+          ORT_NOT_IMPLEMENTED("tensor type ", tensor_type.elem_type(), " is not supported");
       }
     } break;  // kTensorType
     case TypeProto::ValueCase::kMapType: {
@@ -603,7 +603,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
       MLDataType type = registry.GetMLDataType(proto);
       if (type == nullptr) {
         DataType str_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(proto);
-        ONNXRUNTIME_NOT_IMPLEMENTED("type: ", *str_type, " is not registered");
+        ORT_NOT_IMPLEMENTED("type: ", *str_type, " is not registered");
       }
       return type;
 
@@ -665,7 +665,7 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   MLDataType type = registry.GetMLDataType(proto);
   if (type == nullptr) {
     DataType str_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(proto);
-    ONNXRUNTIME_NOT_IMPLEMENTED("type: ", *str_type, " is not currently registered or supported");
+    ORT_NOT_IMPLEMENTED("type: ", *str_type, " is not currently registered or supported");
   }
   return type;
 }

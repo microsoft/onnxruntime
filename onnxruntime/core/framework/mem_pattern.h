@@ -51,10 +51,10 @@ class MemoryPattern {
 };
 
 struct MemoryPatternGroup {
-  std::vector<ONNXRuntimeAllocatorInfo> locations;
+  std::vector<OrtAllocatorInfo> locations;
   std::vector<MemoryPattern> patterns;
 
-  const MemoryPattern* GetPatterns(const ONNXRuntimeAllocatorInfo& location) const {
+  const MemoryPattern* GetPatterns(const OrtAllocatorInfo& location) const {
     for (size_t i = 0; i < locations.size(); i++)
       if (locations[i] == location) {
         return &patterns[i];

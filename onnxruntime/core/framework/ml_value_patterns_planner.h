@@ -57,7 +57,7 @@ class MLValuePatternPlanner {
   ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MLValuePatternPlanner);
 
   mutable std::mutex lock_;
-  std::map<ONNXRuntimeAllocatorInfo, MemPatternPlanner*> planner_map_;
+  std::map<OrtAllocatorInfo, MemPatternPlanner*> planner_map_;
   std::vector<std::unique_ptr<MemPatternPlanner> > pattern_planners_;
   const SequentialExecutionPlan& execution_planner_;
 };

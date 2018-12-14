@@ -137,25 +137,25 @@ class WindowsEnv : public Env {
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     ONNXRUNTIME_UNUSED_PARAMETER(library_filename);
     ONNXRUNTIME_UNUSED_PARAMETER(handle);
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   virtual common::Status UnloadDynamicLibrary(void* handle) const override {
     ONNXRUNTIME_UNUSED_PARAMETER(handle);
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   virtual Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
     ONNXRUNTIME_UNUSED_PARAMETER(handle);
     ONNXRUNTIME_UNUSED_PARAMETER(symbol_name);
     ONNXRUNTIME_UNUSED_PARAMETER(symbol);
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
     ONNXRUNTIME_UNUSED_PARAMETER(name);
     ONNXRUNTIME_UNUSED_PARAMETER(version);
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
  private:

@@ -94,7 +94,7 @@ std::vector<std::string> GetStackTrace();
   throw ::onnxruntime::OnnxRuntimeException(ONNXRUNTIME_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__))
 
 // Just in order to mark things as not implemented. Do not use in final code.
-#define ONNXRUNTIME_NOT_IMPLEMENTED(...) \
+#define ORT_NOT_IMPLEMENTED(...) \
   throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__))
 
 // Check condition.

@@ -317,7 +317,7 @@ static Status RandomNormalCompute(float mean, float scale,
       break;
     }
     case TensorProto::FLOAT16: {
-      ONNXRUNTIME_NOT_IMPLEMENTED("FLOAT16 is not supported");
+      ORT_NOT_IMPLEMENTED("FLOAT16 is not supported");
     }
     case TensorProto::DOUBLE: {
       GenerateData<double, std::normal_distribution<double>>(
@@ -342,7 +342,7 @@ static Status RandomUniformCompute(float low, float high,
       break;
     }
     case TensorProto::FLOAT16: {
-      ONNXRUNTIME_NOT_IMPLEMENTED("FLOAT16 is not supported");
+      ORT_NOT_IMPLEMENTED("FLOAT16 is not supported");
     }
     case TensorProto::DOUBLE: {
       GenerateData<double, std::uniform_real_distribution<double>>(

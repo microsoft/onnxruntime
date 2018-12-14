@@ -258,7 +258,7 @@ class TensorTypeBase : public DataTypeImpl {
 
   virtual MLDataType GetElementType() const {
     // should never reach here.
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   TensorTypeBase(const TensorTypeBase&) = delete;

@@ -63,7 +63,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
-    {ONNXRuntimeMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
+    {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
@@ -105,16 +105,16 @@ void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
   }
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, ONNXRuntimeMemType mem_type) const {
+AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
   // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
   // cause cacheline to contain dirty data.
-  if (mem_type == ONNXRuntimeMemTypeDefault) {
+  if (mem_type == OrtMemTypeDefault) {
     if (!per_thread_default_allocator_) {
       std::lock_guard<std::mutex> lock(default_allocator_pool_mutex_);
       if (default_allocator_pool_.empty()) {
         DeviceAllocatorRegistrationInfo default_allocator_info(
-            {ONNXRuntimeMemTypeDefault,
+            {OrtMemTypeDefault,
              [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
         per_thread_default_allocator_ = CreateAllocator(default_allocator_info, device_id_);
       } else {

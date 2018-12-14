@@ -103,7 +103,7 @@ class BFCArena : public IArenaAllocator {
     return memory_limit_;
   }
 
-  const ONNXRuntimeAllocatorInfo& Info() const override {
+  const OrtAllocatorInfo& Info() const override {
     return info_;
   }
 
@@ -474,7 +474,7 @@ class BFCArena : public IArenaAllocator {
 
   AllocatorStats stats_;
 
-  ONNXRuntimeAllocatorInfo info_;
+  OrtAllocatorInfo info_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
 

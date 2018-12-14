@@ -102,7 +102,7 @@ std::string Profiler::EndProfiling() {
 // Conditionally sync the GPU if the syncGPU flag is set.
 //
 void ProfilerSyncGpu() {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Needs to implement only for gpus");
+  ORT_NOT_IMPLEMENTED("Needs to implement only for gpus");
 }
 
 }  // namespace profiling

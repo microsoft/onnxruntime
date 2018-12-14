@@ -43,7 +43,7 @@ static common::Status SaveInitializedTensors(const onnxruntime::Graph& graph,
                                              const SequentialExecutionPlan& execution_plan,
                                              const ExecutionProviders& exec_providers,
                                              const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                             std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                             std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                              const SaveTensorFunc& save_tensor_func,
                                              const logging::Logger& logger);
 
@@ -118,7 +118,7 @@ common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTrans
 }
 
 common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pattern,
-                                                          std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers) {
+                                                          std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ONNXRUNTIME_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
@@ -237,7 +237,7 @@ common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
 }
 
 common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                      const ONNXRuntimeAllocatorInfo& alloc_info,
+                                      const OrtAllocatorInfo& alloc_info,
                                       const ExecutionProviders& exec_providers,
                                       MLValue& mlvalue, void* preallocated, size_t preallocated_size) {
   auto alloc_ptr = utils::GetAllocator(exec_providers, alloc_info);
@@ -245,7 +245,7 @@ common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_
     return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get allocator for alloc_info: " + alloc_info.ToString());
   }
 
-  if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == ONNXRuntimeMemTypeCPUOutput) {
+  if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(tensor_proto, alloc_ptr, preallocated, preallocated_size, mlvalue);
   }
@@ -254,7 +254,7 @@ common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_
   // deserialize to CPU first for non-CPU allocator, then alloc and copy
   AllocatorPtr deserialize_alloc_ptr;
   std::unique_ptr<Tensor> p_deserialize_tensor;
-  deserialize_alloc_ptr = exec_providers.Get(kCpuExecutionProvider)->GetAllocator(0, ONNXRuntimeMemTypeDefault);
+  deserialize_alloc_ptr = exec_providers.Get(kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
   ONNXRUNTIME_RETURN_IF_ERROR(utils::GetTensorFromTensorProto(tensor_proto, &p_deserialize_tensor,
                                                               deserialize_alloc_ptr));
   const IExecutionProvider* provider = exec_providers.Get(alloc_info);
@@ -298,7 +298,7 @@ common::Status SaveInitializedTensorsWithMemPattern(const Graph& graph,
                                                     const SequentialExecutionPlan& execution_plan,
                                                     const ExecutionProviders& exec_providers,
                                                     const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                                    std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                                    std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                                     const SaveTensorFunc& save_tensor_func,
                                                     const logging::Logger& logger) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
@@ -409,7 +409,7 @@ common::Status SaveInitializedTensors(const onnxruntime::Graph& graph,
                                       const SequentialExecutionPlan& execution_plan,
                                       const ExecutionProviders& exec_providers,
                                       const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                      std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                      std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                       const SaveTensorFunc& save_tensor_func,
                                       const logging::Logger& logger) {
   // if we enable the memory pattern and already have the execution plan

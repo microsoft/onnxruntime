@@ -83,7 +83,7 @@ static Status GenerateConstantOutput(Tensor& Y, TensorProto::DataType dtype, flo
       GenerateData<bool>(Y, value);
       break;
     case TensorProto::FLOAT16:
-      ONNXRUNTIME_NOT_IMPLEMENTED("FLOAT16 is not supported");
+      ORT_NOT_IMPLEMENTED("FLOAT16 is not supported");
     default:
       ONNXRUNTIME_THROW("Unsupported data type of ", dtype);
   }

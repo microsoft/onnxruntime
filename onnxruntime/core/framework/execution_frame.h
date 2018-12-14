@@ -35,14 +35,14 @@ class ExecutionFrame {
 
   Status AllocateMLValueTensorSelfOwnBuffer(int mlvalue_index,
                                             MLDataType element_type,
-                                            const ONNXRuntimeAllocatorInfo& location,
+                                            const OrtAllocatorInfo& location,
                                             const TensorShape& shape,
                                             bool create_fence = false);
 
   Status AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_to_allocate,
                                                 int mlvalue_index_reuse,
                                                 MLDataType element_type,
-                                                const ONNXRuntimeAllocatorInfo& location,
+                                                const OrtAllocatorInfo& location,
                                                 const TensorShape& shape,
                                                 bool create_fence = false);
 
@@ -54,7 +54,7 @@ class ExecutionFrame {
   // This method is not thread safe!
   Status AllocateTensorWithSelfOwnBuffer(int index,
                                          MLDataType element_type,
-                                         const ONNXRuntimeAllocatorInfo& location,
+                                         const OrtAllocatorInfo& location,
                                          const TensorShape& shape,
                                          bool create_fence = false);
 
@@ -66,7 +66,7 @@ class ExecutionFrame {
   Status AllocateTensorWithPreAllocateBuffer(int offset,
                                              void* pBuffer,
                                              MLDataType element_type,
-                                             const ONNXRuntimeAllocatorInfo& location,
+                                             const OrtAllocatorInfo& location,
                                              const TensorShape& shape);
 
   const MLValue& GetMLValue(int mlvalue_index) const {
@@ -96,7 +96,7 @@ class ExecutionFrame {
                                       const MLValueAllocationParameters& parameters,
                                       MLValue*& p_mlvalue);
 
-  AllocatorPtr GetAllocator(const ONNXRuntimeAllocatorInfo& info);
+  AllocatorPtr GetAllocator(const OrtAllocatorInfo& info);
 
   Status ReleaseMLValue(int mlvalue_idx);
 
@@ -121,7 +121,7 @@ class ExecutionFrame {
 
   Status AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_index,
                                                   MLDataType element_type,
-                                                  const ONNXRuntimeAllocatorInfo& location,
+                                                  const OrtAllocatorInfo& location,
                                                   const TensorShape& shape,
                                                   bool create_fence);
 
@@ -135,7 +135,7 @@ class ExecutionFrame {
   Status AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlvalue,
                                                    void* pBuffer,
                                                    MLDataType element_type,
-                                                   const ONNXRuntimeAllocatorInfo& location,
+                                                   const OrtAllocatorInfo& location,
                                                    const TensorShape& shape);
 
   void TraceAllocate(int mlvalue_idx, size_t size);
@@ -178,6 +178,6 @@ class ExecutionFrame {
   std::vector<int> output_indices_;
 
   // Big chunks on different locations that will be used by mem_pattern.
-  std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr> buffers_;
+  std::map<OrtAllocatorInfo, BufferUniquePtr> buffers_;
 };
 }  // namespace onnxruntime

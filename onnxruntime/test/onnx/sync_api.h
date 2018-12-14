@@ -50,4 +50,4 @@ PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env& env);
 //pci is a pointer, can be NULL. If pci is NULL, signal the event immediately
 ::onnxruntime::common::Status OnnxRuntimeSetEventWhenCallbackReturns(ONNXRUNTIME_CALLBACK_INSTANCE pci, ONNXRUNTIME_EVENT finish_event);
 ::onnxruntime::common::Status WaitAndCloseEvent(ONNXRUNTIME_EVENT finish_event);
-void ONNXRuntimeCloseEvent(ONNXRUNTIME_EVENT finish_event);
+void OrtCloseEvent(ONNXRUNTIME_EVENT finish_event);

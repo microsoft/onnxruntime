@@ -43,7 +43,7 @@ class DataRunner {
  private:
   ONNXSession* session;
   CALL_BACK on_finished;
-  ONNXRuntimeAllocatorInteface** const default_allocator;
+  OrtAllocatorInterface** const default_allocator;
   EXECUTE_RESULT RunTaskImpl(size_t task_id);
   ONNXRUNTIME_DISALLOW_COPY_AND_ASSIGNMENT(DataRunner);
 
@@ -53,7 +53,7 @@ class DataRunner {
   void RunTask(size_t task_id, ONNXRUNTIME_CALLBACK_INSTANCE pci, bool store_result);
   virtual ~DataRunner() {
     ReleaseONNXSession(session);
-    ONNXRuntimeReleaseObject(default_allocator);
+    OrtReleaseObject(default_allocator);
   }
 
   virtual void Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t concurrent_runs) = 0;
@@ -131,7 +131,7 @@ struct DataTask {
 
 std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                                   const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  ONNXRuntimeAllocator* env);
+                                  OrtAllocator* env);
 //Do not run this function in the thread pool passed in
 ::onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);

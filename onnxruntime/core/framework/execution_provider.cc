@@ -11,12 +11,12 @@
 namespace onnxruntime {
 
 namespace {
-inline int MakeKey(int id, ONNXRuntimeMemType mem_type) {
+inline int MakeKey(int id, OrtMemType mem_type) {
   return id << 2 | mem_type;
 }
 }  // namespace
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, ONNXRuntimeMemType mem_type) const {
+AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   auto iter = allocators_.find(MakeKey(id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;
@@ -56,7 +56,7 @@ common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
 common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  const ONNXRuntimeAllocatorInfo& info = allocator->Info();
+  const OrtAllocatorInfo& info = allocator->Info();
   const int key = MakeKey(info.id, info.mem_type);
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {
