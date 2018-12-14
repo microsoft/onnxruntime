@@ -71,7 +71,7 @@ Status SliceImpl(const size_t element_size,
           (CUDA_LONG)N);
       break;
     default:
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Slice operator");
+      return ORT_MAKE_STATUS(ORT, FAIL, "Type not supported for Slice operator");
   }
 
   return Status::OK();
