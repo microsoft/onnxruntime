@@ -18,7 +18,7 @@ using namespace onnxruntime;
 
 namespace {
 
-OnnxRuntimeTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
+OrtTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
   switch (type) {
     CASE_TYPE(FLOAT)
     CASE_TYPE(UINT8)
@@ -316,7 +316,7 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const ONNXValue* o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
-    if (ONNXRuntimeIsTensor(o) == 0) {
+    if (OrtIsTensor(o) == 0) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
 
@@ -325,14 +325,14 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
     //	return COMPARE_RESULT::TYPE_MISMATCH;
     //}
-    std::unique_ptr<ONNXRuntimeTensorTypeAndShapeInfo> info;
+    std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
     {
-      ONNXRuntimeTensorTypeAndShapeInfo* t1;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeGetTensorShapeAndType(o, &t1));
+      OrtTensorTypeAndShapeInfo* t1;
+      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(o, &t1));
       info.reset(t1);
     }
-    OnnxRuntimeTensorElementDataType real_type = ONNXRuntimeGetTensorElementType(info.get());
-    OnnxRuntimeTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
+    OrtTensorElementDataType real_type = OrtGetTensorElementType(info.get());
+    OrtTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
     if (real_type != expected_type) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }

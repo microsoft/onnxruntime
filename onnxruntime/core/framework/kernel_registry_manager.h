@@ -54,7 +54,7 @@ class KernelRegistryManager {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
   // This list stores all kernel registries shared across sessions, including common ones and customized ones.
   std::list<std::shared_ptr<KernelRegistry>> kernel_registries_;

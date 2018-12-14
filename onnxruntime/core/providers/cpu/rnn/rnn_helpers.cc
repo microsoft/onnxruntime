@@ -41,13 +41,13 @@ Status ValidateCommonRnnInputs(const Tensor& X,
   int64_t input_size = X_shape[2];
 
   if (X_shape.NumDimensions() != 3)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
   if (W_shape.NumDimensions() != 3 ||
       W_shape[0] != num_directions ||
       W_shape[1] != hidden_size * WRB_dim_1_multipler ||
       W_shape[2] != input_size)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
                            num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
                            input_size, "}. Actual:", W_shape);
 
@@ -55,7 +55,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
       R_shape[0] != num_directions ||
       R_shape[1] != hidden_size * WRB_dim_1_multipler ||
       R_shape[2] != hidden_size)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
                            num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
                            hidden_size, "}. Actual:", R_shape);
 
@@ -64,7 +64,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions ||
         B_shape[1] != 2 * WRB_dim_1_multipler * hidden_size)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
                              num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
   }
 
@@ -72,7 +72,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
                              batch_size, "}. Actual:", sequence_lens_shape);
     }
 
@@ -80,7 +80,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
     if (std::any_of(sequence_len_entries.cbegin(),
                     sequence_len_entries.cend(),
                     [seq_length](int len) { return len <= 0 || len > seq_length; })) {
-      return ONNXRUNTIME_MAKE_STATUS(
+      return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
     }
@@ -94,7 +94,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
         initial_h_shape[1] != batch_size ||
         initial_h_shape[2] != hidden_size)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
                              num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
   }
 
@@ -133,7 +133,7 @@ std::string NormalizeActivationArgumentAndGetAlphaBetaCount(const std::string& a
 
   auto usage_entry = NameToArgUsageMap.find(name);
   if (usage_entry == NameToArgUsageMap.end()) {
-    ONNXRUNTIME_THROW(
+    ORT_THROW(
         "Expecting activation to be one of Affine, Relu, LeakyRelu, "
         "ThresholdedRelu, Tanh, ScaledTanh, Sigmoid, HardSigmoid, "
         "Elu, Softsign, Softplus. Got " +
@@ -262,9 +262,9 @@ inline void clip_for_tanh(const float* ps, float* pd, int c) {
 }
 
 void add_bias_into_ignore(const float* ps, float* pd, const int c) {
-  ONNXRUNTIME_UNUSED_PARAMETER(ps);
-  ONNXRUNTIME_UNUSED_PARAMETER(pd);
-  ONNXRUNTIME_UNUSED_PARAMETER(c);
+  ORT_UNUSED_PARAMETER(ps);
+  ORT_UNUSED_PARAMETER(pd);
+  ORT_UNUSED_PARAMETER(c);
 }
 
 void add_bias_into(const float* ps, float* pd, const int c) {
@@ -284,7 +284,7 @@ void clip(const float b, float* pd, const int c) {
 }
 
 void clip_ignore_bias(const float b, const float* pb, float* pd, const int c) {
-  ONNXRUNTIME_UNUSED_PARAMETER(pb);
+  ORT_UNUSED_PARAMETER(pb);
 
   for (int i = 0; i < c; i++) {
     float x = pd[i];
@@ -311,8 +311,8 @@ void clip_add_bias(const float b, const float* pb, float* pd, const int c) {
 
 void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
                const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_sigmoid(ps1, ps1_c, c);
 
@@ -335,8 +335,8 @@ void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int 
 
 void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
             const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_tanh(ps1, ps1_c, c);
 
@@ -359,9 +359,9 @@ void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
 
 void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
             const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(ps1_c);
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     const float max = ps1[i] > 0 ? ps1[i] : 0.0f;
@@ -372,7 +372,7 @@ void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
 void composed_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
                 std::function<float(float, float, float)> func,
                 const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(ps1_c);
+  ORT_UNUSED_PARAMETER(ps1_c);
   for (int i = 0; i < c; i++) {
     pd[i] = ps2[i] * func(ps1[i], alpha, beta);
   }
@@ -380,9 +380,9 @@ void composed_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int
 
 void sigmoid_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
                      const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(ps1_c);
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     float x = ps1[i];
@@ -392,9 +392,9 @@ void sigmoid_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd
 
 void tanh_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
                   const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(ps1_c);
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     pd[i] = ::std::tanh(ps1[i]) * ps2[i];
@@ -402,8 +402,8 @@ void tanh_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, i
 }
 
 void sigmoid(float* pd, int c, const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_sigmoid_in_place(pd, c);
 
@@ -425,8 +425,8 @@ void sigmoid(float* pd, int c, const float alpha, const float beta) {
 }
 
 void tanh(float* pd, int c, const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_tanh_in_place(pd, c);
 
@@ -448,8 +448,8 @@ void tanh(float* pd, int c, const float alpha, const float beta) {
 }
 
 void relu(float* pd, int c, const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     if (pd[i] < 0)
@@ -458,8 +458,8 @@ void relu(float* pd, int c, const float alpha, const float beta) {
 }
 
 void sigmoid_exact(float* pd, int c, const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     float x = pd[i];
@@ -468,8 +468,8 @@ void sigmoid_exact(float* pd, int c, const float alpha, const float beta) {
 }
 
 void tanh_exact(float* pd, int c, const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     float x = pd[i];
@@ -486,8 +486,8 @@ void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float
 
 void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, const int c,
                          const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_tanh_in_place(ps2, c);
 
@@ -510,8 +510,8 @@ void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, const int c,
 
 void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, const int c,
                             const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_sigmoid_in_place(ps2, c);
 
@@ -534,8 +534,8 @@ void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, const int c
 
 void gru_reset_gate_relu(const float* ps1, float* ps2, float* pd, const int c,
                          const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     const auto max = ps2[i] > 0 ? ps2[i] : 0.0f;
@@ -553,8 +553,8 @@ void gru_reset_gate_composed(const float* ps1, float* ps2, float* pd, const int 
 
 void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po, const int c,
                           const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_tanh_in_place(ph, c);
 
@@ -577,8 +577,8 @@ void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po
 
 void gru_output_gate_relu(float* ph, const float* pz, const float* ps, float* po, const int c,
                           const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   for (int i = 0; i < c; i++) {
     float max = ph[i] > 0 ? ph[i] : 0.0f;
@@ -596,8 +596,8 @@ void gru_output_gate_composed(float* ph, const float* pz, const float* ps, float
 
 void gru_output_gate_sigmoid(float* ph, const float* pz, const float* ps, float* po, const int c,
                              const float alpha, const float beta) {
-  ONNXRUNTIME_UNUSED_PARAMETER(alpha);
-  ONNXRUNTIME_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(beta);
 
   clip_for_sigmoid_in_place(ph, c);
 
@@ -700,7 +700,7 @@ ActivationFuncPtr ActivationFuncByName(const std::string& func) {
       composed_activation_func(ps, c, Softplus<float>, alpha, beta);
     };
 
-  ONNXRUNTIME_THROW("Invalid activation function of ", func);
+  ORT_THROW("Invalid activation function of ", func);
 }
 
 LstmMergeGatesFuncPtr LstmMergeGatesFuncByName(const std::string& func) {
@@ -761,7 +761,7 @@ LstmMergeGatesFuncPtr LstmMergeGatesFuncByName(const std::string& func) {
       composed_m(ps1, ps1_c, ps2, ps3, c, Softplus<float>, alpha, beta);
     };
 
-  ONNXRUNTIME_THROW("Invalid LSTM merge activation function of ", func);
+  ORT_THROW("Invalid LSTM merge activation function of ", func);
 }
 
 GruResetGateFuncPtr GruResetGateFuncByName(const std::string& func) {
@@ -814,7 +814,7 @@ GruResetGateFuncPtr GruResetGateFuncByName(const std::string& func) {
       gru_reset_gate_composed(ps1, ps2, ps3, c, Softplus<float>, alpha, beta);
     };
 
-  ONNXRUNTIME_THROW("Invalid GRU reset gate activation function: ", func);
+  ORT_THROW("Invalid GRU reset gate activation function: ", func);
 }
 
 GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func) {
@@ -875,7 +875,7 @@ GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func) {
       gru_output_gate_composed(ps1, ps2, ph, ps3, c, Softplus<float>, alpha, beta);
     };
 
-  ONNXRUNTIME_THROW("Invalid GRU hidden gate activation function: ", func);
+  ORT_THROW("Invalid GRU hidden gate activation function: ", func);
 }
 
 }  // namespace deepcpu

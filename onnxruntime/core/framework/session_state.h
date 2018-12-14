@@ -149,7 +149,7 @@ class SessionState {
   void SetThreadPool(TaskThreadPool* p_pool) { thread_pool_ = p_pool; }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor

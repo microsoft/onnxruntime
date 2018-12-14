@@ -6,29 +6,29 @@
 #include <stdexcept>
 #include <memory>
 
-ONNXRUNTIME_API(ONNXRuntimeRunOptions*, ONNXRuntimeCreateRunOptions) {
-  std::unique_ptr<ONNXRuntimeRunOptions> options = std::make_unique<ONNXRuntimeRunOptions>();
+ORT_API(OrtRunOptions*, OrtCreateRunOptions) {
+  std::unique_ptr<OrtRunOptions> options = std::make_unique<OrtRunOptions>();
   return options.release();
 }
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeRunOptionsSetRunLogVerbosityLevel, _In_ ONNXRuntimeRunOptions* options, unsigned int value) {
+ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* options, unsigned int value) {
   options->run_log_verbosity_level = value;
   return nullptr;
 }
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeRunOptionsSetRunTag, _In_ ONNXRuntimeRunOptions* options, _In_ const char* run_tag) {
+ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ const char* run_tag) {
   if (run_tag)
     options->run_tag = run_tag;
   return nullptr;
 }
 
-ONNXRUNTIME_API(unsigned int, ONNXRuntimeRunOptionsGetRunLogVerbosityLevel, _In_ ONNXRuntimeRunOptions* options) {
+ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions* options) {
   return options->run_log_verbosity_level;
 }
-ONNXRUNTIME_API(const char*, ONNXRuntimeRunOptionsGetRunTag, _In_ ONNXRuntimeRunOptions* options) {
+ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions* options) {
   return options->run_tag.c_str();
 }
 
-ONNXRUNTIME_API(void, ONNXRuntimeRunOptionsSetTerminate, _In_ ONNXRuntimeRunOptions* options, bool value) {
+ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions* options, bool value) {
   options->terminate = value;
 }

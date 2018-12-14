@@ -202,7 +202,7 @@ struct SetMapTypes {
     TensorContainedTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
-    ONNXRUNTIME_ENFORCE(value_proto != nullptr, typeid(V).name(),
+    ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
                         " expected to be a registered ONNX type");
     CopyMutableMapValue(*value_proto, proto);
   }
@@ -219,7 +219,7 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
-    ONNXRUNTIME_ENFORCE(elem_proto != nullptr, typeid(T).name(),
+    ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
                         " expected to be a registered ONNX type");
     CopyMutableSeqElement(*elem_proto, proto);
   }
@@ -258,7 +258,7 @@ class TensorTypeBase : public DataTypeImpl {
 
   virtual MLDataType GetElementType() const {
     // should never reach here.
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   TensorTypeBase(const TensorTypeBase&) = delete;
@@ -282,7 +282,7 @@ class TensorTypeBase : public DataTypeImpl {
  *
  * \details
  *        Usage:
- *        ONNXRUNTIME_REGISTER_TENSOR(ELEMENT_TYPE)
+ *        ORT_REGISTER_TENSOR(ELEMENT_TYPE)
  *        Currently all of the Tensors irrespective of the dimensions are mapped to Tensor<type>
  *        type. IsCompatible() currently ignores shape.
  */
@@ -372,7 +372,7 @@ class NonTensorType : public NonTensorTypeBase {
  *
  * \param T - cpp type that you wish to register as runtime MapType
  *
- * \details Usage: ONNXRUNTIME_REGISTER_MAP(C++Type)
+ * \details Usage: ORT_REGISTER_MAP(C++Type)
  *          The type is required to have mapped_type and
  *          key_type defined
  */
@@ -401,7 +401,7 @@ class MapType : public NonTensorType<CPPType> {
  *  \param T - CPP type that you wish to register as Sequence
  *             runtime type.
  *
- * \details Usage: ONNXRUNTIME_REGISTER_SEQ(C++Type)
+ * \details Usage: ORT_REGISTER_SEQ(C++Type)
  *          The type is required to have value_type defined
  */
 template <typename CPPType>
@@ -482,7 +482,7 @@ class NonOnnxType : public DataTypeImpl {
 // thus a simple way to pre-instantiate a given template
 // at a registration time does not currently work and the macro
 // is needed.
-#define ONNXRUNTIME_REGISTER_TENSOR_TYPE(ELEM_TYPE)     \
+#define ORT_REGISTER_TENSOR_TYPE(ELEM_TYPE)     \
   template <>                                           \
   MLDataType TensorType<ELEM_TYPE>::Type() {            \
     static TensorType<ELEM_TYPE> tensor_type;           \
@@ -493,7 +493,7 @@ class NonOnnxType : public DataTypeImpl {
     return TensorType<ELEM_TYPE>::Type();               \
   }
 
-#define ONNXRUNTIME_REGISTER_MAP(TYPE)       \
+#define ORT_REGISTER_MAP(TYPE)       \
   template <>                                \
   MLDataType MapType<TYPE>::Type() {         \
     static MapType<TYPE> map_type;           \
@@ -504,7 +504,7 @@ class NonOnnxType : public DataTypeImpl {
     return MapType<TYPE>::Type();            \
   }
 
-#define ONNXRUNTIME_REGISTER_SEQ(TYPE)       \
+#define ORT_REGISTER_SEQ(TYPE)       \
   template <>                                \
   MLDataType SequenceType<TYPE>::Type() {    \
     static SequenceType<TYPE> sequence_type; \
@@ -515,7 +515,7 @@ class NonOnnxType : public DataTypeImpl {
     return SequenceType<TYPE>::Type();       \
   }
 
-#define ONNXRUNTIME_REGISTER_NON_ONNX_TYPE(TYPE) \
+#define ORT_REGISTER_NON_ONNX_TYPE(TYPE) \
   template <>                                    \
   MLDataType NonOnnxType<TYPE>::Type() {         \
     static NonOnnxType<TYPE> non_onnx_type;      \
@@ -526,7 +526,7 @@ class NonOnnxType : public DataTypeImpl {
     return NonOnnxType<TYPE>::Type();            \
   }
 
-#define ONNXRUNTIME_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name) \
+#define ORT_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name) \
   template <>                                                   \
   MLDataType OpaqueType<CPPType, Domain, Name>::Type() {        \
     static OpaqueType<CPPType, Domain, Name> opaque_type;       \

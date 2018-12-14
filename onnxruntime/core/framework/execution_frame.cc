@@ -20,7 +20,7 @@ ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& f
                                const ::onnxruntime::SessionState& session_state)
     : session_state_(session_state), mem_patterns_(nullptr), planner_(nullptr) {
   auto* graph = session_state.GetGraphViewer();
-  ONNXRUNTIME_ENFORCE(graph);
+  ORT_ENFORCE(graph);
   Init(*graph, feeds, output_names, fetches);
 
   // If the session enable memory pattern optimization
@@ -49,7 +49,7 @@ ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& f
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.
         for (size_t i = 0; i < mem_patterns_->locations.size(); i++) {
-          ONNXRUNTIME_ENFORCE(buffers_.find(mem_patterns_->locations[i]) == buffers_.end());
+          ORT_ENFORCE(buffers_.find(mem_patterns_->locations[i]) == buffers_.end());
           AllocatorPtr alloc = GetAllocator(mem_patterns_->locations[i]);
           void* buffer = mem_patterns_->patterns[i].PeakSize() > 0 ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize()) : nullptr;
           buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
@@ -63,16 +63,16 @@ ExecutionFrame::~ExecutionFrame() = default;
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(int mlvalue_index,
                                                           const DataTypeImpl* element_type,
-                                                          const ONNXRuntimeAllocatorInfo& location,
+                                                          const OrtAllocatorInfo& location,
                                                           const TensorShape& shape,
                                                           bool create_fence) {
-  ONNXRUNTIME_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
+  ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
   return AllocateMLValueTensorSelfOwnBufferHelper(mlvalue_index, element_type, location, shape, create_fence);
 }
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_index,
                                                                 const DataTypeImpl* element_type,
-                                                                const ONNXRuntimeAllocatorInfo& location,
+                                                                const OrtAllocatorInfo& location,
                                                                 const TensorShape& shape,
                                                                 bool create_fence) {
   if (mlvalue_index < 0)
@@ -95,7 +95,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_inde
   }
   // create fence if needed
   if (create_fence) {
-    ONNXRUNTIME_ENFORCE(p_mlvalue->Fence() == nullptr);
+    ORT_ENFORCE(p_mlvalue->Fence() == nullptr);
     FencePtr f = alloc->CreateFence(&SessionState());
     // it is OK to have fence been nullptr if the execution provider has no async execution,
     // and allocator::CreateFence returns nullptr
@@ -164,23 +164,23 @@ void ExecutionFrame::TraceAllocate(int mlvalue_idx, size_t size) {
 
 Status ExecutionFrame::AllocateTensorWithSelfOwnBuffer(const int index,
                                                        const DataTypeImpl* element_type,
-                                                       const ONNXRuntimeAllocatorInfo& location,
+                                                       const OrtAllocatorInfo& location,
                                                        const TensorShape& shape,
                                                        bool create_fence) {
-  ONNXRUNTIME_ENFORCE(index >= 0 && static_cast<size_t>(index) < node_values_.size());
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < node_values_.size());
   return AllocateMLValueTensorSelfOwnBufferHelper(node_values_[index], element_type, location, shape, create_fence);
 }
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_to_allocate,
                                                               int mlvalue_index_reuse,
                                                               const DataTypeImpl* element_type,
-                                                              const ONNXRuntimeAllocatorInfo& location,
+                                                              const OrtAllocatorInfo& location,
                                                               const TensorShape& shape,
                                                               bool create_fence) {
-  ONNXRUNTIME_ENFORCE(mlvalue_index_to_allocate >= 0 && mlvalue_index_to_allocate < all_values_.size());
+  ORT_ENFORCE(mlvalue_index_to_allocate >= 0 && mlvalue_index_to_allocate < all_values_.size());
   MLValue* p_mlvalue = &all_values_[mlvalue_index_to_allocate];
 
-  ONNXRUNTIME_ENFORCE(mlvalue_index_reuse >= 0 && mlvalue_index_reuse < all_values_.size());
+  ORT_ENFORCE(mlvalue_index_reuse >= 0 && mlvalue_index_reuse < all_values_.size());
   MLValue* p_mlvalue_reuse = &all_values_[mlvalue_index_reuse];
 
   auto* reuse_tensor = p_mlvalue_reuse->GetMutable<Tensor>();
@@ -201,7 +201,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_
 Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlvalue,
                                                                  void* pBuffer,
                                                                  const DataTypeImpl* element_type,
-                                                                 const ONNXRuntimeAllocatorInfo& location,
+                                                                 const OrtAllocatorInfo& location,
                                                                  const TensorShape& shape) {
   if (p_mlvalue->IsAllocated()) {
     return Status::OK();
@@ -220,9 +220,9 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlva
 Status ExecutionFrame::AllocateTensorWithPreAllocateBuffer(const int offset,
                                                            void* pBuffer,
                                                            const DataTypeImpl* element_type,
-                                                           const ONNXRuntimeAllocatorInfo& location,
+                                                           const OrtAllocatorInfo& location,
                                                            const TensorShape& shape) {
-  ONNXRUNTIME_ENFORCE(offset >= 0 && offset < node_values_.size());
+  ORT_ENFORCE(offset >= 0 && offset < node_values_.size());
   if (node_values_[offset] < 0)
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   auto value = &all_values_[node_values_[offset]];
@@ -230,7 +230,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBuffer(const int offset,
 }
 
 void ExecutionFrame::Release(const int offset) {
-  ONNXRUNTIME_ENFORCE(offset >= 0 && offset < node_offsets_.size());
+  ORT_ENFORCE(offset >= 0 && offset < node_offsets_.size());
   if (node_values_[offset] >= 0 && node_values_[offset] < all_values_.size()) {
     all_values_[node_values_[offset]] = MLValue();
     TraceFree(node_values_[offset]);
@@ -242,7 +242,7 @@ Status AllocateTraditionalMLValue(MLValue* p_mlvalue,
                                   const MLValueAllocationParameters& parameters) {
   // right now we don't need any parameter for ml value creation,
   // keep it in api for extensibility
-  ONNXRUNTIME_UNUSED_PARAMETER(parameters);
+  ORT_UNUSED_PARAMETER(parameters);
   auto creator = type->GetCreateFunc();
   p_mlvalue->Init(creator(),
                   type,
@@ -258,7 +258,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
                   "Tried to allocated with invalid mlvalue index: " + std::to_string(mlvalue_index));
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ONNXRUNTIME_ENFORCE(mlvalue_index >= 0 && mlvalue_index < alloc_plan.size());
+  ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[mlvalue_index];
 
   auto alloc_info = per_alloc_plan.location;
@@ -281,7 +281,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
     // In the future we may want to have different way to handle it.
     case AllocKind::kAllocateOutput:
     case AllocKind::kAllocate: {
-      ONNXRUNTIME_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(mlvalue_index,
+      ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(mlvalue_index,
                                                                      ml_data_type,
                                                                      alloc_info,
                                                                      parameters.tensor_shape,
@@ -290,7 +290,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
     }
     case AllocKind::kReuse: {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      ONNXRUNTIME_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(mlvalue_index,
+      ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(mlvalue_index,
                                                                          reuse_mlvalue_index,
                                                                          ml_data_type,
                                                                          alloc_info,
@@ -332,7 +332,7 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
   for (const auto& feed : feeds) {
     int mlvalue_idx;
     Status status = mlvalue_idx_map.GetIdx(feed.first, mlvalue_idx);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     // we are sharing the underline tensor/object for MLValue
     all_values_[mlvalue_idx] = feed.second;
   }
@@ -342,13 +342,13 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
   for (const auto& oname : output_names) {
     int mlvalue_idx;
     Status status = mlvalue_idx_map.GetIdx(oname, mlvalue_idx);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     output_indices_.push_back(mlvalue_idx);
   }
 
   if (!fetches.empty()) {
     // should've already verified this much before when Run() starts
-    ONNXRUNTIME_ENFORCE(output_names.size() == fetches.size(),
+    ORT_ENFORCE(output_names.size() == fetches.size(),
                         "output_names vector size: " + std::to_string(output_names.size()) +
                             " does not match that of fetches vector: " + std::to_string(fetches.size()));
 
@@ -356,7 +356,7 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
     for (const auto& oname : output_names) {
       int mlvalue_idx;
       Status status = mlvalue_idx_map.GetIdx(oname, mlvalue_idx);
-      ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+      ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
       all_values_[mlvalue_idx] = fetches.at(idx++);
       output_indices_.push_back(mlvalue_idx);
     }
@@ -364,7 +364,7 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
 
   // 5. set node args
   for (auto& node : graph.Nodes()) {
-    ONNXRUNTIME_ENFORCE(node.Index() < node_offsets_.size());
+    ORT_ENFORCE(node.Index() < node_offsets_.size());
     node_offsets_[node.Index()] = static_cast<int>(node_values_.size());
 
     for (auto input_def : node.InputDefs()) {
@@ -382,7 +382,7 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
 }
 
 void ExecutionFrame::SetupNodeArg(const onnxruntime::NodeArg* arg) {
-  ONNXRUNTIME_ENFORCE(arg);
+  ORT_ENFORCE(arg);
   auto& name = arg->Name();
   //if the arg's name is empty, it is an not needed optional input/output
   //set index to -1
@@ -391,7 +391,7 @@ void ExecutionFrame::SetupNodeArg(const onnxruntime::NodeArg* arg) {
   } else {
     int index;
     Status status = session_state_.GetMLValueNameIdxMap().GetIdx(name, index);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     node_values_.push_back(index);
   }
 }
@@ -433,7 +433,7 @@ Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup* out) const {
 
 // Return nullptr if index map to an value that is an unused optional input/output
 const MLValue* ExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
-  ONNXRUNTIME_ENFORCE(index >= 0 && static_cast<size_t>(index) < node_values_.size());
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < node_values_.size());
   return node_values_[index] >= 0 ? &all_values_[node_values_[index]] : nullptr;
 }
 
@@ -442,7 +442,7 @@ MLValue* ExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
   return const_cast<MLValue*>(GetNodeInputOrOutputMLValue(index));
 }
 
-AllocatorPtr ExecutionFrame::GetAllocator(const ONNXRuntimeAllocatorInfo& info) {
+AllocatorPtr ExecutionFrame::GetAllocator(const OrtAllocatorInfo& info) {
   return utils::GetAllocator(session_state_, info);
 }
 
@@ -451,7 +451,7 @@ static inline void VerifyShape(const MLValue* p_mlvalue,
   if (p_mlvalue->IsTensor()) {
     const Tensor* tensor = &p_mlvalue->Get<Tensor>();
 
-    ONNXRUNTIME_ENFORCE(tensor->Shape() == parameters.tensor_shape,
+    ORT_ENFORCE(tensor->Shape() == parameters.tensor_shape,
                         "MLValue shape verification failed. Current shape:", tensor->Shape(),
                         " Requested shape:", parameters.tensor_shape);
   }
@@ -483,13 +483,13 @@ Status ExecutionFrame::GetOrCreateNodeOutputMLValue(int index,
   }
     // It's not allocated, then allocate it with given shape and return.
     // Perform allocation based on the allocation plan
-    ONNXRUNTIME_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(node_values_[index], parameters));
+    ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(node_values_[index], parameters));
     return Status::OK();
 }
 
 Status ExecutionFrame::ReleaseMLValue(int mlvalue_idx) {
   if (mlvalue_idx < 0 || static_cast<size_t>(mlvalue_idx) >= all_values_.size()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", mlvalue_idx);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", mlvalue_idx);
   }
   all_values_[mlvalue_idx] = MLValue();
   TraceFree(mlvalue_idx);
@@ -499,7 +499,7 @@ Status ExecutionFrame::ReleaseMLValue(int mlvalue_idx) {
 const SequentialExecutionPlan::AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int mlvalue_idx) {
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ONNXRUNTIME_ENFORCE(mlvalue_idx >= 0 && mlvalue_idx < alloc_plan.size());
+  ORT_ENFORCE(mlvalue_idx >= 0 && mlvalue_idx < alloc_plan.size());
   return alloc_plan[mlvalue_idx];
 }
 }  // namespace onnxruntime

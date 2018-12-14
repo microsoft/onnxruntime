@@ -52,33 +52,33 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
         s_.last_w_dims = w_dims;
 
       Prepare p;
-      ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p));
+      ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p));
 
       const auto& y_dims = p.Y->Shape().GetDims();
       s_.y_dims = y_dims;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
-      ONNXRUNTIME_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
 
       if (w_dims_changed)
-        ONNXRUNTIME_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+        ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ONNXRUNTIME_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
 
       IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
-        ONNXRUNTIME_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
+        ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
         std::vector<int64_t> b_dims(2 + p.kernel_shape.size());
         b_dims[0] = 1;           // N
         b_dims[1] = b_shape[0];  // C
         for (size_t i = 0; i < p.kernel_shape.size(); i++)
           b_dims[2 + i] = 1;
 
-        ONNXRUNTIME_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
+        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       }
 
       y_data = reinterpret_cast<CudaT*>(p.Y->template MutableData<T>());

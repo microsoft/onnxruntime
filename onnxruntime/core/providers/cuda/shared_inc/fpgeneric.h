@@ -209,10 +209,10 @@ inline cublasStatus_t cublasScalHelper(cublasHandle_t handle, int n, const half*
   return cublasScalEx(handle, n, (void*)&tmp_alpha, CUDA_R_32F, (void*)x, CUDA_R_16F, incx, CUDA_R_32F);
 }
 inline cublasStatus_t cublasScalHelper(cublasHandle_t, int, const char*, char*, int) {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Unsupported template argument(char) in cublas_scal");
+  ORT_NOT_IMPLEMENTED("Unsupported template argument(char) in cublas_scal");
 }
 inline cublasStatus_t cublasScalHelper(cublasHandle_t, int, const short*, short*, int) {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Unsupported template argument(short) in cublas_scal");
+  ORT_NOT_IMPLEMENTED("Unsupported template argument(short) in cublas_scal");
 }
 
 // dot
@@ -245,11 +245,11 @@ inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t generator, d
 curandStatus_t curandGenerateUniformHelper(curandGenerator_t, half* outputPtr, size_t num);
 
 inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t, char*, size_t) {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Unsupported template argument(char) in GPUSparseMatrix");
+  ORT_NOT_IMPLEMENTED("Unsupported template argument(char) in GPUSparseMatrix");
 }
 
 inline curandStatus_t curandGenerateUniformHelper(curandGenerator_t, short*, size_t) {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Unsupported template argument(short) in GPUSparseMatrix");
+  ORT_NOT_IMPLEMENTED("Unsupported template argument(short) in GPUSparseMatrix");
 }
 
 inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t generator, float* outputPtr, size_t n, float mean, float stddev) {
@@ -261,9 +261,9 @@ inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t generator, do
 curandStatus_t curandGenerateNormalHelper(curandGenerator_t, half* outputPtr, size_t n, half mean, half stddev);
 
 inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t, char*, size_t, char, char) {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Unsupported template argument(char) in GPUSparseMatrix");
+  ORT_NOT_IMPLEMENTED("Unsupported template argument(char) in GPUSparseMatrix");
 }
 
 inline curandStatus_t curandGenerateNormalHelper(curandGenerator_t, short*, size_t, short, short) {
-  ONNXRUNTIME_NOT_IMPLEMENTED("Unsupported template argument(short) in GPUSparseMatrix");
+  ORT_NOT_IMPLEMENTED("Unsupported template argument(short) in GPUSparseMatrix");
 }

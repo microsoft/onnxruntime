@@ -47,7 +47,7 @@ class ConstPointerContainer {
   const T* operator[](size_t index) const { return data_[index]; }
 
   const T* at(size_t index) const {
-    ONNXRUNTIME_ENFORCE(index < data_.size());
+    ORT_ENFORCE(index < data_.size());
     return data_[index];
   }
 

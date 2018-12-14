@@ -59,10 +59,10 @@ class Conv : public CudaKernel, public ConvBase {
  public:
   Conv(const OpKernelInfo& info) : CudaKernel(info), ConvBase(info) {
     auto pads_size = pads_.size();
-    ONNXRUNTIME_ENFORCE(pads_size % 2 == 0);
+    ORT_ENFORCE(pads_size % 2 == 0);
     auto rank = pads_size / 2;
     for (size_t i = 0; i < rank; i++) {
-      ONNXRUNTIME_ENFORCE(pads_[i] == pads_[i + rank], "cudnn only supports symmetric padding");
+      ORT_ENFORCE(pads_[i] == pads_[i + rank], "cudnn only supports symmetric padding");
     }
   }
 

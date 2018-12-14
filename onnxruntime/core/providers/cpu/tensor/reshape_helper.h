@@ -17,13 +17,13 @@ class ReshapeHelper {
     int64_t unknown_dim = -1;
     int64_t size = 1;
     for (size_t i = 0; i < nDims; ++i) {
-      ONNXRUNTIME_ENFORCE(requested_shape[i] >= -1, "A dimension cannot be less than -1.");
+      ORT_ENFORCE(requested_shape[i] >= -1, "A dimension cannot be less than -1.");
       if (requested_shape[i] == -1) {
-        ONNXRUNTIME_ENFORCE(unknown_dim == -1, "At most one dimension can be -1.");
+        ORT_ENFORCE(unknown_dim == -1, "At most one dimension can be -1.");
         unknown_dim = i;
       } else {
         if (requested_shape[i] == 0) {
-          ONNXRUNTIME_ENFORCE(i < input_shape.NumDimensions(),
+          ORT_ENFORCE(i < input_shape.NumDimensions(),
                       "The dimension with value zero exceeds"
                       " the dimension size of the input tensor.");
           requested_shape[i] = input_shape[i];
@@ -34,12 +34,12 @@ class ReshapeHelper {
 
     if (unknown_dim != -1) {
       // calculate unknown dimension
-      ONNXRUNTIME_ENFORCE((input_shape.Size() % size) == 0,
+      ORT_ENFORCE((input_shape.Size() % size) == 0,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape);
       requested_shape[unknown_dim] = input_shape.Size() / size;
     } else {
       // check if the output shape is valid.
-      ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(input_shape.Size()) == size,
+      ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_shape.Size()) == size,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape);
     }
   }

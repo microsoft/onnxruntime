@@ -23,7 +23,7 @@ class GraphPartitioner {
   Status Partition(onnxruntime::Graph& graph) const;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;

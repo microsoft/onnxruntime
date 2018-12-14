@@ -17,7 +17,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr allocInfo = IntPtr.Zero;
             try
             {
-                IntPtr status = NativeMethods.ONNXRuntimeCreateCpuAllocatorInfo(NativeMethods.AllocatorType.DeviceAllocator, NativeMethods.MemoryType.Cpu, out allocInfo);
+                IntPtr status = NativeMethods.OrtCreateCpuAllocatorInfo(NativeMethods.AllocatorType.DeviceAllocator, NativeMethods.MemoryType.Cpu, out allocInfo);
                 NativeApiStatus.VerifySuccess(status);
             }
             catch (Exception e)
@@ -64,7 +64,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void Delete(IntPtr nativePtr)
         {
-            NativeMethods.ReleaseONNXRuntimeAllocatorInfo(nativePtr);
+            NativeMethods.ReleaseOrtAllocatorInfo(nativePtr);
         }
 
         protected override bool ReleaseHandle()
@@ -84,7 +84,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr allocator = IntPtr.Zero;
             try
             {
-                IntPtr status = NativeMethods.ONNXRuntimeCreateDefaultAllocator(out allocator);
+                IntPtr status = NativeMethods.OrtCreateDefaultAllocator(out allocator);
                 NativeApiStatus.VerifySuccess(status);
             }
             catch (Exception e)
@@ -113,7 +113,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="memory"></param>
         internal void FreeMemory(IntPtr memory)
         {
-            NativeMethods.ONNXRuntimeAllocatorFree(handle, memory);
+            NativeMethods.OrtAllocatorFree(handle, memory);
         }
 
         public override bool IsInvalid
@@ -141,7 +141,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected static void Delete(IntPtr allocator)
         {
-            NativeMethods.ONNXRuntimeReleaseObject(allocator);
+            NativeMethods.OrtReleaseObject(allocator);
         }
 
         protected override bool ReleaseHandle()

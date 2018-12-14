@@ -31,7 +31,7 @@ class Environment {
   static bool IsInitialized() { return is_initialized_; }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
 
   Environment() = default;
   Status Initialize();

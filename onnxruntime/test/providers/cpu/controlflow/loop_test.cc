@@ -438,7 +438,7 @@ TEST(Loop, InfiniteLoopTermination) {
 
   test.AddOutput<float>("loop_var_0_final", {1}, {0.f});
 
-  ONNXRuntimeRunOptions session_run_options;
+  OrtRunOptions session_run_options;
   session_run_options.run_tag = "Loop.InfiniteLoopTermination";
 
   auto terminator = [&session_run_options]() {

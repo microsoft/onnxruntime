@@ -145,7 +145,7 @@ class TaskThreadPool {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TaskThreadPool);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TaskThreadPool);
 
   /// @brief Entry point for pool threads.
   void MainLoop(std::size_t index) {
