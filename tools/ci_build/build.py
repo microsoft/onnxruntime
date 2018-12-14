@@ -226,7 +226,8 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     return True
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
-    has_test_data = download_test_data(build_dir, test_data_url, test_data_checksum, args.azure_sas_key)
+    has_test_data = True
+    #has_test_data = download_test_data(build_dir, test_data_url, test_data_checksum, args.azure_sas_key)
     #create a shortcut for test models if there is a 'models' folder in build_dir
     if has_test_data and is_windows():
         src_model_dir = os.path.join(build_dir, 'models')

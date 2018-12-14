@@ -11,9 +11,12 @@ namespace onnxruntime {
 template <typename TI, typename TO>
 class OneHotOp final : public OpKernel {
  public:
-  OneHot(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+  OneHotOp(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
     int64_t tmp_axis;
-    if (op_kernel_info.GetAttr<float>("axis", &tmp_axis).IsOK()) {
+    if (op_kernel_info.GetAttr<int64_t>("axis", &tmp_axis).IsOK()) {
+      if (tmp_axis < -1) { // as per spec it can be -1 or more
+        ONNXRUNTIME_THROW("Value of axis is < -1");
+      }
       axis_ = tmp_axis;
     }
   }
