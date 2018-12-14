@@ -28,7 +28,7 @@ static void TestModelInfo(const ONNXSession* inference_session, bool is_input, c
   const OrtTensorTypeAndShapeInfo* p = OrtCastTypeInfoToTensorInfo(input_type_info.get());
   ASSERT_NE(nullptr, p);
 
-  enum OnnxRuntimeTensorElementDataType ele_type = OrtGetTensorElementType(p);
+  enum OrtTensorElementDataType ele_type = OrtGetTensorElementType(p);
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ele_type);
   ASSERT_EQ(dims.size(), OrtGetNumOfDimensions(p));
   std::vector<int64_t> real_dims(dims.size());
