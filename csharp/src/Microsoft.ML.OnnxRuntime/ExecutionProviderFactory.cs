@@ -70,6 +70,36 @@ namespace Microsoft.ML.OnnxRuntime
         }
     }
 
+    internal class CudaExecutionProviderFactory : NativeOnnxObjectHandle
+    {
+        protected static readonly Lazy<CudaExecutionProviderFactory> _default = new Lazy<CudaExecutionProviderFactory>(() => new CudaExecutionProviderFactory());
+
+        public CudaExecutionProviderFactory(int deviceId = 0)
+            : base(IntPtr.Zero)
+        {
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateCUDAExecutionProviderFactory(deviceId, out handle));
+            }
+            catch (OnnxRuntimeException e)
+            {
+                if (IsInvalid)
+                {
+                    ReleaseHandle();
+                    handle = IntPtr.Zero;
+                }
+                throw e;
+            }
+        }
+
+        public static CudaExecutionProviderFactory Default
+        {
+            get
+            {
+                return _default.Value;
+            }
+        }
+    }
 
 
 

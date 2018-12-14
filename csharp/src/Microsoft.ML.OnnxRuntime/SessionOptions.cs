@@ -13,7 +13,8 @@ namespace Microsoft.ML.OnnxRuntime
     public enum ExecutionProvider
     {
         Cpu,
-        MklDnn
+        MklDnn,
+        Cuda
         //TODO: add more providers gradually
     };
 
@@ -58,6 +59,9 @@ namespace Microsoft.ML.OnnxRuntime
                 case ExecutionProvider.MklDnn:
                     AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
                     break;
+                case ExecutionProvider.Cuda:
+                    AppendExecutionProvider(CudaExecutionProviderFactory.Default);
+                    break;
                 default:
                     break;
             }
@@ -69,7 +73,32 @@ namespace Microsoft.ML.OnnxRuntime
             SessionOptions options = new SessionOptions();
             options.AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
             options.AppendExecutionProvider(CpuExecutionProviderFactory.Default);
+            return options;
+        }
 
+        /// <summary>
+        /// A helper method to constuct a SessionOptions object for CUDA execution
+        /// </summary>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider()
+        {
+            return MakeSessionOptionWithCudaProvider(0);
+        }
+
+        /// <summary>
+        /// A helper method to constuct a SessionOptions object for CUDA execution
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId=0)
+        {
+            SessionOptions options = new SessionOptions();
+            if (deviceId == 0) //default value
+                options.AppendExecutionProvider(CudaExecutionProviderFactory.Default);
+            else
+                options.AppendExecutionProvider(new CudaExecutionProviderFactory(deviceId));
+            options.AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
+            options.AppendExecutionProvider(CpuExecutionProviderFactory.Default);
             return options;
         }
 
