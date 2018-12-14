@@ -25,5 +25,5 @@ class TestEnv {
   ~TestEnv();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TestEnv);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TestEnv);
 };

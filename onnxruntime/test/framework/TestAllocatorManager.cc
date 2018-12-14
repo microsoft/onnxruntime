@@ -50,13 +50,13 @@ AllocatorManager::AllocatorManager() {
 
 Status AllocatorManager::InitializeAllocators() {
   auto cpu_alocator = std::make_unique<CPUAllocator>();
-  ONNXRUNTIME_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cpu_alocator), std::numeric_limits<size_t>::max(), true));
+  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cpu_alocator), std::numeric_limits<size_t>::max(), true));
 #ifdef USE_CUDA
   auto cuda_alocator = std::make_unique<CUDAAllocator>(0);
-  ONNXRUNTIME_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_alocator), std::numeric_limits<size_t>::max(), true));
+  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_alocator), std::numeric_limits<size_t>::max(), true));
 
   auto cuda_pinned_alocator = std::make_unique<CUDAPinnedAllocator>();
-  ONNXRUNTIME_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_pinned_alocator), std::numeric_limits<size_t>::max(), true));
+  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_pinned_alocator), std::numeric_limits<size_t>::max(), true));
 #endif  // USE_CUDA
 
   return Status::OK();
@@ -68,7 +68,7 @@ AllocatorManager::~AllocatorManager() {
 AllocatorPtr AllocatorManager::GetAllocator(const std::string& name, const int id, bool arena) {
   auto allocator_id = GetAllocatorId(name, id, arena);
   auto entry = map_.find(allocator_id);
-  ONNXRUNTIME_ENFORCE(entry != map_.end(), "Allocator not found:", allocator_id);
+  ORT_ENFORCE(entry != map_.end(), "Allocator not found:", allocator_id);
   return entry->second;
 }
 }  // namespace test

@@ -10,7 +10,7 @@ namespace onnxruntime {
 class SpaceDepthBase : public OpKernel {
  public:
   SpaceDepthBase(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
+    ORT_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
                 "Attribute blocksize is not set.");
   }
 

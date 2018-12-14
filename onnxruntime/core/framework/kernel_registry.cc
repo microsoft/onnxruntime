@@ -13,7 +13,7 @@ const ::ONNX_NAMESPACE::TypeProto* FindTypeBinding(const onnxruntime::Node& node
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
   // search inputs:
   const size_t len = node.InputArgCount().size();
-  ONNXRUNTIME_ENFORCE(len <= op_schema.inputs().size());
+  ORT_ENFORCE(len <= op_schema.inputs().size());
   int actual_index = 0;
   for (size_t formal_index = 0; formal_index != len; ++formal_index) {
     auto& param = op_schema.inputs()[formal_index];

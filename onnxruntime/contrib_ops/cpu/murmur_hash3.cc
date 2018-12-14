@@ -90,7 +90,6 @@ FORCE_INLINE uint64_t fmix(uint64_t k) {
   return k;
 }
 
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -108,7 +107,6 @@ ONNX_OPERATOR_KERNEL_EX(
     MurmurHash3);
 
 void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, void* out) const {
-
   const uint8_t* data = reinterpret_cast<const uint8_t*>(key);
   const int nblocks = len / 4;
   uint32_t h1 = seed;
@@ -161,7 +159,7 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
 
 Status MurmurHash3::Compute(OpKernelContext* ctx) const {
   const Tensor* keys = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(keys);
+  ORT_ENFORCE(keys);
 
   const TensorShape& input_shape = keys->Shape();
   Tensor* output_tensor = ctx->Output(0, input_shape);
@@ -190,7 +188,7 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
                            seed_,
                            reinterpret_cast<uint8_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
       } else {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type not supported.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type not supported.");
       }
     }
   }

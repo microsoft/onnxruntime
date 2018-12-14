@@ -19,7 +19,7 @@ class AllocatorManager {
   AllocatorPtr GetAllocator(const std::string& name, const int id = 0, bool arena = true);
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AllocatorManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AllocatorManager);
 
   AllocatorManager();
   Status InitializeAllocators();

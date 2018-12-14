@@ -21,12 +21,12 @@ class TestOpKernel : public OpKernel {
  public:
   TestOpKernel(const OpKernelInfo& p) : OpKernel(p) {}
   Status Compute(OpKernelContext* context) const {
-    ONNXRUNTIME_UNUSED_PARAMETER(context);
+    ORT_UNUSED_PARAMETER(context);
     return Status::OK();
   }
   Status ComputeAsync(OpKernelContext* context, DoneCallback done) const {
-    ONNXRUNTIME_UNUSED_PARAMETER(context);
-    ONNXRUNTIME_UNUSED_PARAMETER(done);
+    ORT_UNUSED_PARAMETER(context);
+    ORT_UNUSED_PARAMETER(done);
     return Status::OK();
   }
 };

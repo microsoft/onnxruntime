@@ -175,7 +175,7 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
 
   const TensorShape& x_shape = X->Shape();
   if (x_shape.NumDimensions() != 4) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Support NCHW image only.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Support NCHW image only.");
   }
 
   const auto& x_dims = x_shape.GetDims();
@@ -185,7 +185,7 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
   T* dst_data = Y->template MutableData<T>();
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   IAllocatorUniquePtr<void> src_reorder_buffer;
   IAllocatorUniquePtr<void> dst_reorder_buffer;
 
@@ -232,7 +232,7 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
       DoReorder<T>(params);
     }
   } catch (mkldnn::error& e) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 
   return Status::OK();

@@ -43,17 +43,17 @@ class OpKernel {
 
   virtual Status ComputeAsync(OpKernelContext*,
                               DoneCallback) const {
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const ONNXRuntimeAllocatorInfo& Allocator(int id, ONNXRuntimeMemType mem_type) const {
+  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
     return op_kernel_info_.GetAllocatorInfo(id, mem_type);
   }
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
 };
 
@@ -90,7 +90,7 @@ class OpKernelContext {
       return nullptr;
 
     MLValue* p_ml_value = nullptr;
-    ONNXRUNTIME_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
@@ -116,7 +116,7 @@ class OpKernelContext {
   }
 
   /**
-   * return an allocator on device 0, with memtype of ONNXRuntimeMemTypeDefault
+   * return an allocator on device 0, with memtype of OrtMemTypeDefault
    *
    */
   Status GetTempSpaceAllocator(AllocatorPtr* output) const;
@@ -174,7 +174,7 @@ class OpKernelContext {
 template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   MLValue* p_ml_value = GetOutputMLValue(index);
-  ONNXRUNTIME_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
+  ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
   return p_ml_value->GetMutable<Tensor>();
 }
 

@@ -11,7 +11,7 @@ TVMGraph::TensorDescriptor::TensorDescriptor(MLDataType type, onnxruntime::Provi
     ctx_.device_type = DLDeviceType::kDLCPU;
     ctx_.device_id = 0;
   } else {
-    ONNXRUNTIME_NOT_IMPLEMENTED("Non-cpu execution provider not supported on TVM now.");
+    ORT_NOT_IMPLEMENTED("Non-cpu execution provider not supported on TVM now.");
   }
 
   if (DataTypeImpl::GetTensorType<double>() == type) {
@@ -19,7 +19,7 @@ TVMGraph::TensorDescriptor::TensorDescriptor(MLDataType type, onnxruntime::Provi
     dtype_.bits = 64;
     dtype_.lanes = 1;
   } else {
-    ONNXRUNTIME_NOT_IMPLEMENTED("Non-double type not supported on TVM now.");
+    ORT_NOT_IMPLEMENTED("Non-double type not supported on TVM now.");
   }
 }
 
@@ -36,7 +36,7 @@ class IdGenerator {
 
 // This is a special compiler step for the test case that sum two 1-D tensors
 static void Compile1DAddToTVM(const onnxruntime::Node& node, std::unordered_map<const onnxruntime::NodeArg*, TVMGraph::TensorDescriptor>& tvm_tensors, onnxruntime::ProviderType execution_provider_type, IdGenerator& generator) {
-  ONNXRUNTIME_ENFORCE(node.OpType() == "Add");
+  ORT_ENFORCE(node.OpType() == "Add");
   tvm::Array<tvm::Expr> shape;
   shape.push_back(tvm::var("n1"));
 

@@ -57,7 +57,7 @@ class Profiler {
   std::string EndProfiling();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   // Mutex controlling access to profiler data
   std::mutex mutex_;

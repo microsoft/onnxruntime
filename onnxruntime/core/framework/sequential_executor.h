@@ -25,7 +25,7 @@ class SequentialExecutor : public IExecutor {
                          const logging::Logger& logger) override;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
   const bool& terminate_flag_;
 };
 }  // namespace onnxruntime
