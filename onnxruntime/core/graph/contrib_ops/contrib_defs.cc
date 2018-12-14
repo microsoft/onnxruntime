@@ -540,7 +540,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           "seed",
           "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0.",
           AttributeProto::INT,
-          0LL)
+          (int64_t)0LL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Shape inference
         if (!hasInputShape(ctx, 0))
