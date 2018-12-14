@@ -62,7 +62,7 @@ ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& f
 ExecutionFrame::~ExecutionFrame() = default;
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(int mlvalue_index,
-                                                          const MLDataType element_type,
+                                                          const DataTypeImpl* element_type,
                                                           const OrtAllocatorInfo& location,
                                                           const TensorShape& shape,
                                                           bool create_fence) {
@@ -71,7 +71,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(int mlvalue_index,
 }
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_index,
-                                                                const MLDataType element_type,
+                                                                const DataTypeImpl* element_type,
                                                                 const OrtAllocatorInfo& location,
                                                                 const TensorShape& shape,
                                                                 bool create_fence) {
@@ -163,7 +163,7 @@ void ExecutionFrame::TraceAllocate(int mlvalue_idx, size_t size) {
 }
 
 Status ExecutionFrame::AllocateTensorWithSelfOwnBuffer(const int index,
-                                                       const MLDataType element_type,
+                                                       const DataTypeImpl* element_type,
                                                        const OrtAllocatorInfo& location,
                                                        const TensorShape& shape,
                                                        bool create_fence) {
@@ -173,7 +173,7 @@ Status ExecutionFrame::AllocateTensorWithSelfOwnBuffer(const int index,
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_to_allocate,
                                                               int mlvalue_index_reuse,
-                                                              const MLDataType element_type,
+                                                              const DataTypeImpl* element_type,
                                                               const OrtAllocatorInfo& location,
                                                               const TensorShape& shape,
                                                               bool create_fence) {
@@ -200,7 +200,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_
 
 Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlvalue,
                                                                  void* pBuffer,
-                                                                 const MLDataType element_type,
+                                                                 const DataTypeImpl* element_type,
                                                                  const OrtAllocatorInfo& location,
                                                                  const TensorShape& shape) {
   if (p_mlvalue->IsAllocated()) {
@@ -219,7 +219,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlva
 
 Status ExecutionFrame::AllocateTensorWithPreAllocateBuffer(const int offset,
                                                            void* pBuffer,
-                                                           const MLDataType element_type,
+                                                           const DataTypeImpl* element_type,
                                                            const OrtAllocatorInfo& location,
                                                            const TensorShape& shape) {
   ORT_ENFORCE(offset >= 0 && offset < node_values_.size());
