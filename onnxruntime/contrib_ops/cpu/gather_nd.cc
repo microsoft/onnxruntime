@@ -6,41 +6,15 @@
 namespace onnxruntime {
 namespace contrib     {
 
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     GatherND,
+    kMSDomain,
     1,
-    string_int32_t,
+    kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T",    DataTypeImpl::GetTensorType<std::string>())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int32_t>()),
-    GatherNDString<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    GatherND,
-    1,
-    string_int64_t,
-    KernelDefBuilder()
-        .TypeConstraint("T",    DataTypeImpl::GetTensorType<std::string>())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-    GatherNDString<int64_t>);
-
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    GatherND,
-    1,
-    non_string_int32_t,
-    KernelDefBuilder()
-        .TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int32_t>()),
-    GatherNDNonString<int32_t>);
-
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    GatherND,
-    1,
-    non_string_int64_t,
-    KernelDefBuilder()
-        .TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
-    GatherNDNonString<int64_t>);
+        .TypeConstraint("T",    DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),DataTypeImpl::GetTensorType<int64_t>()}),
+    GatherND);
 
 template<typename Tind>
 Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -77,16 +51,20 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   }
 
   int64_t err_indice = 0;
-  p.output_str_base  = static_cast<std::string*>(output_tensor->MutableDataRaw());
-  p.output_base      = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   p.element_bytes    = input_tensor->DataType()->Size();
   p.element_to_copy  = input_shape.SizeFromDimension(last_indice_dimension);
   p.bytes_to_copy    = p.element_bytes * p.element_to_copy;
   auto indice_offset = static_cast<const Tind*>(context->Input<Tensor>(1)->DataRaw());
-  p.input_str_base   = static_cast<const std::string*>(context->Input<Tensor>(0)->DataRaw());
-  p.input_base       = static_cast<const uint8_t*>(context->Input<Tensor>(0)->DataRaw());
   auto offset_count  = indice_shape.Size() / last_indice_dimension; // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
+
+  if (input_tensor->DataType() == DataTypeImpl::GetType<std::string>()) {
+    p.input_str_base  = static_cast<const std::string*>(input_tensor->DataRaw());
+    p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
+  } else {
+    p.input_base      = static_cast<const uint8_t*>(context->Input<Tensor>(0)->DataRaw());
+    p.output_base     = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
+  }
 
 #pragma omp parallel for
   for (int64_t i = 0; i < offset_count; ++i) {
@@ -105,28 +83,29 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
 template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepare&) const;
 
-template<typename Tind>
-Status GatherNDString<Tind>::Compute(OpKernelContext* context) const {
+Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute<Tind>(context, p));
-#pragma omp parallel for
-  for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
-    for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
-      p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
-    }
-  }
-  return Status::OK();
+  ONNXRUNTIME_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
+                              PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
+  return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
 }
 
-template<typename Tind>
-Status GatherNDNonString<Tind>::Compute(OpKernelContext* context) const {
-  Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute<Tind>(context, p));
+Status GatherND::GatherNumber(const Prepare& p) const {
 #pragma omp parallel for
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
     memcpy(p.output_base + i * p.bytes_to_copy,
            p.input_base + p.element_offsets[i] * p.element_bytes,
            p.bytes_to_copy);
+  }
+  return Status::OK();
+}
+
+Status GatherND::GatherString(const Prepare& p) const {
+#pragma omp parallel for
+  for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
+    for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
+      p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
+    }
   }
   return Status::OK();
 }

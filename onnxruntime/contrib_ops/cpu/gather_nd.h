@@ -12,7 +12,6 @@ namespace contrib {
 class GatherNDBase
 {
 protected:
-
   struct Prepare {
     const uint8_t*        input_base;
     const std::string*    input_str_base;
@@ -37,18 +36,13 @@ protected:
   Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
 }; // class GatherNDBase
 
-template<typename Tind>
-class GatherNDString final : public OpKernel, protected GatherNDBase {
+class GatherND final : public OpKernel, protected GatherNDBase {
 public:
-  explicit GatherNDString(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
-};
-
-template<typename Tind>
-class GatherNDNonString final : public OpKernel, protected GatherNDBase {
-public:
-  explicit GatherNDNonString(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const override;
+private:
+  Status GatherNumber(const Prepare& p) const;
+  Status GatherString(const Prepare& p) const;
 };
 
 } // namespace contrib
