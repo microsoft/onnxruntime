@@ -68,6 +68,11 @@ activation.)DOC")
           "",
           AttributeProto::STRING,
           OPTIONAL)
+      .Attr(
+          "alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL)
       .Input(
           0,
           "X",
