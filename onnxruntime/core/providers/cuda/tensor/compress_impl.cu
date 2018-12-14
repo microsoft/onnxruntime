@@ -107,7 +107,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     default:
-      return ORT_MAKE_STATUS(ORT, FAIL, "Type not supported for Compress operator");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Compress operator");
   }
 
   return Status::OK();
