@@ -9,14 +9,14 @@
 #include <memory>
 
 //TODO: encode error code in the message?
-#define ORT_THROW_ON_ERROR(expr)                                                \
-  do {                                                                          \
-    ONNXStatus* onnx_status = (expr);                                           \
-    if (onnx_status != nullptr) {                                               \
-      std::string onnx_runtime_error_message = OrtGetErrorMessage(onnx_status); \
-      ReleaseONNXStatus(onnx_status);                                           \
-      throw std::runtime_error(onnx_runtime_error_message);                     \
-    }                                                                           \
+#define ORT_THROW_ON_ERROR(expr)                                       \
+  do {                                                                 \
+    ONNXStatus* onnx_status = (expr);                                  \
+    if (onnx_status != nullptr) {                                      \
+      std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
+      ReleaseONNXStatus(onnx_status);                                  \
+      throw std::runtime_error(ort_error_message);                     \
+    }                                                                  \
   } while (0);
 
 #define ORT_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \

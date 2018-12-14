@@ -31,19 +31,19 @@ extern "C" {
 #endif
 
 #ifdef _WIN32
-// Define ONNX_RUNTIME_DLL_IMPORT if your program is dynamically linked to Ort.
+// Define ORT_DLL_IMPORT if your program is dynamically linked to Ort.
 // dllexport is not used, we use a .def file.
-#ifdef ONNX_RUNTIME_DLL_IMPORT
-#define ONNX_RUNTIME_EXPORT __declspec(dllimport)
+#ifdef ORT_DLL_IMPORT
+#define ORT_EXPORT __declspec(dllimport)
 #else
-#define ONNX_RUNTIME_EXPORT
+#define ORT_EXPORT
 #endif
 #define ORT_API_CALL _stdcall
-#define ONNX_RUNTIME_MUST_USE_RESULT
+#define ORT_MUST_USE_RESULT
 #else
-#define ONNX_RUNTIME_EXPORT
+#define ORT_EXPORT
 #define ORT_API_CALL
-#define ONNX_RUNTIME_MUST_USE_RESULT __attribute__((warn_unused_result))
+#define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
 #endif
 
 //Any pointer marked with _In_ or _Out_, cannot be NULL. Caller should ensure that.
@@ -79,14 +79,14 @@ typedef void ONNXStatus;
 
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) \
-  ONNX_RUNTIME_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...) \
-  ONNX_RUNTIME_EXPORT ONNXStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ONNX_RUNTIME_MUST_USE_RESULT
+  ORT_EXPORT ONNXStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
-// Used in *.cc files. Almost as same as ORT_API_STATUS, except without ONNX_RUNTIME_MUST_USE_RESULT
+// Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  ONNX_RUNTIME_EXPORT ONNXStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ORT_EXPORT ONNXStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define DEFINE_RUNTIME_CLASS2(NAME, TYPE) \
   ORT_API(void, Release##NAME, _Frees_ptr_opt_ TYPE* input);
@@ -210,7 +210,7 @@ ORT_API_STATUS(OrtGetTypeInfo, _In_ const struct ONNXValue* value, struct OrtTyp
 ORT_API(enum OrtType, OrtGetValueType, _In_ const struct ONNXValue* value);
 
 //
-// RuntimeRunOptions
+// OrtRunOptions
 //
 struct OrtRunOptions;
 typedef struct OrtRunOptions OrtRunOptions;

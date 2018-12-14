@@ -96,7 +96,7 @@ class IAllocator {
    * \return true, successful. false, overflow
    */
   template <size_t alignment>
-  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ONNX_RUNTIME_MUST_USE_RESULT;
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
   /**
    * allocate memory for an array which has nmemb items of data, each size bytes long
    */
