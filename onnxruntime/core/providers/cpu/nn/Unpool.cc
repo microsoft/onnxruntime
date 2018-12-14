@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// disable warning because std::copy is used by Sliceiterator
+// std::copy_n is not an option for raw pointer destinations as used by gsl::copy.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
 #include "core/providers/cpu/nn/unpool.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include <cmath>
