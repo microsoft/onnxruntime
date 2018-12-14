@@ -57,6 +57,9 @@ Return Value:
 
 --*/
 {
+    MLAS_UNREFERENCED_PARAMETER(Instance);
+    MLAS_UNREFERENCED_PARAMETER(WorkObject);
+
     MLAS_THREADED_WORK_BLOCK* WorkBlock = (MLAS_THREADED_WORK_BLOCK*)Context;
 
     LONG Index = InterlockedIncrement(&WorkBlock->Counter) - 1;
