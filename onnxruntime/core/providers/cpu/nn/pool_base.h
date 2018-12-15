@@ -27,7 +27,7 @@ class PoolProcessContext {
   friend class LpPool;
   PoolProcessContext() {}
   void init(const OpKernelInfo& info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("p", &p_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("p", &p_).IsOK());
   }
 };
 
@@ -104,11 +104,11 @@ class PoolBase {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
 
     if (!global_pooling_) {
-      ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
+      ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
                   "No kernel shape is set.");
 
       std::string auto_padding;
-      ONNXRUNTIME_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
+      ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
       auto_pad_ = StringToAutoPadType(auto_padding);
 
       if (!info.GetAttrs<int64_t>("pads", pads_).IsOK() || pads_.empty()) {
@@ -121,7 +121,7 @@ class PoolBase {
 
       if (op_name_ == "AveragePool") {
         int64_t temp;
-        ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("count_include_pad", &temp).IsOK());
+        ORT_ENFORCE(info.GetAttr<int64_t>("count_include_pad", &temp).IsOK());
         count_include_pad_ = (temp != 0);
       }
 
@@ -134,12 +134,12 @@ class PoolBase {
       }
 
       for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
-        ONNXRUNTIME_ENFORCE(kernel_shape_[dim] > 0);
-        ONNXRUNTIME_ENFORCE(pads_[dim] < kernel_shape_[dim] && pads_[dim + kernel_shape_.size()] < kernel_shape_[dim],
+        ORT_ENFORCE(kernel_shape_[dim] > 0);
+        ORT_ENFORCE(pads_[dim] < kernel_shape_[dim] && pads_[dim + kernel_shape_.size()] < kernel_shape_[dim],
                     "Pad should be smaller than kernel.");
       }
 
-      ONNXRUNTIME_ENFORCE(strides_.size() == kernel_shape_.size());
+      ORT_ENFORCE(strides_.size() == kernel_shape_.size());
     }
   }
 
@@ -148,7 +148,7 @@ class PoolBase {
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
                                      std::vector<int64_t>* pads) const {
-    ONNXRUNTIME_ENFORCE(input_shape.Size() > 0);
+    ORT_ENFORCE(input_shape.Size() > 0);
     std::vector<int64_t> output_dims;
     int64_t N = input_shape[0];
     InferOutputSize(input_shape.GetDims(), &output_dims, pads);
@@ -161,7 +161,7 @@ class PoolBase {
   inline void InferOutputSize(const std::vector<int64_t>& input_dims,
                               std::vector<int64_t>* output_dims,
                               std::vector<int64_t>* pads) const {
-    ONNXRUNTIME_ENFORCE(input_dims.size() >= 2);
+    ORT_ENFORCE(input_dims.size() >= 2);
     if (global_pooling_) {
       output_dims->assign(input_dims.size() - 2, 1);
     } else {
@@ -208,7 +208,7 @@ class PoolBase {
           break;
         }
         default: {
-          ONNXRUNTIME_THROW("Unsupported AutoPad Type.");
+          ORT_THROW("Unsupported AutoPad Type.");
         }
       }
     } else {

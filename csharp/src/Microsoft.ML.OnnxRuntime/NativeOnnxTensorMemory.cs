@@ -27,9 +27,9 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr typeAndShape = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeGetTensorShapeAndType(onnxValueHandle, out typeAndShape));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(onnxValueHandle, out typeAndShape));
 
-                TensorElementType elemType = NativeMethods.ONNXRuntimeGetTensorElementType(typeAndShape);
+                TensorElementType elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
 
                 Type type = null;
                 int width = 0;
@@ -40,18 +40,18 @@ namespace Microsoft.ML.OnnxRuntime
 
                 _onnxValueHandle = onnxValueHandle;
                 // derive the databuffer pointer, element_count, element_width, and shape
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeGetTensorMutableData(_onnxValueHandle, out _dataBufferHandle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(_onnxValueHandle, out _dataBufferHandle));
                 // throws OnnxRuntimeException if native call failed
 
-                ulong dimension = NativeMethods.ONNXRuntimeGetNumOfDimensions(typeAndShape);
-                long count = NativeMethods.ONNXRuntimeGetTensorShapeElementCount(typeAndShape);  // count can be negative. 
+                ulong dimension = NativeMethods.OrtGetNumOfDimensions(typeAndShape);
+                long count = NativeMethods.OrtGetTensorShapeElementCount(typeAndShape);  // count can be negative. 
                 if (count < 0)
                 {
                     throw new NotSupportedException("Symbolic dimensions in the tensor is not supported");
                 }
 
                 long[] shape = new long[dimension];
-                NativeMethods.ONNXRuntimeGetDimensions(typeAndShape, shape, dimension); //Note: shape must be alive during the call
+                NativeMethods.OrtGetDimensions(typeAndShape, shape, dimension); //Note: shape must be alive during the call
 
                 _elementCount = (int)count;
                 _dimensions = new int[dimension];
@@ -70,7 +70,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (typeAndShape != IntPtr.Zero)
                 {
-                    NativeMethods.ONNXRuntimeReleaseObject(typeAndShape);
+                    NativeMethods.OrtReleaseObject(typeAndShape);
                 }
             }
         }

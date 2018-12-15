@@ -79,7 +79,7 @@ Status SliceBase::PrepareForCompute(const size_t dimension_count, const std::vec
 template <typename T>
 Status Slice<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
   auto& input_tensor = *input_tensor_ptr;
   auto& input_dimensions = input_tensor.Shape().GetDims();
 
@@ -88,7 +88,7 @@ Status Slice<T>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(dimension_count, input_dimensions, starts, output_dims));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(dimension_count, input_dimensions, starts, output_dims));
 
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);

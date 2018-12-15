@@ -16,7 +16,7 @@ class BatchNorm final : public CudaKernel {
       : CudaKernel{op_kernel_info},
         cudnn_batch_norm_mode_(CUDNN_BATCHNORM_SPATIAL) {
     float tmp_epsilon;
-    ONNXRUNTIME_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
+    ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
     epsilon_ = ClampCudnnBatchNormEpsilon(tmp_epsilon);
 
     // spatial or not

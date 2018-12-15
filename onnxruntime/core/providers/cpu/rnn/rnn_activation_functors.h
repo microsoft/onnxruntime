@@ -10,7 +10,7 @@
 
 #pragma warning(disable : 4100)
 #endif
-#define RNN_UNUSED_PARAMETER ONNXRUNTIME_ATTRIBUTE_UNUSED = 0
+#define RNN_UNUSED_PARAMETER ORT_ATTRIBUTE_UNUSED = 0
 namespace onnxruntime {
 namespace rnn {
 namespace detail {
@@ -68,12 +68,12 @@ template <typename T>
 inline T Softsign(T x, T alpha, T beta);
 
 template <>
-inline float Softsign<float>(float x, float alpha ONNXRUNTIME_ATTRIBUTE_UNUSED, float beta ONNXRUNTIME_ATTRIBUTE_UNUSED) {
+inline float Softsign<float>(float x, float alpha ORT_ATTRIBUTE_UNUSED, float beta ORT_ATTRIBUTE_UNUSED) {
   return x / (1 + fabs(x));
 }
 
 template <>
-inline double Softsign<double>(double x, double alpha ONNXRUNTIME_ATTRIBUTE_UNUSED, double beta ONNXRUNTIME_ATTRIBUTE_UNUSED) {
+inline double Softsign<double>(double x, double alpha ORT_ATTRIBUTE_UNUSED, double beta ORT_ATTRIBUTE_UNUSED) {
   return x / (1 + fabs(x));
 }
 

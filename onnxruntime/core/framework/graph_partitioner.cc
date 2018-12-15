@@ -73,8 +73,8 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
       if (nullptr == capability->sub_graph->GetMetaDef()) {
         // The <provider> can run a single node in the <graph> if not using meta-defs.
         // A fused kernel is not supported in this case.
-        ONNXRUNTIME_ENFORCE(1 == capability->sub_graph->nodes.size());
-        ONNXRUNTIME_ENFORCE(capability->fuse_kernel_function == nullptr);
+        ORT_ENFORCE(1 == capability->sub_graph->nodes.size());
+        ORT_ENFORCE(capability->fuse_kernel_function == nullptr);
 
         auto node = graph.GetNode(capability->sub_graph->nodes[0]);
         if (nullptr != node && node->GetExecutionProviderType().empty()) {
@@ -84,7 +84,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         // The <provider> can run a fused <sub_graph> in the <graph>.
         //
         // Add fused node into <graph>
-        ONNXRUNTIME_ENFORCE(nullptr != capability->sub_graph->GetMetaDef());
+        ORT_ENFORCE(nullptr != capability->sub_graph->GetMetaDef());
         std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
         auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
         fused_node.SetExecutionProviderType(provider->Type());
@@ -99,7 +99,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
     }
     // all done with this provider, resolve the graph before we move on to the next provider.
     // This is needed since we create a new GraphViewer() that we pass into the next provider's GetCapability().
-    ONNXRUNTIME_ENFORCE(graph.Resolve().IsOK());
+    ORT_ENFORCE(graph.Resolve().IsOK());
   }
 
   // To see if the node with no provider can be inlined. If one such nodes can be
@@ -122,7 +122,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
   }
   // Resolve and rerun graph partition
   if (inline_flag) {
-    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
     this->Partition(graph);
   }
 

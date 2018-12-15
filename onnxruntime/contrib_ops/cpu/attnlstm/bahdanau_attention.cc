@@ -22,7 +22,7 @@ BahdanauAttention<T>::BahdanauAttention(AllocatorPtr allocator, const logging::L
   processed_query_ = Allocate(allocator_, batch_size_ * attn_depth_, processed_query_ptr_, true);
   mem_seq_lengths_ = Allocate(allocator_, batch_size_, mem_seq_lengths_ptr_, true);
 
-  ONNXRUNTIME_ENFORCE(!normalize_, "not support normalize yet.");
+  ORT_ENFORCE(!normalize_, "not support normalize yet.");
 }
 
 template <typename T>
@@ -68,7 +68,7 @@ void BahdanauAttention<T>::PrepareMemory(
 
   for (int b = 0; b < batch_size_; b++) {
     int mem_steps = mem_seq_lengths_[b];
-    ONNXRUNTIME_ENFORCE(mem_steps <= max_memory_steps_ && mem_steps > 0,
+    ORT_ENFORCE(mem_steps <= max_memory_steps_ && mem_steps > 0,
                 "Real memory steps ", mem_steps, " is not in (0, ", max_memory_steps_, "]");
   }
 

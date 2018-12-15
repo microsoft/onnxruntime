@@ -14,8 +14,8 @@ class OneHotOp final : public OpKernel {
   OneHotOp(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
     int64_t tmp_axis;
     if (op_kernel_info.GetAttr<int64_t>("axis", &tmp_axis).IsOK()) {
-      if (tmp_axis < -1) { // as per spec it can be -1 or more
-        ONNXRUNTIME_THROW("Value of axis is < -1");
+      if (tmp_axis < -1) {  // as per spec it can be -1 or more
+        ORT_THROW("Value of axis is < -1");
       }
       axis_ = tmp_axis;
     }
@@ -24,7 +24,7 @@ class OneHotOp final : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OneHotOp);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OneHotOp);
 
   int64_t axis_ = -1;
 };

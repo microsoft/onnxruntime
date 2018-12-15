@@ -20,7 +20,7 @@ class Reshape final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override {
     // Copy the second input tensor into the shape vector
     const Tensor* shapeTensor = context->Input<Tensor>(1);
-    ONNXRUNTIME_ENFORCE(shapeTensor->Shape().NumDimensions() == 1,
+    ORT_ENFORCE(shapeTensor->Shape().NumDimensions() == 1,
                 "A shape tensor must be a vector tensor.");
     size_t nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
     const int64_t* data = shapeTensor->template Data<int64_t>();
@@ -49,7 +49,7 @@ class Reshape_1 final : public CudaKernel {
  public:
   Reshape_1(const OpKernelInfo& info) : CudaKernel(info) {
     Status status = info.GetAttrs<int64_t>("shape", shape_);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), "Attribute shape is not set.");
+    ORT_ENFORCE(status.IsOK(), "Attribute shape is not set.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {

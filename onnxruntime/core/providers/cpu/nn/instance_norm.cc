@@ -20,7 +20,7 @@ Status InstanceNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const 
   const Tensor* scale = p_op_kernel_context->Input<Tensor>(1);
   const Tensor* B = p_op_kernel_context->Input<Tensor>(2);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(InstanceNormHelper::ValidateInputs(input, scale, B));
+  ORT_RETURN_IF_ERROR(InstanceNormHelper::ValidateInputs(input, scale, B));
   const int64_t N = input->Shape().GetDims()[0];
   const int64_t C = input->Shape().GetDims()[1];
   const int64_t W = input->Shape().SizeFromDimension(2);

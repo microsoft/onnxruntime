@@ -29,9 +29,11 @@ namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
 
 #define REG_ONE_HOT_OP(in_type, out_type)                                \
-  ONNX_CPU_OPERATOR_KERNEL(                                              \
+  ONNX_CPU_OPERATOR_TWO_TYPED_KERNEL(                                    \
       OneHot,                                                            \
       9,                                                                 \
+      in_type,                                                           \
+      out_type,                                                          \
       KernelDefBuilder()                                                 \
           .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()) \
@@ -100,7 +102,7 @@ Status OneHotOp<TI, TO>::Compute(OpKernelContext* p_op_kernel_context) const {
   const Tensor* depth = p_op_kernel_context->Input<Tensor>(1);
   const Tensor* values = p_op_kernel_context->Input<Tensor>(2);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputs(indices, depth, values));
+  ORT_RETURN_IF_ERROR(ValidateInputs(indices, depth, values));
 
   // prepare output shape
   const auto* depth_data = depth->Data<TI>();

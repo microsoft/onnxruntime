@@ -161,7 +161,7 @@ namespace Microsoft.ML.OnnxRuntime
                 longShape[i] = (ulong)shape[i];
             }
 
-            IntPtr status = NativeMethods.ONNXRuntimeCreateTensorWithDataAsONNXValue(
+            IntPtr status = NativeMethods.OrtCreateTensorWithDataAsONNXValue(
                     NativeMemoryAllocatorInfo.DefaultInstance.Handle,
                     dataBufferPointer,
                     (ulong)(dataBufferLength),
@@ -191,14 +191,14 @@ namespace Microsoft.ML.OnnxRuntime
             TensorElementType elemType = TensorElementType.DataTypeMax;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeGetTensorShapeAndType(nativeOnnxValue, out typeAndShape));
-                elemType = NativeMethods.ONNXRuntimeGetTensorElementType(typeAndShape);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(nativeOnnxValue, out typeAndShape));
+                elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
             }
             finally
             {
                 if (typeAndShape != IntPtr.Zero)
                 {
-                    NativeMethods.ONNXRuntimeReleaseObject(typeAndShape);
+                    NativeMethods.OrtReleaseObject(typeAndShape);
                 }
             }
 

@@ -29,7 +29,7 @@ static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
 
 Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   auto input_count = context->NumVariadicInputs(0);
-  ONNXRUNTIME_ENFORCE(input_count == input_dimensions_.size(),
+  ORT_ENFORCE(input_count == input_dimensions_.size(),
               "Number of inputs (", input_count, ") does not match number of inputdimensions values (",
               input_dimensions_.size(), ").");
 
@@ -55,7 +55,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   // for each feature, write out its data in one pass
   for (int index = 0; index < input_count; ++index) {
     const Tensor* input_tensor_ptr = context->Input<Tensor>(index);
-    ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
+    ORT_ENFORCE(input_tensor_ptr != nullptr);
     auto& input_tensor = *input_tensor_ptr;
 
     auto feature_size = input_dimensions_[index];
@@ -74,7 +74,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed
-      ONNXRUNTIME_THROW("Invalid input type:", data_type);
+      ORT_THROW("Invalid input type:", data_type);
     }
 
     // move to start of next feature

@@ -14,8 +14,8 @@ namespace onnxruntime {
 class RandomNormal final : public OpKernel {
  public:
   RandomNormal(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("mean", &mean_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("mean", &mean_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
 
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
@@ -26,13 +26,13 @@ class RandomNormal final : public OpKernel {
     generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
 
     int64_t dtype;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("dtype", &dtype).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("dtype", &dtype).IsOK());
     dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
-    ONNXRUNTIME_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
+    ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                 "Invalid dtype of ", dtype_);
 
     std::vector<int64_t> shape;
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
+    ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
     shape_ = TensorShape(shape);
   }
 
@@ -49,8 +49,8 @@ class RandomNormal final : public OpKernel {
 class RandomNormalLike final : public OpKernel {
  public:
   RandomNormalLike(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("mean", &mean_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("mean", &mean_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
 
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
@@ -63,7 +63,7 @@ class RandomNormalLike final : public OpKernel {
     int64_t dtype;
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
-      ONNXRUNTIME_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
+      ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                   "Invalid dtype of ", dtype_);
     }
   }
@@ -80,8 +80,8 @@ class RandomNormalLike final : public OpKernel {
 class RandomUniform final : public OpKernel {
  public:
   RandomUniform(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("high", &high_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("low", &low_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("high", &high_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("low", &low_).IsOK());
 
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
@@ -92,13 +92,13 @@ class RandomUniform final : public OpKernel {
     generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
 
     int64_t dtype;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("dtype", &dtype).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("dtype", &dtype).IsOK());
     dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
-    ONNXRUNTIME_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
+    ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                 "Invalid dtype of ", dtype_);
 
     std::vector<int64_t> shape;
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
+    ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
     shape_ = TensorShape(shape);
   }
 
@@ -115,8 +115,8 @@ class RandomUniform final : public OpKernel {
 class RandomUniformLike final : public OpKernel {
  public:
   RandomUniformLike(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("high", &high_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("low", &low_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("high", &high_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("low", &low_).IsOK());
     // read optional seed attribute and generate if not provided
     float seed = 0.f;
     if (!info.GetAttr<float>("seed", &seed).IsOK()) {
@@ -128,7 +128,7 @@ class RandomUniformLike final : public OpKernel {
     int64_t dtype;
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
-      ONNXRUNTIME_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
+      ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                   "Invalid dtype of ", dtype_);
     }
   }
@@ -145,7 +145,7 @@ class RandomUniformLike final : public OpKernel {
 class Multinomial final : public OpKernel {
  public:
   Multinomial(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("sample_size", &num_samples_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("sample_size", &num_samples_).IsOK());
 
     float seed = 0.f;
     if (!info.GetAttr<float>("seed", &seed).IsOK()) {
@@ -160,7 +160,7 @@ class Multinomial final : public OpKernel {
     } else {
       output_dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(output_dtype_tmp);
     }
-    ONNXRUNTIME_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(output_dtype_) && output_dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
+    ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(output_dtype_) && output_dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
                 "Invalid dtype of ", output_dtype_);
   }
 

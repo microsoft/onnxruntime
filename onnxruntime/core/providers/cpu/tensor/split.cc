@@ -31,9 +31,9 @@ Status Split::Compute(OpKernelContext* context) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update CopyMatrix to support double...
     status = ComputeImpl<double>(*context, input); */
-    ONNXRUNTIME_NOT_IMPLEMENTED("Split operator does not support double yet");
+    ORT_NOT_IMPLEMENTED("Split operator does not support double yet");
   } else
-    ONNXRUNTIME_THROW("Invalid data type for Split operator of ", data_type);
+    ORT_THROW("Invalid data type for Split operator of ", data_type);
 
   return status;
 }
@@ -61,7 +61,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   if (split_sizes_.empty()) {
     // equal split based on number of outputs
     if (split_dim_size % num_outputs != 0) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
                              " Axis=", axis_, " NumOutputs=", num_outputs);
     }
 
@@ -69,7 +69,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
     split_sizes = std::vector<int64_t>(num_outputs, split_dim_size / num_outputs);
   } else {
     if (split_sizes_.size() != num_outputs || split_size_sum_ != split_dim_size)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot split using values in 'split' attribute. Axis=", axis_,
                              " Input shape=", input_shape,
                              " NumOutputs=", num_outputs,

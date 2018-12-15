@@ -47,7 +47,7 @@ class PrimitivePool {
     auto& map = PrimitivePool<T>::GetMap();
     auto iter = map.find(key);
     // We should not find a primitive already using this key.
-    ONNXRUNTIME_ENFORCE(iter == map.end(), "duplicate key: " + key);
+    ORT_ENFORCE(iter == map.end(), "duplicate key: " + key);
     map.insert(std::make_pair(key, std::move(primitive)));
   }
 

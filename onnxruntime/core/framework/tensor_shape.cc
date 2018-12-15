@@ -37,7 +37,7 @@ int64_t TensorShape::Size() const {
 
 int64_t TensorShape::SizeToDimension(size_t dimension) const {
   const size_t num_dims = size();
-  ONNXRUNTIME_ENFORCE(dimension <= num_dims,
+  ORT_ENFORCE(dimension <= num_dims,
                       "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
                       num_dims, " dimensions.");
 
@@ -47,7 +47,7 @@ int64_t TensorShape::SizeToDimension(size_t dimension) const {
 
 int64_t TensorShape::SizeFromDimension(size_t dimension) const {
   const size_t num_dims = size();
-  ONNXRUNTIME_ENFORCE(dimension <= num_dims,
+  ORT_ENFORCE(dimension <= num_dims,
                       "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
                       num_dims, " dimensions.");
 
@@ -56,7 +56,7 @@ int64_t TensorShape::SizeFromDimension(size_t dimension) const {
 }
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
-  ONNXRUNTIME_ENFORCE(dimstart <= dimend && dimend <= size(),
+  ORT_ENFORCE(dimstart <= dimend && dimend <= size(),
                       "Invalid tensor shape slice argument.");
   return TensorShape(*this, dimstart, dimend);
 }
