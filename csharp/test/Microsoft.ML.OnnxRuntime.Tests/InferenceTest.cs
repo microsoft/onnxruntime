@@ -219,8 +219,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         continue;
                     try
                     {
-                        //TODO: sometimes, the file name is not 'model.onnx'
-                        var session = new InferenceSession($"{opset}\\{model}\\model.onnx");
+                        var modelNames = model.GetFiles("*.onnx");
+                        if (modelNames.Count() != 1)
+                            throw new Exception($"Opset {opset}: Model {model}: error = can't determine model file name.");
+
+                        var session = new InferenceSession($"{opset}\\{model}\\{modelNames[0].ToString()}");
                         var inMeta = session.InputMetadata;
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
