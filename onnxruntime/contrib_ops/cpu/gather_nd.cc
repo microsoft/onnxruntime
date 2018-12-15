@@ -21,19 +21,19 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 
   auto input_tensor  = context->Input<Tensor>(0);
   auto indice_tensor = context->Input<Tensor>(1);
-  ONNXRUNTIME_ENFORCE(input_tensor  != nullptr);
-  ONNXRUNTIME_ENFORCE(indice_tensor != nullptr);
+  ORT_ENFORCE(input_tensor  != nullptr);
+  ORT_ENFORCE(indice_tensor != nullptr);
 
   auto input_shape   = input_tensor->Shape();
   auto indice_shape  = indice_tensor->Shape();
   if (indice_shape.NumDimensions() == 0) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
       "indices tensor must has rank larger than 0");
   }
 
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
   if (last_indice_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
       "last dimension of indices must not be larger than rank of input tensor");
   }
 
@@ -77,7 +77,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     }
   }
   return err_indice == 0 ? Status::OK() :
-    ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
+    ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&) const;
@@ -85,7 +85,7 @@ template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepa
 
 Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
+  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
                               PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
   return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
 }
