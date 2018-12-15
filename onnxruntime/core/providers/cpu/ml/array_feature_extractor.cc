@@ -60,29 +60,36 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: X input has empty dimensions.");
   }
 
-  int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
-  int64_t N = x_dims.size() == 1 ? 1 : x_dims[0];
+  const int64_t stride = x_dims.back();
 
   const Tensor& Y = *context->Input<Tensor>(1);
   const TensorShape& y_shape = Y.Shape();
   const int64_t* y_data = Y.template Data<int64_t>();
-  int64_t num_indices = y_shape.Size();
+  const int64_t num_indices = y_shape.Size();
 
   // validate Y
   if (num_indices == 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Y argument: num_indices = 0");
   }
 
-  if (num_indices - 1 >= stride) {
-    std::ostringstream err_msg;
-    err_msg << "Invalid Y argument: num_indices - 1 (" << num_indices - 1 << ") >= stride (" << stride << ")";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, err_msg.str());
+  for (int64_t i = 0; i < num_indices; ++i) {
+    if (y_data[i] >= stride) {
+      return ONNXRUNTIME_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "Invalid Y argument: index is out of range: Y[", i, "] (", y_data[i], ") >=", stride);
+    }
   }
 
-  Tensor* Z = context->Output(0, TensorShape({N, num_indices}));
+  const TensorShape z_shape = [num_indices, &x_shape]() {
+    TensorShape shape{x_shape};
+    shape[shape.NumDimensions() - 1] = num_indices;
+    return shape;
+  }();
+  Tensor* Z = context->Output(0, z_shape);
   T* z_data = Z->template MutableData<T>();
 
-  for (int64_t n = 0; n < N; ++n) {
+  const int64_t x_size_until_last_dim = x_shape.SizeToDimension(x_shape.NumDimensions() - 1);
+  for (int64_t i = 0; i < x_size_until_last_dim; ++i) {
     for (int64_t j = 0; j < num_indices; ++j) {
       *z_data++ = x_data[y_data[j]];
     }
