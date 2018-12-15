@@ -498,7 +498,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         class floatComparer : IEqualityComparer<float>
         {
             private float tol = 1e-6f;
-            private float divtol = 1e-3f;
+            private float divtol = 2e-1f;
             public bool Equals(float x, float y)
             {
                 if (y == 0)
