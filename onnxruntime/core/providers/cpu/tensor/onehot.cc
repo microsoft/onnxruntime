@@ -24,6 +24,7 @@ limitations under the License.
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
+using namespace std;
 
 namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
@@ -42,11 +43,9 @@ namespace onnxruntime {
 
 REG_ONE_HOT_OP(int64_t, int64_t);
 
-Status ValidateInputs(const Tensor* indices,
-                      const Tensor* depth,
+Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
   // validation scenarios
-  // indices must be non-negative integers
   // depth should be scalar and > 0
   if (!depth->Shape().IsScalar()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument for depth; it's not a scalar.");
@@ -102,7 +101,7 @@ Status OneHotOp<TI, TO>::Compute(OpKernelContext* p_op_kernel_context) const {
   const Tensor* depth = p_op_kernel_context->Input<Tensor>(1);
   const Tensor* values = p_op_kernel_context->Input<Tensor>(2);
 
-  ORT_RETURN_IF_ERROR(ValidateInputs(indices, depth, values));
+  ORT_RETURN_IF_ERROR(ValidateInputs(depth, values));
 
   // prepare output shape
   const auto* depth_data = depth->Data<TI>();
