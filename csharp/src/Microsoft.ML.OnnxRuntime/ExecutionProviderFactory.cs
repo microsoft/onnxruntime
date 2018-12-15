@@ -79,7 +79,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateCUDAExecutionProviderFactory(deviceId, out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCUDAExecutionProviderFactory(deviceId, out handle));
             }
             catch (OnnxRuntimeException e)
             {
