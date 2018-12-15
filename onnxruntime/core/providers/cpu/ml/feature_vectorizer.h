@@ -15,7 +15,7 @@ class FeatureVectorizer final : public OpKernel {
  public:
   FeatureVectorizer(const OpKernelInfo& info) : OpKernel(info) {
     auto status = info.GetAttrs<int64_t>("inputdimensions", input_dimensions_);
-    ONNXRUNTIME_ENFORCE(status.IsOK() && !input_dimensions_.empty(), "inputdimensions attribute must be provided");
+    ORT_ENFORCE(status.IsOK() && !input_dimensions_.empty(), "inputdimensions attribute must be provided");
 
     total_dimensions_ = std::accumulate(input_dimensions_.cbegin(), input_dimensions_.cend(), 0LL);
   }

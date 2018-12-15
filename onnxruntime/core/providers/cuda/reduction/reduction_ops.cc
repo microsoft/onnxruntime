@@ -60,12 +60,12 @@ template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(nullptr != X);
+  ORT_ENFORCE(nullptr != X);
   const TensorShape input_shape{X->Shape()};
   const auto rank = input_shape.NumDimensions();
 
   if (rank > 8) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
   }
 
   const auto& input_dims = input_shape.GetDims();
@@ -114,13 +114,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 
   CudnnReduceDescriptor reduce_desc;
-  ONNXRUNTIME_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, ReduceTensorIndices));
+  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, ReduceTensorIndices));
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
   CudnnTensor input_tensor;
   CudnnTensor output_tensor;
-  ONNXRUNTIME_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
-  ONNXRUNTIME_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
+  ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
   size_t workspace_bytes = 0;
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
@@ -141,7 +141,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     } else if (log_sum_exp_) {
       // Reduce max
       CudnnReduceDescriptor reduce_max_desc;
-      ONNXRUNTIME_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
+      ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
           CudnnHandle(), reduce_max_desc, nullptr, 0, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),

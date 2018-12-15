@@ -34,7 +34,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TensorPitches::Calculate(input_strides.CpuSpan(), input_shape.GetDims());
   std::vector<int64_t> output_dims(input_shape.GetDims());
 
-  ONNXRUNTIME_ENFORCE(dimension_count * 2 == pads_.size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == pads_.size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   auto lower_pads_span = lower_pads.CpuSpan();
@@ -46,12 +46,12 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
-  ONNXRUNTIME_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
-  ONNXRUNTIME_RETURN_IF_ERROR(input_dims.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(lower_pads.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(upper_pads.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  ORT_RETURN_IF_ERROR(input_dims.CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
+  ORT_RETURN_IF_ERROR(lower_pads.CopyToGpu());
+  ORT_RETURN_IF_ERROR(upper_pads.CopyToGpu());
+  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
   PadImpl(
       dimension_count,

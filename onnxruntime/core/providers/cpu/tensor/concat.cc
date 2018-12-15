@@ -13,7 +13,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Concat);
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prepare& p) const {
-  ONNXRUNTIME_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
+  ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& inputs_0 = *tensor_pointer;
@@ -30,7 +30,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     for (int axis_index = 0; axis_index < dimension_count; axis_index++) {
       if (axis_index == axis)
         continue;
-      ONNXRUNTIME_RETURN_IF_NOT(data_n.Shape()[axis_index] == inputs_0.Shape()[axis_index], "Non concat axis dimensions must match: Axis ", axis_index, " has mismatched dimensions of ", data_n.Shape()[axis_index], " and ", inputs_0.Shape()[axis_index]);
+      ORT_RETURN_IF_NOT(data_n.Shape()[axis_index] == inputs_0.Shape()[axis_index], "Non concat axis dimensions must match: Axis ", axis_index, " has mismatched dimensions of ", data_n.Shape()[axis_index], " and ", inputs_0.Shape()[axis_index]);
     }
   }
 
@@ -59,10 +59,10 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
 
   for (int input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = ctx->Input<Tensor>(input_index);
-    ONNXRUNTIME_ENFORCE(data_n_ptr != nullptr);
+    ORT_ENFORCE(data_n_ptr != nullptr);
     auto& data_n = *data_n_ptr;
 
-    ONNXRUNTIME_RETURN_IF_NOT(data_n.DataType() == concat_result.DataType());
+    ORT_RETURN_IF_NOT(data_n.DataType() == concat_result.DataType());
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     int64_t input_axis_pitch = 1;
@@ -79,7 +79,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count, p));
 
   auto is_string_type = ctx->Input<Tensor>(0)->DataType() == DataTypeImpl::GetType<std::string>();
 

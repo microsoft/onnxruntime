@@ -38,13 +38,13 @@ Status SpaceToDepth<float>::Compute(OpKernelContext* context) const {
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& input = *tensor_pointer;
-  ONNXRUNTIME_ENFORCE(input.Shape().NumDimensions() == 4);
+  ORT_ENFORCE(input.Shape().NumDimensions() == 4);
   const int64_t batch = input.Shape().GetDims().at(0);
   const int64_t input_depth = input.Shape().GetDims().at(1);
   const int64_t input_height = input.Shape().GetDims().at(2);
   const int64_t input_width = input.Shape().GetDims().at(3);
-  ONNXRUNTIME_ENFORCE(input_height % this->blocksize_ == 0);
-  ONNXRUNTIME_ENFORCE(input_width % this->blocksize_ == 0);
+  ORT_ENFORCE(input_height % this->blocksize_ == 0);
+  ORT_ENFORCE(input_width % this->blocksize_ == 0);
 
   const int64_t output_depth = input_depth * blocksize_ * blocksize_;
   const int64_t output_height = input_height / blocksize_;
@@ -67,13 +67,13 @@ Status DepthToSpace<float>::Compute(OpKernelContext* context) const {
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& input = *tensor_pointer;
-  ONNXRUNTIME_ENFORCE(input.Shape().NumDimensions() == 4);
+  ORT_ENFORCE(input.Shape().NumDimensions() == 4);
 
   const int64_t batch = input.Shape().GetDims().at(0);
   const int64_t input_depth = input.Shape().GetDims().at(1);
   const int64_t input_height = input.Shape().GetDims().at(2);
   const int64_t input_width = input.Shape().GetDims().at(3);
-  ONNXRUNTIME_ENFORCE(input_depth % (blocksize_ * blocksize_) == 0);
+  ORT_ENFORCE(input_depth % (blocksize_ * blocksize_) == 0);
 
   const int64_t output_depth = input_depth / blocksize_ / blocksize_;
   const int64_t output_height = input_height * blocksize_;

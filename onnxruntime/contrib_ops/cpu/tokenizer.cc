@@ -199,25 +199,25 @@ struct Tokenizer::SearchData {
 Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   int64_t mark = 0;
   auto status = info.GetAttr("mark", &mark);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mark is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute mark is not set");
   mark_ = mark != 0;
 
   status = info.GetAttr("pad_value", &pad_value_);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute pad_value is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute pad_value is not set");
 
   status = info.GetAttr("mincharnum", &mincharnum_);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
-  ONNXRUNTIME_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
+  ORT_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
+  ORT_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
 
   std::vector<std::string> separators;
   status = info.GetAttrs<std::string>("separators", separators);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute separators is not set");
-  ONNXRUNTIME_ENFORCE(!separators.empty(), "Requires at least one separator");
+  ORT_ENFORCE(status.IsOK(), "attribute separators is not set");
+  ORT_ENFORCE(!separators.empty(), "Requires at least one separator");
 
   char_tokenezation_ = (separators.size() == 1 &&
                         separators[0].empty());
 
-  ONNXRUNTIME_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
+  ORT_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
                       "mincharnum is too big for char level tokenezation");
 
   // Create TST and insert separators
@@ -226,11 +226,11 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
     int priority = 0;  // earlier search patterns get priority
     for (const auto& sep : separators) {
-      ONNXRUNTIME_ENFORCE(!sep.empty(), "No empty separators allowed");
+      ORT_ENFORCE(!sep.empty(), "No empty separators allowed");
       std::wstring wsep = converter.from_bytes(sep);
-      ONNXRUNTIME_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
+      ORT_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
       bool result = sd->tst_.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
-      ONNXRUNTIME_ENFORCE(result, "duplicate separator detected");
+      ORT_ENFORCE(result, "duplicate separator detected");
       ++priority;
     }
     search_data_.swap(sd);

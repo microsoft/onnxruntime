@@ -22,7 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<ONNXRuntimeMemTypeCPUInput>(0)
+        .InputMemoryType<OrtMemTypeCPUInput>(0)
         .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
@@ -33,7 +33,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .OutputMemoryType<ONNXRuntimeMemTypeCPUOutput>(0)
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
         .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
@@ -63,16 +63,16 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
-    {ONNXRuntimeMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
-    {ONNXRuntimeMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(0, ONNXRuntimeMemTypeCPU);
+  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
   auto it = deferred_release_cpu_ptr_.begin();
   while (it != deferred_release_cpu_ptr_.end()) {
@@ -105,16 +105,16 @@ void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
   }
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, ONNXRuntimeMemType mem_type) const {
+AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
   // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
   // cause cacheline to contain dirty data.
-  if (mem_type == ONNXRuntimeMemTypeDefault) {
+  if (mem_type == OrtMemTypeDefault) {
     if (!per_thread_default_allocator_) {
       std::lock_guard<std::mutex> lock(default_allocator_pool_mutex_);
       if (default_allocator_pool_.empty()) {
         DeviceAllocatorRegistrationInfo default_allocator_info(
-            {ONNXRuntimeMemTypeDefault,
+            {OrtMemTypeDefault,
              [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
         per_thread_default_allocator_ = CreateAllocator(default_allocator_info, device_id_);
       } else {
@@ -141,13 +141,13 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   if (current_deferred_release_event) {
     std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
     auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
-    ONNXRUNTIME_ENFORCE(iter != deferred_release_cpu_ptr_.end());
+    ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
     iter->second.cpu_ptrs.push_back(p);
   }
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
-  auto cpu_alloc = GetAllocator(0, ONNXRuntimeMemTypeCPU);
+  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
   std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
@@ -184,7 +184,7 @@ Status CUDAExecutionProvider::OnRunStart() {
 }
 
 Status CUDAExecutionProvider::OnRunEnd() {
-  ONNXRUNTIME_RETURN_IF_NOT(per_thread_context_ != nullptr);
+  ORT_RETURN_IF_NOT(per_thread_context_ != nullptr);
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
@@ -205,7 +205,7 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
 
   if (strcmp(src.Location().name, CUDA) != 0 && strcmp(src.Location().name, CUDA_PINNED) != 0 &&
       strcmp(dst.Location().name, CUDA) != 0 && strcmp(dst.Location().name, CUDA_PINNED) != 0) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
   }
 
   size_t bytes = src.DataType()->Size() * src.Shape().Size();

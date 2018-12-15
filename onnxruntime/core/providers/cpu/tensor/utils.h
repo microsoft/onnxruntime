@@ -125,7 +125,7 @@ struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const Tensor& tensor, gsl::span<const int64_t> extents)
       : std::vector<int64_t>(tensor.Shape().NumDimensions(), 0) {
     auto& dims = tensor.Shape().GetDims();
-    ONNXRUNTIME_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size());
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size());
     size_t pitch = dims.back();
     back() = pitch - extents[size() - 1];
     for (size_t i = size() - 1; i-- > 0;) {
@@ -142,7 +142,7 @@ struct SliceIterator {
   SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
       : tensor_(tensor), extents_(extents), skips_(tensor, extents), indices_(extents.size(), 0) {
     auto& dims = tensor_.Shape().GetDims();
-    ONNXRUNTIME_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
 
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy

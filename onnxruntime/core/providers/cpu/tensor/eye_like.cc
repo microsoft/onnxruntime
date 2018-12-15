@@ -28,7 +28,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 Status EyeLike::Compute(OpKernelContext* context) const {
   const Tensor* T1 = context->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(T1 != nullptr);
+  ORT_ENFORCE(T1 != nullptr);
 
   auto output_tensor_dtype = has_dtype_ ? static_cast<onnx::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
   switch (output_tensor_dtype) {
@@ -39,7 +39,7 @@ Status EyeLike::Compute(OpKernelContext* context) const {
     case onnx::TensorProto_DataType_UINT64:
       return ComputeImpl<uint64_t>(context, T1);
     default:
-      ONNXRUNTIME_THROW("Unsupported 'dtype' value: ", output_tensor_dtype);
+      ORT_THROW("Unsupported 'dtype' value: ", output_tensor_dtype);
   }
 }
 

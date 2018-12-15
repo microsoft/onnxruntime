@@ -21,42 +21,42 @@ void CPUAllocator::Free(void* p) {
   free(p);
 }
 
-const ONNXRuntimeAllocatorInfo& CPUAllocator::Info() const {
-  static constexpr ONNXRuntimeAllocatorInfo cpuAllocatorInfo(CPU, ONNXRuntimeAllocatorType::ONNXRuntimeDeviceAllocator);
+const OrtAllocatorInfo& CPUAllocator::Info() const {
+  static constexpr OrtAllocatorInfo cpuAllocatorInfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
   return cpuAllocatorInfo;
 }
 }  // namespace onnxruntime
 
-std::ostream& operator<<(std::ostream& out, const ONNXRuntimeAllocatorInfo& info) {
+std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) {
   return (out << info.ToString());
 }
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateAllocatorInfo, const char* name1, ONNXRuntimeAllocatorType type, int id1, ONNXRuntimeMemType mem_type1, ONNXRuntimeAllocatorInfo** out) {
-  *out = new ONNXRuntimeAllocatorInfo(name1, type, id1, mem_type1);
+ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, const char* name1, OrtAllocatorType type, int id1, OrtMemType mem_type1, OrtAllocatorInfo** out) {
+  *out = new OrtAllocatorInfo(name1, type, id1, mem_type1);
   return nullptr;
 }
 
-ONNXRUNTIME_API(void, ReleaseONNXRuntimeAllocatorInfo, ONNXRuntimeAllocatorInfo* p) {
+ORT_API(void, ReleaseOrtAllocatorInfo, OrtAllocatorInfo* p) {
   delete p;
 }
 
-ONNXRUNTIME_API(const char*, ONNXRuntimeAllocatorInfoGetName, _In_ ONNXRuntimeAllocatorInfo* ptr) {
+ORT_API(const char*, OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr) {
   return ptr->name;
 }
 
-ONNXRUNTIME_API(int, ONNXRuntimeAllocatorInfoGetId, _In_ ONNXRuntimeAllocatorInfo* ptr) {
+ORT_API(int, OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr) {
   return ptr->id;
 }
 
-ONNXRUNTIME_API(ONNXRuntimeMemType, ONNXRuntimeAllocatorInfoGetMemType, _In_ ONNXRuntimeAllocatorInfo* ptr) {
+ORT_API(OrtMemType, OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr) {
   return ptr->mem_type;
 }
 
-ONNXRUNTIME_API(ONNXRuntimeAllocatorType, ONNXRuntimeAllocatorInfoGetType, _In_ ONNXRuntimeAllocatorInfo* ptr) {
+ORT_API(OrtAllocatorType, OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr) {
   return ptr->type;
 }
 
-ONNXRUNTIME_API(int, ONNXRuntimeCompareAllocatorInfo, _In_ const ONNXRuntimeAllocatorInfo* info1, _In_ const ONNXRuntimeAllocatorInfo* info2) {
+ORT_API(int, OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2) {
   if (*info1 == *info2) {
     return 0;
   }

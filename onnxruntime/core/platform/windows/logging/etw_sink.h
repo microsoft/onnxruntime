@@ -33,7 +33,7 @@ class EtwSink : public ISink {
   constexpr static const char* kEventName = "ONNXRuntimeLogEvent";
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwSink);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwSink);
 
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override;
 

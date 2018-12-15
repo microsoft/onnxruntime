@@ -46,7 +46,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
     }
 
     auto node_index = node_exec_plan.node_index;
@@ -54,7 +54,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
                                      session_state.GetGraphViewer()->GetNode(node_index)->Name());
 
     const std::string& node_name = p_op_kernel->Node().Name();
@@ -98,7 +98,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
     auto kernel_begin_time = session_state.Profiler().StartTime();
-    ONNXRUNTIME_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
+    ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_kernel_time",
                                                    kernel_begin_time,
@@ -133,11 +133,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
-    ONNXRUNTIME_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
+    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 
   VLOGS(logger, 1) << "Fetching output.";
-  ONNXRUNTIME_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), frame, output_names, fetches, logger));
+  ORT_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), frame, output_names, fetches, logger));
 
   if (frame.HasPlan()) {
     std::vector<TensorShape> input_shapes;
@@ -153,8 +153,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
     if (all_tensors) {
       auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-      ONNXRUNTIME_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
-      ONNXRUNTIME_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }
   }
 
@@ -171,7 +171,7 @@ static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
     fetches.resize(output_names.size());
   } else {
     // this should've been checked before already
-    ONNXRUNTIME_ENFORCE(output_names.size() == fetches.size(),
+    ORT_ENFORCE(output_names.size() == fetches.size(),
                         "output_names vector size: " + std::to_string(output_names.size()) +
                             " does not match that of fetches vector: " + std::to_string(fetches.size()));
   }
@@ -181,7 +181,7 @@ static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
   for (const auto& oname : output_names) {
     VLOGS(logger, 1) << "Attempting to fetch output with name: " << oname;
     int mlvalue_index;
-    ONNXRUNTIME_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
+    ORT_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
     const MLValue& output_mlvalue = frame.GetMLValue(mlvalue_index);
     VLOGS(logger, 1) << "Copying fetched MLValue to output vector";
     fetches[idx++] = output_mlvalue;
@@ -198,7 +198,7 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
     auto mlvalue_idx = seq_exec_plan.to_be_freed[i];
     VLOGS(logger, 1) << "Releasing mlvalue with index: " << mlvalue_idx;
-    ONNXRUNTIME_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
   }
 
   return Status::OK();

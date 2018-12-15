@@ -29,7 +29,7 @@ REGISTER_KERNEL_TYPED(int32_t)
 template <typename T>
 Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(nullptr != X);
+  ORT_ENFORCE(nullptr != X);
   const std::vector<int64_t>& X_dims = X->Shape().GetDims();
   auto rank = X_dims.size();
   if (rank == 0)

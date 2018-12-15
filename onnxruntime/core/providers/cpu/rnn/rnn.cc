@@ -117,7 +117,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
   auto status = rnn::detail::ValidateCommonRnnInputs(X, W, R, B, 1, sequence_lens, initial_h,
                                                      num_directions, hidden_size_);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // RNN outputs are optional
   std::vector<int64_t> Y_dims({seq_length, num_directions, batch_size, hidden_size_});
@@ -127,7 +127,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   Tensor* Y_h = ctx->Output(1, Y_h_dims);
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
   // X * W^t, each direction has shape of [seq_length, batch_size, hidden_size]
   auto x_matmul_data = alloc->Alloc(sizeof(float) * seq_length * batch_size * hidden_size_);

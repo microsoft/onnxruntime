@@ -16,8 +16,8 @@ template <typename T>
 LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info) : OpKernel(info),
                                                                 intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
                                                                 post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
-  ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("targets", &targets_).IsOK());
-  ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
+  ORT_ENFORCE(info.GetAttr<int64_t>("targets", &targets_).IsOK());
+  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
 }
 
 template <>

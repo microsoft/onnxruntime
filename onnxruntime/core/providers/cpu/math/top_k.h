@@ -14,12 +14,12 @@ class TopK final : public OpKernel {
  public:
   TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
     int64_t k_temp;
-    ONNXRUNTIME_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_temp).IsOK());
-    ONNXRUNTIME_ENFORCE(k_temp > 0);
+    ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_temp).IsOK());
+    ORT_ENFORCE(k_temp > 0);
     k_ = gsl::narrow_cast<unsigned>(k_temp);
 
     int64_t axis_temp;
-    ONNXRUNTIME_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
+    ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("axis", &axis_temp).IsOK());
     axis_ = gsl::narrow_cast<int>(axis_temp);
   }
 

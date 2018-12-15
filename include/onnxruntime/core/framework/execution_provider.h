@@ -40,7 +40,7 @@ class IExecutionProvider {
   /**
      Get allocator with specified MemType
   */
-  virtual AllocatorPtr GetAllocator(int id, ONNXRuntimeMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
   /**
      Get execution provider's capability for the specified <graph>.

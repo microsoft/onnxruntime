@@ -32,7 +32,7 @@ class CustomRegistry : public KernelRegistry, public onnxruntime::OnnxRuntimeOpS
   common::Status RegisterCustomKernel(KernelCreateInfo&);
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomRegistry);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomRegistry);
 };
 
 }  // namespace onnxruntime

@@ -60,7 +60,7 @@ class EtwRegistrationManager {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
 
   EtwRegistrationManager(const HRESULT status) noexcept : etw_status_{status} {}
   const HRESULT etw_status_;

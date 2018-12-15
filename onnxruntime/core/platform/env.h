@@ -145,7 +145,7 @@ class Env {
   Env();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Env);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Env);
   EnvTime* env_time_ = EnvTime::Default();
 };
 
@@ -158,7 +158,7 @@ class Thread {
   virtual ~Thread();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Thread);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Thread);
 };
 
 /// \brief Options to configure a Thread.
