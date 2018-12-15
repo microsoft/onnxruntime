@@ -33,7 +33,7 @@ class ISink {
 
  private:
   // Make Code Analysis happy by disabling all for now. Enable as needed.
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ISink);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ISink);
 
   virtual void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) = 0;
 };

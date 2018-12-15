@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .OutputMemoryType<ONNXRuntimeMemTypeCPUOutput>(0)
+        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
         .TypeConstraint("T", shapeOpTypeConstraints)
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);

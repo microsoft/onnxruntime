@@ -54,9 +54,10 @@ class Node {
     Construct an EdgeEnd
     @param node The source node if this is an input edge to the current node, 
     or the destination node if this is an output edge from the current node.
-    @param node_arg The NodeArg to use for the edge.
+    @param src_arg_index The node arg index of source node of the edge.
+	@param dst_arg_index The node arg index of destination node of the edge.
     */
-    EdgeEnd(const Node& node, const NodeArg& node_arg) noexcept;
+    EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept;
 
     /** Construct a control edge.
     @param node The node the edge joins to the current node.
@@ -66,13 +67,18 @@ class Node {
     /** Gets the Node that this EdgeEnd refers to. */
     const Node& GetNode() const noexcept;
 
-    /** Gets the NodeArg that this edge end refers to.
-    @returns NodeArg pointer or nullptr if this is a control edge. */
-    const NodeArg* GetNodeArg() const noexcept;
+    /** Gets the source arg index.
+	@returns the source arg index of <*this> edge.*/
+    int GetSrcArgIndex() const;
+
+    /** Gets the destination arg index.
+	@returns the destination arg index of <*this> edge.*/
+    int GetDstArgIndex() const;
 
    private:
     const Node* node_;
-    const NodeArg* node_arg_;
+    int src_arg_index_;
+    int dst_arg_index_;
   };
 
   /** Gets the Node's NodeIndex. */
@@ -114,7 +120,7 @@ class Node {
       auto arg = node_args[index];
       if (!arg->Exists())
         continue;
-      ONNXRUNTIME_RETURN_IF_ERROR(func(*arg, index));
+      ORT_RETURN_IF_ERROR(func(*arg, index));
     }
     return common::Status::OK();
   }
@@ -146,7 +152,7 @@ class Node {
   /** Gets the implicit inputs to this Node.  
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that 
   subgraph. e.g. If and Loop operators.*/
-  const std::vector<const NodeArg*>& ImplicitInputDefs() const noexcept {
+  const std::vector<NodeArg*>& ImplicitInputDefs() const noexcept {
     return definitions_.implicit_input_defs;
   }
 
@@ -160,11 +166,10 @@ class Node {
   struct EdgeEndCompare {
     bool operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const {
       if (lhs.GetNode().Index() == rhs.GetNode().Index()) {
-        auto lhs_arg = lhs.GetNodeArg();
-        auto rhs_arg = rhs.GetNodeArg();
-        std::string lhs_arg_name = lhs_arg == nullptr ? "" : lhs_arg->Name();
-        std::string rhs_arg_name = rhs_arg == nullptr ? "" : rhs_arg->Name();
-        return lhs_arg_name.compare(rhs_arg_name) < 0;
+        if (lhs.GetSrcArgIndex() == rhs.GetSrcArgIndex()) {
+          return lhs.GetDstArgIndex() < rhs.GetDstArgIndex();
+        }
+        return lhs.GetSrcArgIndex() < rhs.GetSrcArgIndex();
       }
       return lhs.GetNode().Index() < rhs.GetNode().Index();
     }
@@ -305,10 +310,10 @@ class Node {
     @remarks For example, a subgraph in an 'If' node gets all its input values via this mechanism rather than 
     there being explicit inputs to the 'If' node that are passed to the subgraph. 
     They are pseudo-inputs to this Node as it has an implicit dependency on them. */
-    std::vector<const NodeArg*> implicit_input_defs;
+    std::vector<NodeArg*> implicit_input_defs;
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
   };
 
   /**
@@ -335,11 +340,11 @@ class Node {
     std::set<std::string> control_inputs;
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
   };
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
@@ -391,7 +396,7 @@ class Node {
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
   Node::Type node_type_ = Node::Type::Primitive;
-  
+
   // The function body is owned by graph_
   const Function* func_body_ = nullptr;
 
@@ -588,6 +593,12 @@ class Graph {
   Node& AddNode(const Node& other);
 
   /** Remove a Node from this Graph and free it. 
+  The output edges of this specified node MUST have been removed before removing the node.
+  The input edges of this specified node is removed while removing the node. The process of
+  removing a node from a graph should be,
+  1. Remove out edges of this specified node.
+  2. Remove this specified node.
+  3. Add new input edges connected with all out nodes.
   @returns true if the node_index was valid
   @remarks Do not call AddNode and Remove Node concurrently as they are not thread-safe.
   */
@@ -596,16 +607,18 @@ class Graph {
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
-  @param node_arg NodeArg to use for the edge.
+  @param src_arg_index node arg index of source node.
+  @param dst_arg_index node arg index of destination node.
   */
-  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  void AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
 
   /** Remove an edge between two Nodes.
   @param src_node_index NodeIndex of source Node to remove an output edge from.
   @param dst_node_index NodeIndex of destination Node to remove an input edge from.
-  @param node_arg NodeArg that is used by the edge that is being removed.
+  @param src_arg_index node arg index of source node.
+  @param dst_arg_index node arg index of destination node.
   */
-  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, const NodeArg& node_arg);
+  void RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_index, int dst_arg_index);
 
   /**
   Add a control edge between two Nodes in this Graph.
@@ -694,7 +707,7 @@ class Graph {
   when the Graph is resolved.
   */
   void AddOuterScopeNodeArg(const std::string& name) {
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
+    ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
   /** When programmatically constructing a Graph, explicitly set the order to use for graph inputs when the graph is
@@ -729,7 +742,7 @@ class Graph {
   virtual ~Graph();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
@@ -779,7 +792,7 @@ class Graph {
   struct ResolveContext {
     ResolveContext() = default;
 
-    std::unordered_map<std::string, Node*> output_args;
+    std::unordered_map<std::string, std::pair<Node*, int>> output_args;
     std::unordered_set<std::string> inputs_and_initializers;
     std::unordered_set<std::string> outer_scope_node_args;
     std::unordered_map<std::string, NodeIndex> node_name_to_index;
@@ -794,11 +807,11 @@ class Graph {
     }
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
   };
 
   // search this and up through any parent_graph_ instance for a NodeArg
-  const NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const;
+  NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
 
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
@@ -871,9 +884,9 @@ class Graph {
   Node* NodeAtIndexImpl(NodeIndex node_index) const {
     // if we are trying to access a node that doesn't exist there's (most
     // likely) either a logic issue or a graph consistency/correctness issue.
-    // use ONNXRUNTIME_ENFORCE to prove that or uncover scenarios where we actually
+    // use ORT_ENFORCE to prove that or uncover scenarios where we actually
     // expect attempts to retrieve a non-existent node.
-    ONNXRUNTIME_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index.");
+    ORT_ENFORCE(node_index < nodes_.size(), "Validating no unexpected access using an invalid node_index.");
     return nodes_[node_index].get();
   }
 

@@ -44,20 +44,22 @@ set +e
 if [ $BUILD_DEVICE = "cpu" ]; then
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     docker run -h $HOSTNAME \
-        --rm -e AZURE_BLOB_KEY \
+        --rm \
         --name "onnxruntime-$BUILD_DEVICE" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
+        --volume "$HOME/.cache/onnxruntime:/root/.cache/onnxruntime" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
 else
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     nvidia-docker run --rm -h $HOSTNAME \
-        --rm -e AZURE_BLOB_KEY \
+        --rm \
         --name "onnxruntime-$BUILD_DEVICE" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
+        --volume "$HOME/.cache/onnxruntime:/root/.cache/onnxruntime" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &

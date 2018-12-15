@@ -10,7 +10,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private static string GetErrorMessage(IntPtr /*(ONNXStatus*)*/status)
         {
-            IntPtr nativeString = NativeMethods.ONNXRuntimeGetErrorMessage(status);
+            IntPtr nativeString = NativeMethods.OrtGetErrorMessage(status);
             string str = Marshal.PtrToStringAnsi(nativeString); //assumes charset = ANSI
             return str;
         }
@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (nativeStatus != IntPtr.Zero)
             {
-                ErrorCode statusCode = NativeMethods.ONNXRuntimeGetErrorCode(nativeStatus);
+                ErrorCode statusCode = NativeMethods.OrtGetErrorCode(nativeStatus);
                 string errorMessage = GetErrorMessage(nativeStatus);
                 NativeMethods.ReleaseONNXStatus(nativeStatus);
                 throw new OnnxRuntimeException(statusCode, errorMessage);

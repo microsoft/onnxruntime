@@ -13,7 +13,7 @@ const ::ONNX_NAMESPACE::TypeProto* FindTypeBinding(const onnxruntime::Node& node
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
   // search inputs:
   const size_t len = node.InputArgCount().size();
-  ONNXRUNTIME_ENFORCE(len <= op_schema.inputs().size());
+  ORT_ENFORCE(len <= op_schema.inputs().size());
   int actual_index = 0;
   for (size_t formal_index = 0; formal_index != len; ++formal_index) {
     auto& param = op_schema.inputs()[formal_index];
@@ -133,7 +133,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
     // valid names (of types or parameters) at the time that kernels are registered.
     if ((nullptr != actual_type) &&
         !std::any_of(allowed_types.begin(), allowed_types.end(),
-                     [actual_type, &node, &error_str](const MLDataType& expected_type) {
+                     [actual_type, &node, &error_str](const DataTypeImpl* expected_type) {
                        bool rc = expected_type->IsCompatible(*actual_type);  // for easier debugging
                        if (!rc) {
                          // TODO print type information as well

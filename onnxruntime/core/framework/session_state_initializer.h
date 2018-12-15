@@ -31,13 +31,13 @@ class SessionStateInitializer {
   // First perform any transformations and create the execution plan
   common::Status CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
                             const InsertCastTransformer& insert_cast_transformer,
-                            const std::vector<const NodeArg*>& outer_scope_node_args,
+                            const std::vector<NodeArg*>& outer_scope_node_args,
                             bool enable_sequential_execution);
 
   // initialize tensors, and save. save kernels and input/output node mappings
   // @param enable_memory_pattern
   common::Status InitializeAndSave(bool enable_memory_pattern,
-                                   std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers);
+                                   std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers);
 
  private:
   onnxruntime::Graph& graph_;

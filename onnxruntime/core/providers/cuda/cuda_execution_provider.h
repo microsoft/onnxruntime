@@ -29,7 +29,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, ONNXRuntimeMemType mem_type = ONNXRuntimeMemTypeDefault) const override;
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
 
   std::string Type() const override {
     return onnxruntime::kCudaExecutionProvider;
@@ -66,7 +66,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   cudaStream_t GetStream(int queue_id) const {
-    ONNXRUNTIME_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
+    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
     return streams_[queue_id];
   }
 
@@ -85,12 +85,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(ONNXRuntimeMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  virtual std::vector<std::unique_ptr<ComputationCapacity>>
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
  private:

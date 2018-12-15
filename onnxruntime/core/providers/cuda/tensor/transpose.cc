@@ -37,12 +37,12 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
   CudaAsyncBuffer<int64_t> perm(this, device_id, *p_perm);
   CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);
-  ONNXRUNTIME_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
-  ONNXRUNTIME_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
+  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
 
-  ONNXRUNTIME_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(perm.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
+  ORT_RETURN_IF_ERROR(perm.CopyToGpu());
+  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
   TransposeImpl(
       rank,

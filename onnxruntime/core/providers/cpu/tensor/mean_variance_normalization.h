@@ -14,8 +14,8 @@ class MeanVarianceNormalization_0 : public OpKernel {
  public:
   MeanVarianceNormalization_0(const OpKernelInfo& info, bool old_attr = true) : OpKernel(info) {
     if (old_attr) {
-      ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("across_channels", &across_channels_).IsOK());
-      ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("normalize_variance", &normalize_variance_).IsOK());
+      ORT_ENFORCE(info.GetAttr<int64_t>("across_channels", &across_channels_).IsOK());
+      ORT_ENFORCE(info.GetAttr<int64_t>("normalize_variance", &normalize_variance_).IsOK());
     }
   }
 

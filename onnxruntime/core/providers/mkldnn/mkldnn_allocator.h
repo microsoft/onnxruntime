@@ -11,10 +11,10 @@ constexpr const char* MKLDNN_CPU = "MklDnnCpu";
 
 class MKLDNNAllocator : public CPUAllocator {
  public:
-  const ONNXRuntimeAllocatorInfo& Info() const override;
+  const OrtAllocatorInfo& Info() const override;
 };
 class MKLDNNCPUAllocator : public CPUAllocator {
  public:
-  const ONNXRuntimeAllocatorInfo& Info() const override;
+  const OrtAllocatorInfo& Info() const override;
 };
 }  // namespace onnxruntime

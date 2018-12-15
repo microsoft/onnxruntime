@@ -19,9 +19,9 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
       vector_count_(info.GetAttrOrDefault<int64_t>("n_supports", 0)),
       support_vectors_(info.GetAttrsOrDefault<float>("support_vectors")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
-  ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("rho", rho_).IsOK());
-  ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
-  ONNXRUNTIME_ENFORCE(coefficients_.size() > 0);
+  ORT_ENFORCE(info.GetAttrs<float>("rho", rho_).IsOK());
+  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
+  ORT_ENFORCE(coefficients_.size() > 0);
 
   int64_t onec = info.GetAttrOrDefault<int64_t>("one_class", 0);
   one_class_ = (onec != 0);

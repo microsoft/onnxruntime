@@ -30,7 +30,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public SessionOptions()
         {
-            _nativeOption = new NativeOnnxObjectHandle(NativeMethods.ONNXRuntimeCreateSessionOptions());
+            _nativeOption = new NativeOnnxObjectHandle(NativeMethods.OrtCreateSessionOptions());
         }
 
         /// <summary>
@@ -90,7 +90,7 @@ namespace Microsoft.ML.OnnxRuntime
                 providerFactory.DangerousAddRef(ref success);
                 if (success)
                 {
-                    NativeMethods.ONNXRuntimeSessionOptionsAppendExecutionProvider(_nativeOption.DangerousGetHandle(), providerFactory.DangerousGetHandle());
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider(_nativeOption.DangerousGetHandle(), providerFactory.DangerousGetHandle());
                     providerFactory.DangerousRelease();
                 }
 
