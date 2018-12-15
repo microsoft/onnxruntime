@@ -238,8 +238,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     catch (Exception ex)
                     {
                         var msg = $"Opset {opset}: Model {model}: error = {ex.Message}";
-                        continue; //TODO: fix it
-                        //throw new Exception(msg);
+                        throw new Exception(msg);
                     }
                 } //model
             } //opset

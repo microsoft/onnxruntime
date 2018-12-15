@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.InteropServices;
 
-
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
@@ -25,6 +24,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         protected SafeHandle _nativeOption;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithMklDnnProvider);
+        private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
         /// <summary>
         /// Constructs an empty SessionOptions
@@ -67,7 +67,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-
         private static SessionOptions MakeSessionOptionWithMklDnnProvider()
         {
             SessionOptions options = new SessionOptions();
@@ -92,6 +91,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId=0)
         {
+            CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
             if (deviceId == 0) //default value
                 options.AppendExecutionProvider(CudaExecutionProviderFactory.Default);
@@ -101,7 +101,6 @@ namespace Microsoft.ML.OnnxRuntime
             options.AppendExecutionProvider(CpuExecutionProviderFactory.Default);
             return options;
         }
-
 
         internal IntPtr NativeHandle
         {
@@ -126,8 +125,30 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        #region destructors disposers
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LoadLibrary(string dllToLoad);
 
+        private static bool CheckCudaExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                foreach (var dll in cudaDelayLoadedLibs)
+                {
+                    IntPtr handle = LoadLibrary(dll);
+                    if (handle == IntPtr.Zero)
+                    {
+                        throw new OnnxRuntimeException(
+                            ErrorCode.ExecutionProviderDLLNotFound, 
+                            $"Dll not found: {dll}. CUDA 10.0 is required for GPU execution. " +
+                            $"Verify that the library is available on system path."
+                            );
+                    }
+                }
+            }   
+            return true;
+        }
+
+        #region destructors disposers
 
         ~SessionOptions()
         {
