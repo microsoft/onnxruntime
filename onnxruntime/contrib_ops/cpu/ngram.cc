@@ -53,6 +53,9 @@ class NgramElementBase {
   size_t id() const { return id_; }
 };
 
+template <class T>
+class NGramItem;
+
 template <>
 class NGramItem<int64_t> : public NgramElementBase {
   std::vector<int64_t> items_;
@@ -86,9 +89,6 @@ class NGramItem<int64_t> : public NgramElementBase {
     return hash;
   }
 };
-
-template <class T>
-class NGramItem;
 
 template <>
 class NGramItem<int32_t> : public NGramItem<int64_t> {
@@ -356,8 +356,9 @@ void Ngram::OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& freq
   const auto& w = impl_->weights_;
   switch (impl_->mode_) {
     case kTF: {
-      std::transform(frequences.cbegin(), frequences.cend(), output_data,
-                     [](uint32_t f) { return static_cast<float>(f); });
+      for (auto f : frequences) {
+        *output_data++ = static_cast<float>(f);
+      }
     } break;
     case kIDF: {
       if (!w.empty()) {
@@ -378,8 +379,9 @@ void Ngram::OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& freq
             *output_data++ = frequences[i] * w[i];
           }
         } else {
-          std::transform(frequences.cbegin(), frequences.cend(), output_data,
-                         [](uint32_t f) { return static_cast<float>(f); });
+          for (auto f : frequences) {
+            *output_data++ = static_cast<float>(f);
+          }
         }
       } break;
       case kNone:  // fall-through

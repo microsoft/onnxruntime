@@ -10,11 +10,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-namespace ngram_details {
-template <class T>
-class NGramItem;
-}
-
 class Ngram final : public OpKernel {
  public:
   explicit Ngram(const OpKernelInfo& info);
