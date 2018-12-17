@@ -221,7 +221,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     {
                         var modelNames = model.GetFiles("*.onnx");
                         if (modelNames.Count() != 1)
-                            throw new Exception($"Opset {opset}: Model {model}: error = can't determine model file name.");
+                        {
+                            // TODO remove file "._resnet34v2.onnx" from test set
+                            if (modelNames[0].ToString() == "._resnet34v2.onnx")
+                                modelNames[0] = modelNames[1];
+                            else
+                                throw new Exception($"Opset {opset}: Model {model}: error = can't determine model file name.");
+                        }
 
                         var session = new InferenceSession($"{opset}\\{model}\\{modelNames[0].ToString()}");
                         var inMeta = session.InputMetadata;
@@ -497,13 +503,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         class floatComparer : IEqualityComparer<float>
         {
-            private float tol = 1e-6f;
-            private float divtol = 2e-1f;
+            private float atol = 1e-3f;
+            private float rtol = 1.7e-2f;
+
             public bool Equals(float x, float y)
             {
-                if (y == 0)
-                    return (Math.Abs(x - y) < tol);
-                return (Math.Abs(1 - x / y) < divtol);
+                return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
             }
             public int GetHashCode(float x)
             {
