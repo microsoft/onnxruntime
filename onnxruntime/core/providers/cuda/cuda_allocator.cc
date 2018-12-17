@@ -20,7 +20,7 @@ void CUDAAllocator::CheckDevice() const {
   // if it's expected to change, call cudaSetDevice instead of the check
   int current_device;
   CUDA_CALL_THROW(cudaGetDevice(&current_device));
-  ONNXRUNTIME_ENFORCE(current_device == device_id_);
+  ORT_ENFORCE(current_device == device_id_);
 #endif
 }
 
@@ -38,7 +38,7 @@ void CUDAAllocator::Free(void* p) {
   cudaFree(p);  // do not throw error since it's OK for cudaFree to fail during shutdown
 }
 
-const ONNXRuntimeAllocatorInfo& CUDAAllocator::Info() const {
+const OrtAllocatorInfo& CUDAAllocator::Info() const {
   return info_;
 }
 
@@ -58,8 +58,8 @@ void CUDAPinnedAllocator::Free(void* p) {
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 
-const ONNXRuntimeAllocatorInfo& CUDAPinnedAllocator::Info() const {
-  static constexpr ONNXRuntimeAllocatorInfo cuda_allocator_info(CUDA_PINNED, ONNXRuntimeDeviceAllocator, 0, ONNXRuntimeMemTypeCPUOutput);
+const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
+  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
   return cuda_allocator_info;
 }
 

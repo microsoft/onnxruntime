@@ -64,8 +64,8 @@ template <typename T>
 ScalerOp<T>::ScalerOp(const OpKernelInfo& info) : OpKernel(info),
                                                   scale_(info.GetAttrsOrDefault<float>("scale")),
                                                   offset_(info.GetAttrsOrDefault<float>("offset")) {
-  ONNXRUNTIME_ENFORCE(!scale_.empty(), "Empty scale in attributes");
-  ONNXRUNTIME_ENFORCE(scale_.size() == offset_.size(),
+  ORT_ENFORCE(!scale_.empty(), "Empty scale in attributes");
+  ORT_ENFORCE(scale_.size() == offset_.size(),
               "Scale size: (" + std::to_string(scale_.size()) + ") != (" + std::to_string(offset_.size()) + ")");
 }
 

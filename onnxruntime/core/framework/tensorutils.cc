@@ -64,7 +64,7 @@ namespace utils {
         return Status(common::ONNXRUNTIME, common::FAIL, "size overflow");                                                 \
       }                                                                                                                    \
       if (tensor.raw_data().size() != expected_size_in_bytes)                                                              \
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,                                                                  \
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                                                  \
                                        "UnpackTensor: the pre-allocated size does not match the raw data size, expected ", \
                                        expected_size_in_bytes, ", got ", tensor.raw_data().size());                        \
       UnpackTensorWithRawData(tensor, p_data);                                                                             \

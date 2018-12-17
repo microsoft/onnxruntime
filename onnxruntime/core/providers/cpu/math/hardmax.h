@@ -21,7 +21,7 @@ class Hardmax final : public OpKernel {
     }
 
     // if value was provided, make sure it was valid
-    ONNXRUNTIME_ENFORCE(axis_ >= 0, "Invalid axis provided.");
+    ORT_ENFORCE(axis_ >= 0, "Invalid axis provided.");
   }
 
   Status Compute(OpKernelContext* context) const override;

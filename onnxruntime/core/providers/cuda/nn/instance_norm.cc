@@ -28,7 +28,7 @@ template <typename T>
 InstanceNorm<T>::InstanceNorm(const OpKernelInfo& op_kernel_info)
     : CudaKernel(op_kernel_info) {
   float tmp_epsilon;
-  ONNXRUNTIME_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
   epsilon_ = ClampCudnnBatchNormEpsilon(tmp_epsilon);
 }
 
@@ -40,7 +40,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const Tensor* scale = p_op_kernel_context->Input<Tensor>(1);
   const Tensor* bias = p_op_kernel_context->Input<Tensor>(2);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(InstanceNormHelper::ValidateInputs(X, scale, bias));
+  ORT_RETURN_IF_ERROR(InstanceNormHelper::ValidateInputs(X, scale, bias));
 
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
@@ -63,10 +63,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     CudnnTensor data_desc;
     std::vector<int64_t> new_dims;
     BatchNormHelper::NormalizeDims(x_shape, new_dims);
-    ONNXRUNTIME_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
 
     CudnnTensor stats_desc;
-    ONNXRUNTIME_RETURN_IF_ERROR(stats_desc.Set(data_desc, CUDNN_BATCHNORM_SPATIAL));
+    ORT_RETURN_IF_ERROR(stats_desc.Set(data_desc, CUDNN_BATCHNORM_SPATIAL));
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),
@@ -95,10 +95,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     auto image_size = input_count / stats_count;
 
     CudnnTensor data_desc;
-    ONNXRUNTIME_RETURN_IF_ERROR(data_desc.Set({1, stats_count, image_size, 1}, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(data_desc.Set({1, stats_count, image_size, 1}, CudnnTensor::GetDataType<CudaT>()));
 
     CudnnTensor stats_desc;
-    ONNXRUNTIME_RETURN_IF_ERROR(stats_desc.Set({1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(stats_desc.Set({1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
 
     auto mean = GetScratchBuffer<CudaT>(stats_count);
     auto variance = GetScratchBuffer<CudaT>(stats_count);

@@ -15,7 +15,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
         .Alias(0, 0)
-        .InputMemoryType<ONNXRuntimeMemTypeCPUInput>(1),
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
     Reshape);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(

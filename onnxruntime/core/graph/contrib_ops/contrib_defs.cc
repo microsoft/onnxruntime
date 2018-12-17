@@ -32,6 +32,7 @@ void RegisterContribSchemas() {
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -67,6 +68,11 @@ activation.)DOC")
           "activation",
           "",
           AttributeProto::STRING,
+          OPTIONAL)
+      .Attr(
+          "alpha",
+          "",
+          AttributeProto::FLOAT,
           OPTIONAL)
       .Input(
           0,
@@ -526,6 +532,28 @@ The bounding box coordinates corresponding to the selected indices can then be o
               ->add_dim()
               ->set_dim_value(1);
         }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.)DOC")
+      .Input(0, "X", "An input tensor to hash.", "T1")
+      .Output(0, "Y", "32-bit hash value.", "T2")
+      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
+      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned or signed 32-bit integer tensor.")
+      .Attr(
+          "seed",
+          "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0.",
+          AttributeProto::INT,
+          (int64_t)0LL)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Shape inference
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(StringNormalizer)

@@ -44,7 +44,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
 
 Status Normalizer::Compute(OpKernelContext* context) const {
   const Tensor* input_tensor_ptr = context->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
   MLDataType input_type = input_tensor_ptr->DataType();
 
   if (input_type == DataTypeImpl::GetType<float>()) {
@@ -56,7 +56,7 @@ Status Normalizer::Compute(OpKernelContext* context) const {
   } else if (input_type == DataTypeImpl::GetType<int32_t>()) {
     Normalize<int32_t>(context);
   } else {
-    ONNXRUNTIME_THROW("Invalid input type of ", input_type);
+    ORT_THROW("Invalid input type of ", input_type);
   }
 
   return Status::OK();
@@ -182,7 +182,7 @@ void Normalizer::Normalize(OpKernelContext* context) const {
         break;
       }
       default: {
-        ONNXRUNTIME_THROW("Unexpected NORMALIZE value of ", normalization_);
+        ORT_THROW("Unexpected NORMALIZE value of ", normalization_);
       }
     }
   }

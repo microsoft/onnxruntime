@@ -77,7 +77,7 @@ class MLValueTensorSlicer {
 
     // const accessor is always enabled
     const_reference operator*() const {
-      ONNXRUNTIME_ENFORCE(position_ >= 0 && position_ < sequence_length_);
+      ORT_ENFORCE(position_ >= 0 && position_ < sequence_length_);
       if (position_ != position_materialized_) {
         MaterializeMLValue();
       }
@@ -87,7 +87,7 @@ class MLValueTensorSlicer {
 
     // non-const is only enabled if T is not const (i.e. is 'MLValue' not 'const MLValue')
     std::enable_if_t<!std::is_const<reference>::value, reference> operator*() {
-      ONNXRUNTIME_ENFORCE(position_ >= 0 && position_ < sequence_length_);
+      ORT_ENFORCE(position_ >= 0 && position_ < sequence_length_);
       if (position_ != position_materialized_) {
         MaterializeMLValue();
       }
@@ -109,7 +109,7 @@ class MLValueTensorSlicer {
 
     const void* tensor_data_raw_;
     MLDataType tensor_data_type_;
-    const ONNXRuntimeAllocatorInfo* tensor_location_;
+    const OrtAllocatorInfo* tensor_location_;
 
     int64_t sequence_length_;
     TensorShape per_iteration_shape_;

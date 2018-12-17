@@ -15,7 +15,7 @@
 ;--
 
         .xlist
-INCLUDE macamd64.inc
+INCLUDE mlasi.inc
         .list
 
         .const

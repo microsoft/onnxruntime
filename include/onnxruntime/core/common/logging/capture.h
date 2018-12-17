@@ -101,7 +101,7 @@ class Capture {
   ~Capture();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
 
   const Logger* logger_;
   const logging::Severity severity_;

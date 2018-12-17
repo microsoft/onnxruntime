@@ -170,6 +170,26 @@ MlasBiasAdd(
     );
 
 //
+// Miscellaneous compute routines.
+//
+
+void
+MLASCALL
+MlasComputeLogistic(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeTanh(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
 // Half-precision floating-point routines.
 //
 

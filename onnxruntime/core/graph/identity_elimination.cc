@@ -26,7 +26,7 @@ Status EliminateIdentity::Apply(Graph& graph_editor, Node& node, bool& modified)
   graph_editor.RemoveNode(node.Index());
 
   // TODO: Make sure resolve is not required here.
-  //ONNXRUNTIME_RETURN_IF_ERROR(graph_editor->Resolve());
+  //ORT_RETURN_IF_ERROR(graph_editor->Resolve());
 
   return Status::OK();
 }

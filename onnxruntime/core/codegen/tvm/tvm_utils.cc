@@ -25,7 +25,7 @@ DLDataType ToTvmDLDataType(MLDataType ml_type) {
   RETURN_DLDATATYPE_IF_MATCH(float, kDLFloat);
   RETURN_DLDATATYPE_IF_MATCH(double, kDLFloat);
 
-  ONNXRUNTIME_NOT_IMPLEMENTED("converting MLDataType ", ml_type, " to tvm DLDataType is not implemented");
+  ORT_NOT_IMPLEMENTED("converting MLDataType ", ml_type, " to tvm DLDataType is not implemented");
 }
 
 }  // namespace tvm_codegen

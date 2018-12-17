@@ -44,17 +44,17 @@ class MemoryPattern {
 
  private:
   // allow move
-  ONNXRUNTIME_DISALLOW_COPY_AND_ASSIGNMENT(MemoryPattern);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(MemoryPattern);
 
   std::unordered_map<int, MemoryBlock> patterns_;
   size_t peak_size_{0};
 };
 
 struct MemoryPatternGroup {
-  std::vector<ONNXRuntimeAllocatorInfo> locations;
+  std::vector<OrtAllocatorInfo> locations;
   std::vector<MemoryPattern> patterns;
 
-  const MemoryPattern* GetPatterns(const ONNXRuntimeAllocatorInfo& location) const {
+  const MemoryPattern* GetPatterns(const OrtAllocatorInfo& location) const {
     for (size_t i = 0; i < locations.size(); i++)
       if (locations[i] == location) {
         return &patterns[i];

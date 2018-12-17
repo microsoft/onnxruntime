@@ -9,26 +9,26 @@
 using namespace onnxruntime;
 
 TEST_F(CApiTest, allocation_info) {
-  ONNXRuntimeAllocatorInfo *info1, *info2;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateAllocatorInfo("Cpu", ONNXRuntimeArenaAllocator, 0, ONNXRuntimeMemTypeDefault, &info1));
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCpuAllocatorInfo(ONNXRuntimeArenaAllocator, ONNXRuntimeMemTypeDefault, &info2));
-  ASSERT_EQ(0, ONNXRuntimeCompareAllocatorInfo(info1, info2));
-  ReleaseONNXRuntimeAllocatorInfo(info1);
-  ReleaseONNXRuntimeAllocatorInfo(info2);
+  OrtAllocatorInfo *info1, *info2;
+  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtArenaAllocator, 0, OrtMemTypeDefault, &info1));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
+  ASSERT_EQ(0, OrtCompareAllocatorInfo(info1, info2));
+  ReleaseOrtAllocatorInfo(info1);
+  ReleaseOrtAllocatorInfo(info2);
 }
 
 TEST_F(CApiTest, DefaultAllocator) {
-  std::unique_ptr<ONNXRuntimeAllocator> default_allocator;
+  std::unique_ptr<OrtAllocator> default_allocator;
   {
-    ONNXRuntimeAllocator* ptr;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateDefaultAllocator(&ptr));
+    OrtAllocator* ptr;
+    ORT_THROW_ON_ERROR(OrtCreateDefaultAllocator(&ptr));
     default_allocator.reset(ptr);
   }
-  char* p = (char*)ONNXRuntimeAllocatorAlloc(default_allocator.get(), 100);
+  char* p = (char*)OrtAllocatorAlloc(default_allocator.get(), 100);
   ASSERT_NE(p, nullptr);
   memset(p, 0, 100);
-  ONNXRuntimeAllocatorFree(default_allocator.get(), p);
-  const ONNXRuntimeAllocatorInfo* info1 = ONNXRuntimeAllocatorGetInfo(default_allocator.get());
-  const ONNXRuntimeAllocatorInfo* info2 = (*default_allocator)->Info(default_allocator.get());
-  ASSERT_EQ(0, ONNXRuntimeCompareAllocatorInfo(info1, info2));
+  OrtAllocatorFree(default_allocator.get(), p);
+  const OrtAllocatorInfo* info1 = OrtAllocatorGetInfo(default_allocator.get());
+  const OrtAllocatorInfo* info2 = (*default_allocator)->Info(default_allocator.get());
+  ASSERT_EQ(0, OrtCompareAllocatorInfo(info1, info2));
 }

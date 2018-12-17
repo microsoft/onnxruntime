@@ -16,14 +16,14 @@ class LRN : public OpKernel {
  public:
   LRN(const OpKernelInfo& info) : OpKernel(info) {
     int64_t size;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("size", &size).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("size", &size).IsOK());
     size_ = gsl::narrow_cast<int>(size);
-    ONNXRUNTIME_ENFORCE(size_ > 0);
-    ONNXRUNTIME_ENFORCE(size_ % 2 == 1);
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(alpha_ > 0.0f);
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
-    ONNXRUNTIME_ENFORCE(beta_ > 0.0f);
+    ORT_ENFORCE(size_ > 0);
+    ORT_ENFORCE(size_ % 2 == 1);
+    ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(alpha_ > 0.0f);
+    ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
+    ORT_ENFORCE(beta_ > 0.0f);
     Status status = info.GetAttr<float>("bias", &bias_);
     if (!status.IsOK()) {
       bias_ = 1.0f;
