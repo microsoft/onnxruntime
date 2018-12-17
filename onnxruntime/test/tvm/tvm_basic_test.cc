@@ -109,7 +109,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
     UnionSet set(static_cast<int>(add_nodes.size()));
     for (int i = 0; i < add_nodes.size(); ++i) {
       auto node = graph_viewer.GetNode(add_nodes[i]);
-      for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); it++) {
+      for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
         auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it).Index());
         if (index_it != add_nodes.end()) {
           set.merge(i, static_cast<int>(index_it - add_nodes.begin()));
@@ -164,8 +164,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         sub_graph->SetMetaDef(meta_def);
         //TODO:set fuse kernel func;
         result.push_back(
-            std::make_unique<ComputeCapability>(std::move(sub_graph),
-                                                  [](const OpKernelInfo& info) -> OpKernel* { return new TVMFuseAddKernels<DefaultTVMScheduleGenerator, BuildStackVMDefaultModule>(info); }));
+            std::make_unique<ComputeCapability>(std::move(sub_graph), true));
       }
     }
     return std::move(result);

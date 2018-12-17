@@ -68,7 +68,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
   for (auto& provider : providers_) {
     auto capability_results = provider->GetCapability(GraphViewer(graph), kernel_registries);
     int count = 0;
-    std::vector<Node*> fused_nodes;
+    std::vector<Node*> nodes_need_compile;
     for (auto& capability : capability_results) {
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
@@ -77,7 +77,6 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
         // The <provider> can run a single node in the <graph> if not using meta-defs.
         // A fused kernel is not supported in this case.
         ORT_ENFORCE(1 == capability->sub_graph->nodes.size());
-        ORT_ENFORCE(capability->fuse_kernel_function == nullptr);
 
         auto node = graph.GetNode(capability->sub_graph->nodes[0]);
         if (nullptr != node && node->GetExecutionProviderType().empty()) {
@@ -91,24 +90,24 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
         std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
         auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
         fused_node.SetExecutionProviderType(provider->Type());
-
-        fused_nodes.push_back(&fused_node);
+        if (capability->need_compile)
+          nodes_need_compile.push_back(&fused_node);
       }
     }
-    if (fused_nodes.size() > 0) {
+    if (nodes_need_compile.size() > 0) {
       if (session_state.ExportDll()) {
         std::string dll_path;
-        ORT_RETURN_IF_ERROR(provider->Compile(fused_nodes, dll_path));
-        for (auto* node : fused_nodes)
+        ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, dll_path));
+        for (auto* node : nodes_need_compile)
           ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(node->Name(), dll_path));
       } else {
         std::vector<NodeComputeInfo> node_compute_funcs;
-        ORT_RETURN_IF_ERROR(provider->Compile(fused_nodes, node_compute_funcs));
-        ORT_ENFORCE(node_compute_funcs.size() == fused_nodes.size(), "Provider doesn't return correct number of compiled functions");
-        for (auto i = 0; i < fused_nodes.size(); i++)
-          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(fused_nodes[i]->Name(), node_compute_funcs[i].compute_func, node_compute_funcs[i].create_state_func, node_compute_funcs[i].release_state_func));
+        ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, node_compute_funcs));
+        ORT_ENFORCE(node_compute_funcs.size() == nodes_need_compile.size(), "Provider doesn't return correct number of compiled functions");
+        for (auto i = 0; i < nodes_need_compile.size(); i++)
+          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(nodes_need_compile[i]->Name(), node_compute_funcs[i].compute_func, node_compute_funcs[i].create_state_func, node_compute_funcs[i].release_state_func));
       }
-      for (auto* node : fused_nodes) {
+      for (auto* node : nodes_need_compile) {
         //prepare the func kernel
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);

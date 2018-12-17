@@ -12,22 +12,23 @@ struct ComputeCapability {
   // or multiple nodes.
   std::unique_ptr<IndexedSubGraph> sub_graph;
 
-  // When an execution provider fuses a subgraph into a kernel, it passes
-  // a kernel create function to onnxruntime so the runtime can create the
-  // compute kernel for the subgraph. Otherwise onnxruntime will search
-  // kernels in pre-defined kernel registry provided by XP.
-  KernelCreateFn fuse_kernel_function;
+  // When an execution provider fuses a subgraph into a kernel,
+  // there are two ways to run the subgraph: with a predefined kernel,
+  // or with code-generation that compile the subgraph at runtime.
+  // if this flag is true, execution provider's Compile method will be invoked
+  // if onnxruntime decide to assign the subgraph to execution provider.
+  bool need_compile;
 
   // TODO: if there is a FusedKernelFn attached, onnxruntime will generate
   // the default KernelDefinition for it, according to the OpSchema it
   // auto-generates. An execution provider can further set some advanced
   // fields on kernel definition, such as  memory placement / in-place
   // annotation.  
-  ComputeCapability() : sub_graph(nullptr), fuse_kernel_function(nullptr) {}
+  ComputeCapability() : sub_graph(nullptr), need_compile(false) {}
 
   ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph,
-                    KernelCreateFn t_kernel_func)
+                    bool compile_flag)
       : sub_graph(std::move(t_sub_graph)),
-        fuse_kernel_function(t_kernel_func) {}
+        need_compile(compile_flag) {}
 };
 }  // namespace onnxruntime
