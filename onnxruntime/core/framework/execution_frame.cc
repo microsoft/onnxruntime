@@ -284,7 +284,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
       ONNXRUNTIME_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(mlvalue_index,
                                                                      ml_data_type,
                                                                      alloc_info,
-                                                                     parameters.tensor_shape,
+                                                                     parameters.GetTensorShape(),
                                                                      per_alloc_plan.create_fence_if_async));
       break;
     }
@@ -294,7 +294,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
                                                                          reuse_mlvalue_index,
                                                                          ml_data_type,
                                                                          alloc_info,
-                                                                         parameters.tensor_shape,
+                                                                         parameters.GetTensorShape(),
                                                                          per_alloc_plan.create_fence_if_async));
       break;
     }
@@ -363,6 +363,15 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
   }
 
   // 5. set node args
+  std::size_t total_def_count{};
+  for (const auto& node : graph.Nodes())
+  {
+    node.ForEachDef([&](const onnxruntime::NodeArg& /*arg*/, bool /*is_input*/) {
+      ++total_def_count;
+    });
+  }
+  node_offsets_.reserve(total_def_count);
+
   for (auto& node : graph.Nodes()) {
     ONNXRUNTIME_ENFORCE(node.Index() < node_offsets_.size());
     node_offsets_[node.Index()] = static_cast<int>(node_values_.size());
@@ -451,9 +460,9 @@ static inline void VerifyShape(const MLValue* p_mlvalue,
   if (p_mlvalue->IsTensor()) {
     const Tensor* tensor = &p_mlvalue->Get<Tensor>();
 
-    ONNXRUNTIME_ENFORCE(tensor->Shape() == parameters.tensor_shape,
+    ONNXRUNTIME_ENFORCE(tensor->Shape() == parameters.GetTensorShape(),
                         "MLValue shape verification failed. Current shape:", tensor->Shape(),
-                        " Requested shape:", parameters.tensor_shape);
+                        " Requested shape:", parameters.GetTensorShape());
   }
 }
 

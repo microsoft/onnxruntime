@@ -29,8 +29,8 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
 
   // In this case, it's assumed that the tensor hasn't been allocated yet,
   // so that it's calling ExecutionFrame to create a tensor in the given position with given shape.
-  MLValueAllocationParameters parameters;
-  parameters.tensor_shape = shape;
+  MLValueAllocationParameters parameters{ &shape };
+
   //: Though we don't need to give 'ret' an initial value, GCC would generate a warning if we don't do that
   //"error: 'ret' may be used uninitialized in this function"
   //This warning only exists in Release build.

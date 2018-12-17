@@ -20,7 +20,19 @@ class MLValuePatternPlanner;
 struct MemoryPatternGroup;
 
 struct MLValueAllocationParameters {
-  TensorShape tensor_shape;
+  MLValueAllocationParameters() = default;
+  MLValueAllocationParameters(const TensorShape* shape)
+    : tensor_shape{ shape }
+  {}
+
+  const TensorShape& GetTensorShape() const
+  {
+    static const TensorShape s_empty_tensor_shape;
+    return tensor_shape != nullptr ? *tensor_shape : s_empty_tensor_shape;
+  }
+
+private:
+  const TensorShape* tensor_shape{};
   // todo: is there any parameter needed for ml types?
 };
 
