@@ -605,8 +605,8 @@ The bounding box coordinates corresponding to the selected indices can then be o
        "Constrain indice type to int32 or int64")
     .TypeAndShapeInferenceFunction( [] (ONNX_NAMESPACE::InferenceContext& ctx) {
        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-       if (hasNInputShapes(ctx, 2)) {
-         return;
+       if (!hasNInputShapes(ctx, 2)) {
+         fail_shape_inference("GatherND requires two tensor inputs.");
        }
        auto& data_shape    = ctx.getInputType(0)->tensor_type().shape();
        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
