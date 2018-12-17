@@ -41,15 +41,15 @@ Status FuseFuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, 
                                                                     kReleaseStateFuncSymbol + name,
                                                                     &release_func_symbol_handle));
     it->second.compute_func = [=](FunctionState state, ONNXRunTimeTensor* input, size_t n_input, ONNXRunTimeTensor* output, size_t n_output) {
-      return static_cast<ComputeFuncC>(compute_func_symbol_handle)(state, input, n_input, output, n_output);
+      return reinterpret_cast<ComputeFuncC>(compute_func_symbol_handle)(state, input, n_input, output, n_output);
     };
 
     it->second.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      return static_cast<CreateFunctionStateC>(create_func_symbol_handle)(context, state);
+      return reinterpret_cast<CreateFunctionStateC>(create_func_symbol_handle)(context, state);
     };
 
     it->second.release_state_func = [=](FunctionState state) {
-      static_cast<ReleaseFunctionStateC>(release_func_symbol_handle)(state);
+      return reinterpret_cast<ReleaseFunctionStateC>(release_func_symbol_handle)(state);
     };
   }
   *compute = it->second.compute_func;

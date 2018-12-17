@@ -1,4 +1,3 @@
-#pragma once
 #include "core/framework/ex_lib_loader.h"
 #include "core/platform/env.h"
 #include "core/common/logging/logging.h"
@@ -36,6 +35,7 @@ common::Status ExLibLoader::LoadExternalLib(const std::string& dso_file_path,
     void* lib_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(dso_file_path, &lib_handle));
     dso_name_data_map_[dso_file_path] = lib_handle;
+    *handle = lib_handle;
 	return Status::OK();
   } catch (const std::exception& ex) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));

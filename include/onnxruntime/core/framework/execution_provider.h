@@ -145,8 +145,8 @@ class IExecutionProvider {
   Given a list of fused_node, return a dll that expose functions for each node.
   For each node, there should be three symbols:
      Create_State_${node_name}
-	 Compute_${node_name}
-	 Release_State_${node_name}
+     Compute_${node_name}
+     Release_State_${node_name}
   */
   virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
                                  std::string& dll_path);
