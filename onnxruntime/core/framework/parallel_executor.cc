@@ -31,6 +31,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
                                  const std::vector<std::string>& output_names,
                                  std::vector<MLValue>& fetches,
                                  const logging::Logger& logger) {
+  auto& profiler = session_state.Profiler();
   auto tp = session_state.Profiler().StartTime();
 
   root_frame_ = std::make_unique<ExecutionFrame>(feeds, output_names, fetches, session_state);
@@ -72,7 +73,10 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
     }
   }
 
-  session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "ParallelExecutor::Execute", tp);
+  if (profiler.IsEnabled()) {
+    profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "ParallelExecutor::Execute", tp);
+  }
+
   return Status::OK();
 }
 
@@ -115,8 +119,8 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     OpKernelContextInternal op_kernel_context(*root_frame_, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
-
-    auto sync_time_begin = session_state.Profiler().StartTime();
+    auto& profiler = session_state.Profiler();
+    auto sync_time_begin = profiler.StartTime();
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
 
@@ -144,15 +148,17 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     const std::string& node_name = p_op_kernel->Node().Name();
     const std::string& op_name = p_op_kernel->KernelDef().OpName();
 
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_before",
-                                                   sync_time_begin,
-                                                   {{"op_name", op_name}});
+    if (profiler.IsEnabled()) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                        node_name + "_fence_before",
+                                        sync_time_begin,
+                                        op_name);
+    }
 
     // call compute on the kernel
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
-    auto kernel_begin_time = session_state.Profiler().StartTime();
+    auto kernel_begin_time = profiler.StartTime();
 
     // Execute the kernel.
     auto status = p_op_kernel->Compute(&op_kernel_context);
@@ -160,12 +166,14 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       ORT_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
     }
 
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_kernel_time",
-                                                   kernel_begin_time,
-                                                   {{"op_name", op_name}});
+    if (profiler.IsEnabled()) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                          node_name + "_kernel_time",
+                                          kernel_begin_time,
+                                          op_name);
+    }
 
-    sync_time_begin = session_state.Profiler().StartTime();
+    sync_time_begin = profiler.StartTime();
     // sync after compute for outputs
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
@@ -187,10 +195,13 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
         fence->AfterUsedAsOutput(queue_id);
       }
     }
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_after",
-                                                   sync_time_begin,
-                                                   {{"op_name", op_name}});
+
+    if (profiler.IsEnabled()) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                        node_name + "_fence_after",
+                                        sync_time_begin,
+                                        op_name);
+    }
 
     //std::cout << "Run async node finish: " << p_node_index << std::endl;
 

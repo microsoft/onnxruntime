@@ -31,7 +31,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const std::vector<std::string>& output_names,
                                    std::vector<MLValue>& fetches,
                                    const logging::Logger& logger) {
-  auto tp = session_state.Profiler().StartTime();
+  auto& profiler = session_state.Profiler();
+  auto tp = profiler.StartTime();
 
   ExecutionFrame frame{feeds, output_names, fetches, session_state};
 
@@ -65,7 +66,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                               terminate_flag_);
     // TODO: log kernel outputs?
 
-    auto sync_time_begin = session_state.Profiler().StartTime();
+    auto sync_time_begin = profiler.StartTime();
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
@@ -89,22 +90,27 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       }
     }
 
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_before",
-                                                   sync_time_begin,
-                                                   {{"op_name", op_name}});
+    if (profiler.IsEnabled()) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                        node_name + "_fence_before",
+                                        sync_time_begin,
+                                        op_name);
+    }
 
     // call compute on the kernel
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
-    auto kernel_begin_time = session_state.Profiler().StartTime();
+    auto kernel_begin_time = profiler.StartTime();
     ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_kernel_time",
-                                                   kernel_begin_time,
-                                                   {{"op_name", op_name}});
 
-    sync_time_begin = session_state.Profiler().StartTime();
+    if (profiler.IsEnabled()) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                        node_name + "_kernel_time",
+                                        kernel_begin_time,
+                                        op_name);
+    }
+
+    sync_time_begin = profiler.StartTime();
     // sync after compute for outputs
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
@@ -126,10 +132,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
         fence->AfterUsedAsOutput(queue_id);
       }
     }
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_after",
-                                                   sync_time_begin,
-                                                   {{"op_name", op_name}});
+
+    if (profiler.IsEnabled()) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                        node_name + "_fence_after",
+                                        sync_time_begin,
+                                        op_name);
+    }
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
@@ -158,7 +167,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     }
   }
 
-  session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+  if (profiler.IsEnabled()) {
+    profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+  }
+
   return Status::OK();
 }
 

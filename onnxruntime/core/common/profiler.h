@@ -47,7 +47,7 @@ class Profiler {
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
                              TimePoint& start_time,
-                             const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
+                             const std::string& op_name = {},
                              bool sync_gpu = false);
 
   /*
@@ -55,6 +55,11 @@ class Profiler {
   https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#
   */
   std::string EndProfiling();
+
+  /*
+  Return true if profiler is enabled, false otherwise.
+  */
+  bool IsEnabled() const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);

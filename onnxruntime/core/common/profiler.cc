@@ -33,15 +33,14 @@ void Profiler::StartProfiling(const std::string& file_name) {
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
                                      TimePoint& start_time,
-                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
+                                     const std::string& op_name,
                                      bool /*sync_gpu*/) {
   if (!enabled_ && !profile_with_logger_)
     return;
   long long dur = TimeDiffMicroSeconds(start_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
-  EventRecord event(category, logging::GetProcessId(),
-                    logging::GetThreadId(), event_name, ts, dur, { event_args.begin(), event_args.end() });
+  EventRecord event(category, logging::GetProcessId(), logging::GetThreadId(), event_name, ts, dur, { { "op_name", op_name } });
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {
@@ -97,6 +96,11 @@ std::string Profiler::EndProfiling() {
   profile_stream_.close();
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
+}
+
+bool Profiler::IsEnabled() const
+{
+  return enabled_;
 }
 
 //
