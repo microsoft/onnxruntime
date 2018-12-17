@@ -84,13 +84,16 @@ class TensorShape : private std::vector<int64_t> {
 
   /**
      Return the total number of elements up to the specified dimension.
-     @param dimension Return size up to this dimension. Value must be >= 0 and < this.Size().
+     If the dimension interval is empty (dimension == 0), return 1.
+     @param dimension Return size up to this dimension. Value must be between 0 and this->NumDimensions(), inclusive.
   */
   int64_t SizeToDimension(size_t dimension) const;
 
   /**
      Return the total number of elements from the specified dimension to the end of the tensor shape.
-     @param dimension Return size up to this dimension. 0 <= dimension < this.Size().
+     If the dimension interval is empty (dimension == this->NumDimensions()), return 1.
+     @param dimension Return size from this dimension to the end. Value must be between 0 and this->NumDimensions(),
+                      inclusive.
   */
   int64_t SizeFromDimension(size_t dimension) const;
 
@@ -111,7 +114,7 @@ class TensorShape : private std::vector<int64_t> {
 
   /**
      Calculate size between start and end.
-     Assumes start and end are between 0 and dimensions.size(), inclusive, and that
+     Assumes start and end are between 0 and this->NumDimensions(), inclusive, and that
      start < end.
   */
   int64_t SizeHelper(size_t start, size_t end) const;
