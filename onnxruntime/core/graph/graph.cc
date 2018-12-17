@@ -830,7 +830,7 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
       // The output type of source node arg does not match the input type of destination node arg.
       ORT_THROW("Argument type mismatch when adding edge.");
     } else {
-      //src_arg->UpdateTypeAndShape(*dst_arg);
+      src_arg->UpdateTypeAndShape(*dst_arg);
       *dst_arg_pointer = src_arg;
     }
   }
