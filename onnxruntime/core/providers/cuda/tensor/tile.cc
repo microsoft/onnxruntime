@@ -16,7 +16,7 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
-          .InputMemoryType<ONNXRuntimeMemTypeCPUInput>(1)                   \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Tile<T>);
 
@@ -47,16 +47,16 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<fast_divmod> fdm_input_shape(this, device_id, rank);
   CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);
 
-  ONNXRUNTIME_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_shape));
-  ONNXRUNTIME_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_shape));
+  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
 
   auto fdm_input_shape_span = fdm_input_shape.CpuSpan();
   for (size_t i = 0; i < input_shape.size(); ++i)
     fdm_input_shape_span[i] = fast_divmod(gsl::narrow_cast<int>(input_shape[i]));
 
-  ONNXRUNTIME_RETURN_IF_ERROR(fdm_input_shape.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  ORT_RETURN_IF_ERROR(fdm_input_shape.CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
+  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
   TileImpl(
       rank,

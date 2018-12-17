@@ -16,7 +16,7 @@ class KernelRegistry {
       std::string provider = info.kernel_def->Provider();
       auto st = Register(info);
       if (!st.IsOK())
-        ONNXRUNTIME_THROW("Register Kernel ", name, " in ", provider, " failed:", st.ErrorMessage());
+        ORT_THROW("Register Kernel ", name, " in ", provider, " failed:", st.ErrorMessage());
     });
   }
 

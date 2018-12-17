@@ -27,7 +27,7 @@ Status CudnnTensor::CreateTensorIfNeeded() {
 }
 
 Status CudnnTensor::Set(const std::vector<int64_t>& input_dims, cudnnDataType_t dataType) {
-  ONNXRUNTIME_RETURN_IF_ERROR(CreateTensorIfNeeded());
+  ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
@@ -42,7 +42,7 @@ Status CudnnTensor::Set(const std::vector<int64_t>& input_dims, cudnnDataType_t 
 }
 
 Status CudnnTensor::Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode) {
-  ONNXRUNTIME_RETURN_IF_ERROR(CreateTensorIfNeeded());
+  ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
   CUDNN_RETURN_IF_ERROR(cudnnDeriveBNTensorDescriptor(tensor_, x_desc, mode));
   return Status::OK();
 }
@@ -56,7 +56,7 @@ cudnnDataType_t CudnnTensor::GetDataType() {
   else if (typeid(ElemType) == typeid(half))
     return CUDNN_DATA_HALF;
   else
-    ONNXRUNTIME_THROW("cuDNN engine currently supports only single/double/half precision data types.");
+    ORT_THROW("cuDNN engine currently supports only single/double/half precision data types.");
 }
 
 CudnnFilterDescriptor::CudnnFilterDescriptor() : desc_(nullptr) {

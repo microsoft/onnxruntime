@@ -193,7 +193,7 @@ void upsampleBilinear(
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(X != nullptr);
+  ORT_ENFORCE(X != nullptr);
 
   const std::vector<int64_t>& dims = X->Shape().GetDims();
   if (dims.size() != scales.size()) {
@@ -235,7 +235,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   }
 
   const Tensor* scales = context->Input<Tensor>(1);
-  ONNXRUNTIME_ENFORCE(scales != nullptr);
+  ORT_ENFORCE(scales != nullptr);
   int64_t scales_size = scales->Shape().Size();
   std::vector<float> scales_arrary(scales_size);
   ParseScalesData(scales, scales_arrary);

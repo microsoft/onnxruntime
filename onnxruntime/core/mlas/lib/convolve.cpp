@@ -902,7 +902,7 @@ Return Value:
 
         int32_t TargetThreadCount = MlasPlatform.GetMaximumThreadCount();
 
-        if (TargetThreadCount >= BatchGroupCount) {
+        if (size_t(TargetThreadCount) >= BatchGroupCount) {
             TargetThreadCount = int32_t(BatchGroupCount);
         }
 

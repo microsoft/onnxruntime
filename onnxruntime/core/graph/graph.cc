@@ -39,7 +39,7 @@ static Status MergeShapeInfo(const std::string& output_name,
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
   }
 
   return Status::OK();
@@ -141,8 +141,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   const auto input_type_case = input_type.value_case();
 
   if (current_type_case != input_type_case)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type mismatch. Current=",
-                                   current_type_case, " Input=", input_type_case);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type mismatch. Current=",
+                           current_type_case, " Input=", input_type_case);
 
   switch (input_type_case) {
     case TypeProto::kTensorType: {
@@ -151,14 +151,14 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& current_tensor_elem_type = current_type.tensor_type().elem_type();
 
       if (input_tensor_elem_type != current_tensor_elem_type)
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
-                                       TensorProto_DataType_Name(input_tensor_elem_type), " != ",
-                                       TensorProto_DataType_Name(current_tensor_elem_type));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
+                               TensorProto_DataType_Name(input_tensor_elem_type), " != ",
+                               TensorProto_DataType_Name(current_tensor_elem_type));
 
       if (input_tensor_type.has_shape()) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
         if (current_tensor_type.has_shape()) {
-          ONNXRUNTIME_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type));
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type));
         } else {
           current_tensor_type = input_tensor_type;
         }
@@ -171,9 +171,9 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
       if (input_tensor_elem_type != current_tensor_elem_type) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "SparseTensor element type mismatch. ",
-                                       TensorProto_DataType_Name(input_tensor_elem_type), " != ",
-                                       TensorProto_DataType_Name(current_tensor_elem_type));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SparseTensor element type mismatch. ",
+                               TensorProto_DataType_Name(input_tensor_elem_type), " != ",
+                               TensorProto_DataType_Name(current_tensor_elem_type));
       }
       if (input_tensor_type.has_shape()) {
         auto& current_tensor_type = *current_type.mutable_sparse_tensor_type();
@@ -483,9 +483,9 @@ Status Node::UpdateInputArgCount() {
                                         definitions_.input_arg_count.cend(), 0);
 
   if (total_arg_count < 0 || static_cast<size_t>(total_arg_count) != definitions_.input_defs.size()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "The sum of input arg count is not equal to size of input defs in node (",
-                                   name_, ")");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "The sum of input arg count is not equal to size of input defs in node (",
+                           name_, ")");
   }
 
   // op_ is always valid when this is called
@@ -615,7 +615,7 @@ Graph::Graph(GraphProto* graph_proto,
       model_functions_(model_functions),
       ir_version_(ir_version),
       parent_graph_{parent_graph} {
-  ONNXRUNTIME_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
+  ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
   // these are all empty unless we received a graph_proto as input
@@ -773,7 +773,7 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
         auto status = subgraph->SetOuterScopeNodeArgs(node_args_in_scope_for_subgraph);
-        ONNXRUNTIME_RETURN_IF_ERROR(status);
+        ORT_RETURN_IF_ERROR(status);
       }
     }
   }
@@ -797,7 +797,7 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
       nullptr == nodes_[src_node_index] ||
       nullptr == nodes_[dst_node_index]) {
     // Invalid node indexes specified.
-    ONNXRUNTIME_THROW("Invalid node indexes specified when adding edge.");
+    ORT_THROW("Invalid node indexes specified when adding edge.");
   }
 
   NodeArg *src_arg = nullptr, *dst_arg = nullptr;
@@ -806,7 +806,7 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
   }
 
   if (nullptr == src_arg) {
-    ONNXRUNTIME_THROW("Invalid source node arg slot specified when adding edge.");
+    ORT_THROW("Invalid source node arg slot specified when adding edge.");
   }
 
   auto& dst_node_defs = nodes_[dst_node_index]->MutableDefinitions();
@@ -822,15 +822,15 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
     }
   }
   if (nullptr == dst_arg) {
-    ONNXRUNTIME_THROW("Invalid destination node arg slot specified when adding edge.");
+    ORT_THROW("Invalid destination node arg slot specified when adding edge.");
   }
 
   if (src_arg != dst_arg) {
     if (src_arg->Type() != dst_arg->Type()) {
       // The output type of source node arg does not match the input type of destination node arg.
-      ONNXRUNTIME_THROW("Argument type mismatch when adding edge.");
+      ORT_THROW("Argument type mismatch when adding edge.");
     } else {
-      src_arg->UpdateTypeAndShape(*dst_arg);
+      //src_arg->UpdateTypeAndShape(*dst_arg);
       *dst_arg_pointer = src_arg;
     }
   }
@@ -845,7 +845,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
       nullptr == nodes_[src_node_index] ||
       nullptr == nodes_[dst_node_index]) {
     // Invalid node indexes specified.
-    ONNXRUNTIME_THROW("Invalid node indexes specified when removing edge.");
+    ORT_THROW("Invalid node indexes specified when removing edge.");
   }
 
   const NodeArg *src_arg = nullptr, *dst_arg = nullptr;
@@ -854,7 +854,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   }
 
   if (nullptr == src_arg) {
-    ONNXRUNTIME_THROW("Invalid source node arg slot specified when removing edge.");
+    ORT_THROW("Invalid source node arg slot specified when removing edge.");
   }
 
   auto& dst_node_defs = nodes_[dst_node_index]->GetDefinitions();
@@ -867,12 +867,12 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     }
   }
   if (nullptr == dst_arg) {
-    ONNXRUNTIME_THROW("Invalid destination node arg slot specified when removing edge.");
+    ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
   if (src_arg != dst_arg) {
     // The edge ends specified by source and destination arg slot are not referring to same node arg.
     // It means there was no edge between these two slots before.
-    ONNXRUNTIME_THROW("Argument type mismatch when removing edge.");
+    ORT_THROW("Argument type mismatch when removing edge.");
   }
 
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
@@ -901,7 +901,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             outer_scope_node_args_consumed.push_back(node_arg_name);
 
             if (!parent_graph_) {
-              return ONNXRUNTIME_MAKE_STATUS(
+              return ORT_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
                   "At top level graph without matching NodeArg that subgraph consumes. Name=",
                   node_arg_name,
@@ -912,7 +912,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
             // make sure the node arg is found in the parent graph/s
             if (!node_arg) {
-              return ONNXRUNTIME_MAKE_STATUS(
+              return ORT_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
                   "Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
@@ -942,7 +942,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
           } else {
             // if it's an output nodearg in this graph we need to create a link to the node the output is coming from
             auto entry = resolve_context_.output_args.find(node_arg_name);
-            ONNXRUNTIME_ENFORCE(entry != resolve_context_.output_args.end());
+            ORT_ENFORCE(entry != resolve_context_.output_args.end());
 
             // Create relationship between this node (node), and the node providing the output (output_node).
             Node& output_node = *entry->second.first;
@@ -1322,8 +1322,8 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   auto num_subgraph_inputs = subgraph_inputs.size();
 
   if (num_subgraph_inputs != input_types.size()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Size mismatch validating subgraph inputs. Got ",
-                                   input_types.size(), " inputs but subgraph requires ", subgraph_inputs.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Size mismatch validating subgraph inputs. Got ",
+                           input_types.size(), " inputs but subgraph requires ", subgraph_inputs.size());
   }
 
   // apply type/shape info to the subgraph's inputs
@@ -1334,7 +1334,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
     NodeArg* mutable_nodearg = subgraph.GetNodeArg(subgraph_input.Name());
     status = mutable_nodearg->UpdateTypeAndShape(input_type);
     if (!status.IsOK()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
   }
 
@@ -1355,18 +1355,18 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
     status = subgraph_nodearg->UpdateTypeAndShape(*implicit_node_arg);
     if (!status.IsOK()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
 
     // all values above us should have a type by now due to ONNX requirements.
     if (subgraph_nodearg->Type() == nullptr)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph input missing type.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph input missing type.");
   }
 
   // now that we have handled the input types, do the type/shape inferencing for the subgraph
   // to flow the type/shape info through it
   status = subgraph.PerformTypeAndShapeInferencing();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   auto& subgraph_outputs = subgraph.GetOutputs();
   for (const auto* output : subgraph_outputs) {
@@ -1540,7 +1540,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           (*merge_target.mutable_shape()) = *output_def->Shape();
           auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target);
           if (!status.IsOK()) {
-            return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
 
           output_def->SetShape(merge_target.shape());
@@ -1644,7 +1644,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       try {
         checker::check_node(node_proto, ctx, lsc);
       } catch (const std::exception& ex) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Node:", node_name, " ", ex.what());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Node:", node_name, " ", ex.what());
       }
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
@@ -1667,7 +1667,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       }
     }
 
-    ONNXRUNTIME_RETURN_IF_ERROR(node.UpdateInputArgCount());
+    ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
     // This may change in the future to allow a null Op
@@ -1696,7 +1696,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       }
     }
 
-    NO_CHANGE_ON_SYNC_FLAG(ONNXRUNTIME_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op)));
+    NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op)));
 
     // Accumulate output names of the iterated Node
     for (auto& output_name : node_proto.output()) {
@@ -1756,15 +1756,15 @@ Status Graph::InitInputsInitializersOutputs() {
     }
   }
 
-  ONNXRUNTIME_RETURN_IF_ERROR(SetGraphInputsOutputs());
-  ONNXRUNTIME_RETURN_IF_ERROR(VerifyInputAndInitializerNames());
-  ONNXRUNTIME_RETURN_IF_ERROR(VerifyNoDuplicateName());
+  ORT_RETURN_IF_ERROR(SetGraphInputsOutputs());
+  ORT_RETURN_IF_ERROR(VerifyInputAndInitializerNames());
+  ORT_RETURN_IF_ERROR(VerifyNoDuplicateName());
 
   return Status::OK();
 }
 
 Status Graph::PerformTypeAndShapeInferencing() {
-  ONNXRUNTIME_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
+  ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
 
   // type/shape inferencing on the nodes is done recursively as we need subgraph outputs
   // to be applied to Node outputs for the node containing the subgraph.
@@ -1778,18 +1778,18 @@ Status Graph::PerformTypeAndShapeInferencing() {
   //        for all nodes in the subgraph. This leads to recursively handling all subgraphs contained in the node.
   //      - once we finish processing the subgraph/s we apply resultant type/shape information to the outputs
   //        of the node that contains the subgraph.
-  ONNXRUNTIME_RETURN_IF_ERROR(VerifyNodeAndOpMatch());
+  ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch());
 
   return Status::OK();
 }
 
 Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
   auto status = func(*this);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   for (auto& subgraph : subgraphs) {
     status = func(*subgraph);
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
   }
 
   return status;
@@ -1822,26 +1822,26 @@ Status Graph::Resolve(bool no_proto_sync_required) {
 
   // init all graph/subgraphs. non-recursive.
   auto init_func = [](Graph& graph) { return graph.InitInputsInitializersOutputs(); };
-  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, init_func));
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, init_func));
 
   // recursively set the outer scope node args.
-  ONNXRUNTIME_RETURN_IF_ERROR(SetOuterScopeNodeArgs(resolve_context_.outer_scope_node_args));
+  ORT_RETURN_IF_ERROR(SetOuterScopeNodeArgs(resolve_context_.outer_scope_node_args));
 
   std::vector<std::string> outer_scope_node_args_consumed;
 
   // recursively build connections between nodes in this graph and all subgraphs
-  ONNXRUNTIME_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
-  ONNXRUNTIME_ENFORCE(outer_scope_node_args_consumed.empty(),
-                      "Shouldn't be possible to have NodeArgs that haven't been handled already.");
+  ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
+  ORT_ENFORCE(outer_scope_node_args_consumed.empty(),
+              "Shouldn't be possible to have NodeArgs that haven't been handled already.");
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
-  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, topo_sort_func));
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, topo_sort_func));
 
   // type/shape validation and inferencing on this and any subgraphs
   // recurses into subgraphs via the ONNX checker, which descends into the GraphProto in node attributes
   // which define a subgraph.
-  ONNXRUNTIME_RETURN_IF_ERROR(PerformTypeAndShapeInferencing());
+  ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing());
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&no_proto_sync_required](Graph& graph) {
@@ -1856,7 +1856,7 @@ Status Graph::Resolve(bool no_proto_sync_required) {
 
             return Status::OK(); };
 
-  ONNXRUNTIME_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
 
   return Status::OK();
 }
@@ -1894,7 +1894,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     for (auto dim : tensor.dims())
       shape->add_dim()->set_dim_value(dim);
 
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
+    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
 
   SetGraphProtoSyncNeeded();
@@ -2059,7 +2059,7 @@ bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
   if (nullptr == node /*|| 0 != node->GetRelationships().output_edges.size()*/) {
     // Node should be removed after all out edges are removed.
-	// TODO: add the check commented out back.
+    // TODO: add the check commented out back.
     return false;
   }
 
@@ -2166,20 +2166,20 @@ void Graph::CleanUnusedInitializers() {
   const auto& outputs = GetOutputs();
 
   std::for_each(inputs.cbegin(), inputs.cend(), [&used_args](const NodeArg* input) {
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
+    ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
   });
 
   std::for_each(outputs.cbegin(), outputs.cend(), [&used_args](const NodeArg* output) {
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(output->Name()));
+    ORT_IGNORE_RETURN_VALUE(used_args.insert(output->Name()));
   });
 
   for (const auto& node : Nodes()) {
     for (const auto* def : node.InputDefs()) {
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
+      ORT_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
     }
 
     for (const auto* def : node.ImplicitInputDefs()) {
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
+      ORT_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
     }
   }
 
@@ -2239,7 +2239,7 @@ Status Graph::SetGraphInputsOutputs() {
       // add all graph inputs to input_name_to_node_arg
       auto& name = graph_input.name();
       const auto* node_arg = GetNodeArg(name);
-      ONNXRUNTIME_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer.");
+      ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer.");
       input_name_to_node_arg.insert({name, node_arg});
 
       // only add non-initializer to specified_graph_inputs
@@ -2250,7 +2250,7 @@ Status Graph::SetGraphInputsOutputs() {
     // add non-initializer outputs
     for (const auto& node : Nodes()) {
       for (const auto* output_def : node.OutputDefs()) {
-        ONNXRUNTIME_IGNORE_RETURN_VALUE(specified_graph_outputs.erase(output_def->Name()));
+        ORT_IGNORE_RETURN_VALUE(specified_graph_outputs.erase(output_def->Name()));
         output_name_to_node_arg.insert({output_def->Name(), output_def});
       }
     }
@@ -2258,7 +2258,7 @@ Status Graph::SetGraphInputsOutputs() {
     // add any outputs using initializer
     if (specified_graph_outputs.size() > 0) {
       for (const auto& name : specified_initializers) {
-        ONNXRUNTIME_IGNORE_RETURN_VALUE(specified_graph_outputs.erase(name));
+        ORT_IGNORE_RETURN_VALUE(specified_graph_outputs.erase(name));
         output_name_to_node_arg.insert({name, GetNodeArg(name)});
       }
     }
@@ -2309,8 +2309,8 @@ Status Graph::SetGraphInputsOutputs() {
     for (auto& graph_input : graph_proto_->input()) {
       auto& name = graph_input.name();
       auto node_arg_iter = input_name_to_node_arg.find(name);
-      ONNXRUNTIME_ENFORCE(node_arg_iter != input_name_to_node_arg.cend(),
-                          "All inputs and initializers should have entries. Missing ", name);
+      ORT_ENFORCE(node_arg_iter != input_name_to_node_arg.cend(),
+                  "All inputs and initializers should have entries. Missing ", name);
 
       graph_inputs_including_initializers_.push_back(node_arg_iter->second);
 
@@ -2330,7 +2330,7 @@ Status Graph::SetGraphInputsOutputs() {
     // add any explicitly ordered inputs
     for (auto* node_arg : graph_input_order_) {
       if (!node_arg || !node_arg->Exists()) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered inputs");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered inputs");
       }
 
       added_input_names.insert(node_arg->Name());
@@ -2343,7 +2343,7 @@ Status Graph::SetGraphInputsOutputs() {
     // add any explicitly ordered outputs
     for (auto* node_arg : graph_output_order_) {
       if (!node_arg || !node_arg->Exists()) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered outputs");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered outputs");
       }
       output_name_to_node_arg.insert({node_arg->Name(), node_arg});
       ordered_output_names.push_back(node_arg->Name());
@@ -2456,10 +2456,10 @@ IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
 
 Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,
                           const std::string& fused_node_name) {
-  ONNXRUNTIME_ENFORCE(nullptr != sub_graph && nullptr != sub_graph->GetMetaDef());
+  ORT_ENFORCE(nullptr != sub_graph && nullptr != sub_graph->GetMetaDef());
 
   auto func_meta_def = sub_graph->GetMetaDef();
-  ONNXRUNTIME_ENFORCE(nullptr != func_meta_def);
+  ORT_ENFORCE(nullptr != func_meta_def);
   std::vector<NodeArg*> input_args, output_args;
   for (auto& arg_name : func_meta_def->inputs) {
     input_args.push_back(GetNodeArg(arg_name));
@@ -2508,7 +2508,7 @@ Status Graph::InlineFunction(Node& node) {
   for (const auto& subgraph_node : subgraph.Nodes()) {
     AddNode(subgraph_node);
   }
-  ONNXRUNTIME_RETURN_IF_ERROR(this->Resolve());
+  ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
 }
 

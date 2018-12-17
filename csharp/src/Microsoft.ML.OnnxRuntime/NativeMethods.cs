@@ -17,7 +17,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Runtime/Environment API
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* ONNXStatus* */ONNXRuntimeInitialize(
+        public static extern IntPtr /* ONNXStatus* */OrtInitialize(
                                                          LogLevel default_warning_level,
                                                          string logId,
                                                          out IntPtr /*(ONNXEnv*)*/ env);
@@ -28,10 +28,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Status API
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ErrorCode ONNXRuntimeGetErrorCode(IntPtr /*(ONNXStatus*)*/status);
+        public static extern ErrorCode OrtGetErrorCode(IntPtr /*(ONNXStatus*)*/status);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* char* */ONNXRuntimeGetErrorMessage(IntPtr /* (ONNXStatus*) */status);
+        public static extern IntPtr /* char* */OrtGetErrorMessage(IntPtr /* (ONNXStatus*) */status);
                                                                                            // returns char*, need to convert to string by the caller.
                                                                                            // does not free the underlying ONNXStatus*
 
@@ -43,14 +43,14 @@ namespace Microsoft.ML.OnnxRuntime
         #region InferenceSession API
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* ONNXStatus* */ONNXRuntimeCreateInferenceSession(
+        public static extern IntPtr /* ONNXStatus* */OrtCreateInferenceSession(
                                                         IntPtr /* (ONNXEnv*) */ environment,
                                                         [MarshalAs(UnmanagedType.LPWStr)]string modelPath, //the model path is consumed as a wchar* in the C-api
-                                                        IntPtr /* (ONNXRuntimeSessionOptions*) */sessopnOptions,
+                                                        IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                         out IntPtr /**/ session);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNStatus*)*/ ONNXRuntimeRunInference(
+        public static extern IntPtr /*(ONNStatus*)*/ OrtRunInference(
                                                 IntPtr /*(ONNXSession*)*/ session,
                                                 IntPtr /*(ONNXSessionRunOptions*)*/ runOptions,  // can be null to use the default options
                                                 string[] inputNames,
@@ -65,43 +65,43 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeInferenceSessionGetInputCount(
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtInferenceSessionGetInputCount(
                                                 IntPtr /*(ONNXSession*)*/ session, 
                                                 out ulong /* TODO: size_t */ count);
 
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeInferenceSessionGetOutputCount(
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtInferenceSessionGetOutputCount(
                                                 IntPtr /*(ONNXSession*)*/ session,
                                                 out ulong /*TODO: size_t port*/ count);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeInferenceSessionGetInputName(
+        public static extern IntPtr /*(ONNXStatus*)*/OrtInferenceSessionGetInputName(
                                                 IntPtr /*(ONNXSession*)*/ session,
                                                 ulong index,  //TODO: port size_t 
-                                                IntPtr /*(ONNXRuntimeAllocator*)*/ allocator, 
+                                                IntPtr /*(OrtAllocator*)*/ allocator, 
                                                 out IntPtr /*(char**)*/name);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeInferenceSessionGetOutputName(
+        public static extern IntPtr /*(ONNXStatus*)*/OrtInferenceSessionGetOutputName(
                                                 IntPtr /*(ONNXSession*)*/ session,
                                                 ulong index,  //TODO: port size_t 
-                                                IntPtr /*(ONNXRuntimeAllocator*)*/ allocator,
+                                                IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
 
-        // release the typeinfo using ONNXRuntimeReleaseObject
+        // release the typeinfo using OrtReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeInferenceSessionGetInputTypeInfo(
+        public static extern IntPtr /*(ONNXStatus*)*/OrtInferenceSessionGetInputTypeInfo(
                                                 IntPtr /*(const ONNXSession*)*/ session, 
                                                 ulong index, //TODO: port for size_t
-                                                out IntPtr /*(struct ONNXRuntimeTypeInfo**)*/ typeInfo);
+                                                out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
 
-        // release the typeinfo using ONNXRuntimeReleaseObject
+        // release the typeinfo using OrtReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeInferenceSessionGetOutputTypeInfo(
+        public static extern IntPtr /*(ONNXStatus*)*/OrtInferenceSessionGetOutputTypeInfo(
                                                 IntPtr /*(const ONNXSession*)*/ session, 
                                                 ulong index, //TODO: port for size_t
-                                                out IntPtr /* (struct ONNXRuntimeTypeInfo**)*/ typeInfo);
+                                                out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
 
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -111,46 +111,46 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region SessionOptions API
 
-        //Release using ONNXRuntimeReleaseObject
+        //Release using OrtReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*ONNXRuntimeSessionOptions* */ ONNXRuntimeCreateSessionOptions();
+        public static extern IntPtr /*OrtSessionOptions* */ OrtCreateSessionOptions();
 
        
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXRuntimeSessionOptions*)*/ONNXRuntimeCloneSessionOptions(IntPtr /*(ONNXRuntimeSessionOptions*)*/ sessionOptions);
+        public static extern IntPtr /*(OrtSessionOptions*)*/OrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeEnableSequentialExecution(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options);
+        public static extern void OrtEnableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableSequentialExecution(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options);
+        public static extern void OrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeEnableProfiling(IntPtr /* ONNXRuntimeSessionOptions* */ options, string profilePathPrefix);
+        public static extern void OrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableProfiling(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void OrtDisableProfiling(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeEnableMemPattern(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void OrtEnableMemPattern(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableMemPattern(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void OrtDisableMemPattern(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeEnableCpuMemArena(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void OrtEnableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeDisableCpuMemArena(IntPtr /* ONNXRuntimeSessionOptions* */ options);
+        public static extern void OrtDisableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeSetSessionLogId(IntPtr /* ONNXRuntimeSessionOptions* */ options, string logId);
+        public static extern void OrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeSetSessionLogVerbosityLevel(IntPtr /* ONNXRuntimeSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
+        public static extern void OrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern int ONNXRuntimeSetSessionThreadPoolSize(IntPtr /* ONNXRuntimeSessionOptions* */ options, int sessionThreadPoolSize);
+        public static extern int OrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
 
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method
@@ -158,22 +158,22 @@ namespace Microsoft.ML.OnnxRuntime
         //  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
         //  */
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeSessionOptionsAppendExecutionProvider(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options, IntPtr /* (ONNXRuntimeProviderFactoryPtr*)*/ factory);
+        public static extern void OrtSessionOptionsAppendExecutionProvider(IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /* (OrtProviderFactoryPtr*)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateCpuExecutionProviderFactory(int use_arena, out IntPtr /*(ONNXRuntimeProviderFactoryPtr*)*/ factory);
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtCreateCpuExecutionProviderFactory(int use_arena, out IntPtr /*(OrtProviderFactoryPtr*)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateMkldnnExecutionProviderFactory(int use_arena, out IntPtr /*(ONNXRuntimeProviderFactoryPtr**)*/ factory);
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtCreateMkldnnExecutionProviderFactory(int use_arena, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateCUDAExecutionProviderFactory(int device_id, out IntPtr /*(ONNXRuntimeProviderFactoryPtr**)*/ factory);
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtCreateCUDAExecutionProviderFactory(int device_id, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeCreateNupharExecutionProviderFactory(int device_id, string target_str, out IntPtr /*(ONNXRuntimeProviderFactoryPtr**)*/ factory);
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtCreateNupharExecutionProviderFactory(int device_id, string target_str, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeAddCustomOp(IntPtr /*(ONNXRuntimeSessionOptions*)*/ options, string custom_op_path);
+        public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
 
         #endregion
 
@@ -197,27 +197,27 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* (ONNXStatus*)*/ ONNXRuntimeCreateAllocatorInfo(
+        public static extern IntPtr /* (ONNXStatus*)*/ OrtCreateAllocatorInfo(
                                                             IntPtr /*(const char*) */name,
                                                             AllocatorType allocatorType,
                                                             int identifier,
                                                             MemoryType memType,
-                                                            out IntPtr /*(ONNXRuntimeAllocatorInfo*)*/ allocatorInfo    // memory ownership transfered to caller
+                                                            out IntPtr /*(OrtAllocatorInfo*)*/ allocatorInfo    // memory ownership transfered to caller
                                                        );
 
-        //ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCpuAllocatorInfo, enum ONNXRuntimeAllocatorType type, enum ONNXRuntimeMemType mem_type1, _Out_ ONNXRuntimeAllocatorInfo** out)
+        //ONNXRUNTIME_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out)
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* (ONNXStatus*)*/ ONNXRuntimeCreateCpuAllocatorInfo(
+        public static extern IntPtr /* (ONNXStatus*)*/ OrtCreateCpuAllocatorInfo(
                                                             AllocatorType allocatorType,
                                                             MemoryType memoryType,
-                                                            out IntPtr /*(ONNXRuntimeAllocatorInfo*)*/ allocatorInfo
+                                                            out IntPtr /*(OrtAllocatorInfo*)*/ allocatorInfo
                                                         );
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ReleaseONNXRuntimeAllocatorInfo(IntPtr /*(ONNXRuntimeAllocatorInfo*)*/ allocatorInfo);
+        public static extern void ReleaseOrtAllocatorInfo(IntPtr /*(OrtAllocatorInfo*)*/ allocatorInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ONNXRuntimeCreateDefaultAllocator(out IntPtr /*(ONNXRuntimeAllocator**)*/ allocator);
+        public static extern IntPtr /*(ONNXStatus*)*/OrtCreateDefaultAllocator(out IntPtr /*(OrtAllocator**)*/ allocator);
 
         /// <summary>
         ///  Releases/Unrefs any object, including the Allocator
@@ -225,7 +225,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="ptr"></param>
         /// <returns>remaining ref count</returns>
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern uint /*remaining ref count*/ ONNXRuntimeReleaseObject(IntPtr /*(void*)*/ ptr);
+        public static extern uint /*remaining ref count*/ OrtReleaseObject(IntPtr /*(void*)*/ ptr);
 
         /// <summary>
         /// Release any object allocated by an allocator
@@ -233,18 +233,18 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocator"></param>
         /// <param name="memory"></param>
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeAllocatorFree(IntPtr allocator, IntPtr memory);
+        public static extern void OrtAllocatorFree(IntPtr allocator, IntPtr memory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(const struct ONNXRuntimeAllocatorInfo*)*/ ONNXRuntimeAllocatorGetInfo(IntPtr /*(const ONNXRuntimeAllocator*)*/ ptr);
+        public static extern IntPtr /*(const struct OrtAllocatorInfo*)*/ OrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr);
 
         #endregion Allocator/AllocatorInfo API
 
         #region Tensor/OnnxValue API
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* ONNXStatus */ ONNXRuntimeCreateTensorWithDataAsONNXValue(
-                                                        IntPtr /* (const ONNXRuntimeAllocatorInfo*) */ allocatorInfo,
+        public static extern IntPtr /* ONNXStatus */ OrtCreateTensorWithDataAsONNXValue(
+                                                        IntPtr /* (const OrtAllocatorInfo*) */ allocatorInfo,
                                                         IntPtr /* (void*) */dataBufferHandle,
                                                         ulong dataLength,   //size_t, TODO: make it portable for x86, arm
                                                         ulong[] shape,   //size_t* or size_t[], TODO: make it portable for x86, arm
@@ -255,30 +255,30 @@ namespace Microsoft.ML.OnnxRuntime
         /// This function doesn't work with string tensor
         /// this is a no-copy method whose pointer is only valid until the backing ONNXValuePtr is free'd.
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeGetTensorMutableData(IntPtr /*(ONNXValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtGetTensorMutableData(IntPtr /*(ONNXValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
 
         //[DllImport(nativeLib, CharSet = charSet)]
-        //public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeGetTensorShapeDimCount(IntPtr /*(ONNXValue*)*/ value, out ulong dimension); //size_t TODO: make it portable for x86, arm
+        //public static extern IntPtr /*(ONNXStatus*)*/ OrtGetTensorShapeDimCount(IntPtr /*(ONNXValue*)*/ value, out ulong dimension); //size_t TODO: make it portable for x86, arm
 
         //[DllImport(nativeLib, CharSet = charSet)]
-        //public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeGetTensorShapeElementCount(IntPtr /*(ONNXValue*)*/value, out ulong count);
+        //public static extern IntPtr /*(ONNXStatus*)*/ OrtGetTensorShapeElementCount(IntPtr /*(ONNXValue*)*/value, out ulong count);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ 
-                                ONNXRuntimeCastTypeInfoToTensorInfo(IntPtr /*(struct ONNXRuntimeTypeInfo*)*/ typeInfo);
+        public static extern IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/
+                                OrtCastTypeInfoToTensorInfo(IntPtr /*(struct OrtTypeInfo*)*/ typeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNXStatus*)*/ ONNXRuntimeGetTensorShapeAndType(IntPtr /*(ONNXValue*)*/ value, out IntPtr /*(struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern IntPtr /*(ONNXStatus*)*/ OrtGetTensorShapeAndType(IntPtr /*(ONNXValue*)*/ value, out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern TensorElementType ONNXRuntimeGetTensorElementType(IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern TensorElementType OrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ulong /*TODO: port for size_t */ONNXRuntimeGetNumOfDimensions(IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern ulong /*TODO: port for size_t */OrtGetNumOfDimensions(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void ONNXRuntimeGetDimensions(
-                            IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, 
+        public static extern void OrtGetDimensions(
+                            IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, 
                             long[] dim_values, 
                             ulong dim_values_length);
 
@@ -292,7 +292,7 @@ namespace Microsoft.ML.OnnxRuntime
          * [-1,3,4] -> -1
          */
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern long ONNXRuntimeGetTensorShapeElementCount(IntPtr /*(const struct ONNXRuntimeTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern long OrtGetTensorShapeElementCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void ReleaseONNXValue(IntPtr /*(ONNXValue*)*/ value);

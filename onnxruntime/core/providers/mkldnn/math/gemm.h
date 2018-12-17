@@ -11,14 +11,14 @@ class Gemm final : public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : OpKernel(info) {
     int64_t temp;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
     trans_A_ = (temp != 0);
 
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("transB", &temp).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("transB", &temp).IsOK());
     trans_B_ = (temp != 0);
 
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;

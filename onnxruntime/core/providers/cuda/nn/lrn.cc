@@ -23,19 +23,19 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 LRN<T>::LRN(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t size;
-  ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("size", &size).IsOK());
-  ONNXRUNTIME_ENFORCE(size > 0);
-  ONNXRUNTIME_ENFORCE(size % 2 == 1);
+  ORT_ENFORCE(info.GetAttr<int64_t>("size", &size).IsOK());
+  ORT_ENFORCE(size > 0);
+  ORT_ENFORCE(size % 2 == 1);
 
   float alpha;
   float beta;
-  ONNXRUNTIME_ENFORCE(info.GetAttr<float>("alpha", &alpha).IsOK());
-  ONNXRUNTIME_ENFORCE(alpha > 0.0f);
-  ONNXRUNTIME_ENFORCE(info.GetAttr<float>("beta", &beta).IsOK());
-  ONNXRUNTIME_ENFORCE(beta > 0.0f);
+  ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha).IsOK());
+  ORT_ENFORCE(alpha > 0.0f);
+  ORT_ENFORCE(info.GetAttr<float>("beta", &beta).IsOK());
+  ORT_ENFORCE(beta > 0.0f);
   float bias = info.GetAttrOrDefault<float>("bias", 1.0f);
 
-  ONNXRUNTIME_ENFORCE(norm_desc_.Set(
+  ORT_ENFORCE(norm_desc_.Set(
                             gsl::narrow_cast<uint32_t>(size),
                             static_cast<double>(alpha),
                             static_cast<double>(beta),
@@ -51,12 +51,12 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto rank = X->Shape().NumDimensions();
   if (rank != 4 && rank != 5)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "cudnn LRN only supports 4D or 5D input");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cudnn LRN only supports 4D or 5D input");
 
   Tensor* Y = context->Output(0, X->Shape());
 
   CudnnTensor x_tensor;
-  ONNXRUNTIME_RETURN_IF_ERROR(x_tensor.Set(X->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(x_tensor.Set(X->Shape().GetDims(), CudnnTensor::GetDataType<CudaT>()));
 
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;

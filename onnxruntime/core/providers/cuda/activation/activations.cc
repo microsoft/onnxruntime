@@ -25,7 +25,7 @@ namespace cuda {
     UnaryElementwise::Prepare(context, &p);                                                                \
     CudaAsyncBuffer<Ctx##x> func_ctx(this, 0, MakeFuncCtx());                                              \
     if (!std::is_same<CtxNull, Ctx##x>::value)                                                             \
-      ONNXRUNTIME_RETURN_IF_ERROR(func_ctx.CopyToGpu());                                                   \
+      ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                                                   \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \

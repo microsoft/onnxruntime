@@ -17,8 +17,8 @@ class Loop final : public OpKernel {
     // and a SessionState instance for executing the subgraph is created by InferenceSession.
     // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
     ONNX_NAMESPACE::GraphProto proto;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(proto);
+    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
+    ORT_IGNORE_RETURN_VALUE(proto);
   }
 
   Status Compute(OpKernelContext* ctx) const override;

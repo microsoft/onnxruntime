@@ -21,7 +21,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected override bool ReleaseHandle()
         {
-            NativeMethods.ONNXRuntimeReleaseObject(handle);
+            NativeMethods.OrtReleaseObject(handle);
             return true;
         }
     }

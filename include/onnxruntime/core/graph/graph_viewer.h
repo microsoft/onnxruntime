@@ -98,7 +98,7 @@ class GraphViewer {
   const NodeArg* GetNodeArg(const std::string& name) const;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
 
   const Graph* graph_;
 
