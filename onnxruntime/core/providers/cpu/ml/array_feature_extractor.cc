@@ -53,14 +53,14 @@ template <typename T>
 common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
   const TensorShape& x_shape = X.Shape();
-  const vector<int64_t>& x_dims = x_shape.GetDims();
+  const int64_t x_num_dims = x_shape.NumDimensions();
   const T* x_data = X.template Data<T>();
 
-  if (x_dims.empty()) {
+  if (x_num_dims == 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: X input has empty dimensions.");
   }
 
-  const int64_t stride = x_dims.back();
+  const int64_t stride = x_shape[x_num_dims - 1];
 
   const Tensor& Y = *context->Input<Tensor>(1);
   const TensorShape& y_shape = Y.Shape();
@@ -88,7 +88,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
   Tensor* Z = context->Output(0, z_shape);
   T* z_data = Z->template MutableData<T>();
 
-  const int64_t x_size_until_last_dim = x_shape.SizeToDimension(x_shape.NumDimensions() - 1);
+  const int64_t x_size_until_last_dim = x_shape.SizeToDimension(x_num_dims - 1);
   for (int64_t i = 0; i < x_size_until_last_dim; ++i) {
     for (int64_t j = 0; j < num_indices; ++j) {
       *z_data++ = x_data[y_data[j]];
