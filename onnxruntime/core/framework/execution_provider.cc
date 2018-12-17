@@ -33,7 +33,7 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       if (registry->TryFindKernel(node, Type()) != nullptr) {
         std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph), nullptr));
+        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph), false));
       }
     }
   }
@@ -65,13 +65,13 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   allocators_.insert(iter, {key, allocator});
 }
 
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_node,
-                       std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
+                                           std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
 
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_node,
-                                           std::string& dll_path) {
+common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
+                                           std::string& /*dll_path*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
 
