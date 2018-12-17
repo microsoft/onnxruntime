@@ -57,6 +57,10 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
 }
 
 Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState& session_state) const {
+  // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
+  // 1. Execution providers' capabilities are checked one by one.
+  // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
+  // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider preference.
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
@@ -65,11 +69,18 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
   // Partitioning <graph> based on provider preference and their capabilities.
   auto kernel_registries = kernel_registry_mgr_.GetAllKernelRegistries();
+
+  std::vector<std::vector<std::unique_ptr<ComputeCapability>>> capabilities_of_all_providers;
+  GraphViewer graph_viewer(graph);
   for (auto& provider : providers_) {
-    auto capability_results = provider->GetCapability(GraphViewer(graph), kernel_registries);
+    capabilities_of_all_providers.push_back(provider->GetCapability(graph_viewer, kernel_registries));
+  }
+
+  int i = 0;
+  for (auto& provider : providers_) {
     int count = 0;
     std::vector<Node*> nodes_need_compile;
-    for (auto& capability : capability_results) {
+    for (auto& capability : capabilities_of_all_providers[i++]) {
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
       }
@@ -80,18 +91,30 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
 
         auto node = graph.GetNode(capability->sub_graph->nodes[0]);
         if (nullptr != node && node->GetExecutionProviderType().empty()) {
+          // The node was not fused or assigned. Assign it to this <provider>.
           node->SetExecutionProviderType(provider->Type());
         }
       } else {
         // The <provider> can run a fused <sub_graph> in the <graph>.
-        //
-        // Add fused node into <graph>
         ORT_ENFORCE(nullptr != capability->sub_graph->GetMetaDef());
-        std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
-        auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
-        fused_node.SetExecutionProviderType(provider->Type());
-        if (capability->need_compile)
-          nodes_need_compile.push_back(&fused_node);
+        // Check whether any node in the <sub_graph> was already assigned.
+        bool sub_graph_available_for_assignment = true;
+        for (auto node_index : capability->sub_graph->nodes) {
+          auto node = graph.GetNode(node_index);
+          if (nullptr == node || !node->GetExecutionProviderType().empty()) {
+            // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
+            // The assumption is that this <provider> can only run the sub-graph as a whole unit.
+            sub_graph_available_for_assignment = false;
+            break;
+          }
+        }
+        if (sub_graph_available_for_assignment) {
+          std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
+          auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
+          fused_node.SetExecutionProviderType(provider->Type());
+          if (capability->need_compile)
+            nodes_need_compile.push_back(&fused_node);
+		}
       }
     }
     if (nodes_need_compile.size() > 0) {
@@ -104,8 +127,8 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
         std::vector<NodeComputeInfo> node_compute_funcs;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, node_compute_funcs));
         ORT_ENFORCE(node_compute_funcs.size() == nodes_need_compile.size(), "Provider doesn't return correct number of compiled functions");
-        for (auto i = 0; i < nodes_need_compile.size(); i++)
-          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(nodes_need_compile[i]->Name(), node_compute_funcs[i].compute_func, node_compute_funcs[i].create_state_func, node_compute_funcs[i].release_state_func));
+        for (auto j = 0; j < nodes_need_compile.size(); j++)
+          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
       }
       for (auto* node : nodes_need_compile) {
         //prepare the func kernel
@@ -114,10 +137,9 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
         fused_kernel_registry->Register(builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); });
       }
     }
-    // all done with this provider, resolve the graph before we move on to the next provider.
-    // This is needed since we create a new GraphViewer() that we pass into the next provider's GetCapability().
-    ORT_ENFORCE(graph.Resolve().IsOK());
   }
+
+  ORT_ENFORCE(graph.Resolve().IsOK());
 
   // To see if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
@@ -143,10 +165,10 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
     this->Partition(graph, session_state);
   }
 
-  //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
-  //But we will insert cast op to run the model, so skip the error checking here.
-  //If after graph transform phase, the node still not assigned, we will report error
-  //during kernel creation phase.
+    //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
+    //But we will insert cast op to run the model, so skip the error checking here.
+    //If after graph transform phase, the node still not assigned, we will report error
+    //during kernel creation phase.
 #ifdef COUNT_NON_CUDA_OPS
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType() != kCudaExecutionProvider &&
