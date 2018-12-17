@@ -892,12 +892,12 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
         subgraph->BuildConnections(node_args_consumed);
 
         for (auto& node_arg_name : node_args_consumed) {
-          bool node_arg_in_parent_graph = false;
           auto node_arg = GetNodeArg(node_arg_name);
 
           if (node_arg == nullptr) {
             // it's a node arg from outside this graph's scope, so add that to the list we return
-            // so that we can add the dependency at the next level up
+            // so that we can add the dependency at the next level up. this happens if you have multiple
+            // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
             outer_scope_node_args_consumed.push_back(node_arg_name);
 
             if (!parent_graph_) {
@@ -917,8 +917,6 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
                   "Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
-
-            node_arg_in_parent_graph = true;
           }
 
           // add it to the Node's list of implicit inputs
@@ -932,18 +930,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             input_slot_index += static_cast<int>(iter - implicit_inputs.cbegin());
           }
 
-          if (node_arg_in_parent_graph ||
-              resolve_context_.inputs_and_initializers.find(node_arg_name) !=
-                  resolve_context_.inputs_and_initializers.cend()) {
-            // no connection required if it's an input or initializer.
-            // if the node arg is from a parent graph we link the nodes in the parent graph by passing the
-            // node_arg_name back up in outer_scope_node_args_consumed
-
-          } else {
-            // if it's an output nodearg in this graph we need to create a link to the node the output is coming from
-            auto entry = resolve_context_.output_args.find(node_arg_name);
-            ORT_ENFORCE(entry != resolve_context_.output_args.end());
-
+          auto entry = resolve_context_.output_args.find(node_arg_name);
+          if (entry != resolve_context_.output_args.end()) {
             // Create relationship between this node (node), and the node providing the output (output_node).
             Node& output_node = *entry->second.first;
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
