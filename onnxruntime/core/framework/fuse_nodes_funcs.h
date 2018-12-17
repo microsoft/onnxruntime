@@ -7,7 +7,7 @@ namespace onnxruntime {
 
 class FuseFuncManager {
  public:
-  FuseFuncManager() : lib_loader_(std::make_unique<ExLibLoader>()), fused_funcs_(std::make_unique<std::unordered_map<std::string, FuncInfo> >()){}
+  FuseFuncManager() : fused_funcs_(std::make_unique<std::unordered_map<std::string, FuncInfo> >()), lib_loader_(std::make_unique<ExLibLoader>()) {}
 
   Status AddFuncInfo(const std::string& name, const std::string& dll_path);
 
