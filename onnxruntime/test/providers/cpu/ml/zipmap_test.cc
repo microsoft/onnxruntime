@@ -20,7 +20,7 @@ void TestHelper(const std::vector<T>& classes,
   } else if (type == "int64_t") {
     test.AddAttribute("classlabels_int64s", classes);
   } else {
-    ONNXRUNTIME_THROW("Invalid type: ", type);
+    ORT_THROW("Invalid type: ", type);
   }
 
   int64_t batch_size = (input_dims.size() > 1) ? input_dims[0] : 1;

@@ -17,7 +17,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   size_t rank = input_tensor->Shape().NumDimensions();
   auto& input_dimensions = input_tensor->Shape().GetDims();
   if (has_axis_) {
-    ONNXRUNTIME_ENFORCE(axis_ < static_cast<int64_t>(rank), "axis greater than input data dimension!");
+    ORT_ENFORCE(axis_ < static_cast<int64_t>(rank), "axis greater than input data dimension!");
   }
 
   const Tensor* condition = ctx->Input<Tensor>(1);

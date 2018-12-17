@@ -6,13 +6,13 @@
 
 namespace onnxruntime {
 
-const ONNXRuntimeAllocatorInfo& MKLDNNAllocator::Info() const {
-  static constexpr ONNXRuntimeAllocatorInfo mkl_allocator_info(MKLDNN, ONNXRuntimeAllocatorType::ONNXRuntimeDeviceAllocator, 0, ONNXRuntimeMemTypeDefault);
+const OrtAllocatorInfo& MKLDNNAllocator::Info() const {
+  static constexpr OrtAllocatorInfo mkl_allocator_info(MKLDNN, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
   return mkl_allocator_info;
 }
 
-const ONNXRuntimeAllocatorInfo& MKLDNNCPUAllocator::Info() const {
-  static constexpr ONNXRuntimeAllocatorInfo mkl_cpu_allocator_info(MKLDNN_CPU, ONNXRuntimeAllocatorType::ONNXRuntimeDeviceAllocator, 0, ONNXRuntimeMemTypeCPUOutput);
+const OrtAllocatorInfo& MKLDNNCPUAllocator::Info() const {
+  static constexpr OrtAllocatorInfo mkl_cpu_allocator_info(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
   return mkl_cpu_allocator_info;
 }
 }  // namespace onnxruntime

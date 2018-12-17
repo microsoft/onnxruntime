@@ -13,7 +13,7 @@ struct OnnxRuntimeEvent {
   OnnxRuntimeEvent() = default;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeEvent);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeEvent);
 };
 
-using ONNXRUNTIME_EVENT = OnnxRuntimeEvent*;
+using ORT_EVENT = OnnxRuntimeEvent*;

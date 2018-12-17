@@ -32,10 +32,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* right_X = ctx->Input<Tensor>(1);
 
   MatMulComputeHelper helper;
-  ONNXRUNTIME_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape()));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-  ONNXRUNTIME_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
+  ORT_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -65,9 +65,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ONNXRUNTIME_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ONNXRUNTIME_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
 
   // note that onnxruntime MLValue is row major, while cublas is column major,
   // so swap left/right operands

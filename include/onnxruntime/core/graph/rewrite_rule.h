@@ -47,7 +47,7 @@ class RewriteRule {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RewriteRule);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RewriteRule);
 
   const std::string name_;
   const std::string desc_;

@@ -23,7 +23,7 @@ class IdentityOp final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
-    ONNXRUNTIME_ENFORCE(X != nullptr);
+    ORT_ENFORCE(X != nullptr);
     const TensorShape& shape = X->Shape();
     Tensor* Y = context->Output(0, shape);
     auto X_type = X->DataType();

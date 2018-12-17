@@ -46,7 +46,7 @@ LinearClassifier<T>::LinearClassifier(const OpKernelInfo& info) : OpKernel(info)
                                                                   classlabels_strings_(info.GetAttrsOrDefault<std::string>("classlabels_strings")),
                                                                   classlabels_ints_(info.GetAttrsOrDefault<int64_t>("classlabels_ints")) {
   if (!info.GetAttrs<float>("coefficients", coefficients_).IsOK())
-    ONNXRUNTIME_ENFORCE(!coefficients_.empty());
+    ORT_ENFORCE(!coefficients_.empty());
 
   using_strings_ = !classlabels_strings_.empty();
   class_count_ = static_cast<int64_t>(intercepts_.size());

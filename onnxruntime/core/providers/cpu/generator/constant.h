@@ -16,7 +16,7 @@ class ConstantLike final : public OpKernel {
     dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
 
     shape_ = info.GetAttrsOrDefault<int64_t>("shape");
-    ONNXRUNTIME_ENFORCE(info.GetAttr<float>("value", &value_).IsOK());
+    ORT_ENFORCE(info.GetAttr<float>("value", &value_).IsOK());
   }
 
   Status Compute(OpKernelContext* ctx) const override;
