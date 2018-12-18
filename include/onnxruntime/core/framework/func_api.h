@@ -19,7 +19,8 @@ typedef struct {
   int64_t* shape;
 } ONNXRunTimeTensor;
 
-typedef void* (*AllocateFunc)(void*, size_t);
+// AllocateFunc(void* handle, size_t alignment, size_t size)
+typedef void* (*AllocateFunc)(void*, size_t, size_t);
 typedef void (*ReleaseFunc)(void*, void*);
 typedef void* AllocatorHandle;
 

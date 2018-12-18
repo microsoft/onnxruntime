@@ -76,6 +76,16 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
     capabilities_of_all_providers.push_back(provider->GetCapability(graph_viewer, kernel_registries));
   }
 
+  // If an execution provider return the capability that he could run a sub-graph,
+  // onnxruntime will fuse the sub-graph into a function node. if the execution provider
+  // says he need to compile the graph at runtime (by need_compile flag),
+  // onnxruntime will invoke the "Compile" method to get compiled binary.
+  // There are two mode of compile, one is return the entry point to the compiled binary
+  // directly, another is export the compiled binary to shared library for future reuse.
+
+  // TODO: when the graph contain a function node, and user pass in the dll which could
+  // run the function by SessionOption, we should create a function kernel for it and
+  // delegate the compute to the functions inside the dlls.
   int i = 0;
   for (auto& provider : providers_) {
     int count = 0;
@@ -114,7 +124,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
           fused_node.SetExecutionProviderType(provider->Type());
           if (capability->need_compile)
             nodes_need_compile.push_back(&fused_node);
-		}
+        }
       }
     }
     if (nodes_need_compile.size() > 0) {
@@ -165,10 +175,10 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
     this->Partition(graph, session_state);
   }
 
-    //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
-    //But we will insert cast op to run the model, so skip the error checking here.
-    //If after graph transform phase, the node still not assigned, we will report error
-    //during kernel creation phase.
+  //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
+  //But we will insert cast op to run the model, so skip the error checking here.
+  //If after graph transform phase, the node still not assigned, we will report error
+  //during kernel creation phase.
 #ifdef COUNT_NON_CUDA_OPS
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType() != kCudaExecutionProvider &&

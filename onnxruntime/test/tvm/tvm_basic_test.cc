@@ -241,7 +241,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
           int64_t size = 1;
           for (auto j = 0; j < output_tensors[i].ndim; j++)
             size *= output_tensors[i].shape[j];
-          output_tensors[i].data = (*(tvm_state->test_allocate_func))(tvm_state->allocator, sizeof(double) * size);
+          output_tensors[i].data = (*(tvm_state->test_allocate_func))(tvm_state->allocator, sizeof(double) * size, 64);
 
           tvm_type_codes[num_inputs + i] = kNDArrayContainer;
           dl_tensors[num_inputs + i].ctx = cpu_context;
