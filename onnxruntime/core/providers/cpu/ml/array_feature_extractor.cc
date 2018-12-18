@@ -53,7 +53,7 @@ template <typename T>
 common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
   const TensorShape& x_shape = X.Shape();
-  const int64_t x_num_dims = x_shape.NumDimensions();
+  const size_t x_num_dims = x_shape.NumDimensions();
   const T* x_data = X.template Data<T>();
 
   if (x_num_dims == 0) {
