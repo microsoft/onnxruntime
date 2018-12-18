@@ -1649,7 +1649,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
-      if (node.op_->Deprecated()) {
+      if (node.op_ && node.op_->Deprecated()) {
         node.op_ = nullptr;
       }
 
