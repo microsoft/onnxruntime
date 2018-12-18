@@ -401,12 +401,33 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
 
   const auto N = impl.N_;
   const auto S = impl.S_ + 1;  // Convert to distance
-  auto const start_ngram_size = (impl.all_) ? impl.M_ : N;
+  auto start_ngram_size = (impl.all_) ? impl.M_ : N;
 
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<T>();
   auto const end_data = input_data + total_items;
   NGramItem<T> sample;
+
+  // Treat unigrams in a special way
+  if (start_ngram_size == 1) {
+    auto ngram_start = input_data;
+    while (ngram_start < end_data) {
+      sample.Clear();
+      sample.AddItem(*ngram_start);
+      ++ngram_start;
+      auto hit = impl.Find<T>(sample);
+      if (hit != set_end) {
+        // record frequency
+        auto ngram_id = hit->id();
+        impl.IncrementCount(ngram_id, frequencies);
+      }
+    }
+    if (++start_ngram_size > N) {
+      OutputResult(ctx, frequencies);
+      return;
+    }
+  }
+
   // Convert skip into distance between n-gram items
   // by adding 1
   for (auto si = 1; si <= S; ++si) {
