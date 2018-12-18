@@ -80,7 +80,7 @@ void TestCastOp(const std::initializer_list<SrcType>& input,
                 int64_t toType,
                 ExpectResult expect_result = ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "") {
-  OpTester test("Cast");
+  OpTester test("Cast", 9);
   test.AddAttribute("to", toType);
   test.AddInput<SrcType>("input", dimensions, input);
   test.AddOutput<DstType>("output", dimensions, output);
@@ -275,6 +275,20 @@ TEST(TensorOpTest, CastFromFloat16) {
 
   std::initializer_list<int64_t> int64_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   TestCastOp(input, int64_t_data, shape, TensorProto::INT64);
+}
+
+TEST(TensorOpTest, CastFromString) {
+  const std::vector<int64_t> shape{2, 2, 2};
+  std::initializer_list<std::string> string_data = {"0.0f", "1.0f", "2.0f", "3.0f", "4.0f", "5.0f", "6.0f", "7.0f"};
+  const std::initializer_list<float> float_output{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  TestCastOp(string_data, float_output, shape, TensorProto::FLOAT);
+}
+
+TEST(TensorOpTest, CastToString) {
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::initializer_list<float> float_input = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  std::initializer_list<std::string> string_output = {"0", "1", "2", "3", "4", "5", "6", "7"};
+  TestCastOp(float_input, string_output, shape, TensorProto::STRING);
 }
 
 TEST(TensorOpTest, CropBorderOnly) {

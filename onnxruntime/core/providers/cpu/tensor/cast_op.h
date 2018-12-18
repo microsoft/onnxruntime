@@ -66,6 +66,33 @@ inline void CastFloat16Data(const Tensor* in, Tensor* out, const TensorShape& sh
   allocator->Free(buffer);
 }
 
+template <typename SrcType>
+inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape, const AllocatorPtr& allocator) {
+  ONNXRUNTIME_ENFORCE(allocator != nullptr);
+  const int64_t len = shape.Size();
+  ONNXRUNTIME_ENFORCE(len > 0);
+  for (int i = 0; i < len; ++i) {
+    std::ostringstream convert;
+    convert << in->Data<SrcType>()[i];
+    out->MutableData<std::string>()[i] = convert.str();
+  }
+}
+
+template <typename DstType>
+inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape& shape, const AllocatorPtr& allocator) {
+  if (std::is_same<DstType, std::string>::value) return;
+  ONNXRUNTIME_ENFORCE(allocator != nullptr);
+  const int64_t len = shape.Size();
+  ONNXRUNTIME_ENFORCE(len > 0);
+  void* buffer = allocator->AllocArray(sizeof(double), len);
+  ONNXRUNTIME_ENFORCE(buffer);
+  Tensor tmp_tensor(DataTypeImpl::GetType<double>(), shape, buffer, allocator->Info(), nullptr);
+  for (int i = 0; i < len; ++i) {
+    tmp_tensor.MutableData<double>()[i] = std::stod(in->Data<std::string>()[i]);
+  }
+  CastData<double, DstType>(&tmp_tensor, out, shape);
+}
+
 template <typename T>
 class Cast final : public OpKernel {
  public:
@@ -91,6 +118,22 @@ class Cast final : public OpKernel {
     AllocatorPtr allocator;
     ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     ::onnxruntime::CastFloat16Data<SrcType, DstType>(in, out, shape, allocator);
+    return Status::OK();
+  }
+
+  template <typename SrcType>
+  Status CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape, OpKernelContext* context) const {
+    AllocatorPtr allocator;
+    ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+    ::onnxruntime::CastToStringData<SrcType>(in, out, shape, allocator);
+    return Status::OK();
+  }
+
+  template <typename DstType>
+  Status CastFromStringData(const Tensor* in, Tensor* out, const TensorShape& shape, OpKernelContext* context) const {
+    AllocatorPtr allocator;
+    ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+    ::onnxruntime::CastFromStringData<DstType>(in, out, shape, allocator);
     return Status::OK();
   }
 

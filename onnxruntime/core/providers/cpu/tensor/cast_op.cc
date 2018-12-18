@@ -20,12 +20,15 @@ const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<int16_t>(),
     DataTypeImpl::GetTensorType<int32_t>(),
     DataTypeImpl::GetTensorType<int64_t>(),
-    DataTypeImpl::GetTensorType<MLFloat16>()};
+    DataTypeImpl::GetTensorType<MLFloat16>(),
+    DataTypeImpl::GetTensorType<std::string>()
+};
 
 #define ADD_FROM_CAST_OP(in_type)                                                                                                  \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                  \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                                        \
       Cast,                                                                                                                        \
       6,                                                                                                                           \
+      9,                                                                                                                           \
       in_type,                                                                                                                     \
       KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>()).TypeConstraint("T2", castOpTypeConstraints), \
       Cast<in_type>);                                                                                                              \
@@ -80,7 +83,8 @@ const std::vector<MLDataType> castOpTypeConstraints{
         }                                                                                                                          \
         break;                                                                                                                     \
       case TensorProto_DataType_STRING:                                                                                            \
-        ONNXRUNTIME_THROW("Casting to and from strings is not supported yet."); /*break;*/                                         \
+        CastToStringData<in_type>(X, Y, shape, context);                                                                           \
+        break;                                                                                                                     \
       case TensorProto_DataType_UNDEFINED:                                                                                         \
         ONNXRUNTIME_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/                                          \
       default:                                                                                                                     \
@@ -101,9 +105,10 @@ ADD_FROM_CAST_OP(bool);
 ADD_FROM_CAST_OP(float);
 ADD_FROM_CAST_OP(double);
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cast,
     6,
+	9,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()).TypeConstraint("T2", castOpTypeConstraints),
     Cast<MLFloat16>);
@@ -164,6 +169,59 @@ Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
       ONNXRUNTIME_THROW("Casting to and from strings is not supported yet."); /*break;*/
     case TensorProto_DataType_UNDEFINED:
       ONNXRUNTIME_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/
+    default:
+      ONNXRUNTIME_THROW("Unexpected 'to' argument value: ", to_);
+  }
+  return st;
+}
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cast,
+    9,
+    string,
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<std::string>()).TypeConstraint("T2", castOpTypeConstraints),
+    Cast<std::string>);
+
+template <>
+Status Cast<std::string>::Compute(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, TensorShape(shape));
+  Status st;
+  switch (to_) {
+    case TensorProto_DataType_INT16:
+      st = CastFromStringData<int16_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_INT32:
+      st = CastFromStringData<int32_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_INT64:
+      st = CastFromStringData<int64_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_UINT8:
+      st = CastFromStringData<uint8_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_UINT16:
+      st = CastFromStringData<uint16_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_UINT32:
+      st = CastFromStringData<uint32_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_UINT64:
+      st = CastFromStringData<uint64_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_FLOAT:
+      CastFromStringData<float>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_DOUBLE:
+      st = CastFromStringData<double>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_INT8:
+      st = CastFromStringData<int8_t>(X, Y, shape, context);
+      break;
+    case TensorProto_DataType_UNDEFINED:
+      ONNXRUNTIME_THROW("Cast op must have 'to' argument of type DataType");
     default:
       ONNXRUNTIME_THROW("Unexpected 'to' argument value: ", to_);
   }
