@@ -10,23 +10,23 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-OpTester MakeOpTester() {
-  return OpTester{"ArrayFeatureExtractor", 1, onnxruntime::kMLDomain};
-}
+class ArrayFeatureExtractorTest : public ::testing::Test {
+ protected:
+  OpTester test_{"ArrayFeatureExtractor", 1, onnxruntime::kMLDomain};
+};
 
-TEST(MLOpTest, ArrayFeatureExtractorTest) {
-  auto test = MakeOpTester();
+TEST_F(ArrayFeatureExtractorTest, Basic) {
   const int N = 3;
   const std::vector<float> X = {0.8f, -1.5f, 2.0f, 3.8f, -4.0f, 5.0f,
                                 6.8f, -7.5f, 8.0f, 9.8f, -9.0f, 4.0f,
                                 4.8f, -4.5f, 4.0f, 4.8f, -4.0f, 4.0f};
   const int kCols = 6;
   const vector<int64_t> x_dims = {N, kCols};
-  test.AddInput<float>("X", x_dims, X);
+  test_.AddInput<float>("X", x_dims, X);
 
   const std::vector<int64_t> Y = {1L, 2L, 4L};
   const vector<int64_t> y_dims = {1, 3};
-  test.AddInput<int64_t>("Y", y_dims, Y);
+  test_.AddInput<int64_t>("Y", y_dims, Y);
 
   // prepare expected output
   vector<float> expected_output;
@@ -37,14 +37,12 @@ TEST(MLOpTest, ArrayFeatureExtractorTest) {
     }
   }
   const vector<int64_t> expected_dims{N, gsl::narrow_cast<int64_t>(Y.size())};
-  test.AddOutput<float>("Z", expected_dims, expected_output);
+  test_.AddOutput<float>("Z", expected_dims, expected_output);
 
-  test.Run();
+  test_.Run();
 }
 
-TEST(MLOpTest, ArrayFeatureExtractorHigherDimensionalXTest) {
-  auto test = MakeOpTester();
-
+TEST_F(ArrayFeatureExtractorTest, HigherDimensionalX) {
   const std::vector<int64_t> x_dims{2, 3, 4, 5};
   const int64_t x_size = std::accumulate(
       x_dims.begin(), x_dims.end(), static_cast<int64_t>(1), std::multiplies<>{});
@@ -53,12 +51,12 @@ TEST(MLOpTest, ArrayFeatureExtractorHigherDimensionalXTest) {
     std::iota(v.begin(), v.end(), 0);
     return v;
   }();
-  test.AddInput("X", x_dims, X);
+  test_.AddInput("X", x_dims, X);
 
   const std::vector<int64_t> Y{0, 1, 1, 2};
   const int64_t y_size = gsl::narrow_cast<int64_t>(Y.size());
   const std::vector<int64_t> y_dims{1, y_size};
-  test.AddInput("Y", y_dims, Y);
+  test_.AddInput("Y", y_dims, Y);
 
   // prepare expected output
   const std::vector<int64_t> z_dims = [&x_dims, y_size]() {
@@ -78,37 +76,37 @@ TEST(MLOpTest, ArrayFeatureExtractorHigherDimensionalXTest) {
     }
     return v;
   }();
-  test.AddOutput<int32_t>("Z", z_dims, Z);
+  test_.AddOutput<int32_t>("Z", z_dims, Z);
 
-  test.Run();
+  test_.Run();
 }
 
-TEST(MLOpTest, ArrayFeatureExtractorOneDimensionalXTest) {
-  auto test = MakeOpTester();
-  test.AddInput<int32_t>("X", {1}, {42});
-  test.AddInput<int64_t>("Y", {1, 3}, {0, 0, 0});
-  test.AddOutput("Z", {3}, {42, 42, 42});
-  test.Run();
+TEST_F(ArrayFeatureExtractorTest, OneDimensionalX) {
+  test_.AddInput<int32_t>("X", {1}, {42});
+  test_.AddInput<int64_t>("Y", {1, 3}, {0, 0, 0});
+  test_.AddOutput("Z", {3}, {42, 42, 42});
+  test_.Run();
 }
 
-TEST(MLOpTest, ArrayFeatureExtractorInvalidInputTest) {
-  auto test_empty_x = MakeOpTester();
-  test_empty_x.AddInput<int32_t>("X", {0}, {});
-  test_empty_x.AddInput<int64_t>("Y", {1}, {1});
-  test_empty_x.AddOutput<int32_t>("Z", {0}, {});
-  test_empty_x.Run(OpTester::ExpectResult::kExpectFailure);
+TEST_F(ArrayFeatureExtractorTest, InvalidInputEmptyX) {
+  test_.AddInput<int32_t>("X", {0}, {});
+  test_.AddInput<int64_t>("Y", {1}, {1});
+  test_.AddOutput<int32_t>("Z", {0}, {});
+  test_.Run(OpTester::ExpectResult::kExpectFailure);
+}
 
-  auto test_empty_y = MakeOpTester();
-  test_empty_y.AddInput<int32_t>("X", {1}, {1});
-  test_empty_y.AddInput<int64_t>("Y", {0}, {});
-  test_empty_y.AddOutput<int32_t>("Z", {0}, {});
-  test_empty_y.Run(OpTester::ExpectResult::kExpectFailure);
+TEST_F(ArrayFeatureExtractorTest, InvalidInputEmptyY) {
+  test_.AddInput<int32_t>("X", {1}, {1});
+  test_.AddInput<int64_t>("Y", {0}, {});
+  test_.AddOutput<int32_t>("Z", {0}, {});
+  test_.Run(OpTester::ExpectResult::kExpectFailure);
+}
 
-  auto test_out_of_bounds_y = MakeOpTester();
-  test_out_of_bounds_y.AddInput<int32_t>("X", {2, 2}, {1, 2, 3, 4});
-  test_out_of_bounds_y.AddInput<int64_t>("Y", {1}, {10});
-  test_out_of_bounds_y.AddOutput<int32_t>("Z", {0}, {});
-  test_out_of_bounds_y.Run(OpTester::ExpectResult::kExpectFailure, "index is out of range");
+TEST_F(ArrayFeatureExtractorTest, InvalidInputOutOfBoundsY) {
+  test_.AddInput<int32_t>("X", {2, 2}, {1, 2, 3, 4});
+  test_.AddInput<int64_t>("Y", {1}, {10});
+  test_.AddOutput<int32_t>("Z", {0}, {});
+  test_.Run(OpTester::ExpectResult::kExpectFailure, "index is out of range");
 }
 
 }  // namespace test
