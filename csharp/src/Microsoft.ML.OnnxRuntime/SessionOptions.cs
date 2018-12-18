@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -125,9 +126,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        // Declared, but called only if OS = Windows.
         [DllImport("kernel32.dll")]
         private static extern IntPtr LoadLibrary(string dllToLoad);
 
+        [DllImport("kernel32.dll")]
+        static extern uint GetSystemDirectory([Out] StringBuilder lpBuffer, uint uSize);
         private static bool CheckCudaExecutionProviderDLLs()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -135,14 +139,15 @@ namespace Microsoft.ML.OnnxRuntime
                 foreach (var dll in cudaDelayLoadedLibs)
                 {
                     IntPtr handle = LoadLibrary(dll);
-                    if (handle == IntPtr.Zero)
-                    {
-                        throw new OnnxRuntimeException(
-                            ErrorCode.ExecutionProviderDLLNotFound, 
-                            $"Dll not found: {dll}. CUDA 10.0 is required for GPU execution. " +
-                            $"Verify that the library is available on system path."
-                            );
-                    }
+                    if (handle != IntPtr.Zero)
+                        continue;                    
+                    var sysdir = new StringBuilder(String.Empty, 2048);
+                    GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
+                    throw new OnnxRuntimeException(
+                        ErrorCode.NoSuchFile, 
+                        $"kernel32.LoadLibrary():'{dll}' not found. CUDA 10.0 is required for GPU execution. " +
+                        $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
+                        );               
                 }
             }   
             return true;
