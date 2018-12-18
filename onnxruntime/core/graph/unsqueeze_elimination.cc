@@ -82,6 +82,7 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
         }
       }
     }
+
     removed_nodes.push_back(node.Index());
   }
 
@@ -91,7 +92,7 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
   return Status::OK();
 }

@@ -37,14 +37,21 @@ OS/Compiler Matrix:
 ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
 
 ## Build
-Install cmake-3.11 or better from https://cmake.org/download/.
+1. Checkout the source tree:
+   ```
+   git clone --recursive https://github.com/Microsoft/onnxruntime
+   cd onnxruntime
+   ```
+2. Install cmake-3.11 or better from https://cmake.org/download/.
+3. (optional) Install protobuf 3.6.1 from source code(cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
+4. (optional) Install onnx from source code(cmake/external/onnx)
+    ```
+    export ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
+5. Run './build.sh --config RelWithDebInfo --build\_wheel' for Linux (or './build.bat --config RelWithDebInfo --build\_wheel' for Windows)
 
-Checkout the source tree:
-```
-git clone --recursive https://github.com/Microsoft/onnxruntime
-cd onnxruntime
-./build.sh for Linux (or ./build.bat for Windows)
-```
 The build script runs all unit tests by default.
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
@@ -157,25 +164,27 @@ We've experimental support for Linux ARM builds. Windows on ARM is well tested.
 ### Cross compiling on Linux(FASTER)
 1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
 2. Setup env vars
-```bash
-   export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
-   export CC=arm-linux-gnueabihf-gcc
-   export CXX=arm-linux-gnueabihf-g++
-```
+    ```bash
+       export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
+       export CC=arm-linux-gnueabihf-gcc
+       export CXX=arm-linux-gnueabihf-g++
+    ```
 3. Get a pre-compiled protoc: 
    You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
-4. Save the following content as tool.cmake
-```
-set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR arm)
-set(CMAKE_CXX_COMPILER arm-linux-gnu-c++)
-set(CMAKE_C_COMPILER arm-linux-gnu-gcc)
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-```
-5. append "-DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
+4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
+5. Save the following content as tool.cmake
+    ```
+    set(CMAKE_SYSTEM_NAME Linux)
+    set(CMAKE_SYSTEM_PROCESSOR arm)
+    set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-c++)
+    set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+    ```
+6. Append "-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
+
 
 ### Native compiling on Linux (SLOWER)
 

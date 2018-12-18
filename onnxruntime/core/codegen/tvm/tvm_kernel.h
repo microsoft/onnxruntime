@@ -20,7 +20,7 @@ class TVMKernel : public OpKernel {
  public:
   explicit TVMKernel(const OpKernelInfo& info) : OpKernel(info), tvm_values_(nullptr), dl_tensors_(nullptr), tvm_type_codes_(nullptr) {
     auto& node = info.node();
-    ONNXRUNTIME_ENFORCE(node.NodeType() == Node::Type::Fused);
+    ORT_ENFORCE(node.NodeType() == Node::Type::Fused);
     auto func = node.GetFunctionBody();
     const onnxruntime::Graph& func_body = func->Body();
     //1. compile the onnxruntime Graph to tvm graph. This step is common for all hardware, and provided by onnxruntime framework.
@@ -65,7 +65,7 @@ class TVMKernel : public OpKernel {
       tvm_values_[i].v_handle = &dl_tensors_[i];
       i++;
     }
-    ONNXRUNTIME_ENFORCE(i == n_args_);
+    ORT_ENFORCE(i == n_args_);
   }
 
   virtual ~TVMKernel() {
@@ -102,7 +102,7 @@ class TVMKernel : public OpKernel {
     try {
       evaluate_func_.CallPacked(tvm_args, &rvalue);
     } catch (std::exception& ex) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "TVM run failed:", ex.what());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TVM run failed:", ex.what());
     }
     if (rvalue.type_code() != kNull) {
       return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "TVM return not null");  // TODO: get error code.

@@ -5,7 +5,7 @@
 #include <tvm/runtime/ndarray.h>
 #include "core/codegen/tvm/tvm_kernel.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/computation_capacity.h"
+#include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -23,7 +23,10 @@ tvm::Schedule DefaultTVMScheduleGenerator(const TVMGraph& tvm_graph) {
   return tvm::create_schedule(args);
 }
 
-tvm::runtime::Module BuildStackVMDefaultModule(tvm::Schedule schedule, tvm::BuildConfig config, tvm::Array<tvm::Tensor> tvm_args, std::vector<std::string>& target_func_names) {
+tvm::runtime::Module BuildStackVMDefaultModule(tvm::Schedule schedule,
+                                               tvm::BuildConfig config,
+                                               tvm::Array<tvm::Tensor> tvm_args,
+                                               std::vector<std::string>& target_func_names) {
   auto target = tvm::target::stackvm();
   std::string func_name = "func";
   auto args = tvm::Array<tvm::Tensor>(tvm_args);
@@ -70,7 +73,7 @@ class UnionSet {
   std::vector<int> farthers_;
 };
 
-void FuseAdd(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<ComputationCapacity>>& capacities) {
+void FuseAdd(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<ComputeCapability>>& capacities) {
   std::vector<onnxruntime::NodeIndex> add_nodes;
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Add") {
@@ -82,7 +85,7 @@ void FuseAdd(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<
   for (int i = 0; i < add_nodes.size(); ++i) {
     auto node = graph.GetNode(add_nodes[i]);
     for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-      auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it)->Index());
+      auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it).Index());
       if (index_it != add_nodes.end()) {
         set.merge(i, static_cast<int>(index_it - add_nodes.begin()));
       }
@@ -136,8 +139,10 @@ void FuseAdd(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<
       sub_graph->SetMetaDef(meta_def);
       //TODO:set fuse kernel func;
       capacities.push_back(
-          std::make_unique<ComputationCapacity>(std::move(sub_graph),
-                                                [](const OpKernelInfo& info) -> OpKernel* { return new TVMFuseAddKernels<DefaultTVMScheduleGenerator, BuildStackVMDefaultModule>(info); }));
+          std::make_unique<ComputeCapability>(
+            std::move(sub_graph),
+            [](const OpKernelInfo& info) -> OpKernel* {
+              return new TVMFuseAddKernels<DefaultTVMScheduleGenerator, BuildStackVMDefaultModule>(info); }));
     }
   }
 }
@@ -152,7 +157,7 @@ static void RunSession(InferenceSession& session_object,
                        std::vector<double>& values_y) {
   // prepare inputs
   MLValue ml_value;
-  CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_x, values_x, &ml_value);
+  CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X1", ml_value));
 

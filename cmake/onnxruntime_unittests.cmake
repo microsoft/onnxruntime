@@ -43,8 +43,8 @@ function(AddTest)
       endif()
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
-  else()    
-    target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})    
+  else()
+    target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
   endif()
 
   set(TEST_ARGS)
@@ -304,6 +304,15 @@ else()
   set(test_data_target onnxruntime_test_ir)
 endif()  # SingleUnitTestProject
 
+# standalone test for inference session without environment
+# the normal test executables set up a default runtime environment, which we don't want here
+AddTest(
+  TARGET onnxruntime_test_framework_session_without_environment_standalone
+  SOURCES "${TEST_SRC_DIR}/framework/inference_session_without_environment/inference_session_without_environment_standalone_test.cc"
+  LIBS ${onnxruntime_test_framework_libs}
+  DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
+)
+
 #
 # onnxruntime_ir_graph test data
 #
@@ -428,7 +437,7 @@ if (onnxruntime_USE_MKLML)
   add_custom_command(
     TARGET ${test_data_target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-    ${MKLDNN_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLDNN_LIB_DIR}/${IOMP5MD_SHARED_LIB}
+    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
     $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()

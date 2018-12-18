@@ -88,7 +88,7 @@ class SparseTensorSample final {
 extern const char kTestDomain[] = "ai.onnx";
 extern const char kSparseTensorName[] = "SparseTensorSample";
 
-ONNXRUNTIME_REGISTER_OPAQUE_TYPE(SparseTensorSample, kTestDomain, kSparseTensorName);
+ORT_REGISTER_OPAQUE_TYPE(SparseTensorSample, kTestDomain, kSparseTensorName);
 
 class OpaqueTypeTests : public testing::Test {
  public:
@@ -113,7 +113,7 @@ class ConstructSparseTensor final : public OpKernel {
   ConstructSparseTensor(const OpKernelInfo& info) : OpKernel{info} {}
 
   Status Compute(OpKernelContext* ctx) const override {
-    ONNXRUNTIME_ENFORCE(ctx->InputCount() == 3, "Expecting 3 inputs");
+    ORT_ENFORCE(ctx->InputCount() == 3, "Expecting 3 inputs");
 
     const Tensor& values_tensor = *ctx->Input<Tensor>(0);
     const Tensor& indicies_tensor = *ctx->Input<Tensor>(1);
@@ -123,13 +123,13 @@ class ConstructSparseTensor final : public OpKernel {
     // values
     const TensorShape& val_shape = values_tensor.Shape();
     const TensorShape& ind_shape = indicies_tensor.Shape();
-    ONNXRUNTIME_ENFORCE(val_shape.NumDimensions() == 1, "Expecting vectors");
-    ONNXRUNTIME_ENFORCE(val_shape.NumDimensions() == ind_shape.NumDimensions());
+    ORT_ENFORCE(val_shape.NumDimensions() == 1, "Expecting vectors");
+    ORT_ENFORCE(val_shape.NumDimensions() == ind_shape.NumDimensions());
 
     // Copy data. With some effort we could hold shallow copies of the input Tensors
     // but I will leave this for now.
     SparseTensorSample* output_sparse_tensor = ctx->Output<SparseTensorSample>(0);
-    ONNXRUNTIME_ENFORCE(output_sparse_tensor != nullptr);
+    ORT_ENFORCE(output_sparse_tensor != nullptr);
     output_sparse_tensor->Values().assign(values_tensor.Data<int64_t>(),
                                           values_tensor.Data<int64_t>() + val_shape[0]);
     output_sparse_tensor->Indicies().assign(indicies_tensor.Data<int64_t>(),
@@ -152,14 +152,14 @@ class FetchSparseTensorShape final : public OpKernel {
   FetchSparseTensorShape(const OpKernelInfo& info) : OpKernel{info} {}
 
   Status Compute(OpKernelContext* ctx) const override {
-    ONNXRUNTIME_ENFORCE(ctx->InputCount() == 1, "Expecting a single SparseTensorSample input");
+    ORT_ENFORCE(ctx->InputCount() == 1, "Expecting a single SparseTensorSample input");
     const SparseTensorSample* sparse_input = ctx->Input<SparseTensorSample>(0);
     // Always a single dimension of 1 bc we are storing a single number
     const int64_t dims[1] = {1};
     TensorShape output_shape(dims, 1);
     Tensor* sparse_shape = ctx->Output(0, output_shape);
     int64_t* shape_data = sparse_shape->MutableData<int64_t>();
-    ONNXRUNTIME_ENFORCE(shape_data != nullptr);
+    ORT_ENFORCE(shape_data != nullptr);
     *shape_data = sparse_input->Size();
 
     return Status::OK();
@@ -365,17 +365,17 @@ TEST_F(OpaqueTypeTests, RunModel) {
   std::vector<int64_t> values = {1, 2};
   // prepare inputs
   MLValue ml_values;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), val_dims, values, &ml_values);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), val_dims, values, &ml_values);
 
   std::vector<int64_t> ind_dims = {2};
   std::vector<int64_t> indicies = {1, 4};
   MLValue ml_indicies;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), ind_dims, indicies, &ml_indicies);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), ind_dims, indicies, &ml_indicies);
 
   std::vector<int64_t> shape_dims = {1};
   std::vector<int64_t> shape = {5};
   MLValue ml_shape;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), shape_dims, shape, &ml_shape);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape_dims, shape, &ml_shape);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair("sparse_values", ml_values));

@@ -19,7 +19,7 @@ namespace onnxruntime {
 namespace perftest {
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
 
   // warm up
@@ -31,13 +31,13 @@ Status PerformanceRunner::Run() {
   std::unique_ptr<utils::ICPUUsage> p_ICPUUsage = utils::CreateICPUUsage();
   switch (performance_test_config_.run_config.test_mode) {
     case TestMode::kFixDurationMode:
-      ONNXRUNTIME_RETURN_IF_ERROR(RunFixDuration());
+      ORT_RETURN_IF_ERROR(RunFixDuration());
       break;
     case TestMode::KFixRepeatedTimesMode:
-      ONNXRUNTIME_RETURN_IF_ERROR(RunRepeatedTimes());
+      ORT_RETURN_IF_ERROR(RunRepeatedTimes());
       break;
     default:
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
   }
   performance_result_.average_CPU_usage = p_ICPUUsage->GetUsage();
   performance_result_.peak_workingset_size = utils::GetPeakWorkingSetSize();
@@ -47,7 +47,7 @@ Status PerformanceRunner::Run() {
 
   std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
             << "Total iterations:" << performance_result_.time_costs.size() << std::endl
-            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() << std::endl;
+            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
   return Status::OK();
 }
 

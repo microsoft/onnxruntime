@@ -5,9 +5,9 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "Eigen/src/Core/arch/CUDA/Half.h"
-#include "core/util/math_cpuonly.h"
 
 #if defined(USE_MLAS) && defined(_M_AMD64)
 #include "core/mlas/inc/mlas.h"
@@ -50,11 +50,11 @@ inline void CastData<MLFloat16, float>(const Tensor* in, Tensor* out, const Tens
 template <typename SrcType,
           typename DstType>
 inline void CastFloat16Data(const Tensor* in, Tensor* out, const TensorShape& shape, const AllocatorPtr& allocator) {
-  ONNXRUNTIME_ENFORCE(allocator != nullptr);
+  ORT_ENFORCE(allocator != nullptr);
   const int64_t len = shape.Size();
-  ONNXRUNTIME_ENFORCE(len > 0);
+  ORT_ENFORCE(len > 0);
   void* buffer = allocator->AllocArray(sizeof(float), len);
-  ONNXRUNTIME_ENFORCE(buffer);
+  ORT_ENFORCE(buffer);
   Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, buffer, allocator->Info(), nullptr);
   if (std::is_same<SrcType, MLFloat16>::value) {
     CastData<MLFloat16, float>(in, &tmp_tensor, shape);  // first cast to float
@@ -99,7 +99,7 @@ class Cast final : public OpKernel {
   Cast(const OpKernelInfo& info) : OpKernel(info) {
     int64_t to;
     Status status = info.GetAttr("to", &to);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), "Attribute to is not set.");
+    ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
     to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
   }
 
@@ -116,7 +116,7 @@ class Cast final : public OpKernel {
             typename DstType>
   Status CastFloat16Data(const Tensor* in, Tensor* out, const TensorShape& shape, OpKernelContext* context) const {
     AllocatorPtr allocator;
-    ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     ::onnxruntime::CastFloat16Data<SrcType, DstType>(in, out, shape, allocator);
     return Status::OK();
   }

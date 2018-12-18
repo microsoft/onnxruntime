@@ -18,17 +18,17 @@ class DeepCpuLstmOp final : public OpKernel {
   DeepCpuLstmOp(const OpKernelInfo& info)
       : OpKernel(info), clip_(info.GetAttrOrDefault<float>("clip", std::numeric_limits<float>::max())) {
     std::string direction;
-    ONNXRUNTIME_ENFORCE(info.GetAttr("direction", &direction).IsOK());
+    ORT_ENFORCE(info.GetAttr("direction", &direction).IsOK());
 
     int64_t int64_value;
-    ONNXRUNTIME_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
+    ORT_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
     hidden_size_ = gsl::narrow<int>(int64_value);
 
     // optional attributes
     std::vector<std::string> activation_func_names = info.GetAttrsOrDefault<std::string>("activations");
     std::vector<float> activation_func_alphas = info.GetAttrsOrDefault<float>("activation_alpha");
     std::vector<float> activation_func_betas = info.GetAttrsOrDefault<float>("activation_beta");
-    ONNXRUNTIME_ENFORCE(clip_ > 0.f);
+    ORT_ENFORCE(clip_ > 0.f);
 
     if (info.GetAttr("input_forget", &int64_value).IsOK())
       input_forget_ = int64_value != 0;
@@ -44,7 +44,7 @@ class DeepCpuLstmOp final : public OpKernel {
       }
     }
 
-    ONNXRUNTIME_ENFORCE(activation_func_names.size() == num_directions_ * 3);
+    ORT_ENFORCE(activation_func_names.size() == num_directions_ * 3);
 
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,

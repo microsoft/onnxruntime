@@ -13,43 +13,43 @@ using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
-ONNXRuntimeTypeInfo::ONNXRuntimeTypeInfo(ONNXRuntimeType type1, void* data1) noexcept : type(type1), data(data1) {
+OrtTypeInfo::OrtTypeInfo(ONNXType type1, void* data1) noexcept : type(type1), data(data1) {
 }
 
-ONNXRuntimeTypeInfo::~ONNXRuntimeTypeInfo() {
+OrtTypeInfo::~OrtTypeInfo() {
   assert(ref_count == 0);
-  ONNXRuntimeReleaseObject(data);
+  OrtReleaseObject(data);
 }
 
-ONNXRUNTIME_API(const struct ONNXRuntimeTensorTypeAndShapeInfo*, ONNXRuntimeCastTypeInfoToTensorInfo, _In_ struct ONNXRuntimeTypeInfo* input) {
-  return input->type == ONNXRUNTIME_TYPE_TENSOR ? reinterpret_cast<const struct ONNXRuntimeTensorTypeAndShapeInfo*>(input->data) : nullptr;
+ORT_API(const struct OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ struct OrtTypeInfo* input) {
+  return input->type == ONNX_TYPE_TENSOR ? reinterpret_cast<const struct OrtTensorTypeAndShapeInfo*>(input->data) : nullptr;
 }
 
-ONNXStatus* GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTensorTypeAndShapeInfo** out);
+OrtStatus* GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out);
 
-ONNXStatus* ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out) {
+OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out) {
   if (input == nullptr) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_UNKNOWN, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_UNKNOWN, nullptr);
     return nullptr;
   }
   if (input == DataTypeImpl::GetType<Tensor>()) {
-    ONNXRuntimeTensorTypeAndShapeInfo* info = nullptr;
+    OrtTensorTypeAndShapeInfo* info = nullptr;
     if (tensor_data_type != nullptr) {
-      ONNXStatus* st = GetTensorShapeAndType(shape, tensor_data_type, &info);
+      OrtStatus* st = GetTensorShapeAndType(shape, tensor_data_type, &info);
       if (st != nullptr) return st;
     }
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_TENSOR, info);
+    *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
     return nullptr;
   }
   if (input == DataTypeImpl::GetType<onnxruntime::MapStringToString>() || input == DataTypeImpl::GetType<onnxruntime::MapStringToInt64>() || input == DataTypeImpl::GetType<onnxruntime::MapStringToFloat>() || input == DataTypeImpl::GetType<onnxruntime::MapStringToDouble>() || input == DataTypeImpl::GetType<onnxruntime::MapInt64ToString>() || input == DataTypeImpl::GetType<onnxruntime::MapInt64ToInt64>() || input == DataTypeImpl::GetType<onnxruntime::MapInt64ToFloat>() || input == DataTypeImpl::GetType<onnxruntime::MapInt64ToDouble>()) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_MAP, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
     return nullptr;
   }
   if (input == DataTypeImpl::GetType<onnxruntime::VectorString>() || input == DataTypeImpl::GetType<onnxruntime::VectorFloat>() || input == DataTypeImpl::GetType<onnxruntime::VectorInt64>() || input == DataTypeImpl::GetType<onnxruntime::VectorDouble>() || input == DataTypeImpl::GetType<onnxruntime::VectorMapStringToFloat>() || input == DataTypeImpl::GetType<onnxruntime::VectorMapInt64ToFloat>()) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_SEQUENCE, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
     return nullptr;
   }
-  return CreateONNXStatus(ONNXRUNTIME_NOT_IMPLEMENTED, "not implemented");
+  return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
 
 const DataTypeImpl* ElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
@@ -81,16 +81,16 @@ const DataTypeImpl* ElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType ty
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       return DataTypeImpl::GetType<MLFloat16>();
     default:
-      ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, ":tensor type ", type, " is not supported");
+      ORT_NOT_IMPLEMENTED(__FUNCTION__, ":tensor type ", type, " is not supported");
   }
 }
 
-ONNXStatus* ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnx::TypeProto* input, ONNXRuntimeTypeInfo** out) {
+OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnx::TypeProto* input, OrtTypeInfo** out) {
   if (input->has_tensor_type()) {
     const ::onnx::TypeProto_Tensor& onnx_tensor_info = input->tensor_type();
     const DataTypeImpl* type = ElementTypeFromProto(onnx_tensor_info.elem_type());
-    ONNXStatus* st;
-    ONNXRuntimeTensorTypeAndShapeInfo* info = nullptr;
+    OrtStatus* st;
+    OrtTensorTypeAndShapeInfo* info = nullptr;
     if (onnx_tensor_info.has_shape()) {
       const ::onnx::TensorShapeProto& s = onnx_tensor_info.shape();
       std::vector<int64_t> shape_data(s.dim_size());
@@ -104,24 +104,24 @@ ONNXStatus* ONNXRuntimeTypeInfo::FromDataTypeImpl(const onnx::TypeProto* input, 
     }
 
     if (st != nullptr) return st;
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_TENSOR, info);
+    *out = new OrtTypeInfo(ONNX_TYPE_TENSOR, info);
     return nullptr;
   }
   if (input->has_sequence_type()) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_SEQUENCE, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
     return nullptr;
   }
   if (input->has_map_type()) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_MAP, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
     return nullptr;
   }
   if (input->has_opaque_type()) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_OPAQUE, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE, nullptr);
     return nullptr;
   }
   if (input->has_sparse_tensor_type()) {
-    *out = new ONNXRuntimeTypeInfo(ONNXRUNTIME_TYPE_SPARSETENSOR, nullptr);
+    *out = new OrtTypeInfo(ONNX_TYPE_SPARSETENSOR, nullptr);
     return nullptr;
   }
-  return CreateONNXStatus(ONNXRUNTIME_NOT_IMPLEMENTED, "not implemented");
+  return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }

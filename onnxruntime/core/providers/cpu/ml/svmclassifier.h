@@ -17,7 +17,7 @@ class SVMCommon {
  protected:
   SVMCommon(const OpKernelInfo& info) : kernel_type_(MakeKernel(info.GetAttrOrDefault<std::string>("kernel_type", "LINEAR"))) {
     std::vector<float> kernel_params;
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("kernel_params", kernel_params).IsOK());
+    ORT_ENFORCE(info.GetAttrs<float>("kernel_params", kernel_params).IsOK());
 
     if (kernel_params.size() > 0) {
       gamma_ = kernel_params[0];

@@ -18,10 +18,10 @@ class PadBase {
       else if (mode == "edge")
         mode_ = Mode::Edge;
       else
-        ONNXRUNTIME_THROW("Invalid 'mode' attribute value");
+        ORT_THROW("Invalid 'mode' attribute value");
     }
     if (!info.GetAttrs("pads", pads_).IsOK())
-      ONNXRUNTIME_THROW("Invalid 'pads' attribute value");
+      ORT_THROW("Invalid 'pads' attribute value");
 
     // Separate out any negative pads_ into the slices_ array
     slices_.resize(pads_.size(), 0);

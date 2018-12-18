@@ -869,6 +869,13 @@ TEST(MathOpTest, Scale_Default) {
   test.Run();
 }
 
+TEST(MathOpTest, Erf) {
+  OpTester test("Erf", 9);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<float>("A", dims, {0.5f, 1.0f, 0.7f, 2.0f});
+  test.AddOutput<float>("B", dims, {0.5204999f, 0.8427008f, 0.6778012f, 0.9953223f});
+  test.Run();
+}
 }  // namespace test
 
 }  // namespace onnxruntime

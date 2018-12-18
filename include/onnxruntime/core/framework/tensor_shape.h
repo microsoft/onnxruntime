@@ -28,13 +28,17 @@ class TensorShape : private std::vector<int64_t> {
  public:
   TensorShape() = default;
 
+  TensorShape(const TensorShape& /*other*/) = default;
+  TensorShape& operator=(const TensorShape& /*other*/) = default;
+
+  TensorShape(TensorShape&& /*other*/) = default;
+  TensorShape& operator=(TensorShape&& /*other*/) = default;
+
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
 
   TensorShape(const std::vector<int64_t>& dims);
 
   TensorShape(const std::initializer_list<int64_t>& dims);
-
-  TensorShape(const TensorShape& /*other*/) = default;
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 
@@ -84,13 +88,16 @@ class TensorShape : private std::vector<int64_t> {
 
   /**
      Return the total number of elements up to the specified dimension.
-     @param dimension Return size up to this dimension. Value must be >= 0 and < this.Size().
+     If the dimension interval is empty (dimension == 0), return 1.
+     @param dimension Return size up to this dimension. Value must be between 0 and this->NumDimensions(), inclusive.
   */
   int64_t SizeToDimension(size_t dimension) const;
 
   /**
      Return the total number of elements from the specified dimension to the end of the tensor shape.
-     @param dimension Return size up to this dimension. 0 <= dimension < this.Size().
+     If the dimension interval is empty (dimension == this->NumDimensions()), return 1.
+     @param dimension Return size from this dimension to the end. Value must be between 0 and this->NumDimensions(),
+                      inclusive.
   */
   int64_t SizeFromDimension(size_t dimension) const;
 
@@ -111,7 +118,7 @@ class TensorShape : private std::vector<int64_t> {
 
   /**
      Calculate size between start and end.
-     Assumes start and end are between 0 and dimensions.size(), inclusive, and that
+     Assumes start and end are between 0 and this->NumDimensions(), inclusive, and that
      start < end.
   */
   int64_t SizeHelper(size_t start, size_t end) const;

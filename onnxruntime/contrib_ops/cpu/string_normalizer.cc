@@ -6,6 +6,10 @@
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 
+#ifdef _MSC_VER
+#include <locale.h>
+#endif
+
 #include <codecvt>
 #include <locale>
 #include <functional>
@@ -25,22 +29,83 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 namespace string_normalizer {
 const std::string conv_error("Conversion Error");
 const std::wstring wconv_error(L"Conversion Error");
-// performs tolower/toupper in-place
-inline void ChangeCase(const std::locale& loc, StringNormalizer::CaseAction caseaction,
-                       std::wstring& wstr) {
-  assert(caseaction != StringNormalizer::NONE);
-  if (caseaction == StringNormalizer::LOWER) {
-    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                   [&loc](wchar_t ch) { return std::tolower(ch, loc); });
-  } else {
-    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                   [&loc](wchar_t ch) { return std::toupper(ch, loc); });
+
+// We need to specialize for MS as there is
+// a std::locale creation bug that affects different
+// environments in a different way
+#ifdef _MSC_VER
+
+class Locale {
+ public:
+  explicit Locale(const std::string& name)
+      : loc_(nullptr) {
+    loc_ = _create_locale(LC_CTYPE, name.c_str());
+    if (loc_ == nullptr) {
+      ORT_THROW("Failed to construct locale with name:",
+                        name, ":", ":Please, install necessary language-pack-XX and configure locales");
+    }
   }
-}
+
+  ~Locale() {
+    if (loc_ != nullptr) {
+      _free_locale(loc_);
+    }
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
+
+  void ChangeCase(StringNormalizer::CaseAction caseaction,
+                  std::wstring& wstr) const {
+    assert(caseaction != StringNormalizer::NONE);
+    if (caseaction == StringNormalizer::LOWER) {
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                     [this](wchar_t ch) { return ::_towlower_l(ch, loc_); });
+    } else {
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                     [this](wchar_t ch) { return ::_towupper_l(ch, loc_); });
+    }
+  }
+
+ private:
+  _locale_t loc_;
+};
+
+const std::string default_locale("en-US");
+
+#else
+class Locale {
+ public:
+  explicit Locale(const std::string& name) try : loc_(name) {
+  } catch (const std::runtime_error& e) {
+    ORT_THROW("Failed to construct locale with name:",
+                      name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
+
+  void ChangeCase(StringNormalizer::CaseAction caseaction,
+                  std::wstring& wstr) const {
+    assert(caseaction != StringNormalizer::NONE);
+    if (caseaction == StringNormalizer::LOWER) {
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                     [this](wchar_t ch) { return std::tolower(ch, loc_); });
+    } else {
+      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                     [this](wchar_t ch) { return std::toupper(ch, loc_); });
+    }
+  }
+
+ private:
+  std::locale loc_;
+};
+
+const std::string default_locale("en_US.UTF-8");
+
+#endif
 
 template <class ForwardIter>
 Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
-                      const std::locale& loc,
+                      const Locale& loc,
                       std::wstring_convert<std::codecvt_utf8<wchar_t>>& converter,
                       size_t N, size_t C,
                       StringNormalizer::CaseAction caseaction) {
@@ -75,7 +140,7 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
                       "Input contains invalid utf8 chars at: " + static_cast<const std::string&>(s));
       }
       // In place transform
-      ChangeCase(loc, caseaction, wstr);
+      loc.ChangeCase(caseaction, wstr);
       new (output_data + output_idx) std::string(converter.to_bytes(wstr));
     } else {
       assert(caseaction == StringNormalizer::NONE);
@@ -87,16 +152,6 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
   }
   return Status::OK();
 }
-
-inline std::locale GetLocale(const std::string& locale_name) {
-  try {
-    std::locale result(locale_name);
-    return result;
-  } catch (const std::runtime_error& e) {
-    ONNXRUNTIME_THROW("Failed to construct locale with name:",
-                      locale_name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
-  }
-}
 }  // namespace string_normalizer
 
 using namespace string_normalizer;
@@ -107,12 +162,12 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
                                                                compare_caseaction_(NONE) {
   int64_t iscasesensitive = 0;
   Status status = info.GetAttr("is_case_sensitive", &iscasesensitive);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
   is_case_sensitive_ = iscasesensitive != 0;
 
   std::string casechangeaction;
   status = info.GetAttr("casechangeaction", &casechangeaction);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute caseaction is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute caseaction is not set");
   if (casechangeaction == "LOWER") {
     casechangeaction_ = LOWER;
   } else if (casechangeaction == "UPPER") {
@@ -120,7 +175,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
   } else if (casechangeaction == "NONE") {
     casechangeaction_ = NONE;
   } else {
-    ONNXRUNTIME_ENFORCE(false, "attribute casechangeaction has invalid value");
+    ORT_ENFORCE(false, "attribute casechangeaction has invalid value");
   }
 
   if (!is_case_sensitive_) {
@@ -128,22 +183,22 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
     compare_caseaction_ = (casechangeaction_ == UPPER) ? UPPER : LOWER;
   }
 
-  locale_name_ = info.GetAttrOrDefault("locale", std::string("en_US.UTF-8"));
-  std::locale locale = GetLocale(locale_name_);
+  locale_name_ = info.GetAttrOrDefault("locale", default_locale);
+  Locale locale(locale_name_);
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
 
   std::vector<std::string> swords = info.GetAttrsOrDefault<std::string>("stopwords");
   for (const auto& sw : swords) {
-    ONNXRUNTIME_ENFORCE(!sw.empty(), "Empty stopwords not allowed");
+    ORT_ENFORCE(!sw.empty(), "Empty stopwords not allowed");
     if (is_case_sensitive_) {
       auto p = stopwords_.insert(sw);
-      ONNXRUNTIME_ENFORCE(p.second, "Duplicate stopwords not allowed");
+      ORT_ENFORCE(p.second, "Duplicate stopwords not allowed");
     } else {
       std::wstring wstr = converter.from_bytes(sw);
-      ONNXRUNTIME_ENFORCE(wstr != wconv_error, "Stopword contains invalid utf8 chars");
-      ChangeCase(locale, compare_caseaction_, wstr);
+      ORT_ENFORCE(wstr != wconv_error, "Stopword contains invalid utf8 chars");
+      locale.ChangeCase(compare_caseaction_, wstr);
       auto p = wstopwords_.insert(wstr);
-      ONNXRUNTIME_ENFORCE(p.second, "Duplicate stopwords not allowed");
+      ORT_ENFORCE(p.second, "Duplicate stopwords not allowed");
     }
   }
 }
@@ -152,6 +207,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   using namespace string_normalizer;
 
   auto X = ctx->Input<Tensor>(0);
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   auto& input_dims = X->Shape().GetDims();
 
   size_t N = 0;
@@ -175,7 +231,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   }
 
   Status status;
-  std::locale locale = GetLocale(locale_name_);
+  Locale locale(locale_name_);
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
   auto const input_data = X->template Data<std::string>();
   using StrRef = std::reference_wrapper<const std::string>;
@@ -216,7 +272,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
           return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                         "Input contains invalid utf8 chars at: " + s);
         }
-        ChangeCase(locale, compare_caseaction_, wstr);
+        locale.ChangeCase(compare_caseaction_, wstr);
         if (0 == wstopwords_.count(wstr)) {
           if (casechangeaction_ == NONE) {
             filtered_orignal_strings.push_back(std::cref(s));

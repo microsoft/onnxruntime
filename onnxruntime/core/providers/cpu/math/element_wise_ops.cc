@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 
@@ -311,6 +312,12 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Scale<float>);
 
+ONNX_CPU_OPERATOR_KERNEL(
+    Erf,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Erf<float>);
+
 template <typename T>
 Status Add<T>::Compute(OpKernelContext* context) const {
   return BroadcastTwo<T, T>(
@@ -432,7 +439,7 @@ Status Log<float>::Compute(OpKernelContext* ctx) const {
 template <>
 Status Sum_6<float>::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
-  ONNXRUNTIME_ENFORCE(input_count >= 1, "Must have 1 or more inputs");
+  ORT_ENFORCE(input_count >= 1, "Must have 1 or more inputs");
   auto& data_0 = *ctx->Input<Tensor>(0);
   auto& shape = data_0.Shape();
   auto sum = EigenMap<float>(*ctx->Output(0, shape));
@@ -441,12 +448,12 @@ Status Sum_6<float>::Compute(OpKernelContext* ctx) const {
     sum = EigenMap<float>(data_0);
   } else {
     auto& data_1 = *ctx->Input<Tensor>(1);
-    ONNXRUNTIME_ENFORCE(data_1.Shape() == shape, "All inputs must have the same shape");
+    ORT_ENFORCE(data_1.Shape() == shape, "All inputs must have the same shape");
 
     sum = EigenMap<float>(data_0) + EigenMap<float>(data_1);
     for (int index = 2; index < input_count; index++) {
       auto& data_n = *ctx->Input<Tensor>(index);
-      ONNXRUNTIME_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
+      ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
       sum += EigenMap<float>(data_n);
     }
   }
@@ -466,7 +473,7 @@ Status Sum_8<float>::Compute(OpKernelContext* context) const {
 template <>
 Status Min_6<float>::Compute(OpKernelContext* ctx) const {
   auto inputCount = Node().InputArgCount().front();
-  ONNXRUNTIME_ENFORCE(inputCount >= 1, "Must have 1 or more inputs");
+  ORT_ENFORCE(inputCount >= 1, "Must have 1 or more inputs");
   auto& data_0 = *ctx->Input<Tensor>(0);
   auto& shape = data_0.Shape();
   auto min = EigenMap<float>(*ctx->Output(0, shape));
@@ -474,7 +481,7 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
   min = EigenMap<float>(data_0);
   for (int index = 1; index < inputCount; index++) {
     auto& data_n = *ctx->Input<Tensor>(index);
-    ONNXRUNTIME_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
+    ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
     min = min.array().min(EigenMap<float>(data_n).array());
   }
 
@@ -493,7 +500,7 @@ Status Min_8<float>::Compute(OpKernelContext* context) const {
 template <>
 Status Max_6<float>::Compute(OpKernelContext* ctx) const {
   auto inputCount = Node().InputArgCount().front();
-  ONNXRUNTIME_ENFORCE(inputCount >= 1, "Must have 1 or more inputs");
+  ORT_ENFORCE(inputCount >= 1, "Must have 1 or more inputs");
   auto& data_0 = *ctx->Input<Tensor>(0);
   auto& shape = data_0.Shape();
   auto max = EigenMap<float>(*ctx->Output(0, shape));
@@ -501,7 +508,7 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
   max = EigenMap<float>(data_0);
   for (int index = 1; index < inputCount; index++) {
     auto& data_n = *ctx->Input<Tensor>(index);
-    ONNXRUNTIME_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
+    ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
     max = max.array().max(EigenMap<float>(data_n).array());
   }
 
@@ -612,7 +619,7 @@ Status Greater<T>::Compute(OpKernelContext* context) const {
 template <>
 Status Mean_6<float>::Compute(OpKernelContext* ctx) const {
   auto inputCount = Node().InputArgCount().front();
-  ONNXRUNTIME_ENFORCE(inputCount >= 1, "Must have 1 or more inputs");
+  ORT_ENFORCE(inputCount >= 1, "Must have 1 or more inputs");
   auto& data_0 = *ctx->Input<Tensor>(0);
   auto& shape = data_0.Shape();
   auto mean = EigenMap<float>(*ctx->Output(0, shape));
@@ -621,12 +628,12 @@ Status Mean_6<float>::Compute(OpKernelContext* ctx) const {
     mean = EigenMap<float>(data_0);
   } else {
     auto& data_1 = *ctx->Input<Tensor>(1);
-    ONNXRUNTIME_ENFORCE(data_1.Shape() == shape, "All inputs must have the same shape");
+    ORT_ENFORCE(data_1.Shape() == shape, "All inputs must have the same shape");
 
     mean = EigenMap<float>(data_0) + EigenMap<float>(data_1);
     for (int index = 2; index < inputCount; index++) {
       auto& data_n = *ctx->Input<Tensor>(index);
-      ONNXRUNTIME_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
+      ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
       mean += EigenMap<float>(data_n);
     }
   }
@@ -837,7 +844,7 @@ struct TBroadcasterExpand {
 template <typename T>
 Status Expand_8<T>::Compute(OpKernelContext* context) const {
   auto& tensor_shape = *context->Input<Tensor>(1);
-  ONNXRUNTIME_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
+  ORT_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
   // Turn the shape tensor data into an actual shape
   const int64_t* p_shape = tensor_shape.template Data<int64_t>();
@@ -871,6 +878,18 @@ Status Scale<float>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
   EigenMap<float>(Y) = scale_ * EigenMap<float>(X);
+  return Status::OK();
+}
+
+template <>
+Status Erf<float>::Compute(OpKernelContext* context) const {
+  auto X_ptr = context->Input<Tensor>(0);
+  ORT_ENFORCE(X_ptr != nullptr);
+  auto& X = *X_ptr;
+  auto& Y = *context->Output(0, X.Shape());
+
+  EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
+
   return Status::OK();
 }
 

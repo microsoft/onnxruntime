@@ -89,7 +89,7 @@ template <>
 Status Transpose<float>::Compute(OpKernelContext* ctx) const {
   // Get input and output:
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& X = *input_tensor_ptr;
   const TensorShape& input_shape = X.Shape();
   const std::vector<int64_t>& input_dims = input_shape.GetDims();

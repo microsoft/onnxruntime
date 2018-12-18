@@ -51,13 +51,13 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   if (has_axis_) {
     // if an axis was specified, ensure the scale and zero point are compatible
-    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 1 && scale_shape.Size() == broadcastDim, "x_scale must be 1D tensor with size ", broadcastDim);
-    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 1 && zero_point_shape.Size() == broadcastDim, "x_zero_point must be 1D tensor with size ", broadcastDim);
+    ORT_ENFORCE(scale_shape.NumDimensions() == 1 && scale_shape.Size() == broadcastDim, "x_scale must be 1D tensor with size ", broadcastDim);
+    ORT_ENFORCE(zero_point_shape.NumDimensions() == 1 && zero_point_shape.Size() == broadcastDim, "x_zero_point must be 1D tensor with size ", broadcastDim);
     stride = 1;
   } else {
     // if no axis, enforce that scale and zero point are scalars
-    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 0, "x_scale must be a scalar if no axis is provided");
-    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 0, "x_zero_point must be a scalar if no axis is provided");
+    ORT_ENFORCE(scale_shape.NumDimensions() == 0, "x_scale must be a scalar if no axis is provided");
+    ORT_ENFORCE(zero_point_shape.NumDimensions() == 0, "x_zero_point must be a scalar if no axis is provided");
   }
 
   size_t N = x_shape.SizeToDimension(axis);
@@ -125,13 +125,13 @@ Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
 
   if (has_axis_) {
     // if an axis was specified, ensure the scale and zero point are compatible
-    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 1 && scale_shape.Size() == broadcastDim, "x_scale must be 1D tensor with size ", broadcastDim);
-    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 1 && zero_point_shape.Size() == broadcastDim, "x_zero_point must be 1D tensor with size ", broadcastDim);
+    ORT_ENFORCE(scale_shape.NumDimensions() == 1 && scale_shape.Size() == broadcastDim, "x_scale must be 1D tensor with size ", broadcastDim);
+    ORT_ENFORCE(zero_point_shape.NumDimensions() == 1 && zero_point_shape.Size() == broadcastDim, "x_zero_point must be 1D tensor with size ", broadcastDim);
     stride = 1;
   } else {
     // if no axis, enforce that scale and zero point are scalars
-    ONNXRUNTIME_ENFORCE(scale_shape.NumDimensions() == 0, "x_scale must be a scalar if no axis is provided");
-    ONNXRUNTIME_ENFORCE(zero_point_shape.NumDimensions() == 0, "x_zero_point must be a scalar if no axis is provided");
+    ORT_ENFORCE(scale_shape.NumDimensions() == 0, "x_scale must be a scalar if no axis is provided");
+    ORT_ENFORCE(zero_point_shape.NumDimensions() == 0, "x_zero_point must be a scalar if no axis is provided");
   }
 
   size_t N = x_shape.SizeToDimension(axis);
@@ -146,7 +146,7 @@ Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
     const uint8_t* current_zero_point = zero_point;
 
     for (size_t bd = 0; bd < static_cast<size_t>(broadcastDim); bd++) {
-      auto zp = static_cast<const float>(*current_zero_point);
+      float zp = *current_zero_point;
       auto sc = *current_scale;
 
       for (size_t bs = 0; bs < block_size; bs++) {

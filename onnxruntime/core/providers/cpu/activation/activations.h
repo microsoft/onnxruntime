@@ -90,7 +90,7 @@ class ParametricSoftplus final : public OpKernel {
 };
 
 template <typename T>
-class Relu : public OpKernel {
+class Relu final : public OpKernel {
  public:
   Relu(const OpKernelInfo& info) : OpKernel(info) {}
 
@@ -157,6 +157,9 @@ class Sigmoid final : public OpKernel {
   }
 };
 
+template <>
+Status Sigmoid<float>::Compute(OpKernelContext* context) const;
+
 template <typename T>
 class Softsign final : public OpKernel {
  public:
@@ -183,6 +186,9 @@ class Tanh final : public OpKernel {
     return Status::OK();
   }
 };
+
+template <>
+Status Tanh<float>::Compute(OpKernelContext* context) const;
 
 template <typename T>
 class ThresholdedRelu final : public OpKernel {

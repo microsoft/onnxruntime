@@ -86,9 +86,9 @@ const std::vector<MLDataType> castOpTypeConstraints{
         CastToStringData<in_type>(X, Y, shape, context);                                                                           \
         break;                                                                                                                     \
       case TensorProto_DataType_UNDEFINED:                                                                                         \
-        ONNXRUNTIME_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/                                          \
+        ORT_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/                                          \
       default:                                                                                                                     \
-        ONNXRUNTIME_THROW("Unexpected 'to' argument value: ", to_);                                                                \
+        ORT_THROW("Unexpected 'to' argument value: ", to_);                                                                \
     }                                                                                                                              \
     return Status::OK();                                                                                                           \
   }
@@ -166,9 +166,9 @@ Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
       st = CastFloat16Data<MLFloat16, int8_t>(X, Y, shape, context);
       break;
     case TensorProto_DataType_STRING:
-      ONNXRUNTIME_THROW("Casting to and from strings is not supported yet."); /*break;*/
+      ORT_THROW("Casting to and from strings is not supported yet."); /*break;*/
     case TensorProto_DataType_UNDEFINED:
-      ONNXRUNTIME_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/
+      ORT_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/
     default:
       ONNXRUNTIME_THROW("Unexpected 'to' argument value: ", to_);
   }
@@ -223,7 +223,7 @@ Status Cast<std::string>::Compute(OpKernelContext* context) const {
     case TensorProto_DataType_UNDEFINED:
       ONNXRUNTIME_THROW("Cast op must have 'to' argument of type DataType");
     default:
-      ONNXRUNTIME_THROW("Unexpected 'to' argument value: ", to_);
+      ORT_THROW("Unexpected 'to' argument value: ", to_);
   }
   return st;
 }

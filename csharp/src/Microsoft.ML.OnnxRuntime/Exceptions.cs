@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
         NotImplemented = 9,
         InvalidGraph = 10,
         ShapeInferenceNotRegistered = 11,
-        RequirementNotRegistered = 12
+        RequirementNotRegistered = 12,
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ namespace Microsoft.ML.OnnxRuntime
             { ErrorCode.NotImplemented, "NotImplemented" },
             { ErrorCode.InvalidGraph, "InvalidGraph" },
             { ErrorCode.ShapeInferenceNotRegistered, "ShapeInferenceNotRegistered" },
-            { ErrorCode.RequirementNotRegistered, "RequirementNotRegistered" }
+            { ErrorCode.RequirementNotRegistered, "RequirementNotRegistered" },
         };
 
         internal OnnxRuntimeException(ErrorCode errorCode, string message)

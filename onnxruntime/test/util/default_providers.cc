@@ -5,26 +5,26 @@
 #include "providers.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #define FACTORY_PTR_HOLDER \
-  std::unique_ptr<ONNXRuntimeProviderFactoryInterface*> ptr_holder_(f);
+  std::unique_ptr<OrtProviderFactoryInterface*> ptr_holder_(f);
 
 namespace onnxruntime {
 namespace test {
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  ONNXRuntimeProviderFactoryInterface** f;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCpuExecutionProviderFactory(enable_arena ? 1 : 0, &f));
+  OrtProviderFactoryInterface** f;
+  ORT_THROW_ON_ERROR(OrtCreateCpuExecutionProviderFactory(enable_arena ? 1 : 0, &f));
   FACTORY_PTR_HOLDER;
-  ONNXRuntimeProvider* out;
-  ONNXRUNTIME_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  OrtProvider* out;
+  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
   return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  ONNXRuntimeProviderFactoryInterface** f;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
+  OrtProviderFactoryInterface** f;
+  ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
   FACTORY_PTR_HOLDER;
-  ONNXRuntimeProvider* out;
-  ONNXRUNTIME_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  OrtProvider* out;
+  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
   return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
 #else
   return nullptr;
@@ -33,25 +33,25 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_arena) {
 #ifdef USE_MKLDNN
-  ONNXRuntimeProviderFactoryInterface** f;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_arena ? 1 : 0, &f));
+  OrtProviderFactoryInterface** f;
+  ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(enable_arena ? 1 : 0, &f));
   FACTORY_PTR_HOLDER;
-  ONNXRuntimeProvider* out;
-  ONNXRUNTIME_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  OrtProvider* out;
+  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
   return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
 #else
-  ONNXRUNTIME_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
 #endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 #ifdef USE_NUPHAR
-  ONNXRuntimeProviderFactoryInterface** f;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
+  OrtProviderFactoryInterface** f;
+  ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
   FACTORY_PTR_HOLDER;
-  ONNXRuntimeProvider* out;
-  ONNXRUNTIME_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  OrtProvider* out;
+  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
   return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
 #else
   return nullptr;
@@ -60,11 +60,11 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #ifdef USE_BRAINSLICE
-  ONNXRuntimeProviderFactoryInterface** f;
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
+  OrtProviderFactoryInterface** f;
+  ORT_THROW_ON_ERROR(OrtCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
   FACTORY_PTR_HOLDER;
-  ONNXRuntimeProvider* out;
-  ONNXRUNTIME_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  OrtProvider* out;
+  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
   return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
 #else
   return nullptr;

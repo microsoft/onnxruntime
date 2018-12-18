@@ -19,14 +19,16 @@ struct CPUExecutionProviderInfo {
   CPUExecutionProviderInfo() = default;
 };
 
-using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vector<std::unique_ptr<ComputationCapacity>>&)>;
+using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vector<std::unique_ptr<ComputeCapability>>&)>;
+
 // Logical device representation.
 class CPUExecutionProvider : public IExecutionProvider {
  public:
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({ONNXRuntimeMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {
+          return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
 #ifdef USE_JEMALLOC
-    ONNXRUNTIME_UNUSED_PARAMETER(info);
+    ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
@@ -45,17 +47,18 @@ class CPUExecutionProvider : public IExecutionProvider {
     return onnxruntime::kCpuExecutionProvider;
   }
 
-  virtual std::vector<std::unique_ptr<ComputationCapacity>>
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   ///requires src.buffer_deleter_ == nullptr
   Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ONNXRUNTIME_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
+    ORT_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
 
     // Todo: support copy with different devices.
-    if (strcmp(src.Location().name, CPU) != 0)
-      ONNXRUNTIME_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
+    if (strcmp(src.Location().name, CPU) != 0) {
+      ORT_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
+    }
 
     // no really copy needed if is copy to cpu.
     dst.ShallowCopy(src);

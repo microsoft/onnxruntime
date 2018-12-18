@@ -69,23 +69,23 @@ using MyOpaqueMapCpp_2 = std::map<int64_t, TestOpaqueType_2>;
 using MyOpaqueSeqCpp_1 = std::vector<TestOpaqueType_1>;
 using MyOpaqueSeqCpp_2 = std::vector<TestOpaqueType_2>;
 
-ONNXRUNTIME_REGISTER_MAP(MyOpaqueMapCpp_1);
-ONNXRUNTIME_REGISTER_MAP(MyOpaqueMapCpp_2);
+ORT_REGISTER_MAP(MyOpaqueMapCpp_1);
+ORT_REGISTER_MAP(MyOpaqueMapCpp_2);
 
-ONNXRUNTIME_REGISTER_MAP(TestMapToMapInt64ToFloat);
-ONNXRUNTIME_REGISTER_MAP(TestMapStringToVectorInt64);
-ONNXRUNTIME_REGISTER_MAP(TestMapMLFloat16ToFloat);
+ORT_REGISTER_MAP(TestMapToMapInt64ToFloat);
+ORT_REGISTER_MAP(TestMapStringToVectorInt64);
+ORT_REGISTER_MAP(TestMapMLFloat16ToFloat);
 
-ONNXRUNTIME_REGISTER_SEQ(MyOpaqueSeqCpp_1);
-ONNXRUNTIME_REGISTER_SEQ(MyOpaqueSeqCpp_2);
-ONNXRUNTIME_REGISTER_SEQ(TestSequenceOfSequence);
+ORT_REGISTER_SEQ(MyOpaqueSeqCpp_1);
+ORT_REGISTER_SEQ(MyOpaqueSeqCpp_2);
+ORT_REGISTER_SEQ(TestSequenceOfSequence);
 
-ONNXRUNTIME_REGISTER_OPAQUE_TYPE(TestOpaqueType_1, TestOpaqueDomain_1, TestOpaqueName_1);
-ONNXRUNTIME_REGISTER_OPAQUE_TYPE(TestOpaqueType_2, TestOpaqueDomain_2, TestOpaqueName_2);
+ORT_REGISTER_OPAQUE_TYPE(TestOpaqueType_1, TestOpaqueDomain_1, TestOpaqueName_1);
+ORT_REGISTER_OPAQUE_TYPE(TestOpaqueType_2, TestOpaqueDomain_2, TestOpaqueName_2);
 // Special cases
-ONNXRUNTIME_REGISTER_OPAQUE_TYPE(TestOpaqueDomainOnly, TestOpaqueDomain_1, TestOpaqueEmpty);
-ONNXRUNTIME_REGISTER_OPAQUE_TYPE(TestOpaqueNameOnly, TestOpaqueEmpty, TestOpaqueName_1);
-ONNXRUNTIME_REGISTER_OPAQUE_TYPE(TestOpaqueNoNames, TestOpaqueEmpty, TestOpaqueEmpty);
+ORT_REGISTER_OPAQUE_TYPE(TestOpaqueDomainOnly, TestOpaqueDomain_1, TestOpaqueEmpty);
+ORT_REGISTER_OPAQUE_TYPE(TestOpaqueNameOnly, TestOpaqueEmpty, TestOpaqueName_1);
+ORT_REGISTER_OPAQUE_TYPE(TestOpaqueNoNames, TestOpaqueEmpty, TestOpaqueEmpty);
 
 #define REGISTER_ONNX_PROTO(TYPE)                      \
   {                                                    \

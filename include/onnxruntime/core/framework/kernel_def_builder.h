@@ -17,12 +17,12 @@
 namespace onnxruntime {
 class KernelDefBuilder;
 
-typedef std::map<size_t, ONNXRuntimeMemType> MemTypeMap;
+typedef std::map<size_t, OrtMemType> MemTypeMap;
 
 // note that input/output might be on CPU implicitly when the node is from CPU execution provider
 inline bool MemTypeOnCpuExplicitly(const MemTypeMap& mem_type_map, size_t index) {
   auto iter = mem_type_map.find(index);
-  return iter != mem_type_map.end() && (iter->second == ONNXRuntimeMemTypeCPUInput || iter->second == ONNXRuntimeMemTypeCPUOutput);
+  return iter != mem_type_map.end() && (iter->second == OrtMemTypeCPUInput || iter->second == OrtMemTypeCPUOutput);
 }
 
 class KernelDef {
@@ -188,7 +188,7 @@ class KernelDefBuilder {
      Specify that this kernel requires an input arg
      in certain memory type (instead of the default, device memory).
   */
-  template <ONNXRuntimeMemType T>
+  template <OrtMemType T>
   KernelDefBuilder& InputMemoryType(int input_index) {
     kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
     return *this;
@@ -198,7 +198,7 @@ class KernelDefBuilder {
      Specify that this kernel provides an output arg
      in certain memory type (instead of the default, device memory).
   */
-  template <ONNXRuntimeMemType T>
+  template <OrtMemType T>
   KernelDefBuilder& OutputMemoryType(int output_index) {
     kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
     return *this;

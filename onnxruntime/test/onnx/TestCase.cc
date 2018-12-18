@@ -153,7 +153,7 @@ static int ExtractFileNo(const std::basic_string<CHAR_T>& name) {
   const CHAR_T* end = number_str.c_str();
   long ret = MyStrtol(start, const_cast<CHAR_T**>(&end), 10);
   if (end == start) {
-    ONNXRUNTIME_THROW("parse file name failed");
+    ORT_THROW("parse file name failed");
   }
   return static_cast<int>(ret);
 }
@@ -173,14 +173,14 @@ static Status SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>
   for (size_t i = 0; i != input_pb_files.size(); ++i) {
     int fileno = ExtractFileNo(GetLastComponent(input_pb_files[i]));
     if (static_cast<size_t>(fileno) != i) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "illegal input file name:", ToMBString(input_pb_files[i]));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "illegal input file name:", ToMBString(input_pb_files[i]));
     }
   }
   return Status::OK();
 }
 
-Status LoopDataFile(int test_data_pb_fd, ONNXRuntimeAllocator* env,
-                    const std::vector<onnx::ValueInfoProto> value_info, std::unordered_map<std::string, ONNXValue*>& name_data_map, std::ostringstream& oss) {
+Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
+                    const std::vector<onnx::ValueInfoProto> value_info, std::unordered_map<std::string, OrtValue*>& name_data_map, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
@@ -188,7 +188,7 @@ Status LoopDataFile(int test_data_pb_fd, ONNXRuntimeAllocator* env,
   Status st;
   int item_id = 1;
   for (proto::TraditionalMLData data; google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof); ++item_id, data.Clear()) {
-    std::unique_ptr<ONNXValue, decltype(&ReleaseONNXValue)> gvalue(nullptr, ReleaseONNXValue);
+    std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> gvalue(nullptr, OrtReleaseValue);
     MLValue value;
     bool is_tensor = false;
     switch (data.values_case()) {
@@ -223,9 +223,9 @@ Status LoopDataFile(int test_data_pb_fd, ONNXRuntimeAllocator* env,
         st = RichTypeProtoToMLValue<decltype(data.map_int64_to_double().v()), MapInt64ToDouble>(data.map_int64_to_double().v(), value);
         break;
       case proto::TraditionalMLData::kTensor: {
-        ONNXValue* temp_value;
+        OrtValue* temp_value;
         std::string s = data.tensor().SerializeAsString();
-        ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeTensorProtoToONNXValue(env, s.data(), (int)s.size(), &temp_value));
+        ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(env, s.data(), (int)s.size(), &temp_value));
         gvalue.reset(temp_value);
         is_tensor = true;
       } break;
@@ -240,15 +240,15 @@ Status LoopDataFile(int test_data_pb_fd, ONNXRuntimeAllocator* env,
     if (value_name.empty())
       value_name = value_info[name_data_map.size()].name();
 
-    auto pv = name_data_map.insert(std::make_pair(value_name, is_tensor ? gvalue.release() : (ONNXValue*)new MLValue(value)));
+    auto pv = name_data_map.insert(std::make_pair(value_name, is_tensor ? gvalue.release() : (OrtValue*)new MLValue(value)));
     if (!pv.second) {
       st = Status(ONNXRUNTIME, FAIL, "duplicated test data name");
       break;
     }
   }
-  if (!st.IsOK()) return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "load the ", item_id, "-th item failed,", st.ErrorMessage());
+  if (!st.IsOK()) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "load the ", item_id, "-th item failed,", st.ErrorMessage());
   if (!clean_eof) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse input file failed, has extra unparsed data");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse input file failed, has extra unparsed data");
   }
   return Status::OK();
 }
@@ -273,7 +273,7 @@ class OnnxTestCase : public ITestCase {
  private:
   std::string test_case_name_;
   std::basic_string<PATH_CHAR_TYPE> model_url_;
-  ONNXRuntimeAllocator* allocator;
+  OrtAllocator* allocator;
   std::vector<std::string> debuginfo_strings;
   std::mutex m_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
@@ -292,8 +292,8 @@ class OnnxTestCase : public ITestCase {
   }
   //If we cannot get input name from input_pbs, we'll use names like "data_0","data_1",... It's dirty hack
   // for https://github.com/onnx/onnx/issues/679
-  ::onnxruntime::common::Status ConvertTestData(ONNXSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
-                                                bool is_input, std::unordered_map<std::string, ONNXValue*>& out);
+  ::onnxruntime::common::Status ConvertTestData(OrtSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
+                                                bool is_input, std::unordered_map<std::string, OrtValue*>& out);
   std::string node_name_;
   std::once_flag model_parsed_;
   std::once_flag config_parsed_;
@@ -302,10 +302,10 @@ class OnnxTestCase : public ITestCase {
   bool post_processing_;
   Status ParseModel();
   Status ParseConfig();
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
-  OnnxTestCase(ONNXRuntimeAllocator* env, const std::string& test_case_name);
+  OnnxTestCase(OrtAllocator* env, const std::string& test_case_name);
   explicit OnnxTestCase(const std::string& test_case_name) : test_case_name_(test_case_name) {}
   Status GetPerSampleTolerance(double* value) override;
   Status GetRelativePerSampleTolerance(double* value) override;
@@ -333,12 +333,12 @@ class OnnxTestCase : public ITestCase {
   const std::string& GetTestCaseName() const override {
     return test_case_name_;
   }
-  ::onnxruntime::common::Status LoadTestData(ONNXSession* session, size_t id, std::unordered_map<std::string, ONNXValue*>&, bool is_input) override;
+  ::onnxruntime::common::Status LoadTestData(OrtSession* session, size_t id, std::unordered_map<std::string, OrtValue*>&, bool is_input) override;
 };
 
 Status OnnxTestCase::loadModelFile(const PATH_CHAR_TYPE* model_url, ONNX_NAMESPACE::ModelProto** model_pb) {
   int model_fd;
-  ONNXRUNTIME_RETURN_IF_ERROR(Env::Default().FileOpenRd(model_url, model_fd));
+  ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(model_url, model_fd));
   google::protobuf::io::FileInputStream f(model_fd);
   f.SetCloseOnDelete(true);
   ONNX_NAMESPACE::ModelProto* ret = new ONNX_NAMESPACE::ModelProto();
@@ -348,14 +348,14 @@ Status OnnxTestCase::loadModelFile(const PATH_CHAR_TYPE* model_url, ONNX_NAMESPA
   *model_pb = ret;
   return Status::OK();
 }
-ITestCase* CreateOnnxTestCase(ONNXRuntimeAllocator* ptr, const std::string& test_case_name) {
+ITestCase* CreateOnnxTestCase(OrtAllocator* ptr, const std::string& test_case_name) {
   return new OnnxTestCase(ptr, test_case_name);
 }
 
 Status OnnxTestCase::GetPerSampleTolerance(double* value) {
   Status st = ParseConfig();
   if (!st.IsOK())
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse test config failed:", st.ErrorMessage());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse test config failed:", st.ErrorMessage());
 
   *value = per_sample_tolerance_;
   return Status::OK();
@@ -364,7 +364,7 @@ Status OnnxTestCase::GetPerSampleTolerance(double* value) {
 Status OnnxTestCase::GetRelativePerSampleTolerance(double* value) {
   Status st = ParseConfig();
   if (!st.IsOK())
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse test config failed:", st.ErrorMessage());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse test config failed:", st.ErrorMessage());
   *value = relative_per_sample_tolerance_;
   return Status::OK();
 }
@@ -372,7 +372,7 @@ Status OnnxTestCase::GetRelativePerSampleTolerance(double* value) {
 Status OnnxTestCase::GetPostProcessing(bool* value) {
   Status st = ParseConfig();
   if (!st.IsOK()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse test config failed:", st.ErrorMessage());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse test config failed:", st.ErrorMessage());
   }
   *value = post_processing_;
   return Status::OK();
@@ -381,7 +381,7 @@ Status OnnxTestCase::GetPostProcessing(bool* value) {
 Status OnnxTestCase::ParseConfig() {
   std::call_once(config_parsed_, [this]() {
     std::basic_string<PATH_CHAR_TYPE> config_path =
-        ReplaceFilename<std::basic_string<PATH_CHAR_TYPE>>(model_url_, ONNXRUNTIME_TSTR("config.txt"));
+        ReplaceFilename<std::basic_string<PATH_CHAR_TYPE>>(model_url_, ORT_TSTR("config.txt"));
     int config_fd;
     auto st = Env::Default().FileOpenRd(config_path, config_fd);
     if (st.IsOK()) {
@@ -451,28 +451,28 @@ static Status LoadTensors(const std::vector<PATH_STRING_TYPE>& pb_files,
   for (size_t i = 0; i != pb_files.size(); ++i) {
     int tensor_fd;
     auto st = Env::Default().FileOpenRd(pb_files.at(i), tensor_fd);
-    ONNXRUNTIME_RETURN_IF_ERROR(st);
+    ORT_RETURN_IF_ERROR(st);
     google::protobuf::io::FileInputStream f(tensor_fd);
     f.SetCloseOnDelete(true);
     ONNX_NAMESPACE::TensorProto tensor;
     if (!tensor.ParseFromZeroCopyStream(&f)) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", ToMBString(pb_files.at(i)), "' failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", ToMBString(pb_files.at(i)), "' failed");
     }
     input_pbs->emplace_back(tensor);
   }
   return Status::OK();
 }
 
-Status OnnxTestCase::LoadTestData(ONNXSession* session, size_t id, std::unordered_map<std::string, ONNXValue*>& name_data_map, bool is_input) {
+Status OnnxTestCase::LoadTestData(OrtSession* session, size_t id, std::unordered_map<std::string, OrtValue*>& name_data_map, bool is_input) {
   if (id >= test_data_dirs_.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "out of bound");
 
   Status st = ParseModel();
   if (!st.IsOK())
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse model failed:", st.ErrorMessage());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse model failed:", st.ErrorMessage());
 
   PATH_STRING_TYPE test_data_pb = ConcatPathComponent<PATH_CHAR_TYPE>(
-      test_data_dirs_[id], (is_input ? ONNXRUNTIME_TSTR("inputs.pb") : ONNXRUNTIME_TSTR("outputs.pb")));
+      test_data_dirs_[id], (is_input ? ORT_TSTR("inputs.pb") : ORT_TSTR("outputs.pb")));
   int test_data_pb_fd;
   st = Env::Default().FileOpenRd(test_data_pb, test_data_pb_fd);
   if (st.IsOK()) {  //has an all-in-one input file
@@ -487,8 +487,8 @@ Status OnnxTestCase::LoadTestData(ONNXSession* session, size_t id, std::unordere
       debuginfo_strings[id] = oss.str();
     }
     if (!st.IsOK())
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse data file \"", ToMBString(test_data_pb),
-                                     "\" failed:", st.ErrorMessage());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse data file \"", ToMBString(test_data_pb),
+                             "\" failed:", st.ErrorMessage());
     return Status::OK();
   }
 
@@ -499,25 +499,25 @@ Status OnnxTestCase::LoadTestData(ONNXSession* session, size_t id, std::unordere
             if (filename[0] == '.') return true;
             if (f_type != FileType::TYPE_REG) return true;
             std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-            if (!HasExtensionOf(filename_str, ONNXRUNTIME_TSTR("pb"))) return true;
+            if (!HasExtensionOf(filename_str, ORT_TSTR("pb"))) return true;
             const std::basic_string<PATH_CHAR_TYPE> file_prefix =
-                is_input ? ONNXRUNTIME_TSTR("input_") : ONNXRUNTIME_TSTR("output_");
+                is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
             if (!filename_str.compare(0, file_prefix.length(), file_prefix.c_str())) {
               std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str);
               test_data_pb_files.push_back(p);
             }
             return true;
           });
-  ONNXRUNTIME_RETURN_IF_ERROR(SortTensorFileNames(test_data_pb_files));
+  ORT_RETURN_IF_ERROR(SortTensorFileNames(test_data_pb_files));
 
   std::vector<onnx::TensorProto> test_data_pbs;
-  ONNXRUNTIME_RETURN_IF_ERROR(LoadTensors(test_data_pb_files, &test_data_pbs));
-  ONNXRUNTIME_RETURN_IF_ERROR(ConvertTestData(session, test_data_pbs, is_input, name_data_map));
+  ORT_RETURN_IF_ERROR(LoadTensors(test_data_pb_files, &test_data_pbs));
+  ORT_RETURN_IF_ERROR(ConvertTestData(session, test_data_pbs, is_input, name_data_map));
   return Status::OK();
 }
 
-Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
-                                     bool is_input, std::unordered_map<std::string, ONNXValue*>& out) {
+Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
+                                     bool is_input, std::unordered_map<std::string, OrtValue*>& out) {
   bool has_valid_names = true;
   std::vector<std::string> var_names(test_data_pbs.size());
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
@@ -531,18 +531,18 @@ Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onn
   if (!has_valid_names) {
     size_t count;
     if (is_input) {
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetInputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputCount(session, &count));
     } else {
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &count));
     }
     if (count != test_data_pbs.size())
-      ONNXRUNTIME_THROW("data count mismatch");
+      ORT_THROW("data count mismatch");
     for (size_t i = 0; i != count; ++i) {
       char* temp_name;
       if (is_input) {
-        ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetInputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputName(session, i, allocator, &temp_name));
       } else {
-        ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, allocator, &temp_name));
       }
       var_names[i] = temp_name;
       (*allocator)->Free(allocator, temp_name);
@@ -553,11 +553,11 @@ Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onn
     const onnx::TensorProto& input = test_data_pbs[input_index];
     std::string s = input.SerializeAsString();
     MLValue* v1;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeTensorProtoToONNXValue(allocator, s.data(), (int)s.size(), (ONNXValue**)&v1));
-    out.insert(std::make_pair(name, (ONNXValue*)v1));
+    ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(allocator, s.data(), (int)s.size(), (OrtValue**)&v1));
+    out.insert(std::make_pair(name, (OrtValue*)v1));
   }
   return Status::OK();
 }
 
-OnnxTestCase::OnnxTestCase(ONNXRuntimeAllocator* ptr, const std::string& test_case_name) : test_case_name_(test_case_name), allocator(ptr) {
+OnnxTestCase::OnnxTestCase(OrtAllocator* ptr, const std::string& test_case_name) : test_case_name_(test_case_name), allocator(ptr) {
 }
