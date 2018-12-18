@@ -205,7 +205,7 @@ int real_main(int argc, char* argv[]) {
       sf.AppendExecutionProvider(f);
       OrtReleaseObject(f);
 #else
-      fprintf(stderr, "CUDA is supported in this build");
+      fprintf(stderr, "CUDA is not supported in this build");
       return -1;
 #endif
     }
@@ -216,7 +216,7 @@ int real_main(int argc, char* argv[]) {
       sf.AppendExecutionProvider(f);
       OrtReleaseObject(f);
 #else
-      fprintf(stderr, "Nuphar is supported in this build");
+      fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
 #endif
     }
@@ -227,7 +227,7 @@ int real_main(int argc, char* argv[]) {
       sf.AppendExecutionProvider(f);
       OrtReleaseObject(f);
 #else
-      fprintf(stderr, "MKL-DNN is supported in this build");
+      fprintf(stderr, "MKL-DNN is not supported in this build");
       return -1;
 #endif
     }
