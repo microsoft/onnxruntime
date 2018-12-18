@@ -32,7 +32,7 @@ void CPUAllocator::Free(void* p) {
 #if _MSC_VER
   _aligned_free(p);
 #else
-  free(ptr);
+  free(p);
 #endif
 }
 
