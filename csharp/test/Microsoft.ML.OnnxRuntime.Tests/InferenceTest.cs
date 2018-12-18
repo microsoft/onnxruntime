@@ -226,7 +226,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             if (modelNames[0].ToString() == "._resnet34v2.onnx")
                                 modelNames[0] = modelNames[1];
                             else
-                                throw new Exception($"Opset {opset}: Model {model}: error = can't determine model file name.");
+                            {
+                                var modelNamesList = string.Join(",", modelNames.Select(x => x.ToString()));
+                                throw new Exception($"Opset {opset}: Model {model}. Can't determine model file name. Found these :{modelNamesList}");
+                            }
                         }
 
                         var session = new InferenceSession($"{opset}\\{model}\\{modelNames[0].ToString()}");
