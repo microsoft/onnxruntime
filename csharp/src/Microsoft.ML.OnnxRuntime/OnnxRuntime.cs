@@ -70,7 +70,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void Delete(IntPtr nativePtr)
         {
-            NativeMethods.ReleaseONNXEnv(nativePtr);
+            NativeMethods.OrtReleaseEnv(nativePtr);
         }
 
         protected override bool ReleaseHandle()

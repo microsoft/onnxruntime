@@ -15,7 +15,7 @@ struct MkldnnProviderFactory {
   MkldnnProviderFactory();
 };
 
-ONNXStatus* ORT_API_CALL CreateMkldnn(void* this_, OrtProvider** out) {
+OrtStatus* ORT_API_CALL CreateMkldnn(void* this_, OrtProvider** out) {
   MKLDNNExecutionProviderInfo info;
   MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
   info.create_arena = this_ptr->create_arena;

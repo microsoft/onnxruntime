@@ -6,7 +6,7 @@
 
 using namespace onnxruntime;
 
-static void TestModelInfo(const ONNXSession* inference_session, bool is_input, const std::vector<int64_t>& dims) {
+static void TestModelInfo(const OrtSession* inference_session, bool is_input, const std::vector<int64_t>& dims) {
   size_t input_count;
   if (is_input) {
     ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputCount(inference_session, &input_count));
@@ -28,7 +28,7 @@ static void TestModelInfo(const ONNXSession* inference_session, bool is_input, c
   const OrtTensorTypeAndShapeInfo* p = OrtCastTypeInfoToTensorInfo(input_type_info.get());
   ASSERT_NE(nullptr, p);
 
-  enum OrtTensorElementDataType ele_type = OrtGetTensorElementType(p);
+  enum ONNXTensorElementDataType ele_type = OrtGetTensorElementType(p);
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ele_type);
   ASSERT_EQ(dims.size(), OrtGetNumOfDimensions(p));
   std::vector<int64_t> real_dims(dims.size());
@@ -39,7 +39,7 @@ static void TestModelInfo(const ONNXSession* inference_session, bool is_input, c
 TEST_F(CApiTest, input_output_type_info) {
   SessionOptionsWrapper sf(env);
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  std::unique_ptr<ONNXSession, decltype(&ReleaseONNXSession)> inference_session(sf.OrtCreateInferenceSession(model_uri), ReleaseONNXSession);
+  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateInferenceSession(model_uri), OrtReleaseSession);
   TestModelInfo(inference_session.get(), true, {1, 3, 224, 224});
   TestModelInfo(inference_session.get(), false, {1, 1000, 1, 1});
 }

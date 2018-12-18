@@ -13,8 +13,8 @@ TEST_F(CApiTest, allocation_info) {
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtArenaAllocator, 0, OrtMemTypeDefault, &info1));
   ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
   ASSERT_EQ(0, OrtCompareAllocatorInfo(info1, info2));
-  ReleaseOrtAllocatorInfo(info1);
-  ReleaseOrtAllocatorInfo(info2);
+  OrtReleaseAllocatorInfo(info1);
+  OrtReleaseAllocatorInfo(info2);
 }
 
 TEST_F(CApiTest, DefaultAllocator) {

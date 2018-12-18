@@ -16,10 +16,10 @@ namespace onnxruntime {
 template <typename T>
 class ObjectBase {
  private:
-  static ONNXObject static_cls;
+  static OrtObject static_cls;
 
  protected:
-  const ONNXObject* const ORT_ATTRIBUTE_UNUSED cls_;
+  const OrtObject* const ORT_ATTRIBUTE_UNUSED cls_;
   std::atomic_int ref_count;
   ObjectBase() : cls_(&static_cls), ref_count(1) {
   }
@@ -39,7 +39,7 @@ class ObjectBase {
 };
 
 template <typename T>
-ONNXObject ObjectBase<T>::static_cls = {ObjectBase<T>::OrtAddRefImpl, ObjectBase<T>::OrtReleaseImpl};
+OrtObject ObjectBase<T>::static_cls = {ObjectBase<T>::OrtAddRefImpl, ObjectBase<T>::OrtReleaseImpl};
 
 }  // namespace onnxruntime
 
