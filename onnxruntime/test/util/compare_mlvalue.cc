@@ -12,6 +12,14 @@
 
 using namespace onnxruntime;
 
+#if (!EIGEN_VERSION_AT_LEAST(3, 3, 6))
+  namespace Eigen {
+    namespace half_impl {
+      using __half_raw = ::Eigen::half_impl::__half;
+    }
+  }
+#endif
+
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
@@ -102,8 +110,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
   for (size_t di = 0; di != size1; ++di) {
-    float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half(expected_output[di].val));
-    float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half(real_output[di].val));
+    float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
+    float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
     const double diff = fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
