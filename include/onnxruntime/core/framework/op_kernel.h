@@ -261,14 +261,8 @@ KernelCreateInfo BuildKernel();
 #define ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name) \
   provider##_##name##_##domain##_ver##ver##_##type
 
-#define ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name) \
-  provider##_##name##_##domain##_ver##ver##_##type1##_##type2
-
 #define ONNX_CPU_OPERATOR_TYPED_KERNEL(name, ver, type, builder, ...) \
   ONNX_OPERATOR_TYPED_KERNEL_EX(name, kOnnxDomain, ver, type, kCpuExecutionProvider, builder, __VA_ARGS__)
-
-#define ONNX_CPU_OPERATOR_TWO_TYPED_KERNEL(name, ver, type1, type2, builder, ...) \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(name, kOnnxDomain, ver, type1, type2, kCpuExecutionProvider, builder, __VA_ARGS__)
 
 #define ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(name, ver, type, builder, ...) \
   ONNX_OPERATOR_TYPED_KERNEL_EX(name, kMLDomain, ver, type, kCpuExecutionProvider, builder, __VA_ARGS__)
@@ -288,20 +282,6 @@ KernelCreateInfo BuildKernel();
             .Provider(provider)                                                             \
             .Build(),                                                                       \
         [](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); });       \
-  }
-
-#define ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(name, domain, ver, type1, type2, provider, builder, ...)      \
-  class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name);           \
-  template <>                                                                                           \
-  KernelCreateInfo                                                                                      \
-  BuildKernel<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>() { \
-    return KernelCreateInfo(                                                                            \
-        builder.SetName(#name)                                                                          \
-            .SetDomain(domain)                                                                          \
-            .SinceVersion(ver)                                                                          \
-            .Provider(provider)                                                                         \
-            .Build(),                                                                                   \
-        [](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); });                   \
   }
 
 #define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \

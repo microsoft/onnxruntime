@@ -18,7 +18,9 @@ limitations under the License.
 #include "core/util/eigen_common_wrapper.h"
 #include "onnx/defs/schema.h"
 
+#ifdef _MSC_VER
 #pragma warning(disable : 4554)
+#endif
 
 #define EIGEN_USE_THREADS
 
@@ -29,19 +31,23 @@ using namespace std;
 namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
 
-#define REG_ONE_HOT_OP(in_type, out_type)                                \
-  ONNX_CPU_OPERATOR_TWO_TYPED_KERNEL(                                    \
+#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type)   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
       OneHot,                                                            \
       9,                                                                 \
-      in_type,                                                           \
-      out_type,                                                          \
+      types_str,                                                         \
       KernelDefBuilder()                                                 \
           .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("T3", DataTypeImpl::AllTensorTypes()),         \
-      OneHotOp<in_type, out_type>);
+      OneHotOp<in_type, out_type, depth_type>);
 
-REG_ONE_HOT_OP(int64_t, int64_t);
+#define REG_ONE_HOT_OP(in_type, out_type, depth_type) REG_TYPED_ONE_HOT_OP(in_type##_##out_type##_depth_type, in_type, out_type, depth_type)
+
+REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
+REG_ONE_HOT_OP(float, int64_t, int64_t);
+REG_ONE_HOT_OP(int64_t, string, int64_t);
+REG_ONE_HOT_OP(float, string, int64_t);
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
@@ -72,16 +78,16 @@ struct EigenTensorTypes {
 };
 
 namespace generator {
-template <typename TI, typename TO>
+template <typename in_type, typename out_type>
 class OneGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  OneGenerator(const typename EigenTensorTypes<TI>::ConstMatrix& indices,
-               const typename EigenTensorTypes<TO>::ConstScalar& on_value,
-               const typename EigenTensorTypes<TO>::ConstScalar& off_value)
+  OneGenerator(const typename EigenTensorTypes<in_type>::ConstMatrix& indices,
+               const typename EigenTensorTypes<out_type>::ConstScalar& on_value,
+               const typename EigenTensorTypes<out_type>::ConstScalar& off_value)
       : indices_(indices), on_value_(on_value), off_value_(off_value) {}
 
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE TO
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE out_type
   operator()(const Eigen::array<Eigen::DenseIndex, 3>& pre_depth_suff) const {
     return (indices_(pre_depth_suff[0], pre_depth_suff[2]) == pre_depth_suff[1])
                ? on_value_()
@@ -89,22 +95,22 @@ class OneGenerator {
   }
 
  private:
-  const typename EigenTensorTypes<TI>::ConstMatrix indices_;
-  const typename EigenTensorTypes<TO>::ConstScalar on_value_;
-  const typename EigenTensorTypes<TO>::ConstScalar off_value_;
+  const typename EigenTensorTypes<in_type>::ConstMatrix indices_;
+  const typename EigenTensorTypes<out_type>::ConstScalar on_value_;
+  const typename EigenTensorTypes<out_type>::ConstScalar off_value_;
 };
 }  // namespace generator
 
-template <typename TI, typename TO>
-Status OneHotOp<TI, TO>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const Tensor* indices = p_op_kernel_context->Input<Tensor>(0);
-  const Tensor* depth = p_op_kernel_context->Input<Tensor>(1);
-  const Tensor* values = p_op_kernel_context->Input<Tensor>(2);
+template <typename in_type, typename out_type, typename depth_type>
+Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_kernel_context) const {
+  const auto* indices = p_op_kernel_context->Input<Tensor>(0);
+  const auto* depth = p_op_kernel_context->Input<Tensor>(1);
+  const auto* values = p_op_kernel_context->Input<Tensor>(2);
 
   ORT_RETURN_IF_ERROR(ValidateInputs(depth, values));
 
   // prepare output shape
-  const auto* depth_data = depth->Data<TI>();
+  const auto* depth_data = depth->Data<depth_type>();
   const int64_t depth_val = static_cast<int64_t>(*depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
   if (depth_val <= 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Depth is negative.");
@@ -118,31 +124,31 @@ Status OneHotOp<TI, TO>::Compute(OpKernelContext* p_op_kernel_context) const {
                       depth_val);
 
   // allocate output
-  const auto* values_data = values->Data<TO>();
+  const auto* values_data = values->Data<out_type>();
   Tensor* output = p_op_kernel_context->Output(0, TensorShape(output_shape));
 
   const int64_t axis = (axis_ == -1) ? indices_num_dims : axis_;
   int64_t prefix_dim_size = 1;
-  for (int i = 0; i < axis; ++i) {
+  for (int64_t i = 0; i < axis; ++i) {
     prefix_dim_size *= indices_dims[i];
   }
-  int64_t suffix_dim_size = indices_shape.Size() / prefix_dim_size;
+  const int64_t suffix_dim_size = indices_shape.Size() / prefix_dim_size;
 
   // Split indices into matrix of size prefix_dim_size x suffix_dim_size
   Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {{prefix_dim_size, suffix_dim_size}};
-  const TI* indices_data = indices->Data<TI>();
-  EigenTensorTypes<TI, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
+  const auto* indices_data = indices->Data<in_type>();
+  typename EigenTensorTypes<in_type, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
 
   // Split output into 3-Tensor of size:
   //   prefix_dim_size x depth x suffix_dim_size.
   Eigen::array<Eigen::DenseIndex, 3> output_dims_e = {{prefix_dim_size, depth_val, suffix_dim_size}};
-  auto* output_data = output->MutableData<TO>();
-  EigenTensorTypes<TO, 3>::EigenTensorMap output_tensor_e(output_data, output_dims_e);
+  auto* output_data = output->MutableData<out_type>();
+  typename EigenTensorTypes<out_type, 3>::EigenTensorMap output_tensor_e(output_data, output_dims_e);
 
-  EigenTensorTypes<TO>::ConstScalar on_value_e(values_data + 1);
-  EigenTensorTypes<TO>::ConstScalar off_value_e(values_data);
+  typename EigenTensorTypes<out_type>::ConstScalar on_value_e(values_data + 1);
+  typename EigenTensorTypes<out_type>::ConstScalar off_value_e(values_data);
 
-  generator::OneGenerator<TI, TO> generator(indices_tensor_e, on_value_e, off_value_e);
+  generator::OneGenerator<in_type, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
   //Eigen::ThreadPoolDevice eigen_threadpool_device(4 /* number of threads to use */);  // TODO make this configurable
   //  output_tensor_e.device(eigen_threadpool_device) = output_tensor_e.generate(generator);
   output_tensor_e = output_tensor_e.generate(generator);

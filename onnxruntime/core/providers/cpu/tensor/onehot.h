@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 
-template <typename TI, typename TO>
+template <typename in_type, typename out_type, typename depth_type>
 class OneHotOp final : public OpKernel {
  public:
   OneHotOp(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
