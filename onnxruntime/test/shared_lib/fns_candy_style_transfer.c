@@ -8,11 +8,11 @@
 
 #define ORT_ABORT_ON_ERROR(expr)                         \
   do {                                                   \
-    ONNXStatus* onnx_status = (expr);                    \
+    OrtStatus* onnx_status = (expr);                    \
     if (onnx_status != NULL) {                           \
       const char* msg = OrtGetErrorMessage(onnx_status); \
       fprintf(stderr, "%s\n", msg);                      \
-      ReleaseONNXStatus(onnx_status);                    \
+      OrtReleaseStatus(onnx_status);                    \
       abort();                                           \
     }                                                    \
   } while (0);
@@ -94,7 +94,7 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
 /**
  * \param tensor should be a float tensor in [N,C,H,W] format
  */
-static int write_tensor_to_png_file(ONNXValue* tensor, const char* output_file) {
+static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   struct OrtTensorTypeAndShapeInfo* shape_info;
   ORT_ABORT_ON_ERROR(OrtGetTensorShapeAndType(tensor, &shape_info));
   size_t dim_count = OrtGetNumOfDimensions(shape_info);
@@ -132,7 +132,7 @@ static void usage() {
   printf("usage: <model_path> <input_file> <output_file> \n");
 }
 
-int run_inference(ONNXSession* session, const char* input_file, const char* output_file) {
+int run_inference(OrtSession* session, const char* input_file, const char* output_file) {
   size_t input_height;
   size_t input_width;
   float* model_input;
@@ -151,28 +151,28 @@ int run_inference(ONNXSession* session, const char* input_file, const char* outp
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
-  ONNXValue* input_tensor = NULL;
-  ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsONNXValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+  OrtValue* input_tensor = NULL;
+  ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
   assert(OrtIsTensor(input_tensor) != 0);
-  ReleaseOrtAllocatorInfo(allocator_info);
+  OrtReleaseAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
-  ONNXValue* output_tensor = NULL;
-  ORT_ABORT_ON_ERROR(OrtRunInference(session, NULL, input_names, (const ONNXValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+  OrtValue* output_tensor = NULL;
+  ORT_ABORT_ON_ERROR(OrtRunInference(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
   assert(OrtIsTensor(output_tensor) != 0);
   int ret = 0;
   if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
     ret = -1;
   }
-  ReleaseONNXValue(output_tensor);
-  ReleaseONNXValue(input_tensor);
+  OrtReleaseValue(output_tensor);
+  OrtReleaseValue(input_tensor);
   free(model_input);
   return ret;
 }
 
-void verify_input_output_count(ONNXSession* session) {
+void verify_input_output_count(OrtSession* session) {
   size_t count;
   ORT_ABORT_ON_ERROR(OrtInferenceSessionGetInputCount(session, &count));
   assert(count == 1);
@@ -203,12 +203,12 @@ int main(int argc, char* argv[]) {
 #ifdef USE_CUDA
   enable_cuda(session_option);
 #endif
-  ONNXSession* session;
+  OrtSession* session;
   ORT_ABORT_ON_ERROR(OrtCreateInferenceSession(env, model_path, session_option, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
   OrtReleaseObject(session_option);
-  ReleaseONNXSession(session);
+  OrtReleaseSession(session);
   OrtReleaseObject(env);
   if (ret != 0) {
     fprintf(stderr, "fail\n");

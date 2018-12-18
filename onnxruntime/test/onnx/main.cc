@@ -162,10 +162,10 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<OrtEnv> env;
   {
     OrtEnv* t;
-    ONNXStatus* ost = OrtInitialize(logging_level, "Default", &t);
+    OrtStatus* ost = OrtInitialize(logging_level, "Default", &t);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      ReleaseONNXStatus(ost);
+      OrtReleaseStatus(ost);
       return -1;
     }
     env.reset(t);
@@ -176,10 +176,10 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<OrtAllocator> default_allocator;
   {
     OrtAllocator* p;
-    ONNXStatus* ost = OrtCreateDefaultAllocator(&p);
+    OrtStatus* ost = OrtCreateDefaultAllocator(&p);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      ReleaseONNXStatus(ost);
+      OrtReleaseStatus(ost);
       return -1;
     }
     default_allocator.reset(p);
