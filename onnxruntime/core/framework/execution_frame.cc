@@ -370,7 +370,7 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
       ++total_def_count;
     });
   }
-  node_offsets_.reserve(total_def_count);
+  node_values_.reserve(total_def_count);
 
   for (auto& node : graph.Nodes()) {
     ORT_ENFORCE(node.Index() < node_offsets_.size());
