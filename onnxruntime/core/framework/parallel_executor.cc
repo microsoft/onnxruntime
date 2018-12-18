@@ -152,7 +152,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                         node_name + "_fence_before",
                                         sync_time_begin,
-                                        op_name);
+                                        { "op_name", op_name });
     }
 
     // call compute on the kernel
@@ -170,7 +170,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                           node_name + "_kernel_time",
                                           kernel_begin_time,
-                                          op_name);
+                                          { "op_name", op_name });
     }
 
     sync_time_begin = profiler.StartTime();
@@ -200,7 +200,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                         node_name + "_fence_after",
                                         sync_time_begin,
-                                        op_name);
+                                        { "op_name", op_name });
     }
 
     //std::cout << "Run async node finish: " << p_node_index << std::endl;

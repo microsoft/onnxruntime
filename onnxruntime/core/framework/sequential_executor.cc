@@ -94,7 +94,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                         node_name + "_fence_before",
                                         sync_time_begin,
-                                        op_name);
+                                        { "op_name", op_name });
     }
 
     // call compute on the kernel
@@ -107,7 +107,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                         node_name + "_kernel_time",
                                         kernel_begin_time,
-                                        op_name);
+                                        { "op_name", op_name });
     }
 
     sync_time_begin = profiler.StartTime();
@@ -137,7 +137,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                         node_name + "_fence_after",
                                         sync_time_begin,
-                                        op_name);
+                                        { "op_name", op_name });
     }
 
     // free ml-values corresponding to this node
