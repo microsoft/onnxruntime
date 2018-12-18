@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp2.0</TargetFramework>
@@ -38,7 +38,7 @@
       <Visible>false</Visible>
     </None>
     
-    <None Include="$(buildDirectory)\$(Configuration)\models\**\*">
+    <None Include="$(buildDirectory)\models\**\*">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         <Visible>false</Visible>
     </None>
