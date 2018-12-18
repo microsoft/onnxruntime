@@ -61,7 +61,7 @@ function(AddTest)
 endfunction(AddTest)
 
 #Check whether C++17 header file <filesystem> is present
-include(CheckIncludeFiles)
+include(CheckIncludeFileCXX)
 check_include_file_cxx("filesystem" HAS_FILESYSTEM_H LANGUAGE CXX)
 check_include_file_cxx("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANGUAGE CXX)
 
