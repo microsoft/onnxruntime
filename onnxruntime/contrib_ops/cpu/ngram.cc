@@ -59,34 +59,42 @@ class NGramItem;
 template <>
 class NGramItem<int64_t> : public NgramElementBase {
   std::vector<int64_t> items_;
+  size_t hash_ = 0;
+
+  void recompute(int64_t v) {
+    std::hash<int64_t> hf{};
+    hash_ ^= hf(v) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
+  }
 
  public:
   template <typename ForwardIter>
-  explicit NGramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id),
-                                                                       items_(first, last) {
+  explicit NGramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
+    while (first != last) {
+      recompute(*first);
+      items_.push_back(*first);
+      ++first;
+    }
     assert(!items_.empty());
   }
   // For sampling
   explicit NGramItem() : NgramElementBase(0) {}
-  void AddItem(int64_t t) { items_.push_back(t); }
+  void AddItem(int64_t v) {
+    items_.push_back(v);
+    recompute(v);
+  }
   void DebugPrint() const {
     std::copy(items_.cbegin(), items_.cend(), std::ostream_iterator<int64_t>(std::cout, ","));
     std::cout << std::endl;
   }
-  void Clear() { items_.clear(); }
+  void Clear() {
+    items_.clear();
+    hash_ = 0;
+  }
   bool operator==(const NGramItem& o) const {
     return items_ == o.items_;
   }
   size_t hash() const {
-    if (items_.empty()) return 0;
-    auto first = items_.cbegin();
-    auto const end = items_.cend();
-    std::hash<int64_t> hf{};
-    auto hash = hf(*first);
-    while (++first != end) {
-      hash ^= hf(*first) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
-    return hash;
+    return hash_;
   }
 };
 
@@ -102,21 +110,36 @@ template <>
 class NGramItem<std::string> : public NgramElementBase {
  private:
   std::vector<std::reference_wrapper<const std::string>> items_;
+  size_t hash_ = 0;
+
+  void recompute(const std::string& s) {
+    std::hash<std::string> hf{};
+    hash_ ^= hf(s) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
+  }
 
  public:
   template <typename ForwardIter>
   explicit NGramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
-    std::transform(first, last, std::back_inserter(items_),
-                   [](const std::string& s) { return std::cref(s); });
+    while (first != last) {
+      recompute(*first);
+      items_.push_back(std::cref(*first));
+      ++first;
+    }
     assert(!items_.empty());
   }
   explicit NGramItem() : NgramElementBase(0) {}
-  void AddItem(const std::string& s) { items_.push_back(std::cref(s)); }
+  void AddItem(const std::string& s) {
+    items_.push_back(std::cref(s));
+    recompute(s);
+  }
   void DebugPrint() const {
     std::copy(items_.cbegin(), items_.cend(), std::ostream_iterator<std::string>(std::cout, ","));
     std::cout << std::endl;
   }
-  void Clear() { items_.clear(); }
+  void Clear() {
+    items_.clear();
+    hash_ = 0;
+  }
 
   bool operator==(const NGramItem& o) const {
     if (items_.size() == o.items_.size()) {
@@ -127,15 +150,7 @@ class NGramItem<std::string> : public NgramElementBase {
     return false;
   }
   size_t hash() const {
-    if (items_.empty()) return 0;
-    auto first = items_.cbegin();
-    auto const end = items_.cend();
-    std::hash<std::string> hf{};
-    auto hash = hf(*first);
-    while (++first != end) {
-      hash ^= hf(*first) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
-    return hash;
+    return hash_;
   }
 };
 
