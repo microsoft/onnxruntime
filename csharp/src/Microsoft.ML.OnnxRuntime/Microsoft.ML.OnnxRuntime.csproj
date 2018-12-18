@@ -37,6 +37,12 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
+          PackagePath="\runtimes\win10-x64\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
           PackagePath="\runtimes\win10-x64\native"
           Pack="true"
