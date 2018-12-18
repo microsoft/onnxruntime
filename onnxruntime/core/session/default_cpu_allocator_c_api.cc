@@ -44,7 +44,7 @@ OrtDefaultAllocator() : ref_count_(1) {
 }
 ~OrtDefaultAllocator() {
   assert(ref_count_ == 0);
-  ReleaseOrtAllocatorInfo(cpuAllocatorInfo);
+  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
 }
 
 public:
@@ -71,7 +71,7 @@ ORT_ALLOCATOR_IMPL_END
 #define API_IMPL_END                                           \
   }                                                            \
   catch (std::exception & ex) {                                \
-    return CreateONNXStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
+    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
 OrtAllocatorInterface OrtDefaultAllocator::table_ = {

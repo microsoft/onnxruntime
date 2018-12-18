@@ -47,7 +47,7 @@ MockedOrtAllocator() : ref_count_(1), memory_inuse(0) {
 }
 ~MockedOrtAllocator() {
   assert(ref_count_ == 0);
-  ReleaseOrtAllocatorInfo(cpuAllocatorInfo);
+  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
 }
 
 public:

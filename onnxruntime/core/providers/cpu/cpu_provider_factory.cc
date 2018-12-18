@@ -15,7 +15,7 @@ struct CpuProviderFactory {
   CpuProviderFactory();
 };
 
-ONNXStatus* ORT_API_CALL CreateCpu(void* this_, OrtProvider** out) {
+OrtStatus* ORT_API_CALL CreateCpu(void* this_, OrtProvider** out) {
   CPUExecutionProviderInfo info;
   CpuProviderFactory* this_ptr = (CpuProviderFactory*)this_;
   info.create_arena = this_ptr->create_arena;

@@ -191,7 +191,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // do managed objects cleanup
             }
 
-            NativeMethods.ReleaseONNXValue(_onnxValueHandle);
+            NativeMethods.OrtReleaseValue(_onnxValueHandle);
 
             _disposed = true;
         }
