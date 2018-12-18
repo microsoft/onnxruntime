@@ -88,7 +88,7 @@ void PTestRunner::OnTaskFinished(size_t, EXECUTE_RESULT, ORT_CALLBACK_INSTANCE p
   }
 }
 
-PTestRunner::PTestRunner(ONNXSession* session1,
+PTestRunner::PTestRunner(OrtSession* session1,
                          ITestCase* c, PThreadPool tpool,
                          TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), next_test_to_run(0), finished(0), tpool_(tpool) {
 }
@@ -282,12 +282,12 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
   return tests;
 }
 
-SeqTestRunner::SeqTestRunner(ONNXSession* session1,
+SeqTestRunner::SeqTestRunner(OrtSession* session1,
                              ITestCase* c, size_t repeat_count,
                              TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), repeat_count_(repeat_count) {
 }
 
-DataRunner::DataRunner(ONNXSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(MockedOrtAllocator::Create()) {
+DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(MockedOrtAllocator::Create()) {
   std::string s;
   c->GetNodeName(&s);
   result = std::make_shared<TestCaseResult>(c->GetDataCount(), EXECUTE_RESULT::UNKNOWN_ERROR, s);
@@ -308,12 +308,12 @@ void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_r
   OnTaskFinished(task_id, res, pci);
 }
 
-std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const ONNXValue* o, const ONNXValue* expected_mlvalue, double per_sample_tolerance, double relative_per_sample_tolerance,
+std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const OrtValue* o, const OrtValue* expected_mlvalue, double per_sample_tolerance, double relative_per_sample_tolerance,
                                                            bool post_processing) {
   return onnxruntime::CompareMLValue(*(MLValue*)o, *(MLValue*)expected_mlvalue, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
 EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
-  std::unordered_map<std::string, ONNXValue*> feeds;
+  std::unordered_map<std::string, OrtValue*> feeds;
   common::Status status = c_->LoadTestData(session, task_id, feeds, true);
   if (!status.IsOK()) {
     LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
@@ -335,14 +335,14 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   TIME_SPEC start_time, end_time;
   GetMonotonicTimeCounter(&start_time);
   std::vector<const char*> input_names(feeds.size());
-  std::vector<ONNXValue*> input_values(feeds.size());
+  std::vector<OrtValue*> input_values(feeds.size());
   size_t input_index = 0;
   for (auto& kvp : feeds) {
     input_names[input_index] = kvp.first.c_str();
     input_values[input_index] = kvp.second;
     ++input_index;
   }
-  std::vector<ONNXValue*> output_values(output_count);
+  std::vector<OrtValue*> output_values(output_count);
   {
     std::vector<const char*> output_names_raw_ptr(output_count);
     for (size_t i = 0; i != output_count; ++i) {
@@ -351,9 +351,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     auto onnx_status = OrtRunInference(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
     if (onnx_status != nullptr) {
       std::string onnx_runtime_error_message = OrtGetErrorMessage(onnx_status);
-      ReleaseONNXStatus(onnx_status);
+      OrtReleaseStatus(onnx_status);
       for (auto& kvp : feeds) {
-        ReleaseONNXValue(kvp.second);
+        OrtReleaseValue(kvp.second);
       }
       throw std::runtime_error(onnx_runtime_error_message);
     }
@@ -361,7 +361,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
   for (auto& kvp : feeds) {
-    ReleaseONNXValue(kvp.second);
+    OrtReleaseValue(kvp.second);
   }
   if (!status.IsOK()) {
     LOGF_DEFAULT(ERROR, "%s:%s\n", test_case_name_.c_str(), status.ErrorMessage().c_str());
@@ -385,13 +385,13 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   }
 
   //TODO: if there are no output value files, just skip the validation
-  std::unordered_map<std::string, ONNXValue*> expected_output_values;
+  std::unordered_map<std::string, OrtValue*> expected_output_values;
   status = c_->LoadTestData(session, task_id, expected_output_values, false);
   if (!status.IsOK()) {
     LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
     return StatusCodeToExecuteResult(status.Code());
   }
-  std::unordered_map<std::string, ONNXValue*> name_fetch_output_map;
+  std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
   std::unordered_map<std::string, const onnx::ValueInfoProto*> name_output_value_info_proto;
   int i = 0;
   for (auto& output_name : output_names) {
@@ -404,7 +404,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   EXECUTE_RESULT res = EXECUTE_RESULT::SUCCESS;
   for (auto& output : expected_output_values) {
-    ONNXValue* expected_output_value = output.second;
+    OrtValue* expected_output_value = output.second;
     const std::string& output_name = output.first;
     auto iter = name_fetch_output_map.find(output_name);
     if (iter == name_fetch_output_map.end()) {
@@ -412,7 +412,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
       LOGF_DEFAULT(ERROR, "cannot find %s in the outputs", output_name.c_str());
       break;
     }
-    ONNXValue* actual_output_value = iter->second;
+    OrtValue* actual_output_value = iter->second;
     std::pair<COMPARE_RESULT, std::string> ret = CompareGenericValue(actual_output_value, expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
@@ -461,10 +461,10 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     }
   }
   for (auto& kvp : expected_output_values) {
-    ReleaseONNXValue(kvp.second);
+    OrtReleaseValue(kvp.second);
   }
-  for (ONNXValue* p : output_values) {
-    ReleaseONNXValue(p);
+  for (OrtValue* p : output_values) {
+    OrtReleaseValue(p);
   }
   return res;
 }
@@ -492,8 +492,8 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     }
     auto sf2 = sf.clone();
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());
-    std::unique_ptr<ONNXSession, decltype(&ReleaseONNXSession)> session_object(
-        sf2.OrtCreateInferenceSession(info->GetModelUrl()), ReleaseONNXSession);
+    std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> session_object(
+        sf2.OrtCreateInferenceSession(info->GetModelUrl()), OrtReleaseSession);
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
     //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
     if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")

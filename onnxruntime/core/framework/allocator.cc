@@ -36,7 +36,7 @@ ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, const char* name1, OrtAllocatorType 
   return nullptr;
 }
 
-ORT_API(void, ReleaseOrtAllocatorInfo, OrtAllocatorInfo* p) {
+ORT_API(void, OrtReleaseAllocatorInfo, OrtAllocatorInfo* p) {
   delete p;
 }
 

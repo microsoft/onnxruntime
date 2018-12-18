@@ -11,10 +11,10 @@
 //TODO: encode error code in the message?
 #define ORT_THROW_ON_ERROR(expr)                                       \
   do {                                                                 \
-    ONNXStatus* onnx_status = (expr);                                  \
+    OrtStatus* onnx_status = (expr);                                  \
     if (onnx_status != nullptr) {                                      \
       std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
-      ReleaseONNXStatus(onnx_status);                                  \
+      OrtReleaseStatus(onnx_status);                                  \
       throw std::runtime_error(ort_error_message);                     \
     }                                                                  \
   } while (0);
@@ -29,7 +29,7 @@
   template <>                                               \
   struct default_delete<Ort##TYPE_NAME> {                   \
     void operator()(Ort##TYPE_NAME* ptr) {                  \
-      (*reinterpret_cast<ONNXObject**>(ptr))->Release(ptr); \
+      (*reinterpret_cast<OrtObject**>(ptr))->Release(ptr); \
     }                                                       \
   };                                                        \
   }
@@ -89,14 +89,14 @@ class SessionOptionsWrapper {
     return SessionOptionsWrapper(env_, p);
   }
 #ifdef _WIN32
-  ONNXSession* OrtCreateInferenceSession(_In_ const wchar_t* model_path) {
-    ONNXSession* ret;
+  OrtSession* OrtCreateInferenceSession(_In_ const wchar_t* model_path) {
+    OrtSession* ret;
     ORT_THROW_ON_ERROR(::OrtCreateInferenceSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #else
-  ONNXSession* OrtCreateInferenceSession(_In_ const char* model_path) {
-    ONNXSession* ret;
+  OrtSession* OrtCreateInferenceSession(_In_ const char* model_path) {
+    OrtSession* ret;
     ORT_THROW_ON_ERROR(::OrtCreateInferenceSession(env_, model_path, value.get(), &ret));
     return ret;
   }
@@ -105,15 +105,15 @@ class SessionOptionsWrapper {
     OrtAddCustomOp(value.get(), custom_op_path);
   }
 };
-inline ONNXValue* OrtCreateTensorAsONNXValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, OrtTensorElementDataType type) {
-  ONNXValue* ret;
-  ORT_THROW_ON_ERROR(::OrtCreateTensorAsONNXValue(env, shape.data(), shape.size(), type, &ret));
+inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
+  OrtValue* ret;
+  ORT_THROW_ON_ERROR(::OrtCreateTensorAsOrtValue(env, shape.data(), shape.size(), type, &ret));
   return ret;
 }
 
-inline ONNXValue* OrtCreateTensorWithDataAsONNXValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<size_t>& shape, OrtTensorElementDataType type) {
-  ONNXValue* ret;
-  ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsONNXValue(info, p_data, p_data_len, shape.data(), shape.size(), type, &ret));
+inline OrtValue* OrtCreateTensorWithDataAsOrtValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
+  OrtValue* ret;
+  ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_len, shape.data(), shape.size(), type, &ret));
   return ret;
 }
 

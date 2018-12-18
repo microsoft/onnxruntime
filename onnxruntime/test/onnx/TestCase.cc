@@ -180,7 +180,7 @@ static Status SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>
 }
 
 Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
-                    const std::vector<onnx::ValueInfoProto> value_info, std::unordered_map<std::string, ONNXValue*>& name_data_map, std::ostringstream& oss) {
+                    const std::vector<onnx::ValueInfoProto> value_info, std::unordered_map<std::string, OrtValue*>& name_data_map, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
@@ -188,7 +188,7 @@ Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
   Status st;
   int item_id = 1;
   for (proto::TraditionalMLData data; google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof); ++item_id, data.Clear()) {
-    std::unique_ptr<ONNXValue, decltype(&ReleaseONNXValue)> gvalue(nullptr, ReleaseONNXValue);
+    std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> gvalue(nullptr, OrtReleaseValue);
     MLValue value;
     bool is_tensor = false;
     switch (data.values_case()) {
@@ -223,9 +223,9 @@ Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
         st = RichTypeProtoToMLValue<decltype(data.map_int64_to_double().v()), MapInt64ToDouble>(data.map_int64_to_double().v(), value);
         break;
       case proto::TraditionalMLData::kTensor: {
-        ONNXValue* temp_value;
+        OrtValue* temp_value;
         std::string s = data.tensor().SerializeAsString();
-        ORT_THROW_ON_ERROR(OrtTensorProtoToONNXValue(env, s.data(), (int)s.size(), &temp_value));
+        ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(env, s.data(), (int)s.size(), &temp_value));
         gvalue.reset(temp_value);
         is_tensor = true;
       } break;
@@ -240,7 +240,7 @@ Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
     if (value_name.empty())
       value_name = value_info[name_data_map.size()].name();
 
-    auto pv = name_data_map.insert(std::make_pair(value_name, is_tensor ? gvalue.release() : (ONNXValue*)new MLValue(value)));
+    auto pv = name_data_map.insert(std::make_pair(value_name, is_tensor ? gvalue.release() : (OrtValue*)new MLValue(value)));
     if (!pv.second) {
       st = Status(ONNXRUNTIME, FAIL, "duplicated test data name");
       break;
@@ -292,8 +292,8 @@ class OnnxTestCase : public ITestCase {
   }
   //If we cannot get input name from input_pbs, we'll use names like "data_0","data_1",... It's dirty hack
   // for https://github.com/onnx/onnx/issues/679
-  ::onnxruntime::common::Status ConvertTestData(ONNXSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
-                                                bool is_input, std::unordered_map<std::string, ONNXValue*>& out);
+  ::onnxruntime::common::Status ConvertTestData(OrtSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
+                                                bool is_input, std::unordered_map<std::string, OrtValue*>& out);
   std::string node_name_;
   std::once_flag model_parsed_;
   std::once_flag config_parsed_;
@@ -333,7 +333,7 @@ class OnnxTestCase : public ITestCase {
   const std::string& GetTestCaseName() const override {
     return test_case_name_;
   }
-  ::onnxruntime::common::Status LoadTestData(ONNXSession* session, size_t id, std::unordered_map<std::string, ONNXValue*>&, bool is_input) override;
+  ::onnxruntime::common::Status LoadTestData(OrtSession* session, size_t id, std::unordered_map<std::string, OrtValue*>&, bool is_input) override;
 };
 
 Status OnnxTestCase::loadModelFile(const PATH_CHAR_TYPE* model_url, ONNX_NAMESPACE::ModelProto** model_pb) {
@@ -463,7 +463,7 @@ static Status LoadTensors(const std::vector<PATH_STRING_TYPE>& pb_files,
   return Status::OK();
 }
 
-Status OnnxTestCase::LoadTestData(ONNXSession* session, size_t id, std::unordered_map<std::string, ONNXValue*>& name_data_map, bool is_input) {
+Status OnnxTestCase::LoadTestData(OrtSession* session, size_t id, std::unordered_map<std::string, OrtValue*>& name_data_map, bool is_input) {
   if (id >= test_data_dirs_.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "out of bound");
 
@@ -516,8 +516,8 @@ Status OnnxTestCase::LoadTestData(ONNXSession* session, size_t id, std::unordere
   return Status::OK();
 }
 
-Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
-                                     bool is_input, std::unordered_map<std::string, ONNXValue*>& out) {
+Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
+                                     bool is_input, std::unordered_map<std::string, OrtValue*>& out) {
   bool has_valid_names = true;
   std::vector<std::string> var_names(test_data_pbs.size());
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
@@ -553,8 +553,8 @@ Status OnnxTestCase::ConvertTestData(ONNXSession* session, const std::vector<onn
     const onnx::TensorProto& input = test_data_pbs[input_index];
     std::string s = input.SerializeAsString();
     MLValue* v1;
-    ORT_THROW_ON_ERROR(OrtTensorProtoToONNXValue(allocator, s.data(), (int)s.size(), (ONNXValue**)&v1));
-    out.insert(std::make_pair(name, (ONNXValue*)v1));
+    ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(allocator, s.data(), (int)s.size(), (OrtValue**)&v1));
+    out.insert(std::make_pair(name, (OrtValue*)v1));
   }
   return Status::OK();
 }
