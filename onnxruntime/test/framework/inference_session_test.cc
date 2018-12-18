@@ -68,7 +68,7 @@ class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-          [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+                                                 [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
         std::make_unique<DummyArena>(device_info.factory(0))));
   }
@@ -96,7 +96,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<::onnxruntime::KernelRegistry> GetKernelRegistry() const override {
     static std::shared_ptr<::onnxruntime::KernelRegistry>
-      kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
+        kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
     return kernel_registry;
   }
 

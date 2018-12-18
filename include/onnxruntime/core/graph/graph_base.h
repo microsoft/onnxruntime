@@ -178,7 +178,7 @@ class Node {
   const ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
   }
-  
+
   const std::vector<int>& InputArgCount() const noexcept { return definitions_.input_arg_count; }
 
   // read only access. requires special wrapper to apply const to the NodeArg
@@ -336,7 +336,7 @@ class Node {
   friend class GraphBase;
   friend class Graph;
 
-  Node(NodeIndex index, GraphBase& graph) : index_(index), graph_(&graph){}
+  Node(NodeIndex index, GraphBase& graph) : index_(index), graph_(&graph) {}
 
   void Init(const std::string& name,
             const std::string& op_type,

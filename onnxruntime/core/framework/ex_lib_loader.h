@@ -18,7 +18,7 @@ class ExLibLoader {
   void* GetExLibHandle(const std::string& dso_file_path) const;
 
   virtual ~ExLibLoader();
-  
+
  protected:
   virtual void PreUnLoadHandle(void* /*handle*/){};
 

@@ -46,7 +46,7 @@ class FunctionKernel : public OpKernel {
           const_cast<void*>(input->DataRaw()),
           shape.NumDimensions(),
           //hard code to double now
-		  ORT_type_to_c_type(input->DataType()),
+          ORT_type_to_c_type(input->DataType()),
           dims.empty() ? nullptr : const_cast<int64_t*>(&dims[0])};
       input_tensors.push_back(input_tensor);
     }
@@ -61,7 +61,7 @@ class FunctionKernel : public OpKernel {
       Tensor* output = context->Output(i, output_shape);
       auto data = output->MutableDataRaw();
       //TODO: for string tensors, this copy is not correct.
-	  ORT_ENFORCE(output->DataType() != DataTypeImpl::GetType<std::string>());
+      ORT_ENFORCE(output->DataType() != DataTypeImpl::GetType<std::string>());
       memcpy(data, output_tensors[i].data, output->DataType()->Size() * output_shape.Size());
       //Release output tensors (buffer, shape).
       host_allocator_->Free(output_tensors[i].data);

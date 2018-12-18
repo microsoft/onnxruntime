@@ -64,8 +64,8 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
     // get symbol for GetAllKernels
     void* get_all_kernels_symbol_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(lib_handle,
-                                                                    kGetAllKernelsSymbol,
-                                                                    &get_all_kernels_symbol_handle));
+                                                            kGetAllKernelsSymbol,
+                                                            &get_all_kernels_symbol_handle));
     if (!get_all_kernels_symbol_handle) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                     "Got null handle for " + kGetAllKernelsSymbol + " for DSO " + dso_file_path);
@@ -90,8 +90,8 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
     // get symbol for GetAllSchemas
     void* get_all_schemas_symbol_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(lib_handle,
-                                                                    kGetAllSchemasSymbol,
-                                                                    &get_all_schemas_symbol_handle));
+                                                            kGetAllSchemasSymbol,
+                                                            &get_all_schemas_symbol_handle));
 
     if (!get_all_schemas_symbol_handle) {  // a custom schema may not be registered
       return Status::OK();
@@ -107,9 +107,9 @@ Status CustomOpsLoader::LoadCustomOps(const std::string& dso_file_path,
 
     // register the schemas if present
     ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
-                                                               schemas_container->domain,
-                                                               schemas_container->baseline_opset_version,
-                                                               schemas_container->opset_version));
+                                                       schemas_container->domain,
+                                                       schemas_container->baseline_opset_version,
+                                                       schemas_container->opset_version));
     return Status::OK();
   } catch (const std::exception& ex) {
     return Status(ONNXRUNTIME, FAIL, "Caught exception while loading custom ops with message: " + std::string(ex.what()));

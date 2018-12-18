@@ -23,7 +23,7 @@ struct ComputeCapability {
   // the default KernelDefinition for it, according to the OpSchema it
   // auto-generates. An execution provider can further set some advanced
   // fields on kernel definition, such as  memory placement / in-place
-  // annotation.  
+  // annotation.
   ComputeCapability() : sub_graph(nullptr), need_compile(false) {}
 
   ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph,

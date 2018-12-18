@@ -133,7 +133,7 @@ class WindowsEnv : public Env {
     }
     return Status::OK();
   }
-  
+
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     *handle = ::LoadLibraryA(library_filename.c_str());
     if (!handle)

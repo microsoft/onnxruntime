@@ -30,16 +30,16 @@ Status FuseFuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, 
     ORT_RETURN_IF_ERROR(lib_loader_->LoadExternalLib(it->second.dso_path, &handle));
     void* create_func_symbol_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle,
-                                                                    kCreateStateFuncSymbol + name,
-                                                                    &create_func_symbol_handle));
+                                                            kCreateStateFuncSymbol + name,
+                                                            &create_func_symbol_handle));
     void* compute_func_symbol_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle,
-                                                                    kComputeFuncSymbol + name,
-                                                                    &compute_func_symbol_handle));
+                                                            kComputeFuncSymbol + name,
+                                                            &compute_func_symbol_handle));
     void* release_func_symbol_handle = nullptr;
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle,
-                                                                    kReleaseStateFuncSymbol + name,
-                                                                    &release_func_symbol_handle));
+                                                            kReleaseStateFuncSymbol + name,
+                                                            &release_func_symbol_handle));
     it->second.compute_func = [=](FunctionState state, ONNXRunTimeTensor* input, size_t n_input, ONNXRunTimeTensor* output, size_t n_output) {
       return reinterpret_cast<ComputeFuncC>(compute_func_symbol_handle)(state, input, n_input, output, n_output);
     };
