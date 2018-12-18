@@ -62,8 +62,8 @@ endfunction(AddTest)
 
 #Check whether C++17 header file <filesystem> is present
 include(CheckIncludeFileCXX)
-check_include_file_cxx("filesystem" HAS_FILESYSTEM_H LANGUAGE CXX)
-check_include_file_cxx("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANGUAGE CXX)
+check_include_file_cxx("filesystem" HAS_FILESYSTEM_H)
+check_include_file_cxx("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H)
 
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
