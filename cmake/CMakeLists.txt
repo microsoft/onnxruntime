@@ -431,7 +431,6 @@ if (onnxruntime_USE_CUDA)
   endif ()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   find_package(CUDA 9.0 REQUIRED)
-  include(cub)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
@@ -442,7 +441,6 @@ if (onnxruntime_USE_CUDA)
     set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES cub)
 
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
