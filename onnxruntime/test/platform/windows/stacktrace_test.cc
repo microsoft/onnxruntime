@@ -33,7 +33,7 @@ TEST(StacktraceTests, BasicTests) {
     EXPECT_THAT(result[0], HasSubstr("Unknown symbol"));
 
   try {
-    ONNXRUNTIME_THROW("Testing");
+    ORT_THROW("Testing");
   } catch (const OnnxRuntimeException& ex) {
     auto msg = ex.what();
     std::cout << msg;

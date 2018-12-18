@@ -73,7 +73,7 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const T
   if (type == DataTypeImpl::GetType<Type>())
     Check<Type>(expected_data, output_tensor, provider_type);
   else
-    ONNXRUNTIME_THROW("OpTester:Check() not implemented for output tensor type of ", type);
+    ORT_THROW("OpTester:Check() not implemented for output tensor type of ", type);
 }
 
 template <typename Type, typename Next, typename... Types>
@@ -85,10 +85,10 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const T
 }
 
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
-  ONNXRUNTIME_ENFORCE(expected_data.data_.Get<Tensor>().Shape() == output_tensor.Shape(),
-                      "Expected output shape [" + expected_data.data_.Get<Tensor>().Shape().ToString() +
-                          "] did not match run output shape [" +
-                          output_tensor.Shape().ToString() + "] for " + expected_data.def_.Name());
+  ORT_ENFORCE(expected_data.data_.Get<Tensor>().Shape() == output_tensor.Shape(),
+              "Expected output shape [" + expected_data.data_.Get<Tensor>().Shape().ToString() +
+                  "] did not match run output shape [" +
+                  output_tensor.Shape().ToString() + "] for " + expected_data.def_.Name());
 
   CheckDispatch<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16>(output_tensor.DataType(), expected_data, output_tensor, provider_type);
 }
@@ -105,7 +105,7 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, MLValue
   if (type == DataTypeImpl::GetType<Type>())
     Check<Type>(expected_data, mlvalue.Get<Type>(), provider_type);
   else
-    ONNXRUNTIME_THROW("OpTester:Check() not implemented for output tensor type of ", type);
+    ORT_THROW("OpTester:Check() not implemented for output tensor type of ", type);
 }
 
 template <typename Type, typename Next, typename... Types>
@@ -158,7 +158,7 @@ void OpTester::SetOutputAbsErr(const char* name, float v) {
       [name](Data& data) {
         return (data.def_.Name() == name);
       });
-  ONNXRUNTIME_ENFORCE(it != output_data_.end());
+  ORT_ENFORCE(it != output_data_.end());
   it->absolute_error_ = optional<float>(v);
 }
 
@@ -169,7 +169,7 @@ void OpTester::SetOutputRelErr(const char* name, float v) {
       [name](Data& data) {
         return (data.def_.Name() == name);
       });
-  ONNXRUNTIME_ENFORCE(it != output_data_.end());
+  ORT_ENFORCE(it != output_data_.end());
   it->relative_error_ = optional<float>(v);
 }
 
@@ -257,7 +257,7 @@ void OpTester::Run(ExpectResult expect_result,
       try {
         status = graph.Resolve();
       } catch (const std::exception& ex) {
-        status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
       }
     } else {
       status = graph.Resolve();

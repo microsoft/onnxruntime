@@ -18,15 +18,15 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(input_tensor);
+  ORT_ENFORCE(input_tensor);
   size_t rank = input_tensor->Shape().NumDimensions();
   auto& input_dimensions = input_tensor->Shape().GetDims();
   if (has_axis_) {
-    ONNXRUNTIME_ENFORCE(axis_ < static_cast<int64_t>(rank), "axis greater than input data dimension!");
+    ORT_ENFORCE(axis_ < static_cast<int64_t>(rank), "axis greater than input data dimension!");
   }
 
   const Tensor* condition = ctx->Input<Tensor>(1);
-  ONNXRUNTIME_ENFORCE(condition);
+  ORT_ENFORCE(condition);
   auto condition_length = condition->Shape().Size();
   auto condition_data = condition->template Data<bool>();
 
@@ -64,7 +64,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  ONNXRUNTIME_RETURN_IF_ERROR(CompressImpl(element_bytes,
+  ORT_RETURN_IF_ERROR(CompressImpl(element_bytes,
                                            gsl::narrow_cast<int32_t>(valid_condition_length),
                                            gsl::narrow_cast<int32_t>(axis_right_stride),
                                            has_axis_ ? gsl::narrow_cast<int32_t>(input_dimensions[axis_]) : gsl::narrow_cast<int32_t>(input_size),

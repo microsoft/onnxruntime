@@ -15,8 +15,8 @@ OpKernelContext::OpKernelContext(ExecutionFrame* frame,
     : execution_frame_(frame),
       kernel_(kernel),
       logger_(&logger) {
-  ONNXRUNTIME_ENFORCE(frame != nullptr, "Execution frame was null");
-  ONNXRUNTIME_ENFORCE(kernel != nullptr, "OpKernel was null");
+  ORT_ENFORCE(frame != nullptr, "Execution frame was null");
+  ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
   node_input_start_index_ = frame->GetFirstArgIndex(kernel->Node().Index());
   node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
@@ -37,20 +37,20 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   //I believe it's a false alarm.
   MLValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), parameters, p_ml_value);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
 int OpKernelContext::NumVariadicInputs(size_t arg_num) const {
   auto& arg_counts = kernel_->Node().InputArgCount();
 
-  ONNXRUNTIME_ENFORCE(arg_num < arg_counts.size(), "Invalid arg_num of ", arg_num, ". Num args is ", arg_counts.size());
+  ORT_ENFORCE(arg_num < arg_counts.size(), "Invalid arg_num of ", arg_num, ". Num args is ", arg_counts.size());
 
   return arg_counts[arg_num];
 }
 
 Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
-  *output = execution_frame_->GetAllocator(kernel_->Allocator(0, ONNXRuntimeMemTypeDefault));
+  *output = execution_frame_->GetAllocator(kernel_->Allocator(0, OrtMemTypeDefault));
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
   return Status::OK();
@@ -98,7 +98,7 @@ Fence_t OpKernelContext::OutputFence(int index) const {
 Status OpKernelContext::GetOrCreateOutputMLValue(int index, MLValue*& p_value) {
   auto output_arg_index = GetOutputArgIndex(index);
   MLValueAllocationParameters parameters;
-  ONNXRUNTIME_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, parameters, p_value).IsOK());
+  ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, parameters, p_value).IsOK());
   return Status::OK();
 }
 

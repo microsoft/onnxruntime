@@ -11,15 +11,15 @@ MLValueTensorSlicer<T> MLValueTensorSlicer<T>::Create(T& mlvalue, int64_t slice_
   static_assert(std::is_same<std::remove_const_t<T>, MLValue>::value,
                 "MLValueTensorSlicer can only be used with 'MLValue' or 'const MLValue'");
 
-  ONNXRUNTIME_ENFORCE(mlvalue.IsTensor(), "Can't slice a non-tensor MLValue. Type was ", mlvalue.Type());
-  ONNXRUNTIME_ENFORCE(mlvalue.IsAllocated(), "MLValue has not been allocated so can't be sliced.");
+  ORT_ENFORCE(mlvalue.IsTensor(), "Can't slice a non-tensor MLValue. Type was ", mlvalue.Type());
+  ORT_ENFORCE(mlvalue.IsAllocated(), "MLValue has not been allocated so can't be sliced.");
 
   auto& tensor_shape{mlvalue.template Get<Tensor>().Shape()};
-  ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
+  ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
                       "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
   auto dim0_size = tensor_shape[0];
-  ONNXRUNTIME_ENFORCE(dim0_offset < dim0_size, "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);
+  ORT_ENFORCE(dim0_offset < dim0_size, "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);
 
   return MLValueTensorSlicer{mlvalue, slice_dimension, dim0_offset};
 };

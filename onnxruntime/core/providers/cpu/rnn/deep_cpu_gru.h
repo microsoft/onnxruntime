@@ -19,13 +19,13 @@ class DeepCpuGruOp final : public OpKernel {
   DeepCpuGruOp(const OpKernelInfo& info) : OpKernel(info) {
     // required attributes
     std::string direction;
-    ONNXRUNTIME_ENFORCE(info.GetAttr("direction", &direction).IsOK());
+    ORT_ENFORCE(info.GetAttr("direction", &direction).IsOK());
 
     int64_t int64_value;
-    ONNXRUNTIME_ENFORCE(info.GetAttr("linear_before_reset", &int64_value).IsOK());
+    ORT_ENFORCE(info.GetAttr("linear_before_reset", &int64_value).IsOK());
     linear_before_reset_ = gsl::narrow<int>(int64_value);
 
-    ONNXRUNTIME_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
+    ORT_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
     hidden_size_ = gsl::narrow<int>(int64_value);
 
     // optional attributes
@@ -34,7 +34,7 @@ class DeepCpuGruOp final : public OpKernel {
     std::vector<float> activation_func_betas = info.GetAttrsOrDefault<float>("activation_beta");
 
     clip_ = info.GetAttrOrDefault<float>("clip", std::numeric_limits<float>::max());
-    ONNXRUNTIME_ENFORCE(clip_ > 0.f);
+    ORT_ENFORCE(clip_ > 0.f);
 
     direction_ = rnn::detail::MakeDirection(direction);
     num_directions_ = direction_ == rnn::detail::Direction::kBidirectional ? 2 : 1;
@@ -46,7 +46,7 @@ class DeepCpuGruOp final : public OpKernel {
       }
     }
 
-    ONNXRUNTIME_ENFORCE(activation_func_names.size() == num_directions_ * 2);
+    ORT_ENFORCE(activation_func_names.size() == num_directions_ * 2);
 
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,

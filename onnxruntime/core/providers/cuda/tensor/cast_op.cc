@@ -66,11 +66,11 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
     case TensorProto_DataType_STRING:
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cast op must have 'to' argument of type DataType");
     default:
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected 'to' argument value: ", to_);
   }
   return Status::OK();
 }

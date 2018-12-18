@@ -75,7 +75,7 @@ class NodeArg {
   bool Exists() const noexcept;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
   friend class Graph;
 
   void SetType(ONNX_NAMESPACE::DataType p_type);

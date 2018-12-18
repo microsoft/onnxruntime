@@ -16,7 +16,7 @@ namespace Microsoft.ML.OnnxRuntime
             int useArenaInt = useArena ? 1 : 0;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateCpuExecutionProviderFactory(useArenaInt, out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCpuExecutionProviderFactory(useArenaInt, out handle));
             }
             catch(OnnxRuntimeException e)
             {
@@ -48,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
             int useArenaInt = useArena ? 1 : 0;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateMkldnnExecutionProviderFactory(useArenaInt, out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMkldnnExecutionProviderFactory(useArenaInt, out handle));
             }
             catch (OnnxRuntimeException e)
             {

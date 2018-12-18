@@ -15,12 +15,12 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define CUDA_RETURN_IF_ERROR(expr) ONNXRUNTIME_RETURN_IF_ERROR(CUDA_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-#define CUBLAS_RETURN_IF_ERROR(expr) ONNXRUNTIME_RETURN_IF_ERROR(CUBLAS_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-#define CUSPARSE_RETURN_IF_ERROR(expr) ONNXRUNTIME_RETURN_IF_ERROR(CUSPARSE_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-#define CURAND_RETURN_IF_ERROR(expr) ONNXRUNTIME_RETURN_IF_ERROR(CURAND_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-#define CUDNN_RETURN_IF_ERROR(expr) ONNXRUNTIME_RETURN_IF_ERROR(CUDNN_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-#define CUDNN2_RETURN_IF_ERROR(expr, m) ONNXRUNTIME_RETURN_IF_ERROR(CUDNN_CALL2(expr, m) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define CUBLAS_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUBLAS_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define CUSPARSE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define CURAND_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CURAND_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define CUDNN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDNN_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
 
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
@@ -45,7 +45,7 @@ class CudaKernel : public OpKernel {
 
   template <typename T>
   inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(int id, size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(id, ONNXRuntimeMemTypeCPU);
+    AllocatorPtr allocator = provider_->GetAllocator(id, OrtMemTypeCPU);
     if (!allocator)
       return nullptr;
     return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);

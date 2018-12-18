@@ -79,7 +79,7 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
   return Status::OK();
 }

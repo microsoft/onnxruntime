@@ -49,12 +49,12 @@ bool PrepareForReduce(OpKernelContext* ctx,
                       bool keepdims_,
                       bool check_no_transpose = false) {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& input = *input_tensor_ptr;
 
   size_t ndim = input.Shape().GetDims().size();
   for (int64_t axe : axes_) {
-    ONNXRUNTIME_ENFORCE(axe >= 0 && axe < (int64_t)ndim, "Axis attribute out of range");
+    ORT_ENFORCE(axe >= 0 && axe < (int64_t)ndim, "Axis attribute out of range");
   }
 
   std::vector<int64_t> axes = axes_;

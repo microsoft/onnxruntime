@@ -9,13 +9,13 @@ extern "C" {
 
 /**
  * \param use_arena zero: false. non-zero: true.
- * \param out Call ONNXRuntimeReleaseObject() method when you no longer need to use it.
+ * \param out Call OrtReleaseObject() method when you no longer need to use it.
  */
-ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCpuExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryInterface*** out)
-ONNXRUNTIME_ALL_ARGS_NONNULL;
+ORT_API_STATUS(OrtCreateCpuExecutionProviderFactory, int use_arena, _Out_ OrtProviderFactoryInterface*** out)
+ORT_ALL_ARGS_NONNULL;
 
-ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCpuAllocatorInfo, enum ONNXRuntimeAllocatorType type, enum ONNXRuntimeMemType mem_type1, _Out_ ONNXRuntimeAllocatorInfo** out)
-ONNXRUNTIME_ALL_ARGS_NONNULL;
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out)
+ORT_ALL_ARGS_NONNULL;
 
 #ifdef __cplusplus
 }

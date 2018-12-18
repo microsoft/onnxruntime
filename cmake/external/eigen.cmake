@@ -13,7 +13,7 @@ if (onnxruntime_USE_PREINSTALLED_EIGEN)
     )
 else ()
     set(eigen_URL "https://github.com/eigenteam/eigen-git-mirror.git")
-    set(eigen_TAG "3.3.4")
+    set(eigen_TAG "3.3.7")
     set(eigen_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/eigen)
     set(eigen_INCLUDE_DIRS ${eigen_ROOT_DIR})
     ExternalProject_Add(eigen

@@ -24,8 +24,8 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 ImageScaler<T>::ImageScaler(const OpKernelInfo& info) : CudaKernel(info) {
-  ONNXRUNTIME_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
-  ONNXRUNTIME_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
+  ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
+  ORT_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
 
   b_data_ = GetScratchBuffer<float>(bias_.size());
   CUDA_CALL_THROW(cudaMemcpy(b_data_.get(), bias_.data(), sizeof(float) * bias_.size(), cudaMemcpyHostToDevice));
@@ -37,14 +37,14 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
   const auto dims = X->Shape().GetDims();
 
   if (dims.size() != 4) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
   }
 
   const int64_t C = dims[1];  // dims are NCHW
 
   if (!bias_.empty() && bias_.size() != static_cast<size_t>(C)) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias size (", bias_.size(), ") does not match the number of channels (", C, ")");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias size (", bias_.size(), ") does not match the number of channels (", C, ")");
   }
 
   Tensor* Y = context->Output(0, X->Shape());

@@ -17,16 +17,16 @@ class Scan final : public OpKernel {
     // and a SessionState instance for executing the subgraph is created by InferenceSession.
     // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
     ONNX_NAMESPACE::GraphProto proto;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
+    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
     (void)proto;
 
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
     if (info.GetAttrs<int64_t>("directions", directions_).IsOK()) {
-      ONNXRUNTIME_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
+      ORT_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
                           "Number of entries in 'directions' was ", directions_.size(),
                           ". Must match 'num_scan_inputs' of ", num_scan_inputs_);
-      ONNXRUNTIME_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
+      ORT_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
                                       [](int64_t i) { return i == static_cast<int64_t>(Direction::kForward) ||
                                                              i == static_cast<int64_t>(Direction::kReverse); }),
                           "Invalid values in 'directions'. 0 == forward. 1 == reverse.");

@@ -13,17 +13,17 @@ static Status ComputeRange(OpKernelContext* ctx) {
   auto  delta_tensor_ptr = ctx->Input<Tensor>(2);
 
   if (!start_tensor.Shape().IsScalar()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
                                    "start in Range operator should be scalar like tensor, yet got shape:",
                                    start_tensor.Shape());
   }
   if (!limit_tensor.Shape().IsScalar()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
                                    "limit in Range operator should be scalar like tensor, yet got shape:",
                                    limit_tensor.Shape());
   }
   if (delta_tensor_ptr != nullptr && !delta_tensor_ptr->Shape().IsScalar()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
                                    "delta in Range operator should be scalar like tensor, yet got shape:",
                                    delta_tensor_ptr->Shape());
   }
@@ -33,7 +33,7 @@ static Status ComputeRange(OpKernelContext* ctx) {
   T delta = (delta_tensor_ptr == nullptr) ? T{1} : *(delta_tensor_ptr->template Data<T>());
   
   if (delta == T{0}) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  "delta in Range operator can not be zero!");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  "delta in Range operator can not be zero!");
   }
   int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
   if (n <= 0) n = 1;
@@ -66,7 +66,7 @@ Status Range::Compute(OpKernelContext* ctx) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
       return ComputeRange<double>(ctx);
   }
-  return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
                                  "Unsupportted tensor data type:",
                                  data_type);
 }

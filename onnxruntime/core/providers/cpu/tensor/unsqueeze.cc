@@ -17,7 +17,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   const Tensor* X = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(X != nullptr);
+  ORT_ENFORCE(X != nullptr);
   auto& input_tensor = *X;
 
   // New dimension count is the current dimensions + the number of entries in axes_
@@ -51,7 +51,7 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
 Status Unsqueeze::Compute(OpKernelContext* ctx) const {
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareCompute(ctx, p));
+  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, p));
 
   CopyCpuTensor(p.input_tensor, p.output_tensor);
 

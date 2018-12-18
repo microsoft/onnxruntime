@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -28,5 +29,23 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(Softplus, ParametricSoftplus, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Tanh, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 1);
+
+template <>
+Status Sigmoid<float>::Compute(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  Tensor* Y = context->Output(0, x_shape);
+  MlasComputeLogistic(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
+  return Status::OK();
+}
+
+template <>
+Status Tanh<float>::Compute(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  Tensor* Y = context->Output(0, x_shape);
+  MlasComputeTanh(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
+  return Status::OK();
+}
 
 }  // namespace onnxruntime

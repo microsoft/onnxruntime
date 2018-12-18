@@ -155,7 +155,7 @@ static int ExtractFileNo(const std::string& name) {
   const char* end = number_str.c_str();
   long ret = strtol(start, const_cast<char**>(&end), 10);
   if (end == start) {
-    ONNXRUNTIME_THROW("parse file name failed");
+    ORT_THROW("parse file name failed");
   }
   return static_cast<int>(ret);
 }
@@ -172,7 +172,7 @@ static Status SortTensorFileNames(std::vector<path>& input_pb_files) {
   for (size_t i = 0; i != input_pb_files.size(); ++i) {
     int fileno = ExtractFileNo(input_pb_files[i].filename().string());
     if (fileno != i) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "illegal input file name:", input_pb_files[i].filename().string());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "illegal input file name:", input_pb_files[i].filename().string());
     }
   }
   return Status::OK();
@@ -240,9 +240,9 @@ Status LoopDataFile(int test_data_pb_fd, AllocatorPtr allocator,
       break;
     }
   }
-  if (!st.IsOK()) return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "load the ", item_id, "-th item failed,", st.ErrorMessage());
+  if (!st.IsOK()) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "load the ", item_id, "-th item failed,", st.ErrorMessage());
   if (!clean_eof) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse input file failed, has extra unparsed data");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse input file failed, has extra unparsed data");
   }
   return Status::OK();
 }
@@ -314,7 +314,7 @@ class OnnxTestCase : public ITestCase {
   std::once_flag model_parsed_;
 
   Status ParseModel();
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTestCase);
 
  public:
   OnnxTestCase(const AllocatorPtr&, const std::string& test_case_name);
@@ -388,10 +388,10 @@ static Status LoadTensors(const std::vector<path>& pb_files, std::vector<ONNX_NA
     ONNX_NAMESPACE::TensorProto tensor;
     std::ifstream input(pb_files.at(i), std::ios::in | std::ios::binary);
     if (!input) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file '", pb_files.at(i), "' failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file '", pb_files.at(i), "' failed");
     }
     if (!tensor.ParseFromIstream(&input)) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", pb_files.at(i), "' failed");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", pb_files.at(i), "' failed");
     }
     input_pbs->emplace_back(tensor);
   }
@@ -404,7 +404,7 @@ Status OnnxTestCase::LoadTestData(size_t id, onnxruntime::NameMLValMap& name_dat
 
   Status st = ParseModel();
   if (!st.IsOK())
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse model failed:", st.ErrorMessage());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse model failed:", st.ErrorMessage());
 
   path test_data_pb = test_data_dirs_[id] / (is_input ? "inputs.pb" : "outputs.pb");
   int test_data_pb_fd;
@@ -436,17 +436,17 @@ Status OnnxTestCase::LoadTestData(size_t id, onnxruntime::NameMLValMap& name_dat
       test_data_pb_files.push_back(f);
     }
   }
-  ONNXRUNTIME_RETURN_IF_ERROR(SortTensorFileNames(test_data_pb_files));
+  ORT_RETURN_IF_ERROR(SortTensorFileNames(test_data_pb_files));
 
   std::vector<onnx::TensorProto> test_data_pbs;
-  ONNXRUNTIME_RETURN_IF_ERROR(LoadTensors(test_data_pb_files, &test_data_pbs));
-  ONNXRUNTIME_RETURN_IF_ERROR(ConvertTestData(test_data_pbs, is_input ? input_value_info_ : output_value_info_, name_data_map));
+  ORT_RETURN_IF_ERROR(LoadTensors(test_data_pb_files, &test_data_pbs));
+  ORT_RETURN_IF_ERROR(ConvertTestData(test_data_pbs, is_input ? input_value_info_ : output_value_info_, name_data_map));
   return Status::OK();
 }
 
 Status OnnxTestCase::FromPbFiles(const std::vector<path>& files, std::vector<MLValue>& output_values) {
   for (const path& f : files) {
-    if (!f.has_extension()) return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "unknown file type, path = ", f);
+    if (!f.has_extension()) return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "unknown file type, path = ", f);
     std::string s = f.extension().string();
     if (s != ".pb")
       continue;
@@ -461,7 +461,7 @@ Status OnnxTestCase::FromPbFiles(const std::vector<path>& files, std::vector<MLV
       }
     }
     MLValue value;
-    ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToMLValue(tensor, allocator_, nullptr, 0, value));
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToMLValue(tensor, allocator_, nullptr, 0, value));
     output_values.emplace_back(value);
   }
   return Status::OK();
@@ -534,7 +534,7 @@ Status OnnxTestCase::ConvertTestData(const std::vector<onnx::TensorProto>& test_
     std::string name = var_names[input_index];
     const onnx::TensorProto& input = test_data_pbs[input_index];
     MLValue v1;
-    ONNXRUNTIME_RETURN_IF_ERROR(utils::TensorProtoToMLValue(input, allocator_, nullptr, 0, v1));
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(input, allocator_, nullptr, 0, v1));
     out.insert(std::make_pair(name, v1));
   }
   return Status::OK();

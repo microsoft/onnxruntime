@@ -7,7 +7,7 @@
 #include <cassert>
 using onnxruntime::common::Status;
 
-ONNXRUNTIME_API(ONNXStatus*, CreateONNXStatus, ONNXRuntimeErrorCode code, const char* msg) {
+ORT_API(ONNXStatus*, CreateONNXStatus, OrtErrorCode code, const char* msg) {
   assert(!(code == 0 && msg != nullptr));
   size_t clen = strlen(msg);
   size_t len = clen + 1 + sizeof(int);
@@ -36,10 +36,10 @@ ONNXStatus* ToONNXStatus(const Status& st) {
   return ret;
 }
 }  // namespace onnxruntime
-ONNXRUNTIME_API(ONNXRuntimeErrorCode, ONNXRuntimeGetErrorCode, _In_ const ONNXStatus* status) {
-  return *reinterpret_cast<ONNXRuntimeErrorCode*>(const_cast<ONNXStatus*>(status));
+ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const ONNXStatus* status) {
+  return *reinterpret_cast<OrtErrorCode*>(const_cast<ONNXStatus*>(status));
 }
 
-ONNXRUNTIME_API(const char*, ONNXRuntimeGetErrorMessage, _In_ const ONNXStatus* status) {
+ORT_API(const char*, OrtGetErrorMessage, _In_ const ONNXStatus* status) {
   return reinterpret_cast<const char*>(status) + sizeof(int);
 }
