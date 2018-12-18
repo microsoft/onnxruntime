@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include <memory>
 #include <vector>
@@ -14,7 +15,7 @@ class Ngram final : public OpKernel {
  public:
   explicit Ngram(const OpKernelInfo& info);
   ~Ngram();
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Ngram);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Ngram);
 
   Status Compute(OpKernelContext* ctx) const override;
 

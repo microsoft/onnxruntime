@@ -213,7 +213,7 @@ struct Ngram::Impl {
   void IncrementCount(size_t ngram_id, std::vector<uint32_t>& frequencies) const {
     assert(ngram_id < ngram_indexes_.size());
     auto output_idx = ngram_indexes_[ngram_id];
-    ONNXRUNTIME_ENFORCE(output_idx >= 0, "ngram_indxes has a negative index");
+    ORT_ENFORCE(output_idx >= 0, "ngram_indxes has a negative index");
     assert(static_cast<size_t>(output_idx) < frequencies.size());
     ++frequencies[output_idx];
   }
@@ -252,7 +252,7 @@ inline auto Ngram::Impl::Find<std::string>(const NGramItem<std::string>& i) cons
 Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   std::string mode;
   Status status = info.GetAttr("mode", &mode);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "mode is required");
+  ORT_ENFORCE(status.IsOK(), "mode is required");
   if (mode == "TF") {
     impl_->mode_ = kTF;
   } else if (mode == "IDF") {
@@ -260,32 +260,32 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   } else if (mode == "TFIDF") {
     impl_->mode_ = kTFIDF;
   }
-  ONNXRUNTIME_ENFORCE(impl_->mode_ != kNone, "Unrecognized mode");
+  ORT_ENFORCE(impl_->mode_ != kNone, "Unrecognized mode");
 
   status = info.GetAttr("M", &impl_->M_);
-  ONNXRUNTIME_ENFORCE(status.IsOK() && impl_->M_ > 0, "Positive Attr M is required");
+  ORT_ENFORCE(status.IsOK() && impl_->M_ > 0, "Positive Attr M is required");
   status = info.GetAttr("N", &impl_->N_);
-  ONNXRUNTIME_ENFORCE(status.IsOK() && impl_->N_ >= impl_->M_, "Positive M >= N is required");
+  ORT_ENFORCE(status.IsOK() && impl_->N_ >= impl_->M_, "Positive M >= N is required");
   status = info.GetAttr("S", &impl_->S_);
-  ONNXRUNTIME_ENFORCE(status.IsOK() && impl_->N_ >= 0, "Non-negative number of skips S is required");
+  ORT_ENFORCE(status.IsOK() && impl_->N_ >= 0, "Non-negative number of skips S is required");
 
   int64_t all = 0;
   status = info.GetAttr("all", &all);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "Attribute all is required");
+  ORT_ENFORCE(status.IsOK(), "Attribute all is required");
   impl_->all_ = (all != 0);
 
   status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_counts_);
-  ONNXRUNTIME_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
-  ONNXRUNTIME_ENFORCE(size_t(impl_->M_) <= impl_->ngram_counts_.size(), "M must be inbounds of ngram_counts");
-  ONNXRUNTIME_ENFORCE(size_t(impl_->N_) <= impl_->ngram_counts_.size(), "N must be inbounds of ngram_counts");
+  ORT_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
+  ORT_ENFORCE(size_t(impl_->M_) <= impl_->ngram_counts_.size(), "M must be inbounds of ngram_counts");
+  ORT_ENFORCE(size_t(impl_->N_) <= impl_->ngram_counts_.size(), "N must be inbounds of ngram_counts");
 
   status = info.GetAttrs("ngram_indexes", impl_->ngram_indexes_);
-  ONNXRUNTIME_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
+  ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
-    ONNXRUNTIME_ENFORCE(std::all_of(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend(),
-                                    [](int64_t i) { return i >= 0; }),
-                        "Negative ngram_indexes values are not allowed");
+    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend(),
+                            [](int64_t i) { return i >= 0; }),
+                "Negative ngram_indexes values are not allowed");
     // Set output size to max output index + 1;
     auto greatest_hit = std::max_element(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend());
     impl_->output_size_ = *greatest_hit + 1;
@@ -293,17 +293,17 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
 
   status = info.GetAttrs("weights", impl_->weights_);
   if (status.IsOK()) {
-    ONNXRUNTIME_ENFORCE(impl_->weights_.size() == impl_->ngram_indexes_.size(),
-                        "weights and indexes must have equal size");
+    ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_indexes_.size(),
+                "weights and indexes must have equal size");
   }
 
   std::vector<int64_t> pool_int64s;
   status = info.GetAttrs("pool_strings", impl_->pool_strings_);
   if (status.IsOK()) {
-    ONNXRUNTIME_ENFORCE(!impl_->pool_strings_.empty(), "pool_strings must not be empty if specified");
+    ORT_ENFORCE(!impl_->pool_strings_.empty(), "pool_strings must not be empty if specified");
   } else {
     status = info.GetAttrs("pool_int64s", pool_int64s);
-    ONNXRUNTIME_ENFORCE(status.IsOK() && !pool_int64s.empty(), "non-empty pool_int64s is required if pool_strings not provided");
+    ORT_ENFORCE(status.IsOK() && !pool_int64s.empty(), "non-empty pool_int64s is required if pool_strings not provided");
   }
 
   // Iterator via the pool. Insert 1 item for 1-grams, 2 items for 2-grams, etc.
@@ -316,12 +316,12 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   for (size_t i = 0; i < impl_->ngram_counts_.size(); ++i) {
     size_t start_idx = impl_->ngram_counts_[i];
     size_t end_idx = ((i + 1) < impl_->ngram_counts_.size()) ? impl_->ngram_counts_[i + 1] : total_items;
-    ONNXRUNTIME_ENFORCE(end_idx >= start_idx && end_idx <= total_items,
-                        "n-gram counts out of bounds for ", std::to_string(ngram_size), "-grams");
+    ORT_ENFORCE(end_idx >= start_idx && end_idx <= total_items,
+                "n-gram counts out of bounds for ", std::to_string(ngram_size), "-grams");
     auto items = end_idx - start_idx;
     if (items > 0) {
-      ONNXRUNTIME_ENFORCE((items % ngram_size == 0),
-                          "Number of items must compose whole ", std::to_string(ngram_size), "-grams");
+      ORT_ENFORCE((items % ngram_size == 0),
+                  "Number of items must compose whole ", std::to_string(ngram_size), "-grams");
       auto ngrams = items / ngram_size;
       // Skip loading into hash_set ngrams that are not N or not in the range of [M-N] for all=true;
       if ((impl_->all_ && (ngram_size >= M && ngram_size <= N)) ||
@@ -329,11 +329,11 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
         if (impl_->pool_strings_.empty()) {
           auto before_insert = impl_->int_set_.size();
           Emplace(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int_set_);
-          ONNXRUNTIME_ENFORCE((before_insert + ngrams) == impl_->int_set_.size(), "pool_int64s duplicate ", std::to_string(ngram_size), "-grams detected");
+          ORT_ENFORCE((before_insert + ngrams) == impl_->int_set_.size(), "pool_int64s duplicate ", std::to_string(ngram_size), "-grams detected");
         } else {
           auto before_insert = impl_->str_set_.size();
           Emplace(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_set_);
-          ONNXRUNTIME_ENFORCE((before_insert + ngrams) == impl_->str_set_.size(), "poll_strings duplicate ", std::to_string(ngram_size), "-grams detected");
+          ORT_ENFORCE((before_insert + ngrams) == impl_->str_set_.size(), "poll_strings duplicate ", std::to_string(ngram_size), "-grams detected");
         }
       } else {
         ngram_id += ngrams;
@@ -401,54 +401,43 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
 
   const auto N = impl.N_;
   const auto S = impl.S_ + 1;  // Convert to distance
-  const auto n = (impl.all_) ? impl.M_ : N;
+  auto const start_ngram_size = (impl.all_) ? impl.M_ : N;
 
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<T>();
   auto const end_data = input_data + total_items;
   NGramItem<T> sample;
-  for (auto ni = n; ni <= N; ++ni) {
-    // skip does not apply to unigrams
-    if (ni == 1) {
-      auto first = input_data;
-      while (first != end_data) {
-        sample.Clear();
-        sample.AddItem(*first);
-        auto hit = impl.Find<T>(sample);
-        if (hit != set_end) {
-          // record frequency
-          auto ngram_id = hit->id();
-          impl.IncrementCount(ngram_id, frequencies);
-        }
-        ++first;
+  // Convert skip into distance between n-gram items
+  // by adding 1
+  for (auto si = 1; si <= S; ++si) {
+    auto ngram_start = input_data;
+    while (ngram_start < end_data) {
+      // Check if any ni in [start_ngram_size..N]
+      // fit before end_data so we do not waste time adding [1..start_ngram_size)
+      // For that at least items with start_ngram_size should fit
+      auto at_least_this = ngram_start + (si - 1) * (start_ngram_size - 1) + (start_ngram_size - 1);
+      if (at_least_this >= end_data) {
+        break;
       }
-    } else {
-      // Convert skip into distance between n-gram items
-      // by adding 1
-      for (auto si = 1; si <= S; ++si) {
-        auto ngram_start = input_data;
-        while (ngram_start < end_data) {
-          // we are interested only in a whole n-gram so if the end
-          // does not fit, we stop
-          auto const ngram_end = ngram_start + si * (ni - 1) + 1;
-          if (ngram_end > end_data) {
-            break;
-          }
-          sample.Clear();
-          auto ngram_item = ngram_start;
-          while (ngram_item < ngram_end) {
-            sample.AddItem(*ngram_item);
-            ngram_item += si;
-          }
+      sample.Clear();
+      auto ngram_item = ngram_start;
+      for (auto ni = 1;
+           ni <= N &&
+           ngram_item < end_data;
+           ++ni, ngram_item += si) {
+        sample.AddItem(*ngram_item);
+
+        // Do not test anything before start_ngram_size
+        if (ni >= start_ngram_size) {
           auto hit = impl.Find<T>(sample);
           if (hit != set_end) {
             // record frequency
             auto ngram_id = hit->id();
             impl.IncrementCount(ngram_id, frequencies);
           }
-          ++ngram_start;
         }
       }
+      ++ngram_start;
     }
   }
   OutputResult(ctx, frequencies);
