@@ -1,3 +1,4 @@
+
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,18 +32,19 @@ using namespace std;
 namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
 
-#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type)   \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
-      OneHot,                                                            \
-      9,                                                                 \
-      types_str,                                                         \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorTypes()) \
-          .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorTypes()) \
-          .TypeConstraint("T3", DataTypeImpl::AllTensorTypes()),         \
+#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type) \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                      \
+      OneHot,                                                          \
+      9,                                                               \
+      types_str,                                                       \
+      KernelDefBuilder()                                               \
+          .TypeConstraint("T1", DataTypeImpl::GetType<in_type>())      \
+          .TypeConstraint("T2", DataTypeImpl::GetType<depth_type>())   \
+          .TypeConstraint("T3", DataTypeImpl::GetType<out_type>()),    \
       OneHotOp<in_type, out_type, depth_type>);
 
-#define REG_ONE_HOT_OP(in_type, out_type, depth_type) REG_TYPED_ONE_HOT_OP(in_type##_##out_type##_depth_type, in_type, out_type, depth_type)
+#define REG_ONE_HOT_OP(in_type, out_type, depth_type) \
+  REG_TYPED_ONE_HOT_OP(in_type##_##out_type##_##depth_type, in_type, out_type, depth_type)
 
 REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
