@@ -205,7 +205,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        [Fact]
+        [Fact(Skip = "Disable temporarily")]
         private void TestPreTrainedModelsOpset7And8()
         {
             var opsets = new[] { "opset7", "opset8" };
