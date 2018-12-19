@@ -163,11 +163,11 @@ TEST(MathOpTest, Sub_int32) {
 }
 
 TEST(MathOpTest, Sub_int64) {
-    OpTester test("Sub");
-    test.AddInput<int64_t>("A", { 3 }, { 1, 5, 6 });
-    test.AddInput<int64_t>("B", { 3 }, { 4, 5, 3 });
-    test.AddOutput<int64_t>("C", { 3 }, { -3, 0, 3 });
-    test.Run();
+  OpTester test("Sub");
+  test.AddInput<int64_t>("A", {3}, {1, 5, 6});
+  test.AddInput<int64_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<int64_t>("C", {3}, {-3, 0, 3});
+  test.Run();
 }
 
 TEST(MathOpTest, Sub) {
@@ -212,11 +212,11 @@ TEST(MathOpTest, Mul_int32) {
 }
 
 TEST(MathOpTest, Mul_int64) {
-    OpTester test("Mul");
-    test.AddInput<int64_t>("A", { 3 }, { 3, 6, -3 });
-    test.AddInput<int64_t>("B", { 3 }, { 4, -3, -2 });
-    test.AddOutput<int64_t>("C", { 3 }, { 12, -18, 6 });
-    test.Run();
+  OpTester test("Mul");
+  test.AddInput<int64_t>("A", {3}, {3, 6, -3});
+  test.AddInput<int64_t>("B", {3}, {4, -3, -2});
+  test.AddOutput<int64_t>("C", {3}, {12, -18, 6});
+  test.Run();
 }
 
 TEST(MathOpTest, Mul) {
@@ -246,11 +246,11 @@ TEST(MathOpTest, Div_int32) {
 }
 
 TEST(MathOpTest, Div_int64) {
-    OpTester test("Div");
-    test.AddInput<int64_t>("A", { 3 }, { 4, 8, 8 });
-    test.AddInput<int64_t>("B", { 3 }, { 2, 3, 4 });
-    test.AddOutput<int64_t>("C", { 3 }, { 2, 2, 2 });
-    test.Run();
+  OpTester test("Div");
+  test.AddInput<int64_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int64_t>("B", {3}, {2, 3, 4});
+  test.AddOutput<int64_t>("C", {3}, {2, 2, 2});
+  test.Run();
 }
 
 TEST(MathOpTest, Div) {
@@ -819,6 +819,20 @@ TEST(MathOpTest, Atan) {
   TrigTest<std::atan>(test, {-10.0f, -5.0f, 0.0f, 5.0f, 10.0f});
 }
 
+TEST(MathOpTest, Sinh) {
+  OpTester test("Sinh", 9);
+  TrigTest<std::sinh>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+TEST(MathOpTest, Cosh) {
+  OpTester test("Cosh", 9);
+  TrigTest<std::cosh>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+TEST(MathOpTest, Tanh) {
+  OpTester test("Tanh", 9);
+  TrigTest<std::tanh>(test, {-10.0f, -5.0f, 0.0f, 5.0f, 10.0f});
+}
 TEST(MathOpTest, Expand_8_3x3) {
   OpTester test("Expand", 8);
   test.AddInput<float>("data_0", {1}, {1.0f});
