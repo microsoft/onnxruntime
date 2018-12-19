@@ -14,6 +14,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_transformer.h"
 #include "core/graph/graph_transformer_mgr.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
@@ -247,6 +248,44 @@ class InferenceSession::Impl {
     return common::Status::OK();
   }
 
+  static common::Status TransformGraph(onnxruntime::Graph& graph,
+                                       const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                       const ExecutionProviders& providers,
+                                       KernelRegistryManager& kernel_registry_manager,
+                                       const InsertCastTransformer& insert_cast_transformer) {
+    // The transformer order:
+    // 1. built-in graph rewriter
+    // 2. each execution provider's transformer
+    // 3. do node placement according to kernel definition
+    // 4. insert copy nodes
+    // 5. insert cast nodes.
+
+    // first apply the default/system/basic graph to graph optimizations.
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
+
+    auto kernels{kernel_registry_manager.GetAllKernelRegistries()};
+
+    // Do partitioning based on execution providers' capability.
+    GraphPartitioner partitioner(kernel_registry_manager, providers);
+    ORT_RETURN_IF_ERROR(partitioner.Partition(graph));
+
+    // Insert copy nodes.
+    for (auto& provider : providers) {
+      if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
+          provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
+          provider->Type() != onnxruntime::kNupharExecutionProvider) {
+        TransformerMemcpyImpl copy_impl(graph, provider->Type());
+        copy_impl.ModifyGraph(kernel_registry_manager);
+      }
+    }
+
+    // Insert cast node/s.
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
+
+    return common::Status::OK();
+  }
+
   // memory allocations for a subgraph that are owned by InferenceSession
   struct SubgraphMemory {
     std::unique_ptr<SessionState> session_state;
@@ -277,10 +316,8 @@ class InferenceSession::Impl {
           SessionStateInitializer initializer{*subgraph, *subgraph_info.session_state,
                                               execution_providers_, kernel_registry_manager_, *session_logger_};
 
-          ORT_RETURN_IF_ERROR(
-              initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                     node.ImplicitInputDefs(),
-                                     session_options_.enable_sequential_execution));
+          ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
+                                                     session_options_.enable_sequential_execution));
 
           ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
                                                             subgraph_info.weights_buffers));
@@ -347,9 +384,21 @@ class InferenceSession::Impl {
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_, *session_logger_};
 
-      ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                                         {}, session_options_.enable_sequential_execution));
+      // apply any transformations to the main graph and any subgraphs
+      ORT_RETURN_IF_ERROR(TransformGraph(graph, graph_transformation_mgr_,
+                                         execution_providers_, kernel_registry_manager_,
+                                         insert_cast_transformer_));
 
+      ORT_RETURN_IF_ERROR(utils::ForAllMutableSubgraphs(graph, [this](Graph& subgraph) {
+        return TransformGraph(subgraph, graph_transformation_mgr_,
+                              execution_providers_, kernel_registry_manager_,
+                              insert_cast_transformer_);
+      }));
+
+      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      ORT_RETURN_IF_ERROR(graph.Resolve());
+
+      ORT_RETURN_IF_ERROR(session_initializer.CreatePlan({}, session_options_.enable_sequential_execution));
       ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
                                                                 weights_buffers_));
 
