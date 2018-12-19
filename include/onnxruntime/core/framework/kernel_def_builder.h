@@ -234,7 +234,7 @@ class KernelDefBuilder {
     return std::move(kernel_def_);
   }
 
- protected:
+ private:
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;
 };
