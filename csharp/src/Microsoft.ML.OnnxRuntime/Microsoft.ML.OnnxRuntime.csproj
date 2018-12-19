@@ -5,7 +5,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
-    <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile>   
+    <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
     <!--- packaging properties -->
     <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
@@ -31,6 +31,18 @@
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
   <!--TODO: Find a way to bundle the native symbol files properly -->
   <ItemGroup>
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\**\*.*"
+          PackagePath="\build\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
+          PackagePath="\runtimes\win10-x64\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
           PackagePath="\runtimes\win10-x64\native"
           Pack="true"
@@ -44,7 +56,7 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
-    <None Include="$(NativeBuildOutputDir)\mkldnn.dll" 
+    <None Include="$(NativeBuildOutputDir)\mkldnn.dll"
           Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
           PackagePath="\runtimes\win10-x64\native"
           Pack="true"
@@ -84,7 +96,7 @@
     <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashShort" />
     </Exec>
-    
+
     <PropertyGroup>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <Version>$(PackageVersion)</Version>

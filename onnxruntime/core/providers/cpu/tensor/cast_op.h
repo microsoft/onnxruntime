@@ -5,9 +5,9 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "Eigen/src/Core/arch/CUDA/Half.h"
-#include "core/util/math_cpuonly.h"
 
 #if defined(USE_MLAS) && defined(_M_AMD64)
 #include "core/mlas/inc/mlas.h"

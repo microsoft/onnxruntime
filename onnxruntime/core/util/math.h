@@ -24,10 +24,16 @@
 // still keep it simple, so all platforms would be able to support it fairly
 // easily.
 
+#ifdef USE_MKLML_FOR_BLAS
+// when USE_MKLML is defined, use MKLML cblas for GEMM
+#include "mkl_cblas.h"
+#define CBLAS_ENUM_DEFINED_H
+#else
 // We include the cblas header here so that we can obtain the macros from cblas.
 extern "C" {
 #include "core/framework/cblas.h"
 }
+#endif
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
@@ -70,7 +76,7 @@ void Not(const int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Powx(const int N, const T* a, const T b, T* y, Provider* provider);
 
-#define DECLARE_BINARY_OP_BINARY_RESULT(name)                            \
+#define DECLARE_BINARY_OP_BINARY_RESULT(name)                                  \
   template <typename T, class Provider>                                        \
   void name(const int N, const T* a, const T* b, bool* y, Provider* provider); \
   template <typename T, class Provider>                                        \
@@ -93,7 +99,7 @@ DECLARE_BINARY_OP_BINARY_RESULT(Xor);
 
 #undef DECLARE_BINARY_OP_BINARY_RESULT
 
-#define DECLARE_BINARY_OP(name)                                       \
+#define DECLARE_BINARY_OP(name)                                             \
   template <typename T, class Provider>                                     \
   void name(const int N, const T* a, const T* b, T* y, Provider* provider); \
   template <typename T, class Provider>                                     \
