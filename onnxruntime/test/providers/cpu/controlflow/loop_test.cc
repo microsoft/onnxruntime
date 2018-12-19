@@ -267,6 +267,17 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   graph.SetInputOrder({&iter_num_in, &cond_in, &loop_var_0_in, &loop_var_1_in});
   graph.SetOutputOrder({cond_out, loop_var_0_out, loop_var_1_out, loop_out_0});
 
+  // optional input backed by an initializer to make sure that's handled too
+  {
+    TensorProto optional_input_tensor;
+    optional_input_tensor.set_name("optional_float");
+    optional_input_tensor.add_dims(1);
+    optional_input_tensor.add_float_data(1.f);
+    optional_input_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+
+    graph.AddInitializedTensor(optional_input_tensor);
+  }
+
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
 

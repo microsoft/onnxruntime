@@ -1305,16 +1305,28 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   output_types.clear();
 
-  auto& subgraph_inputs = subgraph.GetInputs();
+  auto& subgraph_inputs = subgraph.GetInputsIncludingInitializers();
   auto num_subgraph_inputs = subgraph_inputs.size();
 
-  if (num_subgraph_inputs != input_types.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Size mismatch validating subgraph inputs. Got ",
-                           input_types.size(), " inputs but subgraph requires ", subgraph_inputs.size());
+  if (input_types.size() < num_subgraph_inputs) {
+    // check we have all the required inputs. we can't do name matching, so make sure all of the missing inputs
+    // are backed by initializers (which makes them optional).
+    std::string missing_inputs;  // this is rare so just append strings instead of doing anything complicated
+    const TensorProto* initializer = nullptr;
+    for (size_t i = input_types.size(); i < num_subgraph_inputs; ++i) {
+      auto& input_name = subgraph_inputs[i]->Name();
+      if (subgraph.GetInitializedTensor(input_name, initializer) == false) {
+        missing_inputs += input_name + " ";
+      }
+    }
+
+    if (!missing_inputs.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Missing required inputs for subgraph: ", missing_inputs);
+    }
   }
 
   // apply type/shape info to the subgraph's inputs
-  for (size_t i = 0; i < num_subgraph_inputs; ++i) {
+  for (size_t i = 0, end = input_types.size(); i < end; ++i) {
     const auto& input_type = *input_types[i];
     const auto& subgraph_input = *subgraph_inputs[i];
 
