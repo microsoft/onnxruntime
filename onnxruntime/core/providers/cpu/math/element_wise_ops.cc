@@ -828,26 +828,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cosh<float>);
 
-template <typename T>
-class Tanh final : public OpKernel {
- public:
-  explicit Tanh(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override {
-    auto& X = *context->Input<Tensor>(0);
-    auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).tanh();
-    return Status::OK();
-  }
-};
-
-ONNX_CPU_OPERATOR_KERNEL(
-    Tanh,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Tanh<float>);
-
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
   return BroadcastTwo<float, float>(
