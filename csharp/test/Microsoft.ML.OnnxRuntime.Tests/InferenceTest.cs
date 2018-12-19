@@ -217,9 +217,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // TODO: dims contains 'None'. Session throws error.
                     if (model.ToString() == "test_tiny_yolov2")
                         continue;
+
+                    FileInfo[] modelNames = null;
                     try
                     {
-                        var modelNames = model.GetFiles("*.onnx");
+                        modelNames = model.GetFiles("*.onnx");
                         if (modelNames.Count() != 1)
                         {
                             // TODO remove file "._resnet34v2.onnx" from test set
@@ -249,7 +251,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                     catch (Exception ex)
                     {
-                        var msg = $"Opset {opset}: Model {model}: error = {ex.Message}";
+                        var msg = $"Opset {opset}: Model {model}: ModelFile = {modelNames[0].ToString()} error = {ex.Message}";
                         throw new Exception(msg);
                     }
                 } //model
