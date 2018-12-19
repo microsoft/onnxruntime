@@ -791,7 +791,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <typename T>
 class Sinh final : public OpKernel {
  public:
-  Sinh(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Sinh(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -811,7 +811,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <typename T>
 class Cosh final : public OpKernel {
  public:
-  Cosh(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Cosh(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -831,7 +831,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <typename T>
 class Tanh final : public OpKernel {
  public:
-  Tanh(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Tanh(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override {
