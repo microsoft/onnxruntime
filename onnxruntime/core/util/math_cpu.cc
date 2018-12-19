@@ -57,7 +57,8 @@ namespace math {
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-#ifdef USE_EIGEN_FOR_BLAS
+// when USE_MKLDNN and USE_MKLML are defined, use cblas APIs for MKLML
+#if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -332,10 +333,14 @@ void Gemm<float, CPUMathUtil>(
     float* C,
     CPUMathUtil* /*context*/,
     MLDataType /*math_type*/) {
-  int lda = (TransA == CblasNoTrans) ? K : M;
-  int ldb = (TransB == CblasNoTrans) ? N : K;
-  cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
-              beta, C, N);
+  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+  cblas_sgemm(CblasRowMajor, TransA, TransB,
+              gsl::narrow_cast<int>(M),
+              gsl::narrow_cast<int>(N),
+              gsl::narrow_cast<int>(K),
+              alpha, A, lda, B, ldb,
+              beta, C, gsl::narrow_cast<int>(N));
 }
 
 template <>
