@@ -29,9 +29,7 @@ class SessionStateInitializer {
                           const logging::Logger& logger);
 
   // First perform any transformations and create the execution plan
-  common::Status CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
-                            const InsertCastTransformer& insert_cast_transformer,
-                            const std::vector<NodeArg*>& outer_scope_node_args,
+  common::Status CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
                             bool enable_sequential_execution);
 
   // initialize tensors, and save. save kernels and input/output node mappings
