@@ -12,6 +12,7 @@ template <typename in_type, typename out_type, typename depth_type>
 class OneHotOp final : public OpKernel {
  public:
   explicit OneHotOp(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+    std::cout << "Inside OneHotOp...\n";
     int64_t tmp_axis;
     if (op_kernel_info.GetAttr<int64_t>("axis", &tmp_axis).IsOK()) {
       if (tmp_axis < -1) {  // as per spec it can be -1 or more

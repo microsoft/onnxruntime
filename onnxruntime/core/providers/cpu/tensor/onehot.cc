@@ -1,4 +1,3 @@
-
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +16,7 @@ limitations under the License.
 
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/util/eigen_common_wrapper.h"
-#include "onnx/defs/schema.h"
+#include "core/platform/env.h"
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4554)
@@ -25,22 +24,22 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot
 
-#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type) \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                      \
-      OneHot,                                                          \
-      9,                                                               \
-      types_str,                                                       \
-      KernelDefBuilder()                                               \
-          .TypeConstraint("T1", DataTypeImpl::GetType<in_type>())      \
-          .TypeConstraint("T2", DataTypeImpl::GetType<depth_type>())   \
-          .TypeConstraint("T3", DataTypeImpl::GetType<out_type>()),    \
+// T1: indices, T2: depth, T3: values
+#define REG_TYPED_ONE_HOT_OP(types_str, in_type, out_type, depth_type)     \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                          \
+      OneHot,                                                              \
+      9,                                                                   \
+      types_str,                                                           \
+      KernelDefBuilder()                                                   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>()) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
       OneHotOp<in_type, out_type, depth_type>);
 
 #define REG_ONE_HOT_OP(in_type, out_type, depth_type) \
@@ -151,8 +150,10 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   typename EigenTensorTypes<out_type>::ConstScalar off_value_e(values_data);
 
   generator::OneGenerator<in_type, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
-  //Eigen::ThreadPoolDevice eigen_threadpool_device(4 /* number of threads to use */);  // TODO make this configurable
-  //  output_tensor_e.device(eigen_threadpool_device) = output_tensor_e.generate(generator);
+
+  // TODO figure out the eigen threadpool stuff for use here
+  // Eigen::ThreadPoolDevice eigen_threadpool_device(Env::Default().GetNumCpuCores()); // TODO make this configurable
+  // output_tensor_e.device(eigen_threadpool_device) = output_tensor_e.generate(generator);
   output_tensor_e = output_tensor_e.generate(generator);
 
   return Status::OK();

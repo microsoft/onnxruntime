@@ -9,7 +9,7 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-TEST(OneHotOpTest, Default) {
+TEST(OneHotOpTest, DefaultAxis) {
   OpTester test("OneHot", 9);
   test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
   test.AddInput<int64_t>("depth", {1}, {10});
