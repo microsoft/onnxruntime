@@ -19,6 +19,7 @@ limitations under the License.
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
 #ifdef _MSC_VER
+#pragma warning(push)
 #pragma warning(disable : 4554)
 #endif
 #include "core/util/eigen_common_wrapper.h"
