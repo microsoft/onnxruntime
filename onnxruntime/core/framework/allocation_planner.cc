@@ -389,6 +389,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           MLValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
+          ++UseCount(index);
           if (strcmp(default_allocator_info.name, CPU) != 0) {
             // By default, outputs of this node are allocated on the default device allocator,
             // except for outputs marked for allocation in MemoryType:
@@ -528,7 +529,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == UseCount(original))
+          if (0 == --UseCount(original))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
       }

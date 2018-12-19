@@ -26,7 +26,7 @@ using namespace onnxruntime;
 
 namespace {
 
-ONNXTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
+ONNXTensorElementDataType CApiElementTypeFromProto(int type) {
   switch (type) {
     CASE_TYPE(FLOAT)
     CASE_TYPE(UINT8)

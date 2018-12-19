@@ -52,7 +52,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnxruntime::DataTypeImpl* input,
   return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
 }
 
-const DataTypeImpl* ElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
+const DataTypeImpl* ElementTypeFromProto(int type) {
   switch (type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return DataTypeImpl::GetType<float>();
