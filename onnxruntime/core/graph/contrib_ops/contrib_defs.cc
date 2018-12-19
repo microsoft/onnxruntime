@@ -32,11 +32,10 @@ void RegisterContribSchemas() {
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvMaxPool)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaxpoolWithMask)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(
- Port Conv1D::ComputeConvMaxPoolWithActivationAndMask() method in TP3L1 c++ model.)DOC")
+      .SetDoc(R"DOC(For internal use.)DOC")
       .Attr(
           "auto_pad",
           "",
@@ -47,44 +46,28 @@ Sample echo operator.)DOC");
           "",
           AttributeProto::INTS,
           OPTIONAL)
-      .Attr(
-          "dilations",
-          "",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "strides", "", AttributeProto::INTS, OPTIONAL)
       .Attr("pads",
             "",
             AttributeProto::INTS, OPTIONAL)
       .Attr(
-          "group",
+          "storage_order",
           "",
           AttributeProto::INT,
-          static_cast<int64_t>(1))
+          static_cast<int64_t>(0))
       .Attr(
-          "activation",
-          "",
-          AttributeProto::STRING,
-          OPTIONAL)
+          "strides", "", AttributeProto::INTS, OPTIONAL)
       .Input(
           0,
           "X",
           "",
           "T")
-      .Input(
-          1,
-          "W",
-          "weights",
-          "T")
-      .Input(2, "M", "mask", "T", OpSchema::Optional)
-      .Input(3, "B", "bias", "T", OpSchema::Optional)
+      .Input(1, "M", "mask", "tensor(int32)")
       .Output(
           0,
           "Y",
           "",
           "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
