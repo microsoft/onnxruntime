@@ -314,9 +314,13 @@ int real_main(int argc, char* argv[]) {
       {"upsample_nearest", "opset 9 not supported yet"},
       {"onehot_with_axis", "opset 9 not supported yet"},
       {"onehot_without_axis", "opset 9 not supported yet"},  // also has bug in current test re: output type. Spandan to fix.
+      {"sinh", "opset 9 not supported yet"},
+      {"cosh", "opset 9 not supported yet"},
       {"asinh", "opset 9 not supported yet"},
       {"acosh", "opset 9 not supported yet"},
       {"atanh", "opset 9 not supported yet"},
+      {"sinh_example", "opset 9 not supported yet"},
+      {"cosh_example", "opset 9 not supported yet"},
       {"asinh_example", "opset 9 not supported yet"},
       {"acosh_example", "opset 9 not supported yet"},
       {"atanh_example", "opset 9 not supported yet"},
