@@ -653,6 +653,43 @@ Example 4:
   output  = [[[2,3]],[[4,5]]]
 )DOC");
 
+    ONNX_CONTRIB_OPERATOR_SCHEMA( WordConvEmbedding )
+       .SetDomain( kMSDomain )
+       .SinceVersion( 1 )
+       .Attr(
+          "embedding_size",
+          "Integer representing the embedding vector size for each word."
+          "If not provide, use the fileter size of conv weight",
+          AttributeProto::INT,
+          OPTIONAL)
+       .Attr(
+          "conv_window_size",
+          "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
+          "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
+          "If not provide, use the first dimension of conv kernal shape.",
+          AttributeProto::INT,
+          OPTIONAL)
+       .Attr(
+          "char_embedding_size",
+          "Integer representing the embedding vector size for each char."
+          "If not provide, use the char embedding size of embedding vector.",
+          AttributeProto::INT,
+          OPTIONAL)
+       .Input( 0, "Sequence", "Specify batchs of sequence words to embedding", "T" )
+       .Input( 1, "W", "Specify weights of conv", "T1" )
+       .Input( 2, "B", "Specify bias of conv", "T1" )
+       .Input( 3, "C", "Specify embedding vector of char", "T1" )
+       .Output( 0, "Y", "output", "T1" )
+       .TypeConstraint(
+          "T",
+          { "tensor(int32)" },
+          "Constrain to tensor(int32)." )
+       .TypeConstraint(
+          "T1",
+          { "tensor(float)" },
+          "Constrain to tensor(float).")
+       .SetDoc( R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC" );
+
 }
 }  // namespace contrib
 }  // namespace onnxruntime
