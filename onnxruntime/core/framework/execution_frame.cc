@@ -89,7 +89,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_inde
     if (len < 0) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape cannot contain any negative value");
     }
-    if (!IAllocator::CalcMemSizeForArray(len, element_type->Size(), &size)) {
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, element_type->Size(), &size)) {
       return Status(ONNXRUNTIME, FAIL, "size overflow");
     }
   }

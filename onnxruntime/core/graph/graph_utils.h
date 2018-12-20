@@ -9,10 +9,13 @@
 namespace onnxruntime {
 
 namespace utils {
-  bool IsSupportedOptypeVersionAndDomain(const Node& node,
-                                         const std::string& op_type,
-                                         ONNX_NAMESPACE::OperatorSetVersion version,
-                                         const std::string& domain = kOnnxDomainAlias);
-}
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       const std::string& op_type,
+                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::string& domain = kOnnxDomainAlias);
 
-}
+Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
+Status ForAllSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
+
+}  // namespace utils
+}  // namespace onnxruntime

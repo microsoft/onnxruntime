@@ -5,6 +5,7 @@
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/internal_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/shape_inference.h"
 
@@ -656,6 +657,7 @@ Example 4:
   indices = [[[0,1]],[[1,0]]]
   output  = [[[2,3]],[[4,5]]]
 )DOC");
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

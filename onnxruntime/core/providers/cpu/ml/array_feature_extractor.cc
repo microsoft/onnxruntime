@@ -80,9 +80,13 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
     }
   }
 
-  const TensorShape z_shape = [num_indices, &x_shape]() {
+  const TensorShape z_shape = [num_indices, x_num_dims, &x_shape]() {
+    if (x_num_dims == 1) {
+      // special case: for 1D input, return {1, num_indices} for backwards compatibility
+      return TensorShape{1, num_indices};
+    }
     TensorShape shape{x_shape};
-    shape[shape.NumDimensions() - 1] = num_indices;
+    shape[x_num_dims - 1] = num_indices;
     return shape;
   }();
   Tensor* Z = context->Output(0, z_shape);
