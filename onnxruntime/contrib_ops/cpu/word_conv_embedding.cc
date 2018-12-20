@@ -218,7 +218,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<int32_t>()}).TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>()}),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
     WordConvEmbedding);
 
 }  // namespace contrib
