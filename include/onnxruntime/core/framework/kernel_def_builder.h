@@ -26,10 +26,7 @@ inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
 
 class KernelDef {
  public:
-  explicit KernelDef() : KernelDef(OrtMemType::OrtMemTypeDefault, OrtMemType::OrtMemTypeDefault) {
-  }
-
-  explicit KernelDef(OrtMemType default_inputs, OrtMemType default_outputs) : default_inputs_mem_type_(default_inputs), default_outputs_mem_type_(default_outputs) {
+  explicit KernelDef() : default_inputs_mem_type_(OrtMemTypeDefault), default_outputs_mem_type_(OrtMemTypeDefault) {
   }
 
   const std::string& OpName() const {
@@ -127,11 +124,8 @@ class KernelDef {
 
 class KernelDefBuilder {
  public:
-  explicit KernelDefBuilder(OrtMemType inputs_mem_type, OrtMemType outputs_mem_type)
-      : kernel_def_(new KernelDef(inputs_mem_type, outputs_mem_type)) {}
-
   explicit KernelDefBuilder()
-      : KernelDefBuilder(OrtMemType::OrtMemTypeDefault, OrtMemType::OrtMemTypeDefault) {}
+      : kernel_def_(new KernelDef()) {}
 
   KernelDefBuilder& SetName(const std::string& op_name);
   KernelDefBuilder& SetName(const char* op_name);
@@ -224,6 +218,22 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& ExecQueueId(int queue_id) {
     kernel_def_->exec_queue_id_ = queue_id;
+    return *this;
+  }
+
+  /**
+  Specify the default inputs memory type, if not specified, it is DefaultMemory
+  */
+  KernelDefBuilder& SetDefaultInputsMemoryType(OrtMemType mem_type) {
+    kernel_def_->default_inputs_mem_type_ = mem_type;
+    return *this;
+  }
+
+  /**
+  Specify the default outputs memory type, if not specified, it is DefaultMemory
+  */
+  KernelDefBuilder& SetDefaultOutputMemoryType(OrtMemType mem_type) {
+    kernel_def_->default_outputs_mem_type_ = mem_type;
     return *this;
   }
 
