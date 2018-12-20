@@ -5,7 +5,6 @@
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
-#include "core/graph/contrib_ops/internal_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/shape_inference.h"
 
