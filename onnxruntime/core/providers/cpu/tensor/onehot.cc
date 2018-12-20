@@ -158,9 +158,8 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   generator::OneGenerator<in_type, out_type> generator(indices_tensor_e, on_value_e, off_value_e);
 
+  // TODO potential optimization opportunity
   // TODO figure out the eigen threadpool stuff for use here
-  // Eigen::ThreadPoolDevice eigen_threadpool_device(Env::Default().GetNumCpuCores()); // TODO make this configurable
-  // output_tensor_e.device(eigen_threadpool_device) = output_tensor_e.generate(generator);
   output_tensor_e = output_tensor_e.generate(generator);
 
   return Status::OK();
