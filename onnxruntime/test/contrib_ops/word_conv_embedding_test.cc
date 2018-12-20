@@ -58,9 +58,9 @@ TEST( ContribOpTest, WordConvEmbedding_valid_attribute )
    {
       OpTester test( "WordConvEmbedding", 1, onnxruntime::kMSDomain );
       InitializeTestWithoutAttribute( test );
-      test.AddAttribute( "embedding_size", 2LL );
-      test.AddAttribute( "conv_window_size", 2LL );
-      test.AddAttribute( "char_embedding_size", 3LL );
+      test.AddAttribute<int64_t>( "embedding_size", 2LL );
+      test.AddAttribute<int64_t>( "conv_window_size", 2LL );
+      test.AddAttribute<int64_t>( "char_embedding_size", 3LL );
       test.Run();
    }
 }
@@ -71,9 +71,9 @@ TEST( ContribOpTest, WordConvEmbedding_embedding_size_mismatch )
    {
       OpTester test( "WordConvEmbedding", 1, onnxruntime::kMSDomain );
       InitializeTestWithoutAttribute( test );
-      test.AddAttribute( "embedding_size", 3LL );
-      test.AddAttribute( "conv_window_size", 2LL );
-      test.AddAttribute( "char_embedding_size", 3LL );
+      test.AddAttribute<int64_t>( "embedding_size", 3LL );
+      test.AddAttribute<int64_t>( "conv_window_size", 2LL );
+      test.AddAttribute<int64_t>( "char_embedding_size", 3LL );
       test.Run( OpTester::ExpectResult::kExpectFailure );
    }
 }
@@ -84,9 +84,9 @@ TEST( ContribOpTest, WordConvEmbedding_conv_window_size_mismatch )
    {
       OpTester test( "WordConvEmbedding", 1, onnxruntime::kMSDomain );
       InitializeTestWithoutAttribute( test );
-      test.AddAttribute( "embedding_size", 2LL );
-      test.AddAttribute( "conv_window_size", 1LL );
-      test.AddAttribute( "char_embedding_size", 3LL );
+      test.AddAttribute<int64_t>( "embedding_size", 2LL );
+      test.AddAttribute<int64_t>( "conv_window_size", 1LL );
+      test.AddAttribute<int64_t>( "char_embedding_size", 3LL );
       test.Run( OpTester::ExpectResult::kExpectFailure );
    }
 }
@@ -97,9 +97,9 @@ TEST( ContribOpTest, WordConvEmbedding_char_embedding_size_mismatch )
    {
       OpTester test( "WordConvEmbedding", 1, onnxruntime::kMSDomain );
       InitializeTestWithoutAttribute( test );
-      test.AddAttribute( "embedding_size", 2LL );
-      test.AddAttribute( "conv_window_size", 2LL );
-      test.AddAttribute( "char_embedding_size", 4LL );
+      test.AddAttribute<int64_t>( "embedding_size", 2LL );
+      test.AddAttribute<int64_t>( "conv_window_size", 2LL );
+      test.AddAttribute<int64_t>( "char_embedding_size", 4LL );
       test.Run( OpTester::ExpectResult::kExpectFailure );
    }
 }
