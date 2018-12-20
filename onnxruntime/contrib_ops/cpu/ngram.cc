@@ -44,43 +44,43 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 namespace ngram_details {
 
 class NgramElementBase {
-  size_t id_;  // id in the pool
+  size_t id_;  // Id in the pool
  protected:
   NgramElementBase(size_t id) : id_(id) {}
   ~NgramElementBase() = default;
 
  public:
-  size_t id() const { return id_; }
+  size_t Id() const { return id_; }
 };
 
 template <class T>
-class NGramItem;
+class NgramItem;
 
 template <>
-class NGramItem<int64_t> : public NgramElementBase {
+class NgramItem<int64_t> : public NgramElementBase {
   std::vector<int64_t> items_;
   size_t hash_ = 0;
 
-  void recompute(int64_t v) {
+  void RunningHash(int64_t v) {
     std::hash<int64_t> hf{};
     hash_ ^= hf(v) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
   }
 
  public:
   template <typename ForwardIter>
-  explicit NGramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
+  explicit NgramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
     while (first != last) {
-      recompute(*first);
+      RunningHash(*first);
       items_.push_back(*first);
       ++first;
     }
     assert(!items_.empty());
   }
   // For sampling
-  explicit NGramItem() : NgramElementBase(0) {}
+  explicit NgramItem() : NgramElementBase(0) {}
   void AddItem(int64_t v) {
     items_.push_back(v);
-    recompute(v);
+    RunningHash(v);
   }
   void DebugPrint() const {
     std::copy(items_.cbegin(), items_.cend(), std::ostream_iterator<int64_t>(std::cout, ","));
@@ -90,47 +90,47 @@ class NGramItem<int64_t> : public NgramElementBase {
     items_.clear();
     hash_ = 0;
   }
-  bool operator==(const NGramItem& o) const {
+  bool operator==(const NgramItem& o) const {
     return items_ == o.items_;
   }
-  size_t hash() const {
+  size_t Hash() const {
     return hash_;
   }
 };
 
 template <>
-class NGramItem<int32_t> : public NGramItem<int64_t> {
+class NgramItem<int32_t> : public NgramItem<int64_t> {
  public:
   template <typename ForwardIter>
-  explicit NGramItem(size_t id, ForwardIter first, ForwardIter last) : NGramItem<int64_t>(id, first, last) {}
-  explicit NGramItem() = default;
+  explicit NgramItem(size_t id, ForwardIter first, ForwardIter last) : NgramItem<int64_t>(id, first, last) {}
+  explicit NgramItem() = default;
 };
 
 template <>
-class NGramItem<std::string> : public NgramElementBase {
+class NgramItem<std::string> : public NgramElementBase {
  private:
   std::vector<std::reference_wrapper<const std::string>> items_;
   size_t hash_ = 0;
 
-  void recompute(const std::string& s) {
+  void RunningHash(const std::string& s) {
     std::hash<std::string> hf{};
     hash_ ^= hf(s) + 0x9e3779b9 + (hash_ << 6) + (hash_ >> 2);
   }
 
  public:
   template <typename ForwardIter>
-  explicit NGramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
+  explicit NgramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
     while (first != last) {
-      recompute(*first);
+      RunningHash(*first);
       items_.push_back(std::cref(*first));
       ++first;
     }
     assert(!items_.empty());
   }
-  explicit NGramItem() : NgramElementBase(0) {}
+  explicit NgramItem() : NgramElementBase(0) {}
   void AddItem(const std::string& s) {
     items_.push_back(std::cref(s));
-    recompute(s);
+    RunningHash(s);
   }
   void DebugPrint() const {
     std::copy(items_.cbegin(), items_.cend(), std::ostream_iterator<std::string>(std::cout, ","));
@@ -141,7 +141,7 @@ class NGramItem<std::string> : public NgramElementBase {
     hash_ = 0;
   }
 
-  bool operator==(const NGramItem& o) const {
+  bool operator==(const NgramItem& o) const {
     if (items_.size() == o.items_.size()) {
       return std::equal(items_.cbegin(), items_.cend(),
                         o.items_.cbegin(), o.items_.cend(),
@@ -149,15 +149,15 @@ class NGramItem<std::string> : public NgramElementBase {
     }
     return false;
   }
-  size_t hash() const {
+  size_t Hash() const {
     return hash_;
   }
 };
 
-using IntegerPoolSet = std::unordered_set<NGramItem<int64_t>>;
+using IntegerPoolSet = std::unordered_set<NgramItem<int64_t>>;
 // Does not own strings, contains references to them. This helps
 // to search by string references that point to the current input.
-using StringPoolSet = std::unordered_set<NGramItem<std::string>>;
+using StringPoolSet = std::unordered_set<NgramItem<std::string>>;
 
 template <typename ForwardIter, typename Cont>
 inline void Emplace(ForwardIter first, size_t ngrams, size_t ngram_size, size_t& ngram_id, Cont& c) {
@@ -176,11 +176,11 @@ using namespace onnxruntime::contrib::ngram_details;
 
 namespace std {
 template <typename T>
-struct hash<NGramItem<T>> {
-  typedef NGramItem<T> argument_type;
+struct hash<NgramItem<T>> {
+  typedef NgramItem<T> argument_type;
   typedef size_t result_type;
   result_type operator()(const argument_type& a) const {
-    return a.hash();
+    return a.Hash();
   }
 };
 }  // namespace std
@@ -188,7 +188,18 @@ struct hash<NGramItem<T>> {
 namespace onnxruntime {
 namespace contrib {
 
-enum Mode {
+// The weighting criteria.
+// "TF"(term frequency),
+//    the counts are propagated to output
+// "IDF"(inverse document frequency),
+//    all the counts larger than 1
+//    would be truncated to 1 and the i-th element
+//    in weights would be used to scale (by multiplication)
+//    the count of the i-th n-gram in pool
+// "TFIDF" (the combination of TF and IDF).
+//  counts are scaled by the associated values in the weights attribute.
+
+enum WeightingCriteria {
   kNone = 0,
   kTF = 1,
   kIDF = 2,
@@ -196,7 +207,7 @@ enum Mode {
 };
 
 struct Ngram::Impl {
-  Mode mode_ = kNone;
+  WeightingCriteria weighting_criteria_ = kNone;
   int64_t N_ = 0;
   int64_t M_ = 0;
   int64_t S_ = 0;
@@ -223,7 +234,7 @@ struct Ngram::Impl {
   auto PoolEnd() const;
 
   template <typename T>
-  auto Find(const ngram_details::NGramItem<T>&) const;
+  auto PoolFind(const ngram_details::NgramItem<T>&) const;
 
   void IncrementCount(size_t ngram_id, std::vector<uint32_t>& frequencies) const {
     assert(ngram_id < ngram_indexes_.size());
@@ -250,17 +261,17 @@ inline auto Ngram::Impl::PoolEnd<std::string>() const {
 }
 
 template <>
-inline auto Ngram::Impl::Find<int64_t>(const NGramItem<int64_t>& i) const {
+inline auto Ngram::Impl::PoolFind<int64_t>(const NgramItem<int64_t>& i) const {
   return int_set_.find(i);
 }
 
 template <>
-inline auto Ngram::Impl::Find<int32_t>(const NGramItem<int32_t>& i) const {
+inline auto Ngram::Impl::PoolFind<int32_t>(const NgramItem<int32_t>& i) const {
   return int_set_.find(i);
 }
 
 template <>
-inline auto Ngram::Impl::Find<std::string>(const NGramItem<std::string>& i) const {
+inline auto Ngram::Impl::PoolFind<std::string>(const NgramItem<std::string>& i) const {
   return str_set_.find(i);
 }
 
@@ -269,13 +280,13 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   Status status = info.GetAttr("mode", &mode);
   ORT_ENFORCE(status.IsOK(), "mode is required");
   if (mode == "TF") {
-    impl_->mode_ = kTF;
+    impl_->weighting_criteria_ = kTF;
   } else if (mode == "IDF") {
-    impl_->mode_ = kIDF;
+    impl_->weighting_criteria_ = kIDF;
   } else if (mode == "TFIDF") {
-    impl_->mode_ = kTFIDF;
+    impl_->weighting_criteria_ = kTFIDF;
   }
-  ORT_ENFORCE(impl_->mode_ != kNone, "Unrecognized mode");
+  ORT_ENFORCE(impl_->weighting_criteria_ != kNone, "Unrecognized mode");
 
   status = info.GetAttr("M", &impl_->M_);
   ORT_ENFORCE(status.IsOK() && impl_->M_ > 0, "Positive Attr M is required");
@@ -369,7 +380,7 @@ void Ngram::OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& freq
   auto Y = ctx->Output(0, output_shape);
   auto output_data = Y->MutableData<float>();
   const auto& w = impl_->weights_;
-  switch (impl_->mode_) {
+  switch (impl_->weighting_criteria_) {
     case kTF: {
       for (auto f : frequences) {
         *output_data++ = static_cast<float>(f);
@@ -421,7 +432,7 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<T>();
   auto const end_data = input_data + total_items;
-  NGramItem<T> sample;
+  NgramItem<T> sample;
 
   // Treat unigrams in a special way
   if (start_ngram_size == 1) {
@@ -430,10 +441,10 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
       sample.Clear();
       sample.AddItem(*ngram_start);
       ++ngram_start;
-      auto hit = impl.Find<T>(sample);
+      auto hit = impl.PoolFind<T>(sample);
       if (hit != set_end) {
         // record frequency
-        auto ngram_id = hit->id();
+        auto ngram_id = hit->Id();
         impl.IncrementCount(ngram_id, frequencies);
       }
     }
@@ -443,6 +454,10 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
     }
   }
 
+  /// TODO: The following loop has a potential of
+  // parallelization if this code shows up during
+  // profiling. We could run loops with different skip
+  // values in parallel.
   // Convert skip into distance between n-gram items
   // by adding 1
   for (auto si = 1; si <= S; ++si) {
@@ -451,7 +466,7 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
       // Check if any ni in [start_ngram_size..N]
       // fit before end_data so we do not waste time adding [1..start_ngram_size)
       // For that at least items with start_ngram_size should fit
-      auto at_least_this = ngram_start + (si - 1) * (start_ngram_size - 1) + (start_ngram_size - 1);
+      auto at_least_this = ngram_start + si * (start_ngram_size - 1);
       if (at_least_this >= end_data) {
         break;
       }
@@ -465,10 +480,10 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
 
         // Do not test anything before start_ngram_size
         if (ni >= start_ngram_size) {
-          auto hit = impl.Find<T>(sample);
+          auto hit = impl.PoolFind<T>(sample);
           if (hit != set_end) {
             // record frequency
-            auto ngram_id = hit->id();
+            auto ngram_id = hit->Id();
             impl.IncrementCount(ngram_id, frequencies);
           }
         }

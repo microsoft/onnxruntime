@@ -282,9 +282,13 @@ activation.)DOC")
           "The weighting criteria. It can be one of \"TF\" (term frequency),"
           "\"IDF\" (inverse document frequency), and \"TFIDF\" (the combination of TF and IDF)",
           AttributeProto::STRING)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+      })
       .SetDoc(R"DOC(
-This transform extracts n-grams from the input integer sequence and save them as a vector.
- In contract to standard n-gram extraction, here, the indexes of extracting an n-gram from the original
+This transform extracts n-grams from the input sequence and save them as a vector.
+ In contrast to standard n-gram extraction, here, the indexes of extracting an n-gram from the original
  sequence are not necessarily consecutive numbers. The discontinuity between indexes are controlled by the number of skips. 
  If the number of skips is 2, we should skip two tokens when scanning through the original sequence.
  Let's consider an example. Assume that input sequence is [94, 17, 36, 12, 28] and the number of skips is 2.
@@ -294,7 +298,7 @@ This transform extracts n-grams from the input integer sequence and save them as
  Y[i] indicates the times that the i-th n-gram is found. The attribute "ngrams" is used to determine the mapping
  between index i and the corresponding n-gram. If "ngrams" is [ [94 , 17] , [ 17, 36 ] ], then the Y[0] (first element in Y)
  and Y[1] (second element in Y) are the counts of [94, 17] and [17, 36], respectively.
- An n-gram which cannot be found in gramPool should be ignored and has no effect on the output.
+ An n-gram which cannot be found in pool_strings/pool_int64s should be ignored and has no effect on the output.
  Note that we may consider all skips up to skipLength when generating the n-grams. 
 )DOC");
 

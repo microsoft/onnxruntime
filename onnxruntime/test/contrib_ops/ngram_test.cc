@@ -41,6 +41,14 @@ void InitTestAttr(OpTester& test, const std::string& mode,
 
 using namespace ngram_test;
 
+// Here is what takes place in general and in particular
+// in this unit test.There are 7 n - grams : 4 unigrams and 3 bigrams
+// that are expressed as 10 items(integers in this case) contained within pool_int64 attribute.
+// We only count and then optionally scale those ngrams that appear in the supplied pool parameter(either int64 or string).
+// M = 1 and N = 2 in this case.
+// However, attribute all controls whether we consider all of the supplied ngram[M..N] sizes
+// into consideration or not.With all = false, we only consider N - grams.
+
 TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0) {
   OpTester test("Ngram", opset_ver, domain);
   // 1 - 2, s=0, , all=false, weights empty, int32
@@ -57,6 +65,7 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0) {
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{7};
+  // all=false, only bi-grams are counted
   std::vector<float> output = {0, 0, 0, 0, 1, 1, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
@@ -80,6 +89,7 @@ TEST(ContribOpTest, Ngram_String_TF_AllFalse_Skip0) {
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> out_dims{7};
+  // all=false, only bi-grams are counted
   std::vector<float> output = {0, 0, 0, 0, 1, 1, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
@@ -90,7 +100,7 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0_LevelEmpty) {
   OpTester test("Ngram", opset_ver, domain);
   // 1 - 2, s=0, , all=false, weights empty, int32
   InitTestAttr(test, "TF", 1, 2, 0, false,
-               {0, 0},
+               {0, 0},  // no unigrams, bi-grams start immediately
                {
                    0,
                    1,
@@ -106,6 +116,7 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0_LevelEmpty) {
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{3};
+  // No 1-grams only bi-grams
   std::vector<float> output = {1, 1, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
@@ -128,6 +139,8 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip5) {
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{7};
+  // No 1-grams but Skip is 5 so we manage to count 3
+  // occurrences of [7,8]
   std::vector<float> output = {0, 0, 0, 0, 1, 3, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
@@ -151,6 +164,8 @@ TEST(ContribOpTest, Ngram_String_TF_AllFalse_Skip5) {
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> out_dims{7};
+  // No 1-grams but Skip is 5 so we manage to count 3
+  // occurrences of [7,8]
   std::vector<float> output = {0, 0, 0, 0, 1, 3, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
@@ -173,6 +188,7 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllTrue_Skip5) {
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{7};
+  // We consider both 1-grams and 2-grams so get all the counts here
   std::vector<float> output = {0, 3, 1, 0, 1, 3, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
