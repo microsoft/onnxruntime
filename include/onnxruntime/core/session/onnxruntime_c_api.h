@@ -40,10 +40,12 @@ extern "C" {
 #endif
 #define ORT_API_CALL _stdcall
 #define ORT_MUST_USE_RESULT
+#define TCHAR_T wchar_t
 #else
 #define ORT_EXPORT
 #define ORT_API_CALL
 #define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
+#define TCHAR_T char
 #endif
 
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
@@ -57,6 +59,46 @@ extern "C" {
 #else
 #define NO_EXCEPTION
 #endif
+
+// Copied from TensorProto::DataType
+// Currently, Ort doesn't support complex64, complex128, bfloat16 types
+typedef enum ONNXTensorElementDataType {
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED = 0,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT = 1,   // maps to c type float
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 = 2,   // maps to c type uint8_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 = 3,    // maps to c type int8_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 = 4,  // maps to c type uint16_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 = 5,   // maps to c type int16_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 = 6,   // maps to c type int32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 = 7,   // maps to c type int64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING = 8,  // maps to c++ type std::string
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL = 9,    //
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 = 10,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE = 11,      // maps to c type double
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 = 12,      // maps to c type uint32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 = 13,      // maps to c type uint64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 = 14,   // complex with float32 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 = 15,  // complex with float64 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 = 16,    // Non-IEEE floating-point format based on IEEE754 single-precision
+} ONNXTensorElementDataType;
+
+// Synced with onnx TypeProto oneof
+typedef enum ONNXType {
+  ONNX_TYPE_UNKNOWN,
+  ONNX_TYPE_TENSOR,
+  ONNX_TYPE_SEQUENCE,
+  ONNX_TYPE_MAP,
+  ONNX_TYPE_OPAQUE,
+  ONNX_TYPE_SPARSETENSOR,
+} ONNXType;
+
+typedef enum OrtLoggingLevel {
+  ORT_LOGGING_LEVEL_kVERBOSE = 0,
+  ORT_LOGGING_LEVEL_kINFO = 1,
+  ORT_LOGGING_LEVEL_kWARNING = 2,
+  ORT_LOGGING_LEVEL_kERROR = 3,
+  ORT_LOGGING_LEVEL_kFATAL = 4
+} OrtLoggingLevel;
 
 typedef enum OrtErrorCode {
   ORT_OK = 0,
@@ -122,55 +164,195 @@ struct OrtEnv;
 typedef struct OrtEnv OrtEnv;
 
 /**
- * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
+ * Every type inherented from OrtObject should be deleted by OrtReleaseObject(...).
  */
-ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg)
-ORT_ALL_ARGS_NONNULL;
+typedef struct OrtObject {
+  // Returns the new reference count.
+  uint32_t(ORT_API_CALL* AddRef)(void* this_);
+  // Returns the new reference count.
+  uint32_t(ORT_API_CALL* Release)(void* this_);
 
-ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status)
-ORT_ALL_ARGS_NONNULL;
+} OrtObject;
+
+//inherented from OrtObject
+typedef struct OrtAllocatorInterface {
+  struct OrtObject parent;
+  void*(ORT_API_CALL* Alloc)(void* this_, size_t size);
+  void(ORT_API_CALL* Free)(void* this_, void* p);
+  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const void* this_);
+} OrtAllocatorInterface;
+
+typedef OrtAllocatorInterface* OrtAllocator;
+
+//Inherented from OrtObject
+typedef struct OrtProviderFactoryInterface {
+  OrtObject parent;
+  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
+} OrtProviderFactoryInterface;
+
+typedef void(ORT_API_CALL* OrtLoggingFunction)(
+    void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
+    const char* message);
+
 /**
- * \param status must not be NULL
- * \return The error message inside the `status`. Don't free the returned value.
+ * OrtEnv is process-wide. For each process, only one OrtEnv can be created.
+ * \param out Should be freed by `OrtReleaseObject` after use
  */
-ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
+ORT_API_STATUS(OrtInitialize, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Out_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
 
-//
-// Tensor Type and Shapes
-//
+/**
+ * OrtEnv is process-wise. For each process, only one OrtEnv can be created. Don't do it multiple times
+ * \param out Should be freed by `OrtReleaseObject` after use
+ */
+ORT_API_STATUS(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_function,
+               _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
+               _In_ const char* logid,
+               _Out_ OrtEnv** out);
 
-// Copied from TensorProto::DataType
-// Currently, Ort doesn't support complex64, complex128, bfloat16 types
-typedef enum ONNXTensorElementDataType {
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED = 0,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT = 1,   // maps to c type float
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 = 2,   // maps to c type uint8_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 = 3,    // maps to c type int8_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 = 4,  // maps to c type uint16_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 = 5,   // maps to c type int16_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 = 6,   // maps to c type int32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 = 7,   // maps to c type int64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING = 8,  // maps to c++ type std::string
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL = 9,    //
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 = 10,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE = 11,      // maps to c type double
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 = 12,      // maps to c type uint32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 = 13,      // maps to c type uint64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 = 14,   // complex with float32 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 = 15,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 = 16,    // Non-IEEE floating-point format based on IEEE754 single-precision
-} ONNXTensorElementDataType;
+// TODO: document the path separator convention? '/' vs '\'
+// TODO: should specify the access characteristics of model_path. Is this read only during the
+// execution of OrtCreateInferenceSession, or does the OrtSession retain a handle to the file/directory
+// and continue to access throughout the OrtSession lifetime?
+//  What sort of access is needed to model_path : read or read/write?
+// TODO:  allow loading from an in-memory byte-array
+ORT_API_STATUS(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const TCHAR_T* model_path,
+               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
-// Sync with onnx TypeProto oneof
-typedef enum ONNXType {
-  ONNX_TYPE_UNKNOWN,
-  ONNX_TYPE_TENSOR,
-  ONNX_TYPE_SEQUENCE,
-  ONNX_TYPE_MAP,
-  ONNX_TYPE_OPAQUE,
-  ONNX_TYPE_SPARSETENSOR,
-} ONNXType;
+ORT_API_STATUS(OrtRunInference, _Inout_ OrtSession* sess,
+               _In_ OrtRunOptions* run_options,
+               _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
+               _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
+
+/**
+ * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
+ */
+ORT_API(OrtSessionOptions*, OrtCreateSessionOptions, void);
+
+/// create a copy of an existing OrtSessionOptions
+ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions*);
+ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
+ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
+
+// Enable profiling for this session.
+ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix);
+ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
+
+// Enable the memory pattern optimization.
+// The idea is if the input shapes are the same, we could trace the internal memory allocation
+// and generate a memory pattern for future request. So next time we could just do one allocation
+// with a big chunk for all the internal memory allocation.
+ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
+ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
+
+// enable the memory arena on CPU
+// Arena may pre-allocate memory for future usage.
+// set this option to false if you don't want it.
+ORT_API(void, OrtEnableCpuMemArena, _In_ OrtSessionOptions* options);
+ORT_API(void, OrtDisableCpuMemArena, _In_ OrtSessionOptions* options);
+
+///< logger id to use for session output
+ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
+
+///< applies to session load, initialization, etc
+ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
+
+///How many threads in the session thread pool.
+ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
+
+/**
+  * The order of invocation indicates the preference order as well. In other words call this method
+  * on your most preferred execution provider first followed by the less preferred ones.
+  * Calling this API is optional in which case Ort will use its internal CPU execution provider.
+  */
+ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
+
+ORT_API(void, OrtAddCustomOp, _In_ OrtSessionOptions* options, const char* custom_op_path);
+
+ORT_API_STATUS(OrtInferenceSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
+ORT_API_STATUS(OrtInferenceSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
+
+/**
+ * \param out  should be freed by OrtReleaseObject after use
+ */
+ORT_API_STATUS(OrtInferenceSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
+
+/**
+ * \param out  should be freed by OrtReleaseObject after use
+ */
+ORT_API_STATUS(OrtInferenceSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
+
+ORT_API_STATUS(OrtInferenceSessionGetInputName, _In_ const OrtSession* sess, size_t index,
+               _Inout_ OrtAllocator* allocator, _Out_ char** value);
+ORT_API_STATUS(OrtInferenceSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
+               _Inout_ OrtAllocator* allocator, _Out_ char** value);
+
+/**
+ * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
+ */
+ORT_API(OrtRunOptions*, OrtCreateRunOptions);
+
+ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions*, unsigned int);
+ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
+
+ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*);
+ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions*);
+
+// set a flag so that any running OrtRunInference* calls that are using this instance of ORtRunOptions
+// will exit as soon as possible if the flag is true.
+ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ bool value);
+
+/**
+ * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
+ * \param out will keep a reference to the allocator, without reference counting(will be fixed). Should be freed by
+ *            calling OrtReleaseValue
+ * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
+ */
+ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
+               _In_ const size_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+               _Out_ OrtValue** out);
+
+/**
+ * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
+ * p_data is owned by caller. OrtReleaseValue won't release p_data.
+ * \param out Should be freed by calling OrtReleaseValue
+ */
+ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
+               _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+               ONNXTensorElementDataType type, _Out_ OrtValue** out);
+
+// This function doesn't work with string tensor
+// this is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
+ORT_API_STATUS(OrtGetTensorMutableData, _Inout_ OrtValue* value, _Out_ void** out);
+
+/**
+ * Test if an OrtValue is a tensor
+ * \return zero if false. non-zero if true
+ */
+ORT_API(int, OrtIsTensor, _In_ const OrtValue* value);
+
+/**
+ * \param value A tensor created from OrtCreateTensor... function.
+ * \param s each A string array. Each string in this array must be null terminated.
+ * \param s_len length of s
+ */
+ORT_API_STATUS(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* const* s, size_t s_len);
+/**
+ * \param value A tensor created from OrtCreateTensor... function.
+ * \param len total data length, not including the trailing '\0' chars.
+ */
+ORT_API_STATUS(OrtGetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* len);
+
+/**
+ * \param s string contents. Each string is NOT null-terminated.
+ * \param value A tensor created from OrtCreateTensor... function.
+ * \param s_len total data length, get it from OrtGetStringTensorDataLength
+ */
+ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
+               _Out_ size_t* offsets, size_t offsets_len);
+
+ORT_API_STATUS(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
+               _In_ const void* input, int input_len, _Out_ OrtValue** out);
 
 /**
  * Don't free the returned value
@@ -222,36 +404,6 @@ ORT_API_STATUS(OrtGetTypeInfo, _In_ const OrtValue* value, OrtTypeInfo** out);
 
 ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value);
 
-//
-// OrtRunOptions
-//
-
-/**
- * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
- */
-ORT_API(OrtRunOptions*, OrtCreateRunOptions);
-
-ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions*, unsigned int);
-ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
-
-ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*);
-ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions*);
-
-// set a flag so that any running OrtRunInference* calls that are using this instance of ORtRunOptions
-// will exit as soon as possible if the flag is true.
-ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ bool value);
-
-/**
- * Every type inherented from OrtObject should be deleted by OrtReleaseObject(...).
- */
-typedef struct OrtObject {
-  // Returns the new reference count.
-  uint32_t(ORT_API_CALL* AddRef)(void* this_);
-  // Returns the new reference count.
-  uint32_t(ORT_API_CALL* Release)(void* this_);
-
-} OrtObject;
-
 /**
  * This function is a wrapper to "(*(OrtObject**)ptr)->AddRef(ptr)"
  * WARNING: There is NO type checking in this function.
@@ -268,57 +420,6 @@ ORT_API(uint32_t, OrtAddRefToObject, _In_ void* ptr);
  * \return the new reference count.
  */
 ORT_API(uint32_t, OrtReleaseObject, _Inout_opt_ void* ptr);
-
-//Inherented from OrtObject
-typedef struct OrtProviderFactoryInterface {
-  OrtObject parent;
-  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
-} OrtProviderFactoryInterface;
-
-/**
- * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
- */
-ORT_API(OrtSessionOptions*, OrtCreateSessionOptions, void);
-
-/// create a copy of an existing OrtSessionOptions
-ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions*);
-ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
-ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
-
-// enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix);
-ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
-
-// enable the memory pattern optimization.
-// The idea is if the input shapes are the same, we could trace the internal memory allocation
-// and generate a memory pattern for future request. So next time we could just do one allocation
-// with a big chunk for all the internal memory allocation.
-ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
-ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
-
-// enable the memory arena on CPU
-// Arena may pre-allocate memory for future usage.
-// set this option to false if you don't want it.
-ORT_API(void, OrtEnableCpuMemArena, _In_ OrtSessionOptions* options);
-ORT_API(void, OrtDisableCpuMemArena, _In_ OrtSessionOptions* options);
-
-///< logger id to use for session output
-ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
-
-///< applies to session load, initialization, etc
-ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
-
-///How many threads in the session thread pool.
-ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
-
-/**
-  * The order of invocation indicates the preference order as well. In other words call this method
-  * on your most preferred execution provider first followed by the less preferred ones.
-  * Calling this API is optional in which case Ort will use its internal CPU execution provider.
-  */
-ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
-
-ORT_API(void, OrtAddCustomOp, _In_ OrtSessionOptions* options, const char* custom_op_path);
 
 typedef enum OrtAllocatorType {
   OrtDeviceAllocator = 0,
@@ -343,6 +444,7 @@ ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocator
  */
 ORT_API(int, OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2)
 ORT_ALL_ARGS_NONNULL;
+
 /**
  * Do not free the returned value
  */
@@ -351,138 +453,27 @@ ORT_API(int, OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr);
 ORT_API(OrtMemType, OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr);
 ORT_API(OrtAllocatorType, OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr);
 
-//inherented from OrtObject
-typedef struct OrtAllocatorInterface {
-  struct OrtObject parent;
-  void*(ORT_API_CALL* Alloc)(void* this_, size_t size);
-  void(ORT_API_CALL* Free)(void* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const void* this_);
-} OrtAllocatorInterface;
-
-typedef OrtAllocatorInterface* OrtAllocator;
-
 ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size);
 ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API(const OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr);
-
-typedef enum OrtLoggingLevel {
-  ORT_LOGGING_LEVEL_kVERBOSE = 0,
-  ORT_LOGGING_LEVEL_kINFO = 1,
-  ORT_LOGGING_LEVEL_kWARNING = 2,
-  ORT_LOGGING_LEVEL_kERROR = 3,
-  ORT_LOGGING_LEVEL_kFATAL = 4
-} OrtLoggingLevel;
-
-typedef void(ORT_API_CALL* OrtLoggingFunction)(
-    void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
-    const char* message);
-/**
- * OrtEnv is process-wise. For each process, only one OrtEnv can be created. Don't do it multiple times
- * \param out Should be freed by `OrtReleaseObject` after use
- */
-ORT_API_STATUS(OrtInitialize, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Out_ OrtEnv** out)
-ORT_ALL_ARGS_NONNULL;
-
-/**
- * OrtEnv is process-wise. For each process, only one OrtEnv can be created. Don't do it multiple times
- * \param out Should be freed by `OrtReleaseObject` after use
- */
-ORT_API_STATUS(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_function,
-               _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
-               _In_ const char* logid,
-               _Out_ OrtEnv** out);
-
-// TODO: document the path separator convention? '/' vs '\'
-// TODO: should specify the access characteristics of model_path. Is this read only during the
-// execution of OrtCreateInferenceSession, or does the OrtSession retain a handle to the file/directory
-// and continue to access throughout the OrtSession lifetime?
-//  What sort of access is needed to model_path : read or read/write?
-// TODO:  allow loading from an in-memory byte-array
-#ifdef _WIN32
-ORT_API_STATUS(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const wchar_t* model_path,
-               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
-#else
-ORT_API_STATUS(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const char* model_path,
-               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
-#endif
 
 // Call OrtReleaseObject to release the returned value
 ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
 
 /**
- * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
- * \param out will keep a reference to the allocator, without reference counting(will be fixed). Should be freed by
- *            calling OrtReleaseValue
- * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
+ * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
  */
-ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
-               _In_ const size_t* shape, size_t shape_len, ONNXTensorElementDataType type,
-               _Out_ OrtValue** out);
+ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg)
+ORT_ALL_ARGS_NONNULL;
 
+ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status)
+ORT_ALL_ARGS_NONNULL;
 /**
- * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
- * p_data is owned by caller. OrtReleaseValue won't release p_data.
- * \param out Should be freed by calling OrtReleaseValue
+ * \param status must not be NULL
+ * \return The error message inside the `status`. Don't free the returned value.
  */
-ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-               _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
-               ONNXTensorElementDataType type, _Out_ OrtValue** out);
-
-/// This function doesn't work with string tensor
-/// this is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
-ORT_API_STATUS(OrtGetTensorMutableData, _Inout_ OrtValue* value, _Out_ void** out);
-
-/**
- * Test if an OrtValue is a tensor
- * \return zero, false. non-zero true
- */
-ORT_API(int, OrtIsTensor, _In_ const OrtValue* value);
-
-/**
- * \param value A tensor created from OrtCreateTensor*** function.
- * \param s each A string array. Each string in this array must be null terminated.
- * \param s_len length of s
- */
-ORT_API_STATUS(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* const* s, size_t s_len);
-/**
- * \param value A tensor created from OrtCreateTensor*** function.
- * \param len total data length, not including the trailing '\0' chars.
- */
-ORT_API_STATUS(OrtGetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* len);
-
-/**
- * \param s string contents. Each string is NOT null-terminated.
- * \param value A tensor created from OrtCreateTensor*** function.
- * \param s_len total data length, get it from OrtGetStringTensorDataLength
- */
-ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
-               _Out_ size_t* offsets, size_t offsets_len);
-
-ORT_API_STATUS(OrtRunInference, _Inout_ OrtSession* sess,
-               _In_ OrtRunOptions* run_options,
-               _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
-               _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
-
-ORT_API_STATUS(OrtInferenceSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
-ORT_API_STATUS(OrtInferenceSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
-
-/**
- * \param out  should be freed by OrtReleaseObject after use
- */
-ORT_API_STATUS(OrtInferenceSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
-
-/**
- * \param out  should be freed by OrtReleaseObject after use
- */
-ORT_API_STATUS(OrtInferenceSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
-
-ORT_API_STATUS(OrtInferenceSessionGetInputName, _In_ const OrtSession* sess, size_t index,
-               _Inout_ OrtAllocator* allocator, _Out_ char** value);
-ORT_API_STATUS(OrtInferenceSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
-               _Inout_ OrtAllocator* allocator, _Out_ char** value);
-
-ORT_API_STATUS(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
-               _In_ const void* input, int input_len, _Out_ OrtValue** out);
+ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
+ORT_ALL_ARGS_NONNULL;
 
 /**
  * Deprecated. Please use OrtReleaseObject
