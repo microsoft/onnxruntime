@@ -212,35 +212,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             foreach (var opset in opsets)
             {
                 var modelRoot = new DirectoryInfo(opset);
-                foreach (var model in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     // TODO: dims contains 'None'. Session throws error.
-                    if (model.ToString() == "test_tiny_yolov2")
+                    if (modelDir.Name== "test_tiny_yolov2")
                         continue;
 
-                    FileInfo[] modelNames = null;
+                    String onnxModelFileName = null;
                     try
                     {
-                        modelNames = model.GetFiles("*.onnx");
-                        if (modelNames.Count() != 1)
+                        var onnxModelNames = modelDir.GetFiles("*.onnx");
+                        if (onnxModelNames.Count() != 1)
                         {
                             // TODO remove file "._resnet34v2.onnx" from test set
-                            if (modelNames[0].ToString() == "._resnet34v2.onnx")
-                                modelNames[0] = modelNames[1];
+                            if (onnxModelNames[0].Name == "._resnet34v2.onnx")
+                                onnxModelNames[0] = onnxModelNames[1];
                             else
                             {
-                                var modelNamesList = string.Join(",", modelNames.Select(x => x.ToString()));
-                                throw new Exception($"Opset {opset}: Model {model}. Can't determine model file name. Found these :{modelNamesList}");
+                                var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
+                                throw new Exception($"Opset {opset}: Model {modelDir}. Can't determine model file name. Found these :{modelNamesList}");
                             }
                         }
 
-                        var session = new InferenceSession($"{opset}\\{model}\\{modelNames[0].ToString()}");
+                        onnxModelFileName = $"{opset}\\{modelDir.Name}\\{onnxModelNames[0].Name}";
+                        var session = new InferenceSession(onnxModelFileName);
                         var inMeta = session.InputMetadata;
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
                         var innodedims = innodepair.Value.Dimensions;
-                        var dataIn = LoadTensorFromFilePb($"{opset}\\{model}\\test_data_set_0\\input_0.pb");
-                        var dataOut = LoadTensorFromFilePb($"{opset}\\{model}\\test_data_set_0\\output_0.pb");
+                        var dataIn = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\input_0.pb");
+                        var dataOut = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\output_0.pb");
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
                         nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
@@ -251,7 +252,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                     catch (Exception ex)
                     {
-                        var msg = $"Opset {opset}: Model {model}: ModelFile = {modelNames[0].ToString()} error = {ex.Message}";
+                        var msg = $"Opset {opset}: Model {modelDir}: ModelFile = {onnxModelFileName} error = {ex.Message}";
                         throw new Exception(msg);
                     }
                 } //model
