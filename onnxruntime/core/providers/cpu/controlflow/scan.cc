@@ -87,7 +87,17 @@ ONNX_CPU_OPERATOR_KERNEL(Scan,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         Scan);
+                         Scan<8>);
+
+ONNX_CPU_OPERATOR_KERNEL(Scan,
+                         9,
+                         KernelDefBuilder()
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                         Scan<9>);
+
+enum class ScanDirection { kForward = 0,
+                           kReverse = 1 };
 
 /**
 Class to provide input/output MLValue instances for a loop state variable.
@@ -189,7 +199,8 @@ class OutputIterator {
 
 class ScanImpl {
  public:
-  ScanImpl(OpKernelContextInternal& context,
+  ScanImpl(int opset,
+           OpKernelContextInternal& context,
            const SessionState& session_state,
            int64_t num_scan_inputs,
            const std::vector<int64_t>& directions);
@@ -218,6 +229,8 @@ class ScanImpl {
                          ConstTensorSlicerIterators& scan_input_stream_iterators,
                          int64_t seq_length);
 
+  const int opset_;
+
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
   const GraphViewer& subgraph_;
@@ -239,7 +252,60 @@ class ScanImpl {
   std::unordered_map<std::string, const MLValue*> implicit_inputs_;
 };
 
-Status Scan::Compute(OpKernelContext* ctx) const {
+template <>
+Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info) {
+  // make sure the attribute was present even though we don't need it here.
+  // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
+  // and a SessionState instance for executing the subgraph is created by InferenceSession.
+  // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
+  ONNX_NAMESPACE::GraphProto proto;
+  ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
+  (void)proto;
+
+  ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
+
+  if (info.GetAttrs<int64_t>("directions", directions_).IsOK()) {
+    ORT_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
+                "Number of entries in 'directions' was ", directions_.size(),
+                ". Must match 'num_scan_inputs' of ", num_scan_inputs_);
+    ORT_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
+                            [](int64_t i) { return i == static_cast<int64_t>(ScanDirection::kForward) ||
+                                                   i == static_cast<int64_t>(ScanDirection::kReverse); }),
+                "Invalid values in 'directions'. 0 == forward. 1 == reverse.");
+  } else {
+    // default to forward
+    directions_ = std::vector<int64_t>(num_scan_inputs_, static_cast<int64_t>(ScanDirection::kForward));
+  }
+}
+
+template <>
+Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
+  // make sure the attribute was present even though we don't need it here.
+  // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
+  // and a SessionState instance for executing the subgraph is created by InferenceSession.
+  // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
+  ONNX_NAMESPACE::GraphProto proto;
+  ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
+  (void)proto;
+
+  ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
+
+  if (info.GetAttrs<int64_t>("directions", directions_).IsOK()) {
+    ORT_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
+                "Number of entries in 'directions' was ", directions_.size(),
+                ". Must match 'num_scan_inputs' of ", num_scan_inputs_);
+    ORT_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
+                            [](int64_t i) { return i == static_cast<int64_t>(ScanDirection::kForward) ||
+                                                   i == static_cast<int64_t>(ScanDirection::kReverse); }),
+                "Invalid values in 'directions'. 0 == forward. 1 == reverse.");
+  } else {
+    // default to forward
+    directions_ = std::vector<int64_t>(num_scan_inputs_, static_cast<int64_t>(ScanDirection::kForward));
+  }
+}
+
+template <int OpSet>
+Status Scan<OpSet>::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
@@ -248,7 +314,7 @@ Status Scan::Compute(OpKernelContext* ctx) const {
   //       Consider how usage of ExecutionFrame and SequentialExecutor can be optimized
   //         - initial implementation is focused on making it work, rather than optimizing.
 
-  ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, directions_};
+  ScanImpl scan_impl{OpSet, *ctx_internal, *session_state, num_scan_inputs_, directions_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -329,8 +395,8 @@ static Status MakeShapeConcrete(const TensorShape& per_iteration_shape, TensorSh
     } else {
       if (existing_value != per_iteration_shape[i]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                       "Mismatch between expected shape and shape from first output",
-                                       final_shape, " is not compatible with ", per_iteration_shape);
+                               "Mismatch between expected shape and shape from first output",
+                               final_shape, " is not compatible with ", per_iteration_shape);
       }
     }
   }
@@ -462,11 +528,12 @@ OutputIterator& OutputIterator::operator++() {
   return *this;
 }
 
-ScanImpl::ScanImpl(OpKernelContextInternal& context,
+ScanImpl::ScanImpl(int opset, OpKernelContextInternal& context,
                    const SessionState& session_state,
                    int64_t num_scan_inputs,
                    const std::vector<int64_t>& directions)
-    : context_{context},
+    : opset_{opset},
+      context_{context},
       session_state_{session_state},
       subgraph_{*session_state.GetGraphViewer()},
       directions_{directions},
@@ -527,8 +594,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
 
     if (input_shape.NumDimensions() < min_dims_required)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
-                                     " Expected ", min_dims_required,
-                                     " dimensions or more but input had shape of ", input_shape);
+                             " Expected ", min_dims_required,
+                             " dimensions or more but input had shape of ", input_shape);
 
     auto this_batch_size = input_shape[0];
 
@@ -537,8 +604,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
     else {
       if (batch_size_ != this_batch_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
-                                       batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
-                                       this_batch_size);
+                               batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
+                               this_batch_size);
       }
     }
 
@@ -550,8 +617,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
       } else {
         if (max_sequence_len_ != this_seq_len) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
-                                         max_sequence_len_, " but ", graph_inputs[i]->Name(),
-                                         " has length of ", this_seq_len);
+                                 max_sequence_len_, " but ", graph_inputs[i]->Name(),
+                                 " has length of ", this_seq_len);
         }
       }
     }
@@ -566,7 +633,7 @@ Status ScanImpl::ValidateInput() {
 
   if (num_graph_inputs != num_variadic_inputs_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' expects ", num_graph_inputs,
-                                   " inputs but Scan was only given ", num_variadic_inputs_);
+                           " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
   // process any loop state variables, which will set the batch size
@@ -582,7 +649,7 @@ Status ScanImpl::ValidateInput() {
 
     if (num_entries != batch_size_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries,
-                                     " did not match batch size of ", batch_size_);
+                             " did not match batch size of ", batch_size_);
     }
 
     auto d = sequence_lens_tensor_->DataAsSpan<int64_t>();
@@ -591,7 +658,7 @@ Status ScanImpl::ValidateInput() {
     if (std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; }) == false) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
+                             "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
 
   } else {
@@ -609,7 +676,7 @@ Status ScanImpl::AllocateOutput(int index, bool is_loop_state_var) {
 
   if (!graph_output_shape) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                                   graph_output->Name(), " did not.");
+                           graph_output->Name(), " did not.");
   }
 
   TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
@@ -640,7 +707,7 @@ Status ScanImpl::AllocateOutputTensors() {
 
   if (graph_outputs.size() != num_variadic_outputs_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
-                                   " outputs but Scan expects ", num_variadic_outputs_);
+                           " outputs but Scan expects ", num_variadic_outputs_);
   }
 
   for (int i = 0; i < num_loop_state_variables_; ++i) {
@@ -720,7 +787,7 @@ Status ScanImpl::Execute() {
       const auto& mlvalue = GetSubgraphInputMLValue(context_, i);
 
       // forward
-      if (directions_[i - num_loop_state_variables_] == static_cast<int64_t>(Scan::Direction::kForward)) {
+      if (directions_[i - num_loop_state_variables_] == static_cast<int64_t>(ScanDirection::kForward)) {
         // the iterator is self contained, so we don't need to keep the MLValueTensorSlicer instance around
         scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue, 1, b).begin());
       } else {  // reverse
@@ -759,7 +826,7 @@ Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_vari
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                        entry.first, " did not.");
+                entry.first, " did not.");
     feeds[entry.first] = *entry.second;
   }
 
