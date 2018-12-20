@@ -40,12 +40,12 @@ extern "C" {
 #endif
 #define ORT_API_CALL _stdcall
 #define ORT_MUST_USE_RESULT
-#define TCHAR_T wchar_t
+#define ORTCHAR_T wchar_t
 #else
 #define ORT_EXPORT
 #define ORT_API_CALL
 #define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
-#define TCHAR_T char
+#define ORTCHAR_T char
 #endif
 
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
@@ -216,7 +216,7 @@ ORT_API_STATUS(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_functio
 // and continue to access throughout the OrtSession lifetime?
 //  What sort of access is needed to model_path : read or read/write?
 // TODO:  allow loading from an in-memory byte-array
-ORT_API_STATUS(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const TCHAR_T* model_path,
+ORT_API_STATUS(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRunInference, _Inout_ OrtSession* sess,
@@ -288,7 +288,7 @@ ORT_API_STATUS(OrtInferenceSessionGetOutputName, _In_ const OrtSession* sess, si
                _Inout_ OrtAllocator* allocator, _Out_ char** value);
 
 /**
- * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
+ * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseObject after use
  */
 ORT_API(OrtRunOptions*, OrtCreateRunOptions);
 
