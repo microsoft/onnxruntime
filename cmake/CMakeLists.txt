@@ -475,6 +475,10 @@ if (onnxruntime_USE_TVM)
   include(onnxruntime_codegen.cmake)
 endif()
 
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  add_definitions(-DMICROSOFT_INTERNAL)
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
