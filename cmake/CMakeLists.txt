@@ -397,15 +397,19 @@ if (onnxruntime_USE_MKLML)
   add_definitions(-DUSE_MKLML=1)
   # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
   #add_definitions(-DUSE_MKLML_FOR_BLAS=1)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mklml)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
   link_directories(${MKLML_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_MKLDNN)
   add_definitions(-DUSE_MKLDNN=1)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mkldnn)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
 endif()
 
@@ -473,6 +477,10 @@ if (onnxruntime_USE_TVM)
     endif()
   endif()
   include(onnxruntime_codegen.cmake)
+endif()
+
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
