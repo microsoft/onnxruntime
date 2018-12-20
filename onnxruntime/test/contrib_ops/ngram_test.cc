@@ -14,7 +14,7 @@ constexpr const char* domain = onnxruntime::kMSDomain;
 const int opset_ver = 1;
 
 void InitTestAttr(OpTester& test, const std::string& mode,
-                  int64_t M, int64_t N, int64_t S, bool all,
+                  int64_t M, int64_t N, int64_t S,
                   const std::vector<int64_t>& ngram_counts,
                   const std::vector<int64_t>& ngram_indexes,
                   const std::vector<float>& weights,
@@ -24,7 +24,6 @@ void InitTestAttr(OpTester& test, const std::string& mode,
   test.AddAttribute("M", M);
   test.AddAttribute("N", N);
   test.AddAttribute("S", S);
-  test.AddAttribute("all", int64_t{all});
   test.AddAttribute("ngram_counts", ngram_counts);
   test.AddAttribute("ngram_indexes", ngram_indexes);
   // optional
@@ -49,10 +48,10 @@ using namespace ngram_test;
 // However, attribute all controls whether we consider all of the supplied ngram[M..N] sizes
 // into consideration or not.With all = false, we only consider N - grams.
 
-TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0) {
+TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip0) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, int32
-  InitTestAttr(test, "TF", 1, 2, 0, false,
+  // 1 - 2, s=0, , M=N, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -72,10 +71,10 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TF_AllFalse_Skip0) {
+TEST(ContribOpTest, Ngram_String_TF_onlyBigrams_Skip0) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "TF", 1, 2, 0, false,
+  // 1 - 2, s=0, , M=N, weights empty, string
+  InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -96,10 +95,10 @@ TEST(ContribOpTest, Ngram_String_TF_AllFalse_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0_LevelEmpty) {
+TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_onlyBigrams_LevelEmpty) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, int32
-  InitTestAttr(test, "TF", 1, 2, 0, false,
+  // 1 - 2, s=0, , M=N, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
                {0, 0},  // no unigrams, bi-grams start immediately
                {
                    0,
@@ -123,10 +122,10 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip0_LevelEmpty) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , all=false, weights empty, int32
-  InitTestAttr(test, "TF", 1, 2, 5, false,
+  // 1 - 2, s=5, , M=N, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -147,10 +146,10 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TF_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_String_TF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "TF", 1, 2, 5, false,
+  // 1 - 2, s=0, , M=N, weights empty, string
+  InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -172,10 +171,10 @@ TEST(ContribOpTest, Ngram_String_TF_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TF_AllTrue_Skip5) {
+TEST(ContribOpTest, Ngram_Int32_TF_UniAndBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , all=false, weights empty, int32
-  InitTestAttr(test, "TF", 1, 2, 5, true,
+  // 1 - 2, s=5, , M=1, N=2, weights empty, int32
+  InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -195,10 +194,10 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllTrue_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TF_AllTrue_Skip5) {
+TEST(ContribOpTest, Ngram_String_TF_UniAndBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "TF", 1, 2, 5, true,
+  // 1 - 2, s=0, , M=1, N=2, weights empty, string
+  InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -218,12 +217,12 @@ TEST(ContribOpTest, Ngram_String_TF_AllTrue_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_IDF_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_Int32_IDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , all=false, weights empty, int32
+  // 1 - 2, s=5, , M=N, weights empty, int32
   // We change to IDF but do not supply weights so
   // we should get all 1.0f
-  InitTestAttr(test, "IDF", 1, 2, 5, false,
+  InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -242,10 +241,10 @@ TEST(ContribOpTest, Ngram_Int32_IDF_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_IDF_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_String_IDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "IDF", 1, 2, 5, false,
+  // 1 - 2, s=0, , M=N, weights empty, string
+  InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -265,13 +264,13 @@ TEST(ContribOpTest, Ngram_String_IDF_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TFIDF_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_Int32_TFIDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , all=false, weights empty, int32
+  // 1 - 2, s=5, , M=N=2, weights empty, int32
   // We change to TFIDF but do not supply weights so
   // we should all get the original values as weights are 1.0f by
   // default
-  InitTestAttr(test, "TFIDF", 1, 2, 5, false,
+  InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -290,10 +289,10 @@ TEST(ContribOpTest, Ngram_Int32_TFIDF_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TFIDF_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_String_TFIDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "TFIDF", 1, 2, 5, false,
+  // 1 - 2, s=0, , M=N=2, weights empty, string
+  InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {},
@@ -313,12 +312,12 @@ TEST(ContribOpTest, Ngram_String_TFIDF_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_IDFWeights_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_Int32_IDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , all=false, weights empty, int32
+  // 1 - 2, s=5, , M=N=2, weights empty, int32
   // We change to IDF with supplied weights. All
   // with non-zero counts must be replaced with the supplied weights
-  InitTestAttr(test, "IDF", 1, 2, 5, false,
+  InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
@@ -337,10 +336,10 @@ TEST(ContribOpTest, Ngram_Int32_IDFWeights_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_IDFWeights_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_String_IDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "IDF", 1, 2, 5, false,
+  // 1 - 2, s=0, , M=N=2, weights empty, string
+  InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
@@ -360,12 +359,12 @@ TEST(ContribOpTest, Ngram_String_IDFWeights_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TFIDFWeights_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_Int32_TFIDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , all=false, weights empty, int32
+  // 1 - 2, s=5, , M=N=2, weights empty, int32
   // We change to TFIDF with supplied weights.
   // We should have all counts scaled by weights
-  InitTestAttr(test, "TFIDF", 1, 2, 5, false,
+  InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
@@ -384,10 +383,10 @@ TEST(ContribOpTest, Ngram_Int32_TFIDFWeights_AllFalse_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TFIDFWeights_AllFalse_Skip5) {
+TEST(ContribOpTest, Ngram_String_TFIDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , all=false, weights empty, string
-  InitTestAttr(test, "TFIDF", 1, 2, 5, false,
+  // 1 - 2, s=0, , M=N=2, weights empty, string
+  InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
                {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},

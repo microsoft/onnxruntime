@@ -211,7 +211,6 @@ struct Ngram::Impl {
   int64_t N_ = 0;
   int64_t M_ = 0;
   int64_t S_ = 0;
-  bool all_ = false;
   std::vector<int64_t> ngram_counts_;
   std::vector<int64_t> ngram_indexes_;
   std::vector<float> weights_;
@@ -239,7 +238,6 @@ struct Ngram::Impl {
   void IncrementCount(size_t ngram_id, std::vector<uint32_t>& frequencies) const {
     assert(ngram_id < ngram_indexes_.size());
     auto output_idx = ngram_indexes_[ngram_id];
-    ORT_ENFORCE(output_idx >= 0, "ngram_indxes has a negative index");
     assert(static_cast<size_t>(output_idx) < frequencies.size());
     ++frequencies[output_idx];
   }
@@ -295,11 +293,6 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   status = info.GetAttr("S", &impl_->S_);
   ORT_ENFORCE(status.IsOK() && impl_->N_ >= 0, "Non-negative number of skips S is required");
 
-  int64_t all = 0;
-  status = info.GetAttr("all", &all);
-  ORT_ENFORCE(status.IsOK(), "Attribute all is required");
-  impl_->all_ = (all != 0);
-
   status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_counts_);
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
   ORT_ENFORCE(size_t(impl_->M_) <= impl_->ngram_counts_.size(), "M must be inbounds of ngram_counts");
@@ -350,8 +343,7 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
                   "Number of items must compose whole ", std::to_string(ngram_size), "-grams");
       auto ngrams = items / ngram_size;
       // Skip loading into hash_set ngrams that are not N or not in the range of [M-N] for all=true;
-      if ((impl_->all_ && (ngram_size >= M && ngram_size <= N)) ||
-          ngram_size == N) {
+      if (ngram_size >= M && ngram_size <= N) {
         if (impl_->pool_strings_.empty()) {
           auto before_insert = impl_->int_set_.size();
           Emplace(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int_set_);
@@ -427,7 +419,7 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
 
   const auto N = impl.N_;
   const auto S = impl.S_ + 1;  // Convert to distance
-  auto start_ngram_size = (impl.all_) ? impl.M_ : N;
+  auto start_ngram_size = impl.M_;
 
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->template Data<T>();

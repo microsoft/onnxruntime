@@ -236,10 +236,6 @@ activation.)DOC")
           "Minimum n-gram length",
           AttributeProto::INT)
       .Attr(
-          "all",
-          "Boolean to store all n-gram lengths [M-N] or only N.",
-          AttributeProto::INT)
-      .Attr(
           "S",
           "Maximum number of items(integers/strings) to be skipped when constructing an n-gram from X.",
           AttributeProto::INT)
@@ -299,7 +295,14 @@ This transform extracts n-grams from the input sequence and save them as a vecto
  between index i and the corresponding n-gram. If "ngrams" is [ [94 , 17] , [ 17, 36 ] ], then the Y[0] (first element in Y)
  and Y[1] (second element in Y) are the counts of [94, 17] and [17, 36], respectively.
  An n-gram which cannot be found in pool_strings/pool_int64s should be ignored and has no effect on the output.
- Note that we may consider all skips up to skipLength when generating the n-grams. 
+ Note that we may consider all skips up to S when generating the n-grams.
+
+The examples used above are true if mode is "TF". If mode is "IDF", all the counts larger than 1 would be truncated to 1 and
+the i-th element in weights would be used to scale (by multiplication) the count of the i-th n-gram in pool. If mode is "TFIDF",
+this operator first computes the counts of all n-grams and then scale them by the associated values in the weights attribute.
+
+Only one of pool_strings and pool_int64s can be set. If pool_int64s is set, the input should be an integer tensor.
+If pool_strings is set, the input must be a string tensor.
 )DOC");
 
   // Operators for linear 8 bit quanitzation support.
