@@ -2,7 +2,7 @@ include (ExternalProject)
 
 set(MKLDNN_URL https://github.com/intel/mkl-dnn.git)
 # If MKLDNN_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(MKLDNN_TAG v0.17.1)
+set(MKLDNN_TAG v0.17.2)
 set(MKLML_VERSION 2019.0.1.20180928)
 
 if(WIN32)
