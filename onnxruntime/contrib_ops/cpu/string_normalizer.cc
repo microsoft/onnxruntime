@@ -42,7 +42,7 @@ class Locale {
     loc_ = _create_locale(LC_CTYPE, name.c_str());
     if (loc_ == nullptr) {
       ORT_THROW("Failed to construct locale with name:",
-                        name, ":", ":Please, install necessary language-pack-XX and configure locales");
+                name, ":", ":Please, install necessary language-pack-XX and configure locales");
     }
   }
 
@@ -78,7 +78,7 @@ class Locale {
   explicit Locale(const std::string& name) try : loc_(name) {
   } catch (const std::runtime_error& e) {
     ORT_THROW("Failed to construct locale with name:",
-                      name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
+              name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
@@ -118,9 +118,8 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
   if (C == 0) {
     output_dims.push_back(1);
     TensorShape output_shape(output_dims);
-    auto output_ten = ctx->Output(0, output_shape);
-    auto output_default = output_ten->template MutableData<std::string>();
-    new (output_default) std::string();
+    // This will create one empty string
+    ctx->Output(0, output_shape);
     return Status::OK();
   }
 
@@ -141,11 +140,11 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
       }
       // In place transform
       loc.ChangeCase(caseaction, wstr);
-      new (output_data + output_idx) std::string(converter.to_bytes(wstr));
+      *(output_data + output_idx) = converter.to_bytes(wstr);
     } else {
       assert(caseaction == StringNormalizer::NONE);
       // Simple copy or move if the iterator points to a non-const string
-      new (output_data + output_idx) std::string(std::move(s));
+      *(output_data + output_idx) = std::move(s);
     }
     ++output_idx;
     ++first;

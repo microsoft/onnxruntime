@@ -26,12 +26,6 @@
 
 namespace onnxruntime {
 
-static common::Status TransformGraph(onnxruntime::Graph& graph,
-                                     const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                     const ExecutionProviders& exec_providers,
-                                     KernelRegistryManager& kernel_registry_manager,
-                                     const InsertCastTransformer& insert_cast_transformer);
-
 static common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
                                                   MLValueNameIdxMap& mlvalue_name_idx_map,
                                                   const logging::Logger& logger);
@@ -68,15 +62,9 @@ SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
       logger_{logger} {
 }
 
-common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
-                                                   const InsertCastTransformer& insert_cast_transformer,
-                                                   const std::vector<NodeArg*>& outer_scope_node_args,
+common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
-  ORT_RETURN_IF_ERROR(TransformGraph(graph_, graph_transformation_manager,
-                                     execution_providers_, kernel_registry_manager_,
-                                     insert_cast_transformer));
-
-  // After transformation/partitioning, the graph now is fixed and graph viewer is created and set for execution.
+  // the graph now is fixed and graph viewer is created and set for execution.
   session_state_.SetGraphViewer(std::make_unique<onnxruntime::GraphViewer>(graph_));
 
   auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
@@ -140,46 +128,6 @@ common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pat
   ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_));
 
   return Status::OK();
-}
-
-common::Status TransformGraph(onnxruntime::Graph& graph,
-                              const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                              const ExecutionProviders& providers,
-                              KernelRegistryManager& kernel_registry_manager,
-                              const InsertCastTransformer& insert_cast_transformer) {
-  // The transformer order:
-  // 1. built-in graph rewriter
-  // 2. each execution provider's transformer
-  // 3. do node placement according to kernel definition
-  // 4. insert copy nodes
-  // 5. insert cast nodes.
-
-  // first apply the default/system/basic graph to graph optimizations.
-  ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
-
-  auto kernels{kernel_registry_manager.GetAllKernelRegistries()};
-
-  // Do partitioning based on execution providers' capability.
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR(partitioner.Partition(graph));
-
-  // Insert copy nodes.
-  for (auto& provider : providers) {
-    if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
-        provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
-        provider->Type() != onnxruntime::kNupharExecutionProvider) {
-      TransformerMemcpyImpl copy_impl(graph, provider->Type());
-      copy_impl.ModifyGraph(kernel_registry_manager);
-    }
-  }
-
-  // Insert cast node/s.
-  bool modified = false;
-  ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
-
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
-  return common::Status::OK();
 }
 
 // Build the MLValue name->idx mapping

@@ -257,9 +257,9 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(pattern.patterns.size(), pattern.locations.size());
   EXPECT_EQ(pattern.patterns.size(), 1);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  EXPECT_EQ(p->PeakSize(), sizeof(float) * (4 + 6));
+  EXPECT_EQ(p->PeakSize(), 2 * 64); // each allocation is 64-byte aligned
   EXPECT_EQ(p->GetBlock(3)->offset_, 0);
-  EXPECT_EQ(p->GetBlock(4)->offset_, sizeof(float) * 4);
+  EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
 }  // namespace test
 }  // namespace onnxruntime

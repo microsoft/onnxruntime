@@ -162,10 +162,10 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<OrtEnv> env;
   {
     OrtEnv* t;
-    ONNXStatus* ost = OrtInitialize(logging_level, "Default", &t);
+    OrtStatus* ost = OrtInitialize(logging_level, "Default", &t);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      ReleaseONNXStatus(ost);
+      OrtReleaseStatus(ost);
       return -1;
     }
     env.reset(t);
@@ -176,10 +176,10 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<OrtAllocator> default_allocator;
   {
     OrtAllocator* p;
-    ONNXStatus* ost = OrtCreateDefaultAllocator(&p);
+    OrtStatus* ost = OrtCreateDefaultAllocator(&p);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      ReleaseONNXStatus(ost);
+      OrtReleaseStatus(ost);
       return -1;
     }
     default_allocator.reset(p);
@@ -205,7 +205,7 @@ int real_main(int argc, char* argv[]) {
       sf.AppendExecutionProvider(f);
       OrtReleaseObject(f);
 #else
-      fprintf(stderr, "CUDA is supported in this build");
+      fprintf(stderr, "CUDA is not supported in this build");
       return -1;
 #endif
     }
@@ -216,7 +216,7 @@ int real_main(int argc, char* argv[]) {
       sf.AppendExecutionProvider(f);
       OrtReleaseObject(f);
 #else
-      fprintf(stderr, "Nuphar is supported in this build");
+      fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
 #endif
     }
@@ -227,7 +227,7 @@ int real_main(int argc, char* argv[]) {
       sf.AppendExecutionProvider(f);
       OrtReleaseObject(f);
 #else
-      fprintf(stderr, "MKL-DNN is supported in this build");
+      fprintf(stderr, "MKL-DNN is not supported in this build");
       return -1;
 #endif
     }
@@ -314,8 +314,6 @@ int real_main(int argc, char* argv[]) {
       {"upsample_nearest", "opset 9 not supported yet"},
       {"onehot_with_axis", "opset 9 not supported yet"},
       {"onehot_without_axis", "opset 9 not supported yet"},  // also has bug in current test re: output type. Spandan to fix.
-      {"sinh", "opset 9 not supported yet"},
-      {"cosh", "opset 9 not supported yet"},
       {"asinh", "opset 9 not supported yet"},
       {"acosh", "opset 9 not supported yet"},
       {"atanh", "opset 9 not supported yet"},

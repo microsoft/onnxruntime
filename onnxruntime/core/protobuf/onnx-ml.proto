@@ -330,7 +330,7 @@ message TensorProto {
   repeated int64 dims = 1;
 
   // The data type of the tensor.
-  optional DataType data_type = 2;
+  optional int32 data_type = 2;
 
   // For very large tensors, we may want to store them in chunks, in which
   // case the following fields will specify the segment that is stored in
@@ -438,7 +438,7 @@ message TypeProto {
   message Tensor {
     // This field MUST NOT have the value of UNDEFINED
     // This field MUST be present for this version of the IR.
-    optional TensorProto.DataType elem_type = 1;
+    optional int32 elem_type = 1;
     optional TensorShapeProto shape = 2;
   }
 
@@ -454,7 +454,7 @@ message TypeProto {
   message Map {
     // This field MUST be present for this version of the IR.
     // This field MUST refer to an integral type ([U]INT{8|16|32|64}) or STRING
-    optional TensorProto.DataType key_type = 1;
+    optional int32 key_type = 1;
     // This field MUST be present for this version of the IR.
     optional TypeProto value_type = 2;
   };
@@ -469,10 +469,10 @@ message TypeProto {
     // repeated TypeProto parameters = 3;
   }
 
-  message SparseTensor { 
-    // This field MUST NOT have the value of UNDEFINED 
-    // This field MUST be present for this version of the IR. 
-    optional TensorProto.DataType elem_type = 1;
+  message SparseTensor {
+    // This field MUST NOT have the value of UNDEFINED
+    // This field MUST be present for this version of the IR.
+    optional int32 elem_type = 1;
     optional TensorShapeProto shape = 2;
   }
 
