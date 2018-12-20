@@ -329,8 +329,8 @@ static Status MakeShapeConcrete(const TensorShape& per_iteration_shape, TensorSh
     } else {
       if (existing_value != per_iteration_shape[i]) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                       "Mismatch between expected shape and shape from first output",
-                                       final_shape, " is not compatible with ", per_iteration_shape);
+                               "Mismatch between expected shape and shape from first output",
+                               final_shape, " is not compatible with ", per_iteration_shape);
       }
     }
   }
@@ -527,8 +527,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
 
     if (input_shape.NumDimensions() < min_dims_required)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
-                                     " Expected ", min_dims_required,
-                                     " dimensions or more but input had shape of ", input_shape);
+                             " Expected ", min_dims_required,
+                             " dimensions or more but input had shape of ", input_shape);
 
     auto this_batch_size = input_shape[0];
 
@@ -537,8 +537,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
     else {
       if (batch_size_ != this_batch_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
-                                       batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
-                                       this_batch_size);
+                               batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
+                               this_batch_size);
       }
     }
 
@@ -550,8 +550,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
       } else {
         if (max_sequence_len_ != this_seq_len) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
-                                         max_sequence_len_, " but ", graph_inputs[i]->Name(),
-                                         " has length of ", this_seq_len);
+                                 max_sequence_len_, " but ", graph_inputs[i]->Name(),
+                                 " has length of ", this_seq_len);
         }
       }
     }
@@ -561,12 +561,12 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
 }
 
 Status ScanImpl::ValidateInput() {
-  auto& graph_inputs = subgraph_.GetInputs();
+  auto& graph_inputs = subgraph_.GetInputs(); // required inputs
   auto num_graph_inputs = graph_inputs.size();
 
-  if (num_graph_inputs != num_variadic_inputs_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' expects ", num_graph_inputs,
-                                   " inputs but Scan was only given ", num_variadic_inputs_);
+  if (num_variadic_inputs_ < num_graph_inputs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' requires ", num_graph_inputs,
+                           " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
   // process any loop state variables, which will set the batch size
@@ -582,7 +582,7 @@ Status ScanImpl::ValidateInput() {
 
     if (num_entries != batch_size_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries,
-                                     " did not match batch size of ", batch_size_);
+                             " did not match batch size of ", batch_size_);
     }
 
     auto d = sequence_lens_tensor_->DataAsSpan<int64_t>();
@@ -591,7 +591,7 @@ Status ScanImpl::ValidateInput() {
     if (std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; }) == false) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
+                             "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
 
   } else {
@@ -609,7 +609,7 @@ Status ScanImpl::AllocateOutput(int index, bool is_loop_state_var) {
 
   if (!graph_output_shape) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                                   graph_output->Name(), " did not.");
+                           graph_output->Name(), " did not.");
   }
 
   TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
@@ -640,7 +640,7 @@ Status ScanImpl::AllocateOutputTensors() {
 
   if (graph_outputs.size() != num_variadic_outputs_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
-                                   " outputs but Scan expects ", num_variadic_outputs_);
+                           " outputs but Scan expects ", num_variadic_outputs_);
   }
 
   for (int i = 0; i < num_loop_state_variables_; ++i) {
@@ -759,7 +759,7 @@ Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_vari
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                        entry.first, " did not.");
+                entry.first, " did not.");
     feeds[entry.first] = *entry.second;
   }
 

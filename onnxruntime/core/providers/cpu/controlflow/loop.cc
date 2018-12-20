@@ -180,15 +180,15 @@ static MLValue MakeScalarMLValue(AllocatorPtr& allocator, T value) {
 Status LoopImpl::Initialize() {
   auto status = Status::OK();
 
-  auto& subgraph_inputs = subgraph_.GetInputs();
+  auto& subgraph_inputs = subgraph_.GetInputs(); // required inputs
 
   // we know how many inputs we are going to call the subgraph with based on the Loop inputs,
   // and that value is in num_subgraph_inputs_.
-  // validate that the subgraph has that many inputs.
-  if (num_subgraph_inputs_ != subgraph_inputs.size()) {
+  // validate that the subgraph has that many inputs. subgraph may have optional inputs.
+  if (num_subgraph_inputs_ < subgraph_inputs.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Graph in 'body' attribute of Loop should have ",
-                                   num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
+                           "Graph in 'body' attribute of Loop requires ", subgraph_inputs.size(),
+                           " inputs but Loop was only given ", num_subgraph_inputs_);
   }
 
   auto& subgraph_outputs = subgraph_.GetOutputs();
@@ -197,8 +197,8 @@ Status LoopImpl::Initialize() {
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
   if (num_subgraph_outputs - 1 != num_outputs_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' node has ", num_outputs_,
-                                   " outputs so the subgraph requires ", num_outputs_ + 1,
-                                   " but has ", num_subgraph_outputs);
+                           " outputs so the subgraph requires ", num_outputs_ + 1,
+                           " but has ", num_subgraph_outputs);
   }
 
   AllocatorPtr allocator;
@@ -242,7 +242,7 @@ NameMLValMap LoopImpl::CreateInitialFeeds() {
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                        entry.first, " did not.");
+                entry.first, " did not.");
     feeds[entry.first] = *entry.second;
   }
 
@@ -290,7 +290,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
     // sanity check
     if (bytes_per_iteration != iteration_data.Size()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output ", output_index,
-                                     " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
+                             " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
     auto num_bytes = iteration_data.Size();
