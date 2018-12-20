@@ -151,7 +151,7 @@ class SessionState {
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
-  const FuseFuncManager* GetFusedFuncMgr() const { return &fused_funcs_mgr_; }
+  const FuncManager* GetFuncMgr() const { return &fused_funcs_mgr_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -190,6 +190,6 @@ class SessionState {
   TaskThreadPool* thread_pool_ = nullptr;
 
   bool export_fused_dll_ = false;
-  FuseFuncManager fused_funcs_mgr_;
+  FuncManager fused_funcs_mgr_;
 };
 }  // namespace onnxruntime

@@ -2,7 +2,7 @@
 #include "core/platform/env.h"
 
 namespace onnxruntime {
-Status FuseFuncManager::AddFuncInfo(const std::string& name, const std::string& dll_path) {
+Status FuncManager::AddFuncInfo(const std::string& name, const std::string& dll_path) {
   auto it = fused_funcs_->find(name);
   if (it != fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " already exist.");
@@ -10,7 +10,7 @@ Status FuseFuncManager::AddFuncInfo(const std::string& name, const std::string& 
   return Status::OK();
 }
 
-Status FuseFuncManager::AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionState create, ReleaseFunctionState release) {
+Status FuncManager::AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionState create, DestroyFunctionState release) {
   auto it = fused_funcs_->find(name);
   if (it != fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " already exist.");
@@ -20,7 +20,7 @@ Status FuseFuncManager::AddFuncInfo(const std::string& name, ComputeFunc compute
   return Status::OK();
 }
 
-Status FuseFuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionState* create, ReleaseFunctionState* release) const {
+Status FuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionState* create, DestroyFunctionState* release) const {
   auto it = fused_funcs_->find(name);
   if (it == fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " not found.");
@@ -49,7 +49,7 @@ Status FuseFuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, 
     };
 
     it->second.release_state_func = [=](FunctionState state) {
-      return reinterpret_cast<ReleaseFunctionStateC>(release_func_symbol_handle)(state);
+      return reinterpret_cast<DestroyFunctionStateC>(release_func_symbol_handle)(state);
     };
   }
   *compute = it->second.compute_func;

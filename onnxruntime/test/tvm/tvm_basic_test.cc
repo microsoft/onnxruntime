@@ -75,7 +75,7 @@ class UnionSet {
 };
 
 static DLDataType GetDataType(DType type) {
-  if (type == DoubleType) {
+  if (type == DType::TDouble) {
     return {kDLFloat, 64, 1};
   } else
     ORT_THROW("not implement.");
@@ -85,7 +85,7 @@ namespace test {
 
 struct TVMFuncState {
   AllocateFunc test_allocate_func = nullptr;
-  ReleaseFunc test_release_func = nullptr;
+  DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   tvm::runtime::Module* module = nullptr;
 };

@@ -8,7 +8,7 @@ ExLibLoader::~ExLibLoader() {
     for (auto& elem : dso_name_data_map_) {
       LOGS_DEFAULT(INFO) << "Unloading DSO " << elem.first;
 
-      PreUnLoadHandle(elem.second);
+      PreUnloadLibrary(elem.second);
 
       // unload the DSO
       if (!Env::Default().UnloadDynamicLibrary(elem.second).IsOK()) {

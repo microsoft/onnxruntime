@@ -132,13 +132,13 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
         std::string dll_path;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, dll_path));
         for (auto* node : nodes_need_compile)
-          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(node->Name(), dll_path));
+          ORT_RETURN_IF_ERROR(const_cast<FuncManager*>(session_state.GetFuncMgr())->AddFuncInfo(node->Name(), dll_path));
       } else {
         std::vector<NodeComputeInfo> node_compute_funcs;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, node_compute_funcs));
         ORT_ENFORCE(node_compute_funcs.size() == nodes_need_compile.size(), "Provider doesn't return correct number of compiled functions");
         for (auto j = 0; j < nodes_need_compile.size(); j++)
-          ORT_RETURN_IF_ERROR(const_cast<FuseFuncManager*>(session_state.GetFusedFuncMgr())->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
+          ORT_RETURN_IF_ERROR(const_cast<FuncManager*>(session_state.GetFuncMgr())->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
       }
       for (auto* node : nodes_need_compile) {
         //prepare the func kernel

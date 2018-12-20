@@ -3,9 +3,9 @@
 namespace onnxruntime {
 //TODO: Should use the lotus cpi element type definition.
 enum DType {
-  Float32Type = 0,
-  Int32Type = 1,
-  DoubleType = 2
+  TFloat32 = 0,
+  TInt32 = 1,
+  TDouble = 2
   //TODO: more types
 };
 
@@ -21,13 +21,13 @@ typedef struct {
 
 // AllocateFunc(void* handle, size_t alignment, size_t size)
 typedef void* (*AllocateFunc)(void*, size_t, size_t);
-typedef void (*ReleaseFunc)(void*, void*);
+typedef void (*DestroyFunc)(void*, void*);
 typedef void* AllocatorHandle;
 
 typedef struct {
   //right now we only include allocation for host memory
   AllocateFunc allocate_func;
-  ReleaseFunc release_func;
+  DestroyFunc release_func;
   AllocatorHandle allocator_handle;
   const char* node_name;
 } ComputeContext;
@@ -38,5 +38,5 @@ using CreateFunctionStateC = int (*)(ComputeContext*, FunctionState*);
 // pass in the function state and input/output tensors, perform compute and return status code, 0 - succeed.
 using ComputeFuncC = int (*)(FunctionState, ONNXRunTimeTensor*, size_t, ONNXRunTimeTensor*, size_t);
 // release the function state.
-using ReleaseFunctionStateC = void (*)(FunctionState);
+using DestroyFunctionStateC = void (*)(FunctionState);
 }  // namespace onnxruntime

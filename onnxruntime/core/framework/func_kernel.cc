@@ -17,11 +17,11 @@ void release_helper_func(void* allocator, void* p) {
 
 DType ORT_type_to_c_type(MLDataType type) {
   if (type == DataTypeImpl::GetType<float>())
-    return DType::Float32Type;
+    return DType::TFloat32;
   else if (type == DataTypeImpl::GetType<double>())
-    return DType::DoubleType;
+    return DType::TDouble;
   else if (type == DataTypeImpl::GetType<int32_t>())
-    return DType::Int32Type;
+    return DType::TInt32;
   else
     ORT_NOT_IMPLEMENTED("Unsupport MLType to c type.");
 }

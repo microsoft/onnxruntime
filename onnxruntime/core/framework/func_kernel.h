@@ -75,7 +75,7 @@ class FunctionKernel : public OpKernel {
 
  private:
   ComputeFunc func_;
-  ReleaseFunctionState release_func_;
+  DestroyFunctionState release_func_;
   FunctionState func_state_;
   size_t num_inputs_;
   size_t num_outputs_;

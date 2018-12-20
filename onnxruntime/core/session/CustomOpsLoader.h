@@ -20,7 +20,7 @@ class CustomOpsLoader final : public ExLibLoader {
                                std::shared_ptr<CustomRegistry>& custom_registry);
 
  protected:
-  virtual void PreUnLoadHandle(void* handle) override;
+  virtual void PreUnloadLibrary(void* handle) override;
 
  private:
   const std::string kGetAllKernelsSymbol = "GetAllKernels";

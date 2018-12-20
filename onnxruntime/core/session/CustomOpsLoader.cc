@@ -13,7 +13,7 @@ using namespace ::onnxruntime::common;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
-void CustomOpsLoader::PreUnLoadHandle(void* handle) {
+void CustomOpsLoader::PreUnloadLibrary(void* handle) {
   using FreeKernelsContainerFn = void (*)(KernelsContainer*);
   using FreeSchemasContainerFn = void (*)(SchemasContainer*);
   auto it = dso_handle_data_map_.find(handle);
