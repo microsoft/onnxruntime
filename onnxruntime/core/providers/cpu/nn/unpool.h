@@ -7,15 +7,14 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/autopad_type.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
 class MaxUnpool : public OpKernel {
  public:
   MaxUnpool(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
-                        "No kernel shape is set.");
+    ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
+                "No kernel shape is set.");
 
     num_inputs_ = OpKernel::Node().InputDefs().size();
 
@@ -33,12 +32,12 @@ class MaxUnpool : public OpKernel {
     }
 
     for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
-      ONNXRUNTIME_ENFORCE(kernel_shape_[dim] > 0);
-      ONNXRUNTIME_ENFORCE(pads_[dim] < kernel_shape_[dim] && pads_[dim + kernel_shape_.size()] < kernel_shape_[dim],
-                          "Pad should be smaller than kernel.");
+      ORT_ENFORCE(kernel_shape_[dim] > 0);
+      ORT_ENFORCE(pads_[dim] < kernel_shape_[dim] && pads_[dim + kernel_shape_.size()] < kernel_shape_[dim],
+                  "Pad should be smaller than kernel.");
     }
 
-    ONNXRUNTIME_ENFORCE(strides_.size() == kernel_shape_.size());
+    ORT_ENFORCE(strides_.size() == kernel_shape_.size());
 
     // Add 4 pad values (0) for batch and channel dimensions
     pads_.insert(pads_.begin(), {0, 0});

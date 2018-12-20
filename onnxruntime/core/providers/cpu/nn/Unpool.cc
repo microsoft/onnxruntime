@@ -29,7 +29,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   const TensorShape& X_shape = X->Shape();
   const float* X_data = X->template Data<float>();
 
-  ONNXRUNTIME_RETURN_IF_NOT(X_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
+  ORT_RETURN_IF_NOT(X_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
   // Supported sizes check
   size_t pooling_dims = X_shape.NumDimensions() - 2;
@@ -42,7 +42,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   const TensorShape& I_shape = I->Shape();
   const int64_t* I_data = I->template Data<int64_t>();
 
-  ONNXRUNTIME_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
+  ORT_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
 
   // Calculate output tensor shape from attributes
   std::vector<int64_t> inferredOutputShape(X_shape.NumDimensions());
@@ -63,7 +63,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   if (num_inputs_ == 3) {
     auto& tensor_shape = *context->Input<Tensor>(2);
-    ONNXRUNTIME_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
+    ORT_RETURN_IF_NOT(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
     // Turn the shape tensor data into an actual shape
     const int64_t* p_shape = tensor_shape.template Data<int64_t>();
@@ -74,10 +74,10 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
     // calculate if output shape has any padding over the inferred shape for feature dims.
     for (auto dim = 2; dim < shape.size(); dim++) {
-      ONNXRUNTIME_ENFORCE(inferredOutputShape[dim] <= shape[dim], "Incorrect output shape");
+      ORT_RETURN_IF_NOT(inferredOutputShape[dim] <= shape[dim], "Incorrect output shape");
 
       int64_t inferredPad = shape[dim] - inferredOutputShape[dim];
-      ONNXRUNTIME_ENFORCE(inferredPad <= kernel_shape_[dim - 2], "Incorrect output shape");
+      ORT_RETURN_IF_NOT(inferredPad <= kernel_shape_[dim - 2], "Incorrect output shape");
 
       if (inferredPad > 0) {
         padsInferred = true;
@@ -120,7 +120,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     TensorShape shape(inferredOutputShape);
 
     AllocatorPtr alloc;
-    ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
     auto element_type = DataTypeImpl::GetType<float>();
 
     void* buffer = alloc->Alloc(sizeof(float) * shape.Size());
