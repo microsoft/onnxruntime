@@ -11,6 +11,7 @@
 #include "core/graph/conv_mul_fusion.h"
 #include "core/graph/conv_add_fusion.h"
 #include "core/graph/conv_activation_fusion.h"
+#include "core/graph/matmul_add_fusion.h"
 #include "core/platform/env.h"
 
 #include "test/capturing_sink.h"
@@ -193,6 +194,43 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
+
+TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
+  string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  std::unique_ptr<MatMulAddFusion> matmul_add_fusion_transformer = std::make_unique<MatMulAddFusion>();
+
+  session_object.RegisterGraphTransformer(std::move(matmul_add_fusion_transformer));
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
+
+TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
+  string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/model.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  std::unique_ptr<MatMulAddFusion> matmul_add_fusion_transformer = std::make_unique<MatMulAddFusion>();
+
+  session_object.RegisterGraphTransformer(std::move(matmul_add_fusion_transformer));
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
+
 
 }  // namespace test
 }  // namespace onnxruntime

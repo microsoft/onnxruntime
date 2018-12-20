@@ -1,0 +1,78 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/graph/initializer.h"
+#include "core/graph/matmul_add_fusion.h"
+#include "core/graph/graph_utils.h"
+
+using namespace onnx;
+using namespace ::onnxruntime::common;
+namespace onnxruntime {
+
+Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
+  GraphViewer graph_viewer(graph);
+  const auto& order = graph_viewer.GetNodesInTopologicalOrder();
+
+  std::vector<onnxruntime::NodeIndex> removed_nodes;
+  for (auto index : order) {
+    auto node = graph.GetNode(index);
+    if (!utils::IsSupportedOptypeVersionAndDomain(*node, "MatMul", 9) || node->GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    const Node& next_node = *(node->OutputNodesBegin());
+    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7)
+        ) {
+      continue;
+    }
+
+    Node* matmul_node = node;
+    Node& add_node = const_cast<Node&>(next_node);
+    std::vector<NodeArg> input_args, output_args;
+    auto matmul_input_defs = matmul_node->MutableInputDefs();
+    auto add_input_defs = add_node.MutableInputDefs();
+
+    // Gemm only support float, so the inputs of MatMul and input of Add should be float
+    auto matmul_type = matmul_input_defs[0]->Type();
+    auto add_type = add_input_defs[0]->Type();
+    if ((*matmul_type) != "tensor(float)" || (*add_type) != "tensor(float)") {
+      continue;
+    }
+
+    // Gemm only support Matrix, need to check the shape of MatMul and Add
+    auto matmul_a_shape = matmul_input_defs[0]->Shape();
+    auto matmul_b_shape = matmul_input_defs[1]->Shape();
+    if (nullptr == matmul_a_shape || nullptr == matmul_b_shape ||
+        2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
+      continue;
+    }
+
+    auto matmul_output_name = matmul_node->OutputDefs()[0]->Name();
+    auto gemm_input_defs = matmul_input_defs;
+    // matmul output as Add_A, should used Add_B as input C for gemm
+    if (matmul_output_name == add_input_defs[0]->Name()) {
+      gemm_input_defs.push_back(add_input_defs[1]);
+    } else { // matmul output as Add_B, should used Add_A as input C for gemm
+      gemm_input_defs.push_back(add_input_defs[0]);
+    }
+
+    graph.AddNode(graph.GenerateNodeName("gemm"),
+                  "Gemm",
+                  "fused Matmul and Add " + add_node.OpType(),
+                  gemm_input_defs,
+                  add_node.MutableOutputDefs());
+
+    removed_nodes.push_back(add_node.Index());
+    removed_nodes.push_back(matmul_node->Index());
+  }
+
+  for (auto i : removed_nodes) {
+    graph.RemoveNode(i);
+  }
+
+  if (!removed_nodes.empty()) {
+    modified = true;
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+  }
+  return Status::OK();
+}
+}  // namespace onnxruntime
