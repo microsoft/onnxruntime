@@ -282,6 +282,38 @@ activation.)DOC")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
         output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+
+        if (hasInputShape(ctx, 0)) {
+          std::vector<int64_t> ngram_indexes;
+          ONNX_NAMESPACE::getRepeatedAttribute(ctx, "ngram_indexes", ngram_indexes);
+          if (ngram_indexes.empty() || !std::all_of(ngram_indexes.cbegin(), ngram_indexes.cend(),
+                                                    [](int64_t i) { return i >= 0; })) {
+            fail_shape_inference(
+                "ngram_indexes must be non-empty with no negative values");
+          }
+
+          auto greatest_hit = std::max_element(ngram_indexes.cbegin(), ngram_indexes.cend());
+          auto max_last_axis = *greatest_hit;
+
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+          auto dim_size = input_shape.dim_size();
+          if (dim_size == 0 || dim_size == 1) {
+            output_shape.add_dim()->set_dim_value(max_last_axis);
+          } else if (dim_size == 2) {
+            auto& zero_dim = input_shape.dim(0);
+            if (!zero_dim.has_dim_value()) {
+              fail_shape_inference(
+                  "Input shape does not have first dimension value");
+            }
+            output_shape.add_dim()->set_dim_value(zero_dim.dim_value());
+            output_shape.add_dim()->set_dim_value(max_last_axis);
+          } else {
+            fail_shape_inference(
+                "Input shape must either be [C] or [B][C]");
+          }
+          updateOutputShape(ctx, 0, output_shape);
+        }
       })
       .SetDoc(R"DOC(
 This transform extracts n-grams from the input sequence and save them as a vector.
