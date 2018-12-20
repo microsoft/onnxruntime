@@ -45,7 +45,7 @@ int GetNumCpuCores() {
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
     if (sysInfo.dwNumberOfProcessors <= 0) {
-      ONNXRUNTIME_THROW("Fatal error: 0 count processors from GetSystemInfo");
+      ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
     }
     // This is the number of logical processors in the current group
     return sysInfo.dwNumberOfProcessors;
@@ -57,7 +57,7 @@ int GetNumCpuCores() {
       ++processorCoreCount;
     }
   }
-  if (!processorCoreCount) ONNXRUNTIME_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
+  if (!processorCoreCount) ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
   return processorCoreCount;
 }
 #else
@@ -82,16 +82,16 @@ int real_main(int argc, char* argv[]) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  ONNXRuntimeLoggingLevel logging_level = ONNXRUNTIME_LOGGING_LEVEL_kWARNING;
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_kWARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ONNXRUNTIME_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ONNXRUNTIME_LOGGING_LEVEL_kINFO;
+          logging_level = ORT_LOGGING_LEVEL_kINFO;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
@@ -123,13 +123,13 @@ int real_main(int argc, char* argv[]) {
           whitelisted_test_cases.emplace_back(optarg);
           break;
         case 'e':
-          if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("cpu"))) {
+          if (!MyStrCmp(optarg, ORT_TSTR("cpu"))) {
             //do nothing
-          } else if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("cuda"))) {
+          } else if (!MyStrCmp(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("mkldnn"))) {
+          } else if (!MyStrCmp(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
-          } else if (!MyStrCmp(optarg, ONNXRUNTIME_TSTR("nuphar"))) {
+          } else if (!MyStrCmp(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else {
             usage();
@@ -159,13 +159,13 @@ int real_main(int argc, char* argv[]) {
     usage();
     return -1;
   }
-  std::unique_ptr<ONNXRuntimeEnv> env;
+  std::unique_ptr<OrtEnv> env;
   {
-    ONNXRuntimeEnv* t;
-    ONNXStatus* ost = ONNXRuntimeInitialize(logging_level, "Default", &t);
+    OrtEnv* t;
+    OrtStatus* ost = OrtInitialize(logging_level, "Default", &t);
     if (ost != nullptr) {
-      fprintf(stderr, "Error creating environment: %s \n", ONNXRuntimeGetErrorMessage(ost));
-      ReleaseONNXStatus(ost);
+      fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
+      OrtReleaseStatus(ost);
       return -1;
     }
     env.reset(t);
@@ -173,13 +173,13 @@ int real_main(int argc, char* argv[]) {
   std::vector<std::basic_string<PATH_CHAR_TYPE> > data_dirs;
   TestResultStat stat;
 
-  std::unique_ptr<ONNXRuntimeAllocator> default_allocator;
+  std::unique_ptr<OrtAllocator> default_allocator;
   {
-    ONNXRuntimeAllocator* p;
-    ONNXStatus* ost = ONNXRuntimeCreateDefaultAllocator(&p);
+    OrtAllocator* p;
+    OrtStatus* ost = OrtCreateDefaultAllocator(&p);
     if (ost != nullptr) {
-      fprintf(stderr, "Error creating environment: %s \n", ONNXRuntimeGetErrorMessage(ost));
-      ReleaseONNXStatus(ost);
+      fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
+      OrtReleaseStatus(ost);
       return -1;
     }
     default_allocator.reset(p);
@@ -200,34 +200,34 @@ int real_main(int argc, char* argv[]) {
       sf.DisableSequentialExecution();
     if (enable_cuda) {
 #ifdef USE_CUDA
-      ONNXRuntimeProviderFactoryInterface** f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
+      OrtProviderFactoryInterface** f;
+      ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
       sf.AppendExecutionProvider(f);
-      ONNXRuntimeReleaseObject(f);
+      OrtReleaseObject(f);
 #else
-      fprintf(stderr, "CUDA is supported in this build");
+      fprintf(stderr, "CUDA is not supported in this build");
       return -1;
 #endif
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      ONNXRuntimeProviderFactoryInterface** f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
+      OrtProviderFactoryInterface** f;
+      ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
       sf.AppendExecutionProvider(f);
-      ONNXRuntimeReleaseObject(f);
+      OrtReleaseObject(f);
 #else
-      fprintf(stderr, "Nuphar is supported in this build");
+      fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
 #endif
     }
     if (enable_mkl) {
 #ifdef USE_MKLDNN
-      ONNXRuntimeProviderFactoryInterface** f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
+      OrtProviderFactoryInterface** f;
+      ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
       sf.AppendExecutionProvider(f);
-      ONNXRuntimeReleaseObject(f);
+      OrtReleaseObject(f);
 #else
-      fprintf(stderr, "MKL-DNN is supported in this build");
+      fprintf(stderr, "MKL-DNN is not supported in this build");
       return -1;
 #endif
     }
@@ -312,8 +312,6 @@ int real_main(int argc, char* argv[]) {
       {"upsample_nearest", "opset 9 not supported yet"},
       {"onehot_with_axis", "opset 9 not supported yet"},
       {"onehot_without_axis", "opset 9 not supported yet"},  // also has bug in current test re: output type. Spandan to fix.
-      {"sinh", "opset 9 not supported yet"},
-      {"cosh", "opset 9 not supported yet"},
       {"asinh", "opset 9 not supported yet"},
       {"acosh", "opset 9 not supported yet"},
       {"atanh", "opset 9 not supported yet"},

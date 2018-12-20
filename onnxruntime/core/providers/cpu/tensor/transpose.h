@@ -21,9 +21,9 @@ class TransposeBase {
       // Check that perm_ is a valid permutation of [0,rank-1]
       for (auto i : perm_) {
         if ((i < 0) || (i >= gsl::narrow<int64_t>(rank)))
-          ONNXRUNTIME_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is outside range.");
+          ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is outside range.");
         if (seen[i])
-          ONNXRUNTIME_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is repeated.");
+          ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is repeated.");
         seen[i] = true;
       }
     }

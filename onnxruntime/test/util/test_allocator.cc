@@ -3,5 +3,5 @@
 
 #include "test_allocator.h"
 
-ONNXRuntimeAllocatorInteface MockedONNXRuntimeAllocator::table_ = {
-    {MockedONNXRuntimeAllocator::AddRef_, MockedONNXRuntimeAllocator::Release_}, MockedONNXRuntimeAllocator::Alloc_, MockedONNXRuntimeAllocator::Free_, MockedONNXRuntimeAllocator::Info_};
+OrtAllocatorInterface MockedOrtAllocator::table_ = {
+    {MockedOrtAllocator::AddRef_, MockedOrtAllocator::Release_}, MockedOrtAllocator::Alloc_, MockedOrtAllocator::Free_, MockedOrtAllocator::Info_};

@@ -12,13 +12,21 @@
 
 using namespace onnxruntime;
 
+#if (!EIGEN_VERSION_AT_LEAST(3, 3, 6))
+  namespace Eigen {
+    namespace half_impl {
+      using __half_raw = ::Eigen::half_impl::__half;
+    }
+  }
+#endif
+
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
 
 namespace {
 
-OnnxRuntimeTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
+ONNXTensorElementDataType CApiElementTypeFromProto(int type) {
   switch (type) {
     CASE_TYPE(FLOAT)
     CASE_TYPE(UINT8)
@@ -102,8 +110,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
   for (size_t di = 0; di != size1; ++di) {
-    float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half(expected_output[di].val));
-    float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half(real_output[di].val));
+    float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
+    float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
     const double diff = fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
@@ -313,10 +321,10 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
                            per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
 
-std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const ONNXValue* o) {
+std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
-    if (ONNXRuntimeIsTensor(o) == 0) {
+    if (OrtIsTensor(o) == 0) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
 
@@ -325,14 +333,14 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
     //	return COMPARE_RESULT::TYPE_MISMATCH;
     //}
-    std::unique_ptr<ONNXRuntimeTensorTypeAndShapeInfo> info;
+    std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
     {
-      ONNXRuntimeTensorTypeAndShapeInfo* t1;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeGetTensorShapeAndType(o, &t1));
+      OrtTensorTypeAndShapeInfo* t1;
+      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(o, &t1));
       info.reset(t1);
     }
-    OnnxRuntimeTensorElementDataType real_type = ONNXRuntimeGetTensorElementType(info.get());
-    OnnxRuntimeTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
+    ONNXTensorElementDataType real_type = OrtGetTensorElementType(info.get());
+    ONNXTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
     if (real_type != expected_type) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }

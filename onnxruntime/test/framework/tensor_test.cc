@@ -16,7 +16,7 @@ template <typename T>
 void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   //not own the buffer
   TensorShape shape(dims);
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
   EXPECT_TRUE(data);
   Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), nullptr, offset);
@@ -126,7 +126,7 @@ TEST(TensorTest, CPUUInt64TensorOffsetTest) {
 
 TEST(TensorTest, EmptyTensorTest) {
   auto type = DataTypeImpl::GetType<float>();
-  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault)->Info());
+  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault)->Info());
   auto& shape = t.Shape();
   EXPECT_EQ(shape.Size(), 0);
   EXPECT_EQ(t.DataType(), type);
@@ -137,12 +137,12 @@ TEST(TensorTest, EmptyTensorTest) {
   auto& location = t.Location();
   ASSERT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, ONNXRuntimeAllocatorType::ONNXRuntimeArenaAllocator);
+  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
 }
 
 TEST(TensorTest, TensorCopyAssignOpTest) {
   TensorShape shape({1, 2, 3});
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto data = alloc->Alloc(sizeof(int) * shape.Size());
   EXPECT_TRUE(data);
   Tensor t1(DataTypeImpl::GetType<int>(), shape, data, alloc->Info());
@@ -152,7 +152,7 @@ TEST(TensorTest, TensorCopyAssignOpTest) {
   auto location = t2.Location();
   ASSERT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, ONNXRuntimeAllocatorType::ONNXRuntimeArenaAllocator);
+  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
   auto t_data = t2.template Data<int>();
   EXPECT_EQ((void*)t_data, data);
   alloc->Free(data);
@@ -167,7 +167,7 @@ TEST(TensorTest, StringTensorTest) {
 #endif
   {
     TensorShape shape({2, 3});
-    auto alloc = TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault);
+    auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
     auto buffer = alloc->Alloc(sizeof(std::string) * (shape.Size()));
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, buffer, alloc->Info(), alloc);
 

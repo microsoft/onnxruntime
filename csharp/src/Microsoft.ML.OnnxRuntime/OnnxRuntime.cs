@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInitialize(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtInitialize(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
             }
             catch (OnnxRuntimeException e)
             {
@@ -70,7 +70,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void Delete(IntPtr nativePtr)
         {
-            NativeMethods.ReleaseONNXEnv(nativePtr);
+            NativeMethods.OrtReleaseEnv(nativePtr);
         }
 
         protected override bool ReleaseHandle()

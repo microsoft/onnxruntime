@@ -104,7 +104,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   const auto& x_dims = x_shape.GetDims();
 
   if (x_shape.NumDimensions() < 3) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
   std::vector<int64_t> kernel_shape = kernel_shape_;
@@ -139,15 +139,15 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   const auto beta = Consts<CudaT>::Zero;
   CudnnTensor x_tensor;
   CudnnTensor y_tensor;
-  ONNXRUNTIME_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-  ONNXRUNTIME_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
     mode = count_include_pad_ ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
   CudnnPoolingDescriptor pooling_desc;
-  ONNXRUNTIME_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
+  ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
 
   CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
 
@@ -162,7 +162,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   const auto& x_dims = x_shape.GetDims();
 
   if (x_shape.NumDimensions() < 3) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
   std::vector<int64_t> kernel_shape = this->kernel_shape_;

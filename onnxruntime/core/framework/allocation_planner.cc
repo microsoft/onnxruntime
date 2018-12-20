@@ -75,7 +75,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   for (size_t i = 0; i < plan.execution_plan.size(); ++i) {
     auto& step = plan.execution_plan[i];
     auto node = graph.GetNode(step.node_index);
-    ONNXRUNTIME_ENFORCE(nullptr != node);
+    ORT_ENFORCE(nullptr != node);
     out << "[" << i << "] ";
     out << node->OpType() << " (" << node->Name() << ")" << std::endl;
     if (step.free_from_index <= step.free_to_index) {
@@ -152,7 +152,7 @@ class PlannerImpl {
   MLValueIndex Index(const MLValueName& name) {
     MLValueIndex result;
     auto status = mlvalue_name_idx_map_.GetIdx(name, result);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return result;
   }
 
@@ -178,7 +178,7 @@ class PlannerImpl {
   }
 
   void Reuse(MLValueIndex reused, MLValueIndex reused_for) {
-    ONNXRUNTIME_ENFORCE(reused != reused_for);
+    ORT_ENFORCE(reused != reused_for);
     // find original buffer underlying ml-value we want to reuse:
     MLValueIndex original = Buffer(reused);
     // record that the new buffer will reuse that original buffer
@@ -199,7 +199,7 @@ class PlannerImpl {
 
     // Note: We expect a KernelDef to be available at this point. If it is not available, the
     // planner would have returned an error status earlier on.
-    ONNXRUNTIME_ENFORCE(nullptr != p_opkernel_def);
+    ORT_ENFORCE(nullptr != p_opkernel_def);
 
     const std::vector<std::pair<int, int>>& alias_map = p_opkernel_def->Alias();
     auto& input_args = node.InputDefs();
@@ -260,7 +260,7 @@ class PlannerImpl {
     const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
     MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
-    ONNXRUNTIME_ENFORCE(nullptr != tensor_type_base);
+    ORT_ENFORCE(nullptr != tensor_type_base);
     MLDataType elt_type = tensor_type_base->GetElementType();
     return elt_type->Size();
   }
@@ -367,7 +367,7 @@ class PlannerImpl {
       // Identify where each output of this node should be allocated.
       // This is determined by the opkernel bound to the node.
       auto node = graph_viewer_.GetNode(step.node_index);
-      ONNXRUNTIME_ENFORCE(nullptr != node);
+      ORT_ENFORCE(nullptr != node);
       auto p_kernelDef = utils::GetKernelDef(kernel_registry_, *node);
       if (nullptr == p_kernelDef) {
         std::ostringstream errormsg;
@@ -377,9 +377,9 @@ class PlannerImpl {
       }
 
       auto exec_provider = execution_providers_.Get(*node);
-      ONNXRUNTIME_ENFORCE(exec_provider);
+      ORT_ENFORCE(exec_provider);
 
-      auto& default_allocator_info = exec_provider->GetAllocator(0, ONNXRuntimeMemTypeDefault)->Info();
+      auto& default_allocator_info = exec_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
       auto& mem_type_allocated_args = p_kernelDef->OutputMemoryType();
       auto& outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
@@ -389,6 +389,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           MLValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
+          ++UseCount(index);
           if (strcmp(default_allocator_info.name, CPU) != 0) {
             // By default, outputs of this node are allocated on the default device allocator,
             // except for outputs marked for allocation in MemoryType:
@@ -433,15 +434,15 @@ class PlannerImpl {
             auto wt_index = Index(def_name);
             SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(wt_index);
             auto* p_provider = execution_providers_.Get(node);
-            ONNXRUNTIME_ENFORCE(p_provider);
+            ORT_ENFORCE(p_provider);
 
             thisplan.alloc_kind = AllocKind::kAllocateStatically;
             auto p_opkernelDef = utils::GetKernelDef(kernel_registry_, node);
             if (MemTypeOnCpuExplicitly(p_opkernelDef->InputMemoryType(), index))
               // weights are not output from any node, so it's OK to put its location on CPU provider
-              thisplan.location = execution_providers_.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, ONNXRuntimeMemTypeDefault)->Info();
+              thisplan.location = execution_providers_.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
             else
-              thisplan.location = p_provider->GetAllocator(0, ONNXRuntimeMemTypeDefault)->Info();
+              thisplan.location = p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
 
             return Status::OK();
           });
@@ -528,7 +529,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == UseCount(original))
+          if (0 == --UseCount(original))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
       }
@@ -587,7 +588,7 @@ Status PlannerImpl::CreatePlan() {
   }
 
   // compute use counts for all ml-values
-  ONNXRUNTIME_RETURN_IF_ERROR(ComputeUseCounts());
+  ORT_RETURN_IF_ERROR(ComputeUseCounts());
 
   // determine sharing/reuse among ml-values
   ComputeReusePlan();

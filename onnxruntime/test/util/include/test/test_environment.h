@@ -29,7 +29,7 @@ class TestEnvironment {
   ~TestEnvironment();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TestEnvironment);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TestEnvironment);
 
 #ifdef HAVE_FRAMEWORK_LIB
   std::unique_ptr<Environment> runtime_environment_;

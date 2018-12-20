@@ -81,7 +81,7 @@ static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
 static int64_t CalcResultDim(const TensorProto* startShapeInitializer,
                              const TensorProto* limitShapeInitializer,
                              const TensorProto* deltaShapeInitializer,
-                             TensorProto_DataType dtype) {
+                             int dtype) {
     int64_t dim = -1LL;    
     if (dtype == TensorProto::FLOAT) {
         dim = CalcRangeDim<float>(startShapeInitializer, limitShapeInitializer, deltaShapeInitializer);
@@ -146,7 +146,7 @@ OpSchema& RegisterRangeOpSchema(OpSchema&& op_schema){
             const TensorProto* limitShapeInitializer = ctx.getInputData(1);
             const TensorProto* deltaShapeInitializer = (ctx.getNumInputs() > 2) ? ctx.getInputData(2) : nullptr;
             const auto& startTensorType = ctx.getInputType(0)->tensor_type();
-            TensorProto_DataType dtype = startTensorType.elem_type();
+            int dtype = startTensorType.elem_type();
 
             int64_t n = CalcResultDim(startShapeInitializer, limitShapeInitializer, deltaShapeInitializer, dtype);
             dim.set_dim_value(n);

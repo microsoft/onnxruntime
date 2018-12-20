@@ -15,10 +15,10 @@ class NonMaxSuppression final : public OpKernel {
  public:
   NonMaxSuppression(const OpKernelInfo& info) : OpKernel(info),
       pad_to_max_output_size_(info.GetAttrOrDefault<int64_t>("pad_to_max_output_size", 0)) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("max_output_size", &max_output_size_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("iou_threshold", &iou_threshold_).IsOK());
-    ONNXRUNTIME_ENFORCE(iou_threshold_ >= 0 && iou_threshold_ <= 1, "iou_threshold must be in range [0, 1]");
-    ONNXRUNTIME_ENFORCE(info.GetAttr("score_threshold", &score_threshold_).IsOK());
+    ORT_ENFORCE(info.GetAttr("max_output_size", &max_output_size_).IsOK());
+    ORT_ENFORCE(info.GetAttr("iou_threshold", &iou_threshold_).IsOK());
+    ORT_ENFORCE(iou_threshold_ >= 0 && iou_threshold_ <= 1, "iou_threshold must be in range [0, 1]");
+    ORT_ENFORCE(info.GetAttr("score_threshold", &score_threshold_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;

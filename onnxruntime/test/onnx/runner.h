@@ -15,7 +15,7 @@
 #include "testenv.h"
 #include "sync_api.h"
 
-typedef std::function<::onnxruntime::common::Status(std::shared_ptr<TestCaseResult> result, ONNXRUNTIME_CALLBACK_INSTANCE pci)> TestCaseCallBack;
+typedef std::function<::onnxruntime::common::Status(std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci)> TestCaseCallBack;
 
 struct TestCaseTask {
   TestEnv& env;
@@ -26,10 +26,10 @@ struct TestCaseTask {
   const PThreadPool pool;
 };
 
-void ONNXRUNTIME_CALLBACK RunTestCase(ONNXRUNTIME_CALLBACK_INSTANCE instance, void* context, ONNXRUNTIME_WORK work);
+void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
 //TODO: implement this function for Linux
-void ONNXRUNTIME_CALLBACK RunSingleDataItem(ONNXRUNTIME_CALLBACK_INSTANCE instance, void* context, ONNXRUNTIME_WORK work);
-::onnxruntime::common::Status OnTestCaseFinished(ONNXRUNTIME_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result);
+void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
+::onnxruntime::common::Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result);
 
 class DataRunner {
  protected:
@@ -41,24 +41,24 @@ class DataRunner {
   ::onnxruntime::TIME_SPEC spent_time_;
 
  private:
-  ONNXSession* session;
+  OrtSession* session;
   CALL_BACK on_finished;
-  ONNXRuntimeAllocatorInteface** const default_allocator;
+  OrtAllocatorInterface** const default_allocator;
   EXECUTE_RESULT RunTaskImpl(size_t task_id);
-  ONNXRUNTIME_DISALLOW_COPY_AND_ASSIGNMENT(DataRunner);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(DataRunner);
 
  public:
-  DataRunner(ONNXSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
-  virtual void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ONNXRUNTIME_CALLBACK_INSTANCE pci) noexcept = 0;
-  void RunTask(size_t task_id, ONNXRUNTIME_CALLBACK_INSTANCE pci, bool store_result);
+  DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
+  virtual void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ORT_CALLBACK_INSTANCE pci) noexcept = 0;
+  void RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result);
   virtual ~DataRunner() {
-    ReleaseONNXSession(session);
-    ONNXRuntimeReleaseObject(default_allocator);
+    OrtReleaseSession(session);
+    OrtReleaseObject(default_allocator);
   }
 
-  virtual void Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t concurrent_runs) = 0;
+  virtual void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) = 0;
 
-  void finish(ONNXRUNTIME_CALLBACK_INSTANCE pci) {
+  void finish(ORT_CALLBACK_INSTANCE pci) {
     std::shared_ptr<TestCaseResult> res = result;
     CALL_BACK callback = on_finished;
     res->SetSpentTime(spent_time_);
@@ -98,24 +98,24 @@ class SeqTestRunner : public DataRunner {
   size_t repeat_count_;
 
  public:
-  SeqTestRunner(ONNXSession* session1,
+  SeqTestRunner(OrtSession* session1,
                 ITestCase* c, size_t repeat_count,
                 TestCaseCallBack on_finished1);
 
-  void Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
-  void OnTaskFinished(size_t, EXECUTE_RESULT, ONNXRUNTIME_CALLBACK_INSTANCE) noexcept override {}
+  void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
+  void OnTaskFinished(size_t, EXECUTE_RESULT, ORT_CALLBACK_INSTANCE) noexcept override {}
 };
 
 class PTestRunner : public DataRunner {
  private:
   std::atomic<size_t> next_test_to_run;
   std::atomic<size_t> finished;
-  void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ONNXRUNTIME_CALLBACK_INSTANCE pci) noexcept override;
+  void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ORT_CALLBACK_INSTANCE pci) noexcept override;
 
  public:
-  void Start(ONNXRUNTIME_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
+  void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
 
-  PTestRunner(ONNXSession* session1,
+  PTestRunner(OrtSession* session1,
               ITestCase* c, PThreadPool tpool,
               TestCaseCallBack on_finished1);
 
@@ -131,8 +131,8 @@ struct DataTask {
 
 std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                                   const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  ONNXRuntimeAllocator* env);
+                                  OrtAllocator* env);
 //Do not run this function in the thread pool passed in
 ::onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);
-void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ONNXRUNTIME_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);
+void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);

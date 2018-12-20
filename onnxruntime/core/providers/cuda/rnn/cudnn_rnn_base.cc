@@ -86,7 +86,7 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
 
   CudnnDropout cudnn_dropout_desc;
   cudnn_dropout_desc.Set(CudnnHandle());
-  ONNXRUNTIME_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc,
+  ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc,
                                             cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
   return Status::OK();
@@ -110,7 +110,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   size_t number = W_lin_layer_id_.size();
   int64_t w_size = num_directions_ * (number * hidden_size_ * (input_size + hidden_size_ + 2));
   std::vector<int64_t> dims_w({w_size, 1, 1});
-  ONNXRUNTIME_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));
 
   std::vector<int64_t> fake_dims_x({1, input_size, 1});
   CudnnTensor fake_x_desc;
@@ -123,7 +123,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   const T* R_data = R->template Data<T>();
   const T* B_data = B == nullptr ? nullptr : B->template Data<T>();
 
-  ONNXRUNTIME_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc_, fake_x_desc, target_w_desc,
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc_, fake_x_desc, target_w_desc,
                                                     target_w_data.get(), W_data, R_data, B_data));
 
   return Status::OK();
@@ -140,7 +140,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
 
   if (get_W && get_R) {
     info.TryGetConstantInput(Input_Index::B, &B);
-    ONNXRUNTIME_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_));
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_));
     weight_cached_ = true;
   }
 
@@ -153,7 +153,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // inputs
   const Tensor* X = ctx->Input<Tensor>(Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
-  ONNXRUNTIME_ENFORCE(nullptr != X);
+  ORT_ENFORCE(nullptr != X);
 
   // optional inputs
   const Tensor* sequence_lens = ctx->Input<Tensor>(Input_Index::sequence_lens);  // [batch_size]
@@ -189,10 +189,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudnnTensor cx_desc;
   CudnnTensor y_h_desc;
   CudnnTensor y_c_desc;
-  ONNXRUNTIME_RETURN_IF_ERROR(hx_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
-  ONNXRUNTIME_RETURN_IF_ERROR(cx_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
-  ONNXRUNTIME_RETURN_IF_ERROR(y_h_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
-  ONNXRUNTIME_RETURN_IF_ERROR(y_c_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(hx_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(cx_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(y_h_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(y_c_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
 
   // Prepare the weight data
   IAllocatorUniquePtr<void> w_data;

@@ -19,7 +19,7 @@ enum class ExecutionStatus {
   MODEL_LOADING_FAILURE = 1,
   DATA_LOADING_FAILURE = 2,
   PREDICTION_FAILURE = 3,
-  ONNXRUNTIME_NOT_IMPLEMENTED = 5
+  ORT_NOT_IMPLEMENTED = 5
 };
 
 class Model {
@@ -33,7 +33,7 @@ class Model {
     struct stat s;
     if (stat(datafile.c_str(), &s) == 0) {
       if (s.st_mode & S_IFDIR) {
-        exec_status_ = ExecutionStatus::ONNXRUNTIME_NOT_IMPLEMENTED;
+        exec_status_ = ExecutionStatus::ORT_NOT_IMPLEMENTED;
         return;
       }
     }

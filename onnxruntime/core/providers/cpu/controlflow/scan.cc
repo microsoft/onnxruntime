@@ -242,7 +242,7 @@ class ScanImpl {
 Status Scan::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
-  ONNXRUNTIME_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
+  ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
   // TODO:
   //       Consider how usage of ExecutionFrame and SequentialExecutor can be optimized
@@ -251,7 +251,7 @@ Status Scan::Compute(OpKernelContext* ctx) const {
   ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, directions_};
 
   auto status = scan_impl.Initialize();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   status = scan_impl.Execute();
 
@@ -314,7 +314,7 @@ MLValue& LoopStateVariable::Output() {
 }
 
 void LoopStateVariable::Next() {
-  ONNXRUNTIME_ENFORCE(iteration_num_ < sequence_len_, "Misuse of LoopStateVariable. Attempt to move beyond end of sequence");
+  ORT_ENFORCE(iteration_num_ < sequence_len_, "Misuse of LoopStateVariable. Attempt to move beyond end of sequence");
   ++iteration_num_;
 }
 
@@ -328,7 +328,7 @@ static Status MakeShapeConcrete(const TensorShape& per_iteration_shape, TensorSh
       final_shape[i + final_shape_offset] = per_iteration_shape[i];
     } else {
       if (existing_value != per_iteration_shape[i]) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL,
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                        "Mismatch between expected shape and shape from first output",
                                        final_shape, " is not compatible with ", per_iteration_shape);
       }
@@ -361,14 +361,14 @@ Status OutputIterator::Initialize() {
     // copy the shape from the input initial value which will have a concrete shape.
     auto* input = context_.Input<Tensor>(output_index_ + 1);  // +1 to skip the sequence_len input
     status = MakeShapeConcrete(input->Shape(), final_shape_);
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
 
     is_concrete_shape_ = true;
   }
 
   if (is_concrete_shape_) {
     status = AllocateFinalBuffer();
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
   } else {
     // use first_output_
   }
@@ -382,7 +382,7 @@ Status OutputIterator::AllocateFinalBuffer() {
   auto* tensor = context_.Output(output_index_, final_shape_);
 
   if (!tensor)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output #", output_index_);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output #", output_index_);
 
   // get the output tensor we just created as an MLValue
   final_output_mlvalue_ = context_.GetOutputMLValue(output_index_);
@@ -404,7 +404,7 @@ Status OutputIterator::AllocateFinalBuffer() {
 }
 
 Status OutputIterator::MakeConcrete() {
-  ONNXRUNTIME_ENFORCE(first_output_.IsAllocated(), "First usage of OutputIterator did not result in any output.");
+  ORT_ENFORCE(first_output_.IsAllocated(), "First usage of OutputIterator did not result in any output.");
   Status status = Status::OK();
 
   auto& tensor = first_output_.Get<Tensor>();
@@ -412,11 +412,11 @@ Status OutputIterator::MakeConcrete() {
 
   // update the final shape
   status = MakeShapeConcrete(tensor_shape, final_shape_);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   is_concrete_shape_ = true;
   status = AllocateFinalBuffer();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // copy first output to final buffer
   auto input_span = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(tensor.DataRaw()), tensor.Size());
@@ -433,7 +433,7 @@ Status OutputIterator::MakeConcrete() {
 }
 
 MLValue& OutputIterator::operator*() {
-  ONNXRUNTIME_ENFORCE(cur_iteration_ < num_iterations_);
+  ORT_ENFORCE(cur_iteration_ < num_iterations_);
 
   if (is_concrete_shape_)
     return **cur_slicer_iterator_;
@@ -446,7 +446,7 @@ OutputIterator& OutputIterator::operator++() {
     if (!is_concrete_shape_) {
       // we should have an output now, so convert to using the overall output buffer and slicers
       auto status = MakeConcrete();
-      ONNXRUNTIME_ENFORCE(status.IsOK(), status.ErrorMessage());
+      ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     }
 
     ++cur_iteration_;
@@ -482,7 +482,7 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
 
 Status ScanImpl::Initialize() {
   auto status = ValidateInput();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   auto& subgraph_outputs = subgraph_.GetOutputs();
   subgraph_output_names_.reserve(subgraph_outputs.size());
@@ -494,7 +494,7 @@ Status ScanImpl::Initialize() {
   }
 
   status = AllocateOutputTensors();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   return Status::OK();
 }
@@ -526,7 +526,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < min_dims_required)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
                                      " Expected ", min_dims_required,
                                      " dimensions or more but input had shape of ", input_shape);
 
@@ -536,7 +536,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
       batch_size_ = this_batch_size;
     else {
       if (batch_size_ != this_batch_size) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
                                        batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
                                        this_batch_size);
       }
@@ -549,7 +549,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
         max_sequence_len_ = this_seq_len;
       } else {
         if (max_sequence_len_ != this_seq_len) {
-          return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
                                          max_sequence_len_, " but ", graph_inputs[i]->Name(),
                                          " has length of ", this_seq_len);
         }
@@ -565,23 +565,23 @@ Status ScanImpl::ValidateInput() {
   auto num_graph_inputs = graph_inputs.size();
 
   if (num_graph_inputs != num_variadic_inputs_) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' expects ", num_graph_inputs,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' expects ", num_graph_inputs,
                                    " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
   // process any loop state variables, which will set the batch size
   auto status = ValidateSubgraphInput(0, num_loop_state_variables_, true, graph_inputs);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // process the scan inputs. sets/validates batch size and sequence length
   status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, false, graph_inputs);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   if (sequence_lens_tensor_ != nullptr) {
     auto num_entries = sequence_lens_tensor_->Shape().Size();
 
     if (num_entries != batch_size_) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries,
                                      " did not match batch size of ", batch_size_);
     }
 
@@ -590,7 +590,7 @@ Status ScanImpl::ValidateInput() {
 
     if (std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; }) == false) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                      "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
 
@@ -608,7 +608,7 @@ Status ScanImpl::AllocateOutput(int index, bool is_loop_state_var) {
   auto* graph_output_shape = graph_output->Shape();
 
   if (!graph_output_shape) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
                                    graph_output->Name(), " did not.");
   }
 
@@ -639,18 +639,18 @@ Status ScanImpl::AllocateOutputTensors() {
   auto& graph_outputs = subgraph_.GetOutputs();
 
   if (graph_outputs.size() != num_variadic_outputs_) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
                                    " outputs but Scan expects ", num_variadic_outputs_);
   }
 
   for (int i = 0; i < num_loop_state_variables_; ++i) {
     status = AllocateOutput(i, true);
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
   }
 
   for (int i = num_loop_state_variables_, end = num_variadic_outputs_; i < end; ++i) {
     status = AllocateOutput(i, false);
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
   }
 
   return Status::OK();
@@ -672,7 +672,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVaria
     const MLValue& mlvalue = GetSubgraphInputMLValue(context_, i);
     MLValue* p_mlvalue = context_.GetOutputMLValue(i);
 
-    ONNXRUNTIME_ENFORCE(p_mlvalue, "Output MLValue has not been created for loop state variable output ", i);
+    ORT_ENFORCE(p_mlvalue, "Output MLValue has not been created for loop state variable output ", i);
 
     loop_state_input_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue).begin());
   }
@@ -682,7 +682,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVaria
 
   AllocatorPtr alloc;
   auto status = context_.GetTempSpaceAllocator(&alloc);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // setup the loop state variables for each batch row
   for (int64_t b = 0; b < batch_size_; ++b) {
@@ -709,7 +709,7 @@ Status ScanImpl::Execute() {
   // for each batch item, std::vector of LoopStateVariables
   std::vector<std::vector<LoopStateVariable>> batch_loop_state_variables;
   status = CreateLoopStateVariables(batch_loop_state_variables);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   for (int64_t b = 0; b < batch_size_; ++b) {
     // Setup input MLValue streams
@@ -739,7 +739,7 @@ Status ScanImpl::Execute() {
                              scan_input_stream_iterators,
                              sequence_lens_[b]);
 
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
   }
 
   return status;
@@ -758,7 +758,7 @@ Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_vari
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
-    ONNXRUNTIME_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
+    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
                         entry.first, " did not.");
     feeds[entry.first] = *entry.second;
   }
@@ -812,7 +812,7 @@ Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_vari
     // For now just making it work. Optimization and refinement will follow.
     SequentialExecutor executor{context_.GetTerminateFlag()};
     status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
-    ONNXRUNTIME_RETURN_IF_ERROR(status);
+    ORT_RETURN_IF_ERROR(status);
 
     // cycle the LoopStateVariable input/output in preparation for the next iteration
     std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });

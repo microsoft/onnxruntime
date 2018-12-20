@@ -29,7 +29,7 @@ struct SequentialExecutionPlan {
   struct AllocPlanPerValue {
     AllocKind alloc_kind{AllocKind::kAllocate};
     MLDataType value_type{nullptr};
-    ONNXRuntimeAllocatorInfo location;
+    OrtAllocatorInfo location;
     // reused_buffer is valid only if alloc_kind == kReuse. It indicates
     // which MLValue's buffer must be reused for this MLValue.
     MLValueIndex reused_buffer{0};
@@ -38,7 +38,7 @@ struct SequentialExecutionPlan {
     bool create_fence_if_async{false};
 
    public:
-    AllocPlanPerValue() : location(CPU, ONNXRuntimeArenaAllocator) {}
+    AllocPlanPerValue() : location(CPU, OrtArenaAllocator) {}
   };
 
   // The following vector is indexed by MLValueIndex

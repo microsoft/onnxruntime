@@ -28,9 +28,9 @@ struct BinaryElementwisePreparation {
                                                               fdm_output_strides(op_kernel) {}
 
   Status CopyToGpu() {
-    ONNXRUNTIME_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu());
-    ONNXRUNTIME_RETURN_IF_ERROR(rhs_padded_strides.CopyToGpu());
-    ONNXRUNTIME_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+    ORT_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu());
+    ORT_RETURN_IF_ERROR(rhs_padded_strides.CopyToGpu());
+    ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
     return Status::OK();
   }
 
@@ -83,20 +83,20 @@ struct BinaryElementwisePreparation {
       // compute strides with 1 more dim than out_rank, and use strides[0] == strides[1]
       // to decide if dim0 needs broadcast
       lhs_padded_strides.AllocCpuPtr(device_id, out_rank + 1);
-      ONNXRUNTIME_RETURN_IF_NOT(TensorPitches::Calculate(lhs_padded_strides.CpuSpan(), lhs_shape.GetDims()));
+      ORT_RETURN_IF_NOT(TensorPitches::Calculate(lhs_padded_strides.CpuSpan(), lhs_shape.GetDims()));
       if (lhs_shape[0] > 1 && lhs_rank == out_rank)
         lhs_padded_strides.CpuPtr()[0] = 0;
     }
 
     if (rhs_shape != output_shape) {
       rhs_padded_strides.AllocCpuPtr(device_id, out_rank + 1);
-      ONNXRUNTIME_RETURN_IF_NOT(TensorPitches::Calculate(rhs_padded_strides.CpuSpan(), rhs_shape.GetDims()));
+      ORT_RETURN_IF_NOT(TensorPitches::Calculate(rhs_padded_strides.CpuSpan(), rhs_shape.GetDims()));
       if (rhs_shape[0] > 1 && rhs_rank == out_rank)
         rhs_padded_strides.CpuPtr()[0] = 0;
     }
 
     fdm_output_strides.AllocCpuPtr(device_id, out_rank);
-    ONNXRUNTIME_RETURN_IF_NOT(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_shape.GetDims()));
+    ORT_RETURN_IF_NOT(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_shape.GetDims()));
     return Status::OK();
   }
 };

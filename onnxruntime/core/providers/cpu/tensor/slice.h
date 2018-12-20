@@ -12,14 +12,14 @@ class SliceBase {
   SliceBase(const OpKernelInfo& info) {
     has_axes_ = info.GetAttrs("axes", axes_).IsOK();
 
-    ONNXRUNTIME_ENFORCE(info.GetAttrs("starts", starts_).IsOK(), "Invalid 'starts' attribute value");
-    ONNXRUNTIME_ENFORCE(info.GetAttrs("ends", ends_).IsOK(), "Invalid 'ends' attribute value");
+    ORT_ENFORCE(info.GetAttrs("starts", starts_).IsOK(), "Invalid 'starts' attribute value");
+    ORT_ENFORCE(info.GetAttrs("ends", ends_).IsOK(), "Invalid 'ends' attribute value");
 
     if (has_axes_) {
       if (axes_.size() > starts_.size())
-        ONNXRUNTIME_THROW("'axes' has more entries than the 'starts' attribute holds");
+        ORT_THROW("'axes' has more entries than the 'starts' attribute holds");
       if (axes_.size() > ends_.size())
-        ONNXRUNTIME_THROW("'axes' has more entries than the 'ends' attribute holds");
+        ORT_THROW("'axes' has more entries than the 'ends' attribute holds");
     }
   }
 

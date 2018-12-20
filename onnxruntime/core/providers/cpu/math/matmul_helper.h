@@ -20,7 +20,7 @@ class MatMulComputeHelper {
 
     size_t left_num_dims = left_shape.NumDimensions();
     size_t right_num_dims = right_shape.NumDimensions();
-    ONNXRUNTIME_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
+    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
 
     // special case for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
     // note that padding 1s in front of the right shape can be flattened too
@@ -35,7 +35,7 @@ class MatMulComputeHelper {
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-      ONNXRUNTIME_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
       return Status::OK();
     }
 
@@ -78,9 +78,9 @@ class MatMulComputeHelper {
     for (int idx_dim = 0; idx_dim < num_dims_with_pad - 2; ++idx_dim) {
       output_dims[idx_dim] = std::max(left_padded_dims_[idx_dim], right_padded_dims_[idx_dim]);
       if (left_padded_dims_[idx_dim] != output_dims[idx_dim])
-        ONNXRUNTIME_RETURN_IF_NOT(left_padded_dims_[idx_dim] == 1, "left operand cannot broadcast on dim ", idx_dim);
+        ORT_RETURN_IF_NOT(left_padded_dims_[idx_dim] == 1, "left operand cannot broadcast on dim ", idx_dim);
       if (right_padded_dims_[idx_dim] != output_dims[idx_dim])
-        ONNXRUNTIME_RETURN_IF_NOT(right_padded_dims_[idx_dim] == 1, "right operand cannot broadcast on dim ", idx_dim);
+        ORT_RETURN_IF_NOT(right_padded_dims_[idx_dim] == 1, "right operand cannot broadcast on dim ", idx_dim);
     }
 
     M_ = has_1D_input ? 1 : left_shape[left_num_dims - 2];
@@ -88,24 +88,24 @@ class MatMulComputeHelper {
     N_ = (right_num_dims == 1) ? 1 : right_shape[right_num_dims - 1];
 
     if (!has_1D_input) {
-      ONNXRUNTIME_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
       // left (...M x K), right (...K x N), output (...M x N)
-      ONNXRUNTIME_RETURN_IF_NOT(num_dims_with_pad == num_output_dims);
+      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims);
       output_dims[num_output_dims - 2] = M_;
       output_dims[num_output_dims - 1] = N_;
     } else {
       if (num_output_dims == 0) {
         // for left and right being both vector, output is scalar thus no shape
-        ONNXRUNTIME_RETURN_IF_NOT(M_ == 1 && N_ == 1);
+        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1);
       } else {
         if (left_num_dims == 1) {
-          ONNXRUNTIME_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims);
-          ONNXRUNTIME_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims);
+          ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2], "MatMul dimension mismatch");
           // left (K), right (...K,N), output (...N)
           output_dims[num_output_dims - 1] = N_;
         } else {
-          ONNXRUNTIME_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims);
-          ONNXRUNTIME_RETURN_IF_NOT(K_ == right_shape[0], "MatMul dimension mismatch");
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims);
+          ORT_RETURN_IF_NOT(K_ == right_shape[0], "MatMul dimension mismatch");
           // left(...K), right (K), output (...), already assigned
         }
       }
@@ -239,7 +239,7 @@ class MatMulComputeHelper {
   template <typename T>
   static void OffsetToArrays(T* p, const std::vector<size_t>& offsets, gsl::span<T*> arrays) {
     auto len = offsets.size();
-    ONNXRUNTIME_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
+    ORT_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
     }
@@ -248,7 +248,7 @@ class MatMulComputeHelper {
   template <typename T>
   static void OffsetToArrays(const T* p, const std::vector<size_t>& offsets, gsl::span<const T*> arrays) {
     auto len = offsets.size();
-    ONNXRUNTIME_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
+    ORT_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
     }

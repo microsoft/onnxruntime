@@ -25,10 +25,10 @@ using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vect
 class CPUExecutionProvider : public IExecutionProvider {
  public:
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({ONNXRuntimeMemTypeDefault, [](int) {
+    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {
           return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
 #ifdef USE_JEMALLOC
-    ONNXRUNTIME_UNUSED_PARAMETER(info);
+    ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
@@ -53,11 +53,11 @@ class CPUExecutionProvider : public IExecutionProvider {
 
   ///requires src.buffer_deleter_ == nullptr
   Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ONNXRUNTIME_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
+    ORT_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
 
     // Todo: support copy with different devices.
     if (strcmp(src.Location().name, CPU) != 0) {
-      ONNXRUNTIME_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
+      ORT_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
     }
 
     // no really copy needed if is copy to cpu.

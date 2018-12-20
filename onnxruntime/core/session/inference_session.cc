@@ -14,6 +14,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_transformer.h"
 #include "core/graph/graph_transformer_mgr.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
@@ -51,8 +52,8 @@ class InferenceSession::Impl {
         logging_manager_{logging_manager},
         session_state_{execution_providers_},
         insert_cast_transformer_{"CastFloat16Transformer"} {
-    ONNXRUNTIME_ENFORCE(Environment::IsInitialized(),
-                        "Environment must be initialized before creating an InferenceSession.");
+    ORT_ENFORCE(Environment::IsInitialized(),
+                "Environment must be initialized before creating an InferenceSession.");
 
     InitLogger(logging_manager);
 
@@ -99,11 +100,11 @@ class InferenceSession::Impl {
     }
     for (auto& dso_file_path : dso_list) {
       std::shared_ptr<CustomRegistry> custom_registry;
-      ONNXRUNTIME_RETURN_IF_ERROR(custom_ops_loader_.LoadCustomOps(dso_file_path, custom_registry));
+      ORT_RETURN_IF_ERROR(custom_ops_loader_.LoadCustomOps(dso_file_path, custom_registry));
       if (!custom_registry) {
         return Status(common::ONNXRUNTIME, common::FAIL, "Null custom_registry after loading custom ops.");
       }
-      ONNXRUNTIME_RETURN_IF_ERROR(RegisterCustomRegistry(custom_registry));
+      ORT_RETURN_IF_ERROR(RegisterCustomRegistry(custom_registry));
     }
     return Status::OK();
   }
@@ -130,11 +131,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(model_uri, p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_uri, p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -159,11 +160,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -190,11 +191,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(std::move(p_model_proto), p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(std::move(p_model_proto), p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -227,11 +228,11 @@ class InferenceSession::Impl {
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                           HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
+                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
       model_ = p_tmp_model;
 
-      ONNXRUNTIME_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
@@ -247,10 +248,48 @@ class InferenceSession::Impl {
     return common::Status::OK();
   }
 
+  static common::Status TransformGraph(onnxruntime::Graph& graph,
+                                       const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                       const ExecutionProviders& providers,
+                                       KernelRegistryManager& kernel_registry_manager,
+                                       const InsertCastTransformer& insert_cast_transformer) {
+    // The transformer order:
+    // 1. built-in graph rewriter
+    // 2. each execution provider's transformer
+    // 3. do node placement according to kernel definition
+    // 4. insert copy nodes
+    // 5. insert cast nodes.
+
+    // first apply the default/system/basic graph to graph optimizations.
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
+
+    auto kernels{kernel_registry_manager.GetAllKernelRegistries()};
+
+    // Do partitioning based on execution providers' capability.
+    GraphPartitioner partitioner(kernel_registry_manager, providers);
+    ORT_RETURN_IF_ERROR(partitioner.Partition(graph));
+
+    // Insert copy nodes.
+    for (auto& provider : providers) {
+      if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
+          provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
+          provider->Type() != onnxruntime::kNupharExecutionProvider) {
+        TransformerMemcpyImpl copy_impl(graph, provider->Type());
+        copy_impl.ModifyGraph(kernel_registry_manager);
+      }
+    }
+
+    // Insert cast node/s.
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
+
+    return common::Status::OK();
+  }
+
   // memory allocations for a subgraph that are owned by InferenceSession
   struct SubgraphMemory {
     std::unique_ptr<SessionState> session_state;
-    std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr> weights_buffers;
+    std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers;
   };
 
   /// iterate nodes in graph looking for ones with graph attribute/s
@@ -266,7 +305,7 @@ class InferenceSession::Impl {
         // check if it has a subgraph
         if (proto.has_g()) {
           Graph* subgraph = node.GetMutableGraphAttribute(name);
-          ONNXRUNTIME_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+          ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
           SubgraphMemory subgraph_info;
           // create SessionState for executing subgraph
@@ -277,13 +316,11 @@ class InferenceSession::Impl {
           SessionStateInitializer initializer{*subgraph, *subgraph_info.session_state,
                                               execution_providers_, kernel_registry_manager_, *session_logger_};
 
-          ONNXRUNTIME_RETURN_IF_ERROR(
-              initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                     node.ImplicitInputDefs(),
-                                     session_options_.enable_sequential_execution));
+          ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
+                                                     session_options_.enable_sequential_execution));
 
-          ONNXRUNTIME_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                                    subgraph_info.weights_buffers));
+          ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
+                                                            subgraph_info.weights_buffers));
 
           // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
           // by Compute() via OpKernelContextInternal.
@@ -293,7 +330,7 @@ class InferenceSession::Impl {
           //                                                   &*subgraph_info.session_state);
 
           // recurse
-          ONNXRUNTIME_RETURN_IF_ERROR(InitializeSubgraphSessions(*subgraph, *subgraph_info.session_state));
+          ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(*subgraph, *subgraph_info.session_state));
 
           // save subgraph_info as InferenceSession owns these so they remain valid
           // for the entire InferenceSession.
@@ -347,26 +384,38 @@ class InferenceSession::Impl {
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_, *session_logger_};
 
-      ONNXRUNTIME_RETURN_IF_ERROR(session_initializer.CreatePlan(graph_transformation_mgr_, insert_cast_transformer_,
-                                                                 {}, session_options_.enable_sequential_execution));
+      // apply any transformations to the main graph and any subgraphs
+      ORT_RETURN_IF_ERROR(TransformGraph(graph, graph_transformation_mgr_,
+                                         execution_providers_, kernel_registry_manager_,
+                                         insert_cast_transformer_));
 
-      ONNXRUNTIME_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                                        weights_buffers_));
+      ORT_RETURN_IF_ERROR(utils::ForAllMutableSubgraphs(graph, [this](Graph& subgraph) {
+        return TransformGraph(subgraph, graph_transformation_mgr_,
+                              execution_providers_, kernel_registry_manager_,
+                              insert_cast_transformer_);
+      }));
+
+      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      ORT_RETURN_IF_ERROR(graph.Resolve());
+
+      ORT_RETURN_IF_ERROR(session_initializer.CreatePlan({}, session_options_.enable_sequential_execution));
+      ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
+                                                                weights_buffers_));
 
       // handle any subgraphs
-      ONNXRUNTIME_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
+      ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
 
       is_inited_ = true;
 
       LOGS(*session_logger_, INFO) << "Session successfully initialized.";
     } catch (const NotImplementedException& ex) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     } catch (const std::exception& ex) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception during initialization: ", ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception during initialization: ", ex.what());
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     } catch (...) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     }
 
@@ -438,8 +487,8 @@ class InferenceSession::Impl {
                   });
 
     if (!missing_required_inputs.empty()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Missing required inputs: ", missing_required_inputs);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Missing required inputs: ", missing_required_inputs);
     }
 
     bool valid = true;
@@ -458,18 +507,18 @@ class InferenceSession::Impl {
                     [&ostr](const std::string& elem) {
                       ostr << elem << " ";
                     });
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Invalid Feed Input Names:", invalid_names.str(),
-                                     ". Valid input names are: ", ostr.str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid Feed Input Names:", invalid_names.str(),
+                             ". Valid input names are: ", ostr.str());
     }
 
     return Status::OK();
   }
 
   common::Status ValidateInputs(const NameMLValMap& feeds) {
-    ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputNames(feeds));
+    ORT_RETURN_IF_ERROR(ValidateInputNames(feeds));
     //TODO: It should also validate the input shapes?
-    ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputTypes(feeds));
+    ORT_RETURN_IF_ERROR(ValidateInputTypes(feeds));
     return Status::OK();
   }
 
@@ -527,10 +576,10 @@ class InferenceSession::Impl {
       MLValue new_mlvalue;
       auto& input_name = pair.first;
       auto& orig_mlvalue = pair.second;
-      ONNXRUNTIME_RETURN_IF_ERROR(IOBinding::CopyOneInputAcrossDevices(session_state,
-                                                                       input_name,
-                                                                       orig_mlvalue,
-                                                                       new_mlvalue));
+      ORT_RETURN_IF_ERROR(IOBinding::CopyOneInputAcrossDevices(session_state,
+                                                               input_name,
+                                                               orig_mlvalue,
+                                                               new_mlvalue));
       new_feeds[input_name] = new_mlvalue;
     }
     return Status::OK();
@@ -547,7 +596,7 @@ class InferenceSession::Impl {
 
     std::set<std::string> seen_outputs;
     auto p_graph = session_state_.GetGraphViewer();
-    ONNXRUNTIME_ENFORCE(p_graph);
+    ORT_ENFORCE(p_graph);
 
     std::pair<bool, size_t> found;
     for (auto& node : p_graph->Nodes()) {  // TODO optimize this
@@ -617,7 +666,7 @@ class InferenceSession::Impl {
       auto& def_name = one_def->Name();
       size_t idx = found.second;
       int mlvalue_idx;
-      ONNXRUNTIME_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
+      ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
       if (!weights.count(mlvalue_idx)) {
         LOGS(*session_logger_, INFO) << "Output with name " << def_name << " is not a weight.";
         continue;
@@ -628,8 +677,8 @@ class InferenceSession::Impl {
     }
 
     if (seen_outputs.size() != output_names.size())  // make sure we've seen all outputs
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
-                                     " got ", seen_outputs.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
+                             " got ", seen_outputs.size());
 
     return Status::OK();
   }
@@ -642,7 +691,7 @@ class InferenceSession::Impl {
     if (!p_provider)
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "invalid provider_type");
 
-    auto allocator = p_provider->GetAllocator(device_id, ONNXRuntimeMemTypeDefault);
+    auto allocator = p_provider->GetAllocator(device_id, OrtMemTypeDefault);
     if (!allocator)
       return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
 
@@ -680,7 +729,7 @@ class InferenceSession::Impl {
       auto* p_fetched_provider = execution_providers_.Get(fetched_tensor_location);
       if (!p_fetched_provider) {
         p_fetched_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-        ONNXRUNTIME_ENFORCE(p_fetched_provider);
+        ORT_ENFORCE(p_fetched_provider);
       }
 
       auto fetched_provider_type = p_fetched_provider->Type();
@@ -688,9 +737,9 @@ class InferenceSession::Impl {
       auto& output_mlvalue = user_fetches[idx];
       if (!output_mlvalue.IsAllocated()) {
         if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-          ONNXRUNTIME_RETURN_IF_ERROR(AllocateHelper(onnxruntime::kCpuExecutionProvider, 0,
-                                                     fetched_tensor,
-                                                     output_mlvalue));
+          ORT_RETURN_IF_ERROR(AllocateHelper(onnxruntime::kCpuExecutionProvider, 0,
+                                             fetched_tensor,
+                                             output_mlvalue));
         } else {
           user_fetches[idx] = fetched_mlvalue;
           continue;
@@ -702,21 +751,21 @@ class InferenceSession::Impl {
       auto* p_output_provider = execution_providers_.Get(output_tensor_loc);
       if (!p_output_provider) {
         p_output_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-        ONNXRUNTIME_ENFORCE(p_output_provider);
+        ORT_ENFORCE(p_output_provider);
       }
 
       auto output_provider_type = p_output_provider->Type();
 
-      if (output_provider_type == fetched_provider_type || fetched_tensor_location.mem_type == ONNXRuntimeMemTypeCPUOutput) {
+      if (output_provider_type == fetched_provider_type || fetched_tensor_location.mem_type == OrtMemTypeCPUOutput) {
         user_fetches[idx] = fetched_mlvalue;
         continue;
       }
 
       // our CPU exec provider doesn't support copy from GPU->CPU
       if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-        ONNXRUNTIME_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
+        ORT_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
       } else {
-        ONNXRUNTIME_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
+        ORT_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
       }
     }
 
@@ -739,10 +788,10 @@ class InferenceSession::Impl {
         }
       }
 
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(ValidateInputs(feeds));
+      ORT_CHECK_AND_SET_RETVAL(ValidateInputs(feeds));
 
       // if the output vector is non-empty, ensure that its the same size as the output_names
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(ValidateOutputs(output_names, p_fetches));
+      ORT_CHECK_AND_SET_RETVAL(ValidateOutputs(output_names, p_fetches));
 
       if (!run_options.run_tag.empty()) {
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
@@ -760,13 +809,13 @@ class InferenceSession::Impl {
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_)
-        ONNXRUNTIME_CHECK_AND_SET_RETVAL(xp->OnRunStart());
+        ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
 
       NameMLValMap copied_feeds;
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(CopyInputsAcrossDevices(session_state_, feeds, copied_feeds));
+      ORT_CHECK_AND_SET_RETVAL(CopyInputsAcrossDevices(session_state_, feeds, copied_feeds));
 
       std::vector<MLValue> new_fetches;
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(MatchOutputsWithProviders(output_names, *p_fetches, new_fetches));
+      ORT_CHECK_AND_SET_RETVAL(MatchOutputsWithProviders(output_names, *p_fetches, new_fetches));
 
       std::unique_ptr<IExecutor> p_exec;
 
@@ -778,8 +827,8 @@ class InferenceSession::Impl {
         }
       }
 
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(p_exec->Execute(session_state_, copied_feeds, output_names, new_fetches, run_logger));
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(CopyOutputsAcrossDevices(new_fetches, *p_fetches));
+      ORT_CHECK_AND_SET_RETVAL(p_exec->Execute(session_state_, copied_feeds, output_names, new_fetches, run_logger));
+      ORT_CHECK_AND_SET_RETVAL(CopyOutputsAcrossDevices(new_fetches, *p_fetches));
 
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -789,7 +838,7 @@ class InferenceSession::Impl {
 
     // info all execution providers InferenceSession:Run ended
     for (auto& xp : execution_providers_)
-      ONNXRUNTIME_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
+      ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
 
     --current_num_runs_;
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
@@ -1006,7 +1055,7 @@ class InferenceSession::Impl {
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
     if (timeout_in_ms > 0) {
-      ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
+      ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
     }
     p_executor_done->WaitForNotification();
 
@@ -1075,7 +1124,7 @@ class InferenceSession::Impl {
   bool is_model_loaded_ = false;      // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;            // GUARDED_BY(session_mutex_)
 
-  std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr> weights_buffers_;
+  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   InsertCastTransformer insert_cast_transformer_;
 
   // memory allocations for any subgraphs

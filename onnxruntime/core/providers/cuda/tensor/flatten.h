@@ -11,7 +11,7 @@ namespace cuda {
 class Flatten final : public CudaKernel {
  public:
   Flatten(const OpKernelInfo& info) : CudaKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
