@@ -43,21 +43,21 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 
 namespace ngram_details {
 
-class NgramElementBase {
+class NgramEntryBase {
   size_t id_;  // Id in the pool
  protected:
-  NgramElementBase(size_t id) : id_(id) {}
-  ~NgramElementBase() = default;
+  NgramEntryBase(size_t id) : id_(id) {}
+  ~NgramEntryBase() = default;
 
  public:
   size_t Id() const { return id_; }
 };
 
 template <class T>
-class NgramItem;
+class NgramEntry;
 
 template <>
-class NgramItem<int64_t> : public NgramElementBase {
+class NgramEntry<int64_t> : public NgramEntryBase {
   std::vector<int64_t> items_;
   size_t hash_ = 0;
 
@@ -68,7 +68,7 @@ class NgramItem<int64_t> : public NgramElementBase {
 
  public:
   template <typename ForwardIter>
-  explicit NgramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
+  explicit NgramEntry(size_t id, ForwardIter first, ForwardIter last) : NgramEntryBase(id) {
     while (first != last) {
       RunningHash(*first);
       items_.push_back(*first);
@@ -77,7 +77,7 @@ class NgramItem<int64_t> : public NgramElementBase {
     assert(!items_.empty());
   }
   // For sampling
-  explicit NgramItem() : NgramElementBase(0) {}
+  explicit NgramEntry() : NgramEntryBase(0) {}
   void AddItem(int64_t v) {
     items_.push_back(v);
     RunningHash(v);
@@ -90,7 +90,7 @@ class NgramItem<int64_t> : public NgramElementBase {
     items_.clear();
     hash_ = 0;
   }
-  bool operator==(const NgramItem& o) const {
+  bool operator==(const NgramEntry& o) const {
     return items_ == o.items_;
   }
   size_t Hash() const {
@@ -99,15 +99,15 @@ class NgramItem<int64_t> : public NgramElementBase {
 };
 
 template <>
-class NgramItem<int32_t> : public NgramItem<int64_t> {
+class NgramEntry<int32_t> : public NgramEntry<int64_t> {
  public:
   template <typename ForwardIter>
-  explicit NgramItem(size_t id, ForwardIter first, ForwardIter last) : NgramItem<int64_t>(id, first, last) {}
-  explicit NgramItem() = default;
+  explicit NgramEntry(size_t id, ForwardIter first, ForwardIter last) : NgramEntry<int64_t>(id, first, last) {}
+  explicit NgramEntry() = default;
 };
 
 template <>
-class NgramItem<std::string> : public NgramElementBase {
+class NgramEntry<std::string> : public NgramEntryBase {
  private:
   std::vector<std::reference_wrapper<const std::string>> items_;
   size_t hash_ = 0;
@@ -119,7 +119,7 @@ class NgramItem<std::string> : public NgramElementBase {
 
  public:
   template <typename ForwardIter>
-  explicit NgramItem(size_t id, ForwardIter first, ForwardIter last) : NgramElementBase(id) {
+  explicit NgramEntry(size_t id, ForwardIter first, ForwardIter last) : NgramEntryBase(id) {
     while (first != last) {
       RunningHash(*first);
       items_.push_back(std::cref(*first));
@@ -127,7 +127,7 @@ class NgramItem<std::string> : public NgramElementBase {
     }
     assert(!items_.empty());
   }
-  explicit NgramItem() : NgramElementBase(0) {}
+  explicit NgramEntry() : NgramEntryBase(0) {}
   void AddItem(const std::string& s) {
     items_.push_back(std::cref(s));
     RunningHash(s);
@@ -141,7 +141,7 @@ class NgramItem<std::string> : public NgramElementBase {
     hash_ = 0;
   }
 
-  bool operator==(const NgramItem& o) const {
+  bool operator==(const NgramEntry& o) const {
     if (items_.size() == o.items_.size()) {
       return std::equal(items_.cbegin(), items_.cend(),
                         o.items_.cbegin(), o.items_.cend(),
@@ -154,10 +154,10 @@ class NgramItem<std::string> : public NgramElementBase {
   }
 };
 
-using IntegerPoolSet = std::unordered_set<NgramItem<int64_t>>;
+using IntegerPoolSet = std::unordered_set<NgramEntry<int64_t>>;
 // Does not own strings, contains references to them. This helps
 // to search by string references that point to the current input.
-using StringPoolSet = std::unordered_set<NgramItem<std::string>>;
+using StringPoolSet = std::unordered_set<NgramEntry<std::string>>;
 
 template <typename ForwardIter, typename Cont>
 inline void Emplace(ForwardIter first, size_t ngrams, size_t ngram_size, size_t& ngram_id, Cont& c) {
@@ -176,8 +176,8 @@ using namespace onnxruntime::contrib::ngram_details;
 
 namespace std {
 template <typename T>
-struct hash<NgramItem<T>> {
-  typedef NgramItem<T> argument_type;
+struct hash<NgramEntry<T>> {
+  typedef NgramEntry<T> argument_type;
   typedef size_t result_type;
   result_type operator()(const argument_type& a) const {
     return a.Hash();
@@ -211,13 +211,23 @@ struct Ngram::Impl {
   int64_t N_ = 0;
   int64_t M_ = 0;
   int64_t S_ = 0;
-  std::vector<int64_t> ngram_counts_;
-  std::vector<int64_t> ngram_indexes_;
+  // This is the content of ngram_counts
+  // attribute. The starting indexes of 1-grams, 2-grams,
+  // and so on in pool. For example, if ngram_counts is [0, 17, 36],
+  // the first index (zero-based) of 1-gram/2-gram/3-gram
+  // in pool are 0/17/36.
+  std::vector<int64_t> ngram_start_indexes_;
+  // Contains output indexes for the output
+  // represents ngram_indexes output
+  std::vector<int64_t> ngram_output_indexes_;
   std::vector<float> weights_;
 
   std::vector<std::string> pool_strings_;
+  // This set contains references to pool_string_ entries
+  // of pool_strings attribute
   StringPoolSet str_set_;
-  IntegerPoolSet int_set_;
+  // This set contains pool_int64s entries
+  IntegerPoolSet int64_set_;
   size_t output_size_ = 0;
 
   MLDataType int32_dt_;
@@ -233,11 +243,11 @@ struct Ngram::Impl {
   auto PoolEnd() const;
 
   template <typename T>
-  auto PoolFind(const ngram_details::NgramItem<T>&) const;
+  auto PoolFind(const ngram_details::NgramEntry<T>&) const;
 
   void IncrementCount(size_t ngram_id, std::vector<uint32_t>& frequencies) const {
-    assert(ngram_id < ngram_indexes_.size());
-    auto output_idx = ngram_indexes_[ngram_id];
+    assert(ngram_id < ngram_output_indexes_.size());
+    auto output_idx = ngram_output_indexes_[ngram_id];
     assert(static_cast<size_t>(output_idx) < frequencies.size());
     ++frequencies[output_idx];
   }
@@ -245,7 +255,7 @@ struct Ngram::Impl {
 
 template <>
 inline auto Ngram::Impl::PoolEnd<int64_t>() const {
-  return int_set_.cend();
+  return int64_set_.cend();
 }
 
 template <>
@@ -259,17 +269,17 @@ inline auto Ngram::Impl::PoolEnd<std::string>() const {
 }
 
 template <>
-inline auto Ngram::Impl::PoolFind<int64_t>(const NgramItem<int64_t>& i) const {
-  return int_set_.find(i);
+inline auto Ngram::Impl::PoolFind<int64_t>(const NgramEntry<int64_t>& i) const {
+  return int64_set_.find(i);
 }
 
 template <>
-inline auto Ngram::Impl::PoolFind<int32_t>(const NgramItem<int32_t>& i) const {
-  return int_set_.find(i);
+inline auto Ngram::Impl::PoolFind<int32_t>(const NgramEntry<int32_t>& i) const {
+  return int64_set_.find(i);
 }
 
 template <>
-inline auto Ngram::Impl::PoolFind<std::string>(const NgramItem<std::string>& i) const {
+inline auto Ngram::Impl::PoolFind<std::string>(const NgramEntry<std::string>& i) const {
   return str_set_.find(i);
 }
 
@@ -293,26 +303,26 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   status = info.GetAttr("S", &impl_->S_);
   ORT_ENFORCE(status.IsOK() && impl_->N_ >= 0, "Non-negative number of skips S is required");
 
-  status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_counts_);
-  ORT_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
-  ORT_ENFORCE(size_t(impl_->M_) <= impl_->ngram_counts_.size(), "M must be inbounds of ngram_counts");
-  ORT_ENFORCE(size_t(impl_->N_) <= impl_->ngram_counts_.size(), "N must be inbounds of ngram_counts");
+  status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_start_indexes_);
+  ORT_ENFORCE(status.IsOK() && !impl_->ngram_start_indexes_.empty(), "Non-empty ngram_counts is required");
+  ORT_ENFORCE(size_t(impl_->M_) <= impl_->ngram_start_indexes_.size(), "M must be inbounds of ngram_counts");
+  ORT_ENFORCE(size_t(impl_->N_) <= impl_->ngram_start_indexes_.size(), "N must be inbounds of ngram_counts");
 
-  status = info.GetAttrs("ngram_indexes", impl_->ngram_indexes_);
-  ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
+  status = info.GetAttrs("ngram_indexes", impl_->ngram_output_indexes_);
+  ORT_ENFORCE(status.IsOK() && !impl_->ngram_output_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
-    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend(),
+    ORT_ENFORCE(std::all_of(impl_->ngram_output_indexes_.cbegin(), impl_->ngram_output_indexes_.cend(),
                             [](int64_t i) { return i >= 0; }),
                 "Negative ngram_indexes values are not allowed");
     // Set output size to max output index + 1;
-    auto greatest_hit = std::max_element(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend());
+    auto greatest_hit = std::max_element(impl_->ngram_output_indexes_.cbegin(), impl_->ngram_output_indexes_.cend());
     impl_->output_size_ = *greatest_hit + 1;
   }
 
   status = info.GetAttrs("weights", impl_->weights_);
   if (status.IsOK()) {
-    ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_indexes_.size(),
+    ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_output_indexes_.size(),
                 "weights and indexes must have equal size");
   }
 
@@ -332,9 +342,9 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   const size_t M = impl_->M_;
   const size_t N = impl_->N_;
   size_t ngram_size = 1;
-  for (size_t i = 0; i < impl_->ngram_counts_.size(); ++i) {
-    size_t start_idx = impl_->ngram_counts_[i];
-    size_t end_idx = ((i + 1) < impl_->ngram_counts_.size()) ? impl_->ngram_counts_[i + 1] : total_items;
+  for (size_t i = 0; i < impl_->ngram_start_indexes_.size(); ++i) {
+    size_t start_idx = impl_->ngram_start_indexes_[i];
+    size_t end_idx = ((i + 1) < impl_->ngram_start_indexes_.size()) ? impl_->ngram_start_indexes_[i + 1] : total_items;
     ORT_ENFORCE(end_idx >= start_idx && end_idx <= total_items,
                 "n-gram counts out of bounds for ", std::to_string(ngram_size), "-grams");
     auto items = end_idx - start_idx;
@@ -345,9 +355,9 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
       // Skip loading into hash_set ngrams that are not N or not in the range of [M-N] for all=true;
       if (ngram_size >= M && ngram_size <= N) {
         if (impl_->pool_strings_.empty()) {
-          auto before_insert = impl_->int_set_.size();
-          Emplace(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int_set_);
-          ORT_ENFORCE((before_insert + ngrams) == impl_->int_set_.size(), "pool_int64s duplicate ", std::to_string(ngram_size), "-grams detected");
+          auto before_insert = impl_->int64_set_.size();
+          Emplace(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_set_);
+          ORT_ENFORCE((before_insert + ngrams) == impl_->int64_set_.size(), "pool_int64s duplicate ", std::to_string(ngram_size), "-grams detected");
         } else {
           auto before_insert = impl_->str_set_.size();
           Emplace(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_set_);
@@ -410,7 +420,7 @@ void Ngram::OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& freq
 }
 
 template <typename T>
-void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
+void Ngram::ComputeImpl(OpKernelContext* ctx) const {
   const auto& impl = *impl_;
   auto const set_end = impl.PoolEnd<T>();
   // Frequency holder, init all to zero
@@ -422,9 +432,10 @@ void Ngram::ComputeImpl(OpKernelContext* ctx, size_t total_items) const {
   auto start_ngram_size = impl.M_;
 
   auto X = ctx->Input<Tensor>(0);
+  size_t total_items = X->Shape().Size();
   auto const input_data = X->template Data<T>();
   auto const end_data = input_data + total_items;
-  NgramItem<T> sample;
+  NgramEntry<T> sample;
 
   // Treat unigrams in a special way
   if (start_ngram_size == 1) {
@@ -490,23 +501,13 @@ Status Ngram::Compute(OpKernelContext* ctx) const {
   Status s;
 
   auto X = ctx->Input<Tensor>(0);
-  auto& input_dims = X->Shape().GetDims();
-  size_t total_items = 1;
-  // Scalar
-  if (input_dims.empty() || (input_dims.size() == 1 && input_dims[0] == 0)) {
-    total_items = 1;
-  } else {
-    for (const auto& dim : input_dims) {
-      total_items *= dim;
-    }
-  }
 
   if (X->DataType() == impl_->int32_dt_) {
-    ComputeImpl<int32_t>(ctx, total_items);
+    ComputeImpl<int32_t>(ctx);
   } else if (X->DataType() == impl_->int64_dt_) {
-    ComputeImpl<int64_t>(ctx, total_items);
+    ComputeImpl<int64_t>(ctx);
   } else if (X->DataType() == impl_->string_dt_) {
-    ComputeImpl<std::string>(ctx, total_items);
+    ComputeImpl<std::string>(ctx);
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Invalid type of the input argument");

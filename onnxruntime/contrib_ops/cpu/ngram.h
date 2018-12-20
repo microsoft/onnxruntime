@@ -21,7 +21,7 @@ class Ngram final : public OpKernel {
 
  private:
   template <typename T>
-  void ComputeImpl(OpKernelContext* ctx, size_t total_items) const;
+  void ComputeImpl(OpKernelContext* ctx) const;
 
   // Apply weighing criteria and output
   void OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& frequences) const;

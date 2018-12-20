@@ -258,7 +258,8 @@ activation.)DOC")
           "The starting indexes of 1-grams, 2-grams, and so on in pool."
           "It is useful when determining the boundary between two consecutive collections of n-grams."
           "For example, if ngram_counts is [0, 17, 36], the first index (zero-based) of 1-gram/2-gram/3-gram"
-          "in pool are 0/17/36",
+          "in pool are 0/17/36. This format is essentially identical to CSR (or CSC) sparse matrix format, "
+          "and we choose to keep this due to its popularity.",
           AttributeProto::INTS)
       .Attr(
           "ngram_indexes",
