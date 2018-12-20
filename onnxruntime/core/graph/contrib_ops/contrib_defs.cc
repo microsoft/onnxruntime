@@ -5,9 +5,12 @@
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
-#include "core/graph/contrib_ops/internal_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/shape_inference.h"
+
+#ifdef MICROSOFT_INTERNAL
+#include "core/graph/contrib_ops/internal_schema_defs.h"
+#endif
 
 namespace ONNX_NAMESPACE {
 void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape);
@@ -653,8 +656,11 @@ Example 4:
   indices = [[[0,1]],[[1,0]]]
   output  = [[[2,3]],[[4,5]]]
 )DOC");
+
+#ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
+#endif
 }
 }  // namespace contrib
 }  // namespace onnxruntime
