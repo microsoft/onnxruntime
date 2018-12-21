@@ -15,11 +15,11 @@ namespace mkl_dnn {
 namespace {
 // Struct which encapsulates parameters for MKLDNN Pool primitive.
 struct ReluParams {
-  mkldnn::memory::dims& src_dims;
-  mkldnn::memory::dims& dst_dims;
+  const mkldnn::memory::dims& src_dims;
+  const mkldnn::memory::dims& dst_dims;
   size_t num_dimensions;
 
-  ReluParams(mkldnn::memory::dims& src_dims, mkldnn::memory::dims& dst_dims, 
+  ReluParams(const mkldnn::memory::dims& src_dims, const mkldnn::memory::dims& dst_dims, 
 		size_t dimensions = 0)
       : src_dims(src_dims),
         dst_dims(dst_dims),

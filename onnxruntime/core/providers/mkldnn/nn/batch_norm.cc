@@ -30,7 +30,7 @@ struct BatchNormParams {
     const mkldnn::memory::dims& scale_dims_mkl,
     const mkldnn::memory::dims& b_dims_mkl, const mkldnn::memory::dims& mean_dims_mkl,
     const mkldnn::memory::dims& var_dims_mkl, const mkldnn::memory::dims& dst_dims_mkl,
-    const float eps, const int dimensions)
+     float eps, int dimensions)
     : src_dims(src_dims_mkl),
     scale_dims(scale_dims_mkl),
     b_dims(b_dims_mkl),

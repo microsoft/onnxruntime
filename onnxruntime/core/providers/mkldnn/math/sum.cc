@@ -21,8 +21,8 @@ struct SumParams {
   const int num_dimensions;
 
   SumParams(const std::vector<mkldnn::memory::dims>& dims,
-    const mkldnn::memory::dims& dst_dims, const int numinputs, 
-    const int dimensions)
+    const mkldnn::memory::dims& dst_dims, int numinputs, 
+    int dimensions)
     : src_dims(dims),
     dst_dim(dst_dims),
     num_inputs(numinputs),
