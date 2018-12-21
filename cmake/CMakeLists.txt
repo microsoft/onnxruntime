@@ -393,6 +393,14 @@ if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
 endif()
 
+#mkldnn may depend on mklml, therefore this section must come first
+if (onnxruntime_USE_MKLDNN)
+  add_definitions(-DUSE_MKLDNN=1)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
+  link_directories(${MKLDNN_LIB_DIR})
+endif()
+
 if (onnxruntime_USE_MKLML)
   add_definitions(-DUSE_MKLML=1)
   # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
@@ -404,13 +412,6 @@ if (onnxruntime_USE_MKLML)
   endif()
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
   link_directories(${MKLML_LIB_DIR})
-endif()
-
-if (onnxruntime_USE_MKLDNN)
-  add_definitions(-DUSE_MKLDNN=1)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
-  link_directories(${MKLDNN_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_OPENBLAS)
