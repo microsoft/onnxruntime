@@ -172,9 +172,9 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
   
   try {
     ReluParams pool_params(src_dims_mkl, dst_dims_mkl);
-    ReluPrimitive<T>* relul_primitive = ReluPrimitivePool<T>::Get(pool_params);
+    ReluPrimitive<T>* relu_primitive = ReluPrimitivePool<T>::Get(pool_params);
 
-    relul_primitive->Compute(src_data, dst_data);
+    relu_primitive->Compute(src_data, dst_data);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, 
 		", message: ", e.message.c_str());
