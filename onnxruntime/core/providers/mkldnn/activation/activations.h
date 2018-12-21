@@ -11,7 +11,7 @@ namespace mkl_dnn {
 template <typename T>
 class Relu : public onnxruntime::Relu<T> {
  public:
-  Relu(const OpKernelInfo& info) : onnxruntime::Relu<T>(info) {}
+   explicit Relu(const OpKernelInfo& info) : onnxruntime::Relu<T>(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };

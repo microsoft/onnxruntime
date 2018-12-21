@@ -24,21 +24,19 @@ struct BatchNormParams {
   const mkldnn::memory::dims& var_dims;
   const mkldnn::memory::dims& dst_dims;
   const float epsilon;
-  const int num_dimensions;
 
   BatchNormParams(const mkldnn::memory::dims& src_dims_mkl,
     const mkldnn::memory::dims& scale_dims_mkl,
     const mkldnn::memory::dims& b_dims_mkl, const mkldnn::memory::dims& mean_dims_mkl,
     const mkldnn::memory::dims& var_dims_mkl, const mkldnn::memory::dims& dst_dims_mkl,
-     float eps, int dimensions)
+    float eps)
     : src_dims(src_dims_mkl),
     scale_dims(scale_dims_mkl),
     b_dims(b_dims_mkl),
     mean_dims(mean_dims_mkl),
     var_dims(var_dims_mkl),
     dst_dims(dst_dims_mkl),
-    epsilon(eps),
-    num_dimensions(dimensions) {}
+    epsilon(eps) {}
 
   // Used as the key for BatchNorm Primitive Reuse Pool.
   std::string ToString() const {
@@ -69,7 +67,7 @@ class BatchNormPrimitive final : public PrimitiveBase {
   ~BatchNormPrimitive() = default;
 
   void Compute(const T* src_data, const T* scale_data, const T* b_data, 
-    const T* mean_data, const T* var_data, const T* dst_data, 
+    const T* mean_data, const T* var_data, T* dst_data, 
     int scale_dims_channels) {
     context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)));
@@ -78,15 +76,15 @@ class BatchNormPrimitive final : public PrimitiveBase {
     context_.var_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(var_data)));
     context_.dst_mem->set_data_handle(
-      static_cast<void*>(const_cast<T*>(dst_data)));
+      static_cast<void*>(dst_data));
 
-    T* scaleShift_buf = static_cast<T*>(context_.scale_shift_mem->get_data_handle());
+    T* scale_shift_buf = static_cast<T*>(context_.scale_shift_mem->get_data_handle());
 
     size_t src_bytes = sizeof(T) * scale_dims_channels;
     size_t dst_bytes = sizeof(T) * scale_dims_channels;
 
-    MEMCPY_S(scaleShift_buf, scale_data, src_bytes, dst_bytes);
-    MEMCPY_S(&scaleShift_buf[scale_dims_channels], b_data, src_bytes, dst_bytes);
+    MEMCPY_S(scale_shift_buf, scale_data, src_bytes, dst_bytes);
+    MEMCPY_S(&scale_shift_buf[scale_dims_channels], b_data, src_bytes, dst_bytes);
     context_.stream->submit(context_.net);
     return;
   }
@@ -120,7 +118,7 @@ class BatchNormPrimitive final : public PrimitiveBase {
 
   void Initialize(const BatchNormParams& params) {
     mkldnn::memory::format fmt = mkldnn::memory::format::any;
-    switch (params.num_dimensions) {
+    switch (params.src_dims.size()) {
     case 1: { fmt = mkldnn::memory::format::x; break; }
     case 2: { fmt = mkldnn::memory::format::nc; break; }
     case 3: { fmt = mkldnn::memory::format::ntc; break; }
@@ -260,7 +258,7 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
   try {
     BatchNormParams batchNorm_params(src_dims_mkl, scale_dims_mkl, 
       b_dims_mkl, mean_dims_mkl, var_dims_mkl, dst_dims_mkl, 
-      onnxruntime::BatchNorm<T>::epsilon_, num_dimensions);
+      onnxruntime::BatchNorm<T>::epsilon_);
     BatchNormPrimitive<T>* batchNorm_primitive = 
       BatchNormPrimitivePool<T>::Get(batchNorm_params);
     ORT_RETURN_IF_NOT(batchNorm_primitive != nullptr);

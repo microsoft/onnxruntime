@@ -12,7 +12,7 @@ namespace mkl_dnn {
 template <typename T>
 class Sum final : public onnxruntime::Sum_6<T> {
  public:
-   Sum(const OpKernelInfo& info) : onnxruntime::Sum_6<T>(info) {}
+   explicit Sum(const OpKernelInfo& info) : onnxruntime::Sum_6<T>(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 

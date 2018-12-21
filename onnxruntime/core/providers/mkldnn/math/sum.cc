@@ -60,7 +60,7 @@ class SumPrimitive final : public PrimitiveBase {
     T* dst_data = Y->template MutableData<T>();
 
     context_.dst_mem->set_data_handle(
-      static_cast<void*>(static_cast<T*>(dst_data)));
+      static_cast<void*>(dst_data));
 
     for (int i = 0; i < numinputs; i++) {
       const Tensor* X = context->Input<Tensor>(i);
@@ -184,6 +184,8 @@ Status Sum<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(num_inputs > 0, "MKLDNN Sum kernel: Must have at least one input");
 
   if (num_inputs == 1) {
+    // Fall Back to CPU implementation. For one input,  use CPU implementation 
+    // to copy input to output
     return onnxruntime::Sum_6<T>::Compute(context);
   }
 

@@ -17,13 +17,10 @@ namespace {
 struct ReluParams {
   const mkldnn::memory::dims& src_dims;
   const mkldnn::memory::dims& dst_dims;
-  size_t num_dimensions;
 
-  ReluParams(const mkldnn::memory::dims& src_dims, const mkldnn::memory::dims& dst_dims, 
-		size_t dimensions = 0)
+  ReluParams(const mkldnn::memory::dims& src_dims, const mkldnn::memory::dims& dst_dims)
       : src_dims(src_dims),
-        dst_dims(dst_dims),
-        num_dimensions(dimensions) {}
+        dst_dims(dst_dims) {}
 
   // Used as the key for Pool Primitive Reuse Pool.
   std::string ToString() const {
@@ -49,24 +46,16 @@ class ReluPrimitive final : public PrimitiveBase {
 
   ~ReluPrimitive() = default;
 
-  void Compute(const T* src_data, const T* dst_data) {
+  void Compute(const T* src_data, T* dst_data) {
 	  context_.src_mem->set_data_handle(
 		  static_cast<void*>(const_cast<T*>(src_data)));
 	  context_.dst_mem->set_data_handle(
-		  static_cast<void*>(const_cast<T*>(dst_data)));
+		  static_cast<void*>(dst_data));
 	  context_.stream->submit(context_.net);
 
 	  context_.src_mem->set_data_handle(nullptr);
 	  context_.dst_mem->set_data_handle(nullptr);
 	  return;
-  }
-
-  std::unique_ptr<mkldnn::memory::desc> 
-	GetDstMemoryDesc() const { return context_.dst_md; }
-
-  std::unique_ptr<mkldnn::eltwise_forward::primitive_desc> 
-	GetPrimitiveDesc() const {
-		return context_.relu_fwd_pd;
   }
 
  private:
@@ -93,7 +82,7 @@ class ReluPrimitive final : public PrimitiveBase {
   void Initialize(const ReluParams& params) {
     
     mkldnn::memory::format fmt = mkldnn::memory::format::any;
-    switch (params.num_dimensions) {
+    switch (params.src_dims.size()) {
     case 1: { fmt = mkldnn::memory::format::x; break; }
     case 2: { fmt = mkldnn::memory::format::nc; break; }
     case 3: { fmt = mkldnn::memory::format::ntc; break; }
@@ -165,8 +154,10 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
   
   const TensorShape& x_shape = X->Shape();
   const auto& x_dims = x_shape.GetDims();
-
+  
   if (X->Shape().NumDimensions() > 5 ) {
+    // Fall Back to CPU implementation.
+    // mkldnn support up to dim of size 5
     return onnxruntime::Relu<T>::Compute(context);
   }
 
@@ -178,12 +169,12 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
 
   mkldnn::memory::dims src_dims_mkl(x_dims.begin(), x_dims.end());
   mkldnn::memory::dims dst_dims_mkl(y_dims.begin(), y_dims.end());
-
+  
   try {
-    ReluParams pool_params(src_dims_mkl, dst_dims_mkl, x_shape.NumDimensions());
-    ReluPrimitive<T>* relulPrimitive = ReluPrimitivePool<T>::Get(pool_params);
+    ReluParams pool_params(src_dims_mkl, dst_dims_mkl);
+    ReluPrimitive<T>* relul_primitive = ReluPrimitivePool<T>::Get(pool_params);
 
-    relulPrimitive->Compute(src_data, dst_data);
+    relul_primitive->Compute(src_data, dst_data);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, 
 		", message: ", e.message.c_str());
