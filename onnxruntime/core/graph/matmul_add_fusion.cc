@@ -18,7 +18,7 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
   for (auto node_index : node_topology_list) {
     auto node = graph.GetNode(node_index);
     if (nullptr == node ||
-        !utils::IsSupportedOptypeVersionAndDomain(*node, "MatMul", 9) ||
+        !(utils::IsSupportedOptypeVersionAndDomain(*node, "MatMul", 1) || utils::IsSupportedOptypeVersionAndDomain(*node, "MatMul", 9)) ||
         node->GetOutputEdgesCount() != 1) {
       continue;
     }
