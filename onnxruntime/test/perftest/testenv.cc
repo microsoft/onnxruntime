@@ -4,7 +4,6 @@
 #include "testenv.h"
 #include <core/common/logging/logging.h>
 #include <core/graph/constants.h>
-#include <core/graph/conv_activation_fusion.h>
 #include <core/framework/allocator.h>
 #include <core/framework/execution_provider.h>
 #include <core/session/onnxruntime_cxx_api.h>
@@ -79,8 +78,6 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
     }
     //TODO: add more
   }
-  std::unique_ptr<onnxruntime::ConvActivationFusion> ConvActivationFusion_transformer = std::make_unique<onnxruntime::ConvActivationFusion>();
-  sess->RegisterGraphTransformer(std::move(ConvActivationFusion_transformer));
 
   status = sess->Load(model_url.string());
   ORT_RETURN_IF_ERROR(status);
