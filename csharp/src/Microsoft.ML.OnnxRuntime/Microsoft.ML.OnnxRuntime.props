@@ -10,11 +10,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win10-x64\native\mkldnn.dll"
-          Condition="'$(PlatformTarget)' == 'x64'">
-      <Link>mkldnn.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
   </ItemGroup>
 </Project>

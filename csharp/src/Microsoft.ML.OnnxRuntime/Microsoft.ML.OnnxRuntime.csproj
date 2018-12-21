@@ -56,13 +56,6 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
-    <None Include="$(NativeBuildOutputDir)\mkldnn.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
-          PackagePath="\runtimes\win10-x64\native"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
 
     <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt"
           PackagePath="\"
