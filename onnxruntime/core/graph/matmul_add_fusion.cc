@@ -4,6 +4,7 @@
 #include "core/graph/initializer.h"
 #include "core/graph/matmul_add_fusion.h"
 #include "core/graph/graph_utils.h"
+#include <deque>
 
 using namespace onnx;
 using namespace ::onnxruntime::common;
@@ -12,7 +13,7 @@ namespace onnxruntime {
 Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<onnxruntime::NodeIndex> removed_nodes;
+  std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
     auto node = graph.GetNode(node_index);
@@ -77,18 +78,20 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
                   gemm_input_defs,
                   add_node.MutableOutputDefs());
 
-    removed_nodes.push_back(add_node.Index());
-    removed_nodes.push_back(matmul_node->Index());
+    removed_nodes.push_front(matmul_node->Index());
+    removed_nodes.push_front(add_node.Index());
   }
 
-  for (auto i : removed_nodes) {
-    graph.RemoveNode(i);
+  // Have to remove node in reversed order for now to walk around the issue in RemoveNode
+  for (auto it = removed_nodes.begin(); it != removed_nodes.end(); ++it) {
+    graph.RemoveNode(*it);
   }
 
   if (!removed_nodes.empty()) {
     modified = true;
     ORT_RETURN_IF_ERROR(graph.Resolve());
   }
+
   return Status::OK();
 }
 }  // namespace onnxruntime
