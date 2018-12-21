@@ -26,6 +26,7 @@
 #include "abi_session_options_impl.h"
 
 using namespace onnxruntime::logging;
+using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::Environment;
 using onnxruntime::IAllocator;
@@ -259,6 +260,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorIn
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<BFloat16>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
@@ -322,6 +326,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, allocator, &tensor));
       break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<BFloat16>(shape, shape_len, allocator, &tensor));
+      break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, allocator, &tensor));
       break;
@@ -333,7 +340,6 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
     default: {
       std::ostringstream oss;
       oss << "type " << type << " is not supported in this function";
