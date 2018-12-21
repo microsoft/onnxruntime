@@ -68,7 +68,7 @@ class ConvPrimitive : public PrimitiveBase {
   ~ConvPrimitive() = default;
 
   void Compute(const T* src_data, const T* filter_data,
-               const T* dst_data, const T* bias_data = nullptr) {
+               T* dst_data, const T* bias_data = nullptr) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.filter_mem->set_data_handle(
@@ -78,7 +78,7 @@ class ConvPrimitive : public PrimitiveBase {
           static_cast<void*>(const_cast<T*>(bias_data)));
     }
     context_.dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(dst_data)));
+        static_cast<void*>(dst_data));
     context_.stream->submit(context_.net);
 
     context_.src_mem->set_data_handle(nullptr);
@@ -437,7 +437,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       DoReorder<T>(params);
     }
 
-  } catch (mkldnn::error& e) {
+  } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 
