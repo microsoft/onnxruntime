@@ -28,7 +28,7 @@ void WordConvEmbedding::CharEmbeddingLookup(
   }
 }
 
-//input : [batch, sequence_length, word_length, char_embedding_size]
+//input : [sequence_length, word_length, char_embedding_size]
 void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     AllocatorPtr allocator,
     const float* input,
@@ -173,7 +173,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
   // allocate memory for char look up
-  // batch_size * max_sequence_length * max_word_length * char_embedding_size
+  // seq_len * word_len * char_embedding_size
   size_t chars_embeddings_size = seq_len * word_len * char_embedding_size;
   auto chars_embeddings_ptr = IAllocator::MakeUniquePtr<float>(alloc, chars_embeddings_size);
   auto words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, seq_len);
