@@ -21,7 +21,9 @@ namespace cuda {
 
 template <typename T>
 Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor& X = *ctx->Input<Tensor>(0);
+  const Tensor* X_ptr = ctx->Input<Tensor>(0);
+  if (X_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  const Tensor& X = *X_ptr;
   const TensorShape& input_shape = X.Shape();
   const std::vector<int64_t>& input_dims = input_shape.GetDims();
   size_t rank = input_dims.size();
