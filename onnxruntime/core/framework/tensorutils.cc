@@ -45,38 +45,38 @@ static void UnpackTensorWithRawData(const ONNX_NAMESPACE::TensorProto& tensor, /
 
 namespace onnxruntime {
 namespace utils {
-#define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                              \
-  template <>                                                                                                              \
-  Status TensorUtils::UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data, int64_t expected_size) {  \
-    if (nullptr == p_data) {                                                                                               \
-      const size_t size = tensor.has_raw_data() ? tensor.raw_data().size() : tensor.field_size();                          \
-      if (size == 0)                                                                                                       \
-        return Status::OK();                                                                                               \
-      else                                                                                                                 \
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                      \
-    }                                                                                                                      \
-    if (nullptr == p_data || Type != tensor.data_type()) {                                                                 \
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                        \
-    }                                                                                                                      \
-    if (tensor.has_raw_data()) {                                                                                           \
-      size_t expected_size_in_bytes;                                                                                       \
-      if (!IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {                           \
-        return Status(common::ONNXRUNTIME, common::FAIL, "size overflow");                                                 \
-      }                                                                                                                    \
-      if (tensor.raw_data().size() != expected_size_in_bytes)                                                              \
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                                                  \
-                                       "UnpackTensor: the pre-allocated size does not match the raw data size, expected ", \
-                                       expected_size_in_bytes, ", got ", tensor.raw_data().size());                        \
-      UnpackTensorWithRawData(tensor, p_data);                                                                             \
-      return Status::OK();                                                                                                 \
-    }                                                                                                                      \
-    if (tensor.field_size() != expected_size)                                                                              \
-      return Status(common::ONNXRUNTIME, common::FAIL,                                                                     \
-                    "UnpackTensor: the pre-allocated size does not match the size in proto");                              \
-    auto& data = tensor.field_name();                                                                                      \
-    for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                                            \
-      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                                  \
-    return Status::OK();                                                                                                   \
+#define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                             \
+  template <>                                                                                                             \
+  Status TensorUtils::UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ T* p_data, int64_t expected_size) { \
+    if (nullptr == p_data) {                                                                                              \
+      const size_t size = tensor.has_raw_data() ? tensor.raw_data().size() : tensor.field_size();                         \
+      if (size == 0)                                                                                                      \
+        return Status::OK();                                                                                              \
+      else                                                                                                                \
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                     \
+    }                                                                                                                     \
+    if (nullptr == p_data || Type != tensor.data_type()) {                                                                \
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                                       \
+    }                                                                                                                     \
+    if (tensor.has_raw_data()) {                                                                                          \
+      size_t expected_size_in_bytes;                                                                                      \
+      if (!IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {                          \
+        return Status(common::ONNXRUNTIME, common::FAIL, "size overflow");                                                \
+      }                                                                                                                   \
+      if (tensor.raw_data().size() != expected_size_in_bytes)                                                             \
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                                                         \
+                               "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",        \
+                               expected_size_in_bytes, ", got ", tensor.raw_data().size());                               \
+      UnpackTensorWithRawData(tensor, p_data);                                                                            \
+      return Status::OK();                                                                                                \
+    }                                                                                                                     \
+    if (tensor.field_size() != expected_size)                                                                             \
+      return Status(common::ONNXRUNTIME, common::FAIL,                                                                    \
+                    "UnpackTensor: the pre-allocated size does not match the size in proto");                             \
+    auto& data = tensor.field_name();                                                                                     \
+    for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                                           \
+      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                                 \
+    return Status::OK();                                                                                                  \
   }
 
 //TODO: uint32 uint64 complex64 complex128
@@ -190,6 +190,46 @@ Status TensorUtils::UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor,
   return Status::OK();
 }
 
+template <>
+Status TensorUtils::UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor,
+                                 /*out*/ BFloat16* p_data,
+                                 int64_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = tensor.has_raw_data() ? tensor.raw_data().size() : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+    else
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (tensor.has_raw_data()) {
+    if (tensor.raw_data().size() != (expected_size) * sizeof(uint16_t))
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "UnpackTensor: the pre-allocate size does not match the raw data size");
+
+    UnpackTensorWithRawData(tensor, p_data);
+    return Status::OK();
+  }
+
+  if (tensor.int32_data_size() != expected_size)
+    return Status(common::ONNXRUNTIME, common::FAIL,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  const int max_value = std::numeric_limits<uint16_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "data overflow");
+    }
+    p_data[i] = BFloat16(static_cast<uint16_t>(v));
+  }
+
+  return Status::OK();
+}
+
 #define CASE_PROTO_TRACE(X, Y)                                                            \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                    \
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) { \
@@ -222,6 +262,7 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
     CASE_PROTO_TRACE(UINT32, uint32_t);
     CASE_PROTO_TRACE(UINT64, uint64_t);
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
+    CASE_PROTO_TRACE(BFLOAT16, BFloat16);
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
     default:
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
