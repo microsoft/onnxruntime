@@ -13,9 +13,6 @@ namespace contrib {
 class WordConvEmbedding : public OpKernel {
  public:
   explicit WordConvEmbedding(const OpKernelInfo& info) : OpKernel(info) {
-    embedding_size_ = info.GetAttrOrDefault<int64_t>("embedding_size", -1);
-    conv_window_size_ = info.GetAttrOrDefault<int64_t>("conv_window_size", -1);
-    char_embedding_size_ = info.GetAttrOrDefault<int64_t>("char_embedding_size", -1);
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -52,9 +49,9 @@ class WordConvEmbedding : public OpKernel {
       const TensorShape& w_char_embedding_shape) const;
 
  private:
-  int64_t embedding_size_{-1};
-  int64_t conv_window_size_{-1};
-  int64_t char_embedding_size_{-1};
+  int64_t embedding_size_{Info().GetAttrOrDefault<int64_t>("embedding_size", -1)};
+  int64_t conv_window_size_{Info().GetAttrOrDefault<int64_t>("conv_window_size", -1)};
+  int64_t char_embedding_size_{Info().GetAttrOrDefault<int64_t>("char_embedding_size", -1)};
 };
 
 }  // namespace contrib

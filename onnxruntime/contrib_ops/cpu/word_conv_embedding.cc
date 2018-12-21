@@ -45,19 +45,13 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
   int64_t unfolded_width = word_len - filter_width + 1;
   int64_t unfolded_kernal_size = filter_width * char_embedding_size;
   int64_t unfolded_segment_size = unfolded_width * unfolded_kernal_size;
-  //int conv_res_segment_size = _filter_width * _num_filters; // TODO: it imay be unfolded_width * _num_filters
   int64_t conv_res_segment_size = unfolded_width * num_filters;
   int64_t memcpy_size = unfolded_kernal_size * sizeof(float);
 
-  IAllocatorUniquePtr<float> input_unfolded_buffer_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * unfolded_segment_size);
-  IAllocatorUniquePtr<float> conv_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
-  IAllocatorUniquePtr<float> conv_activation_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
+  auto input_unfolded_buffer_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * unfolded_segment_size);
+  auto conv_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
+  auto conv_activation_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
 
-  //   omp_set_nested( true );
-  //   omp_set_dynamic( false );
-  //   omp_set_num_threads( 24 );
-  //
-  //#pragma omp parallel for num_threads(nt)
   for (int64_t word_inx = 0; word_inx < seq_len; word_inx++) {
     if (words_len_ptr[word_inx] <= 0) continue;
 
@@ -178,12 +172,12 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
-  // allocate memery for char look up
+  // allocate memory for char look up
   // batch_size * max_sequence_length * max_word_length * char_embedding_size
   size_t chars_embeddings_size = seq_len * word_len * char_embedding_size;
-  IAllocatorUniquePtr<float> chars_embeddings_p = IAllocator::MakeUniquePtr<float>(alloc, chars_embeddings_size);
-  IAllocatorUniquePtr<int> words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, seq_len);
-  std::memset(chars_embeddings_p.get(), 0, chars_embeddings_size * sizeof(float));
+  auto chars_embeddings_ptr = IAllocator::MakeUniquePtr<float>(alloc, chars_embeddings_size);
+  auto words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, seq_len);
+  std::memset(chars_embeddings_ptr.get(), 0, chars_embeddings_size * sizeof(float));
   std::memset(words_length_ptr.get(), 0, seq_len * sizeof(int));
 
   CalculateSuquenceWordsLength(seq_ptr, words_length_ptr.get(), seq_len, word_len);
@@ -194,11 +188,11 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
                       word_len,
                       char_embedding_size,
                       words_length_ptr.get(),
-                      chars_embeddings_p.get());
+                      chars_embeddings_ptr.get());
 
   ComputeConvMaxPoolWithActivation(
       alloc,
-      chars_embeddings_p.get(),
+      chars_embeddings_ptr.get(),
       w_conv.Data<float>(),
       b_conv.Data<float>(),
       words_length_ptr.get(),
