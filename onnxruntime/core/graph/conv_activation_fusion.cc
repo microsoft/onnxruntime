@@ -4,6 +4,7 @@
 #include "core/graph/initializer.h"
 #include "core/graph/conv_activation_fusion.h"
 #include "core/graph/graph_utils.h"
+#include <deque>
 
 using namespace onnx;
 using namespace ::onnxruntime::common;
@@ -19,7 +20,7 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::vector<onnxruntime::NodeIndex> removed_nodes;
+  std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto node = graph.GetNode(index);
     if (!utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
@@ -68,12 +69,12 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
       }
     }
 
-    removed_nodes.push_back(act_node.Index());
-    removed_nodes.push_back(conv_node->Index());
+    removed_nodes.push_front(conv_node->Index());
+    removed_nodes.push_front(act_node.Index());
   }
 
-  for (int i = removed_nodes.size() - 1; i >= 0; --i) {
-    graph.RemoveNode(i);
+  for (auto node : removed_nodes) {
+    graph.RemoveNode(node);
   }
 
   if (!removed_nodes.empty()) {
