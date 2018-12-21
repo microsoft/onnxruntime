@@ -9,11 +9,10 @@
 #pragma warning(disable : 4996)
 #endif
 #include "core/providers/cpu/controlflow/scan.h"
+#include "core/providers/cpu/controlflow/scan_utils.h"
 
 #include "core/framework/framework_common.h"
-#include "core/framework/mlvalue_tensor_slicer.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/sequential_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 
@@ -25,6 +24,7 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
+using namespace onnxruntime::scan::detail;
 
 namespace onnxruntime {
 
@@ -89,118 +89,9 @@ ONNX_CPU_OPERATOR_KERNEL(Scan,
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<8>);
 
-ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         9,
-                         KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         Scan<9>);
-
-enum class ScanDirection { kForward = 0,
-                           kReverse = 1 };
-
-/**
-Class to provide input/output MLValue instances for a loop state variable.
-The MLValue flips between two internal temporary buffers to minimize copies.
-*/
-class LoopStateVariable {
- public:
-  LoopStateVariable(const MLValue& original_value, MLValue& final_value, const int64_t sequence_len,
-                    AllocatorPtr& allocator);
-
-  // get current Input MLValue
-  const MLValue& Input() const;
-
-  // get current Output MLValue
-  MLValue& Output();
-
-  // move to next usage of the loop state variable. call after each iteration of the subgraph.
-  void Next();
-
- private:
-  int64_t iteration_num_{0};
-  const int64_t sequence_len_;
-
-  // copy original and final value from temporary MLValue provided by iterator
-  const MLValue original_value_;
-  MLValue final_value_;
-
-  /* we use original_value and final_value once, 
-     and alternate between a_ and b_ as input/output for each iteration to avoid copies
-
-    Iteration   Input             Output
-    0           original_value    a_
-    1           a_                b_
-    2           b_                a_
-    ...
-    seq len - 1 <previous output> final_value
-    */
-  MLValue a_;
-  MLValue b_;
-};
-
-/*
-Class that co-ordinates writing to slices of the overall Scan output buffer returned by OpKernelContext.Output(i). 
-If the subgraph has a symbolic dimension in an output it will use a temporary MLValue for the first execution
-in order to discover the output shape. Once the shape is known, it will switch to using the overall output buffer 
-to avoid copies.
-*/
-class OutputIterator {
- public:
-  static Status Create(OpKernelContextInternal& context,
-                       int output_index,
-                       bool is_loop_state_var,
-                       TensorShape final_shape,
-                       std::unique_ptr<OutputIterator>& iterator) {
-    iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, final_shape));
-    return iterator->Initialize();
-  }
-
-  MLValue& operator*();
-  OutputIterator& operator++();
-
-  // set the output for the current iteration to zeros. used for short sequence lengths
-  void ZeroOutCurrent() {
-    auto* tensor = (**this).GetMutable<Tensor>();
-    memset(tensor->MutableDataRaw(), 0, tensor->Size());
-  }
-
- private:
-  OutputIterator(OpKernelContextInternal& context,
-                 int output_index,
-                 bool is_loop_state_var,
-                 TensorShape final_shape);
-
-  Status Initialize();
-  Status AllocateFinalBuffer();
-  Status MakeConcrete();
-
-  OpKernelContextInternal& context_;
-  const int output_index_;
-  TensorShapeProto per_iteration_shape_;
-  TensorShape final_shape_;
-  bool is_loop_state_var_;
-  int64_t num_iterations_;
-  int64_t cur_iteration_;
-
-  // is the final shape concrete, or does it have symbolic dimensions
-  bool is_concrete_shape_;
-
-  // one or more slicers for writing to the output
-  std::vector<MLValueTensorSlicer<MLValue>::Iterator> slicer_iterators_;
-  std::vector<MLValueTensorSlicer<MLValue>::Iterator>::iterator cur_slicer_iterator_;
-
-  // if shape is not concrete we need the first output to know the missing dimension before
-  // we can allocate final_output_mlvalue_ and use the slicers.
-  MLValue first_output_;
-
-  MLValue* final_output_mlvalue_;
-};
-
 class ScanImpl {
  public:
-  ScanImpl(int opset,
-           OpKernelContextInternal& context,
+  ScanImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            int64_t num_scan_inputs,
            const std::vector<int64_t>& directions);
@@ -218,18 +109,11 @@ class ScanImpl {
   Status ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var,
                                const std::vector<const NodeArg*>& graph_inputs);
 
-  Status AllocateOutput(int index, bool is_loop_state_var);
   Status AllocateOutputTensors();
   Status CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& loop_state_variables);
 
   using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const MLValue>::Iterator>;
   using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<MLValue>::Iterator>;
-
-  Status IterateSequence(std::vector<LoopStateVariable>& loop_state_variables,
-                         ConstTensorSlicerIterators& scan_input_stream_iterators,
-                         int64_t seq_length);
-
-  const int opset_;
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
@@ -264,48 +148,11 @@ Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
-  if (info.GetAttrs<int64_t>("directions", directions_).IsOK()) {
-    ORT_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
-                "Number of entries in 'directions' was ", directions_.size(),
-                ". Must match 'num_scan_inputs' of ", num_scan_inputs_);
-    ORT_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
-                            [](int64_t i) { return i == static_cast<int64_t>(ScanDirection::kForward) ||
-                                                   i == static_cast<int64_t>(ScanDirection::kReverse); }),
-                "Invalid values in 'directions'. 0 == forward. 1 == reverse.");
-  } else {
-    // default to forward
-    directions_ = std::vector<int64_t>(num_scan_inputs_, static_cast<int64_t>(ScanDirection::kForward));
-  }
+  ReadDirections(info, "directions", input_directions_, num_scan_inputs_);
 }
 
 template <>
-Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
-  // make sure the attribute was present even though we don't need it here.
-  // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
-  // and a SessionState instance for executing the subgraph is created by InferenceSession.
-  // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
-  ONNX_NAMESPACE::GraphProto proto;
-  ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
-  (void)proto;
-
-  ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
-
-  if (info.GetAttrs<int64_t>("directions", directions_).IsOK()) {
-    ORT_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
-                "Number of entries in 'directions' was ", directions_.size(),
-                ". Must match 'num_scan_inputs' of ", num_scan_inputs_);
-    ORT_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
-                            [](int64_t i) { return i == static_cast<int64_t>(ScanDirection::kForward) ||
-                                                   i == static_cast<int64_t>(ScanDirection::kReverse); }),
-                "Invalid values in 'directions'. 0 == forward. 1 == reverse.");
-  } else {
-    // default to forward
-    directions_ = std::vector<int64_t>(num_scan_inputs_, static_cast<int64_t>(ScanDirection::kForward));
-  }
-}
-
-template <int OpSet>
-Status Scan<OpSet>::Compute(OpKernelContext* ctx) const {
+Status Scan<8>::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
@@ -314,7 +161,7 @@ Status Scan<OpSet>::Compute(OpKernelContext* ctx) const {
   //       Consider how usage of ExecutionFrame and SequentialExecutor can be optimized
   //         - initial implementation is focused on making it work, rather than optimizing.
 
-  ScanImpl scan_impl{OpSet, *ctx_internal, *session_state, num_scan_inputs_, directions_};
+  ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -324,216 +171,11 @@ Status Scan<OpSet>::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-LoopStateVariable::LoopStateVariable(const MLValue& original_value,
-                                     MLValue& final_value,
-                                     const int64_t sequence_len,
-                                     AllocatorPtr& allocator)
-    : sequence_len_{sequence_len},
-      original_value_{original_value},
-      final_value_{final_value} {
-  auto& tensor = original_value.Get<Tensor>();
-  auto& shape = tensor.Shape();
-
-  // allocate a new Tensor in an MLValue with the same shape and type as the tensor in original_value.
-  // the Tensor will own the buffer, and the MLValue will own the Tensor.
-  // the MLValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
-  // with the Tensor being used via a shared_ptr (so remains valid during execution and is cleaned up
-  // automatically at the end).
-  // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
-  // may make it harder to parallelize processing of the batch in the future.
-  auto allocate_tensor_in_mlvalue = [&]() {
-    auto new_tensor = std::make_unique<Tensor>(tensor.DataType(),
-                                               shape,
-                                               allocator->Alloc(shape.Size() * tensor.DataType()->Size()),
-                                               allocator->Info(),
-                                               allocator);
-
-    return MLValue{new_tensor.release(),
-                   DataTypeImpl::GetType<Tensor>(),
-                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
-  };
-
-  // if length is > 1, we need a_ for the first output location. otherwise we use final_value for the output.
-  if (sequence_len_ > 1) {
-    a_ = allocate_tensor_in_mlvalue();
-  }
-
-  // if length is > 2, we need b_ for the second output location
-  if (sequence_len_ > 2) {
-    b_ = allocate_tensor_in_mlvalue();
-  }
-}
-
-const MLValue& LoopStateVariable::Input() const {
-  if (iteration_num_ == 0)
-    return original_value_;
-
-  return iteration_num_ % 2 == 1 ? a_ : b_;
-}
-
-MLValue& LoopStateVariable::Output() {
-  if (iteration_num_ + 1 == sequence_len_) {
-    return final_value_;
-  }
-
-  return iteration_num_ % 2 == 1 ? b_ : a_;
-}
-
-void LoopStateVariable::Next() {
-  ORT_ENFORCE(iteration_num_ < sequence_len_, "Misuse of LoopStateVariable. Attempt to move beyond end of sequence");
-  ++iteration_num_;
-}
-
-// fill in a symbolic dimension in the overall output using the output shape from an iteration of the subgraph
-static Status MakeShapeConcrete(const TensorShape& per_iteration_shape, TensorShape& final_shape) {
-  auto num_dims_per_iteration = per_iteration_shape.NumDimensions();
-  auto final_shape_offset = final_shape.NumDimensions() - num_dims_per_iteration;
-  for (size_t i = 0; i < num_dims_per_iteration; ++i) {
-    auto existing_value = final_shape[i + final_shape_offset];
-    if (existing_value == -1) {
-      final_shape[i + final_shape_offset] = per_iteration_shape[i];
-    } else {
-      if (existing_value != per_iteration_shape[i]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Mismatch between expected shape and shape from first output",
-                               final_shape, " is not compatible with ", per_iteration_shape);
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-OutputIterator::OutputIterator(OpKernelContextInternal& context,
-                               int output_index,
-                               bool is_loop_state_var,
-                               TensorShape final_shape)
-    : context_{context},
-      output_index_{output_index},
-      final_shape_{final_shape},
-      is_loop_state_var_{is_loop_state_var},
-      cur_iteration_{0} {
-  is_concrete_shape_ = final_shape_.Size() >= 0;
-
-  // there are one or two dimensions being iterated depending on whether it's a loop state variable or scan input.
-  auto num_iteration_dims = is_loop_state_var_ ? 1 : 2;
-  num_iterations_ = final_shape_.Slice(0, num_iteration_dims).Size();
-}
-
-Status OutputIterator::Initialize() {
-  Status status = Status::OK();
-
-  if (is_loop_state_var_ && !is_concrete_shape_) {
-    // copy the shape from the input initial value which will have a concrete shape.
-    auto* input = context_.Input<Tensor>(output_index_ + 1);  // +1 to skip the sequence_len input
-    status = MakeShapeConcrete(input->Shape(), final_shape_);
-    ORT_RETURN_IF_ERROR(status);
-
-    is_concrete_shape_ = true;
-  }
-
-  if (is_concrete_shape_) {
-    status = AllocateFinalBuffer();
-    ORT_RETURN_IF_ERROR(status);
-  } else {
-    // use first_output_
-  }
-
-  return Status::OK();
-}
-
-Status OutputIterator::AllocateFinalBuffer() {
-  // make sure a single buffer for the full output is created upfront.
-  // we slice this into per-iteration pieces in Execute using MLValueTensorSlicer.
-  auto* tensor = context_.Output(output_index_, final_shape_);
-
-  if (!tensor)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output #", output_index_);
-
-  // get the output tensor we just created as an MLValue
-  final_output_mlvalue_ = context_.GetOutputMLValue(output_index_);
-
-  if (is_loop_state_var_) {
-    // only one entry is required as we slice on a single dimension
-    slicer_iterators_.push_back(MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).begin());
-  } else {
-    auto batch_size = final_shape_[0];
-    for (int i = 0; i < batch_size; ++i) {
-      // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
-      slicer_iterators_.push_back(MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_, 1, i).begin());
-    }
-  }
-
-  cur_slicer_iterator_ = slicer_iterators_.begin();
-
-  return Status::OK();
-}
-
-Status OutputIterator::MakeConcrete() {
-  ORT_ENFORCE(first_output_.IsAllocated(), "First usage of OutputIterator did not result in any output.");
-  Status status = Status::OK();
-
-  auto& tensor = first_output_.Get<Tensor>();
-  auto& tensor_shape = tensor.Shape();
-
-  // update the final shape
-  status = MakeShapeConcrete(tensor_shape, final_shape_);
-  ORT_RETURN_IF_ERROR(status);
-
-  is_concrete_shape_ = true;
-  status = AllocateFinalBuffer();
-  ORT_RETURN_IF_ERROR(status);
-
-  // copy first output to final buffer
-  auto input_span = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(tensor.DataRaw()), tensor.Size());
-
-  auto output = (**this).GetMutable<Tensor>();
-  auto output_span = gsl::make_span<gsl::byte>(static_cast<gsl::byte*>(output->MutableDataRaw()), output->Size());
-
-  gsl::copy(input_span, output_span);
-
-  // release the MLValue we used for the first output
-  first_output_ = {};
-
-  return status;
-}
-
-MLValue& OutputIterator::operator*() {
-  ORT_ENFORCE(cur_iteration_ < num_iterations_);
-
-  if (is_concrete_shape_)
-    return **cur_slicer_iterator_;
-  else
-    return first_output_;
-}
-
-OutputIterator& OutputIterator::operator++() {
-  if (cur_iteration_ < num_iterations_) {
-    if (!is_concrete_shape_) {
-      // we should have an output now, so convert to using the overall output buffer and slicers
-      auto status = MakeConcrete();
-      ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    }
-
-    ++cur_iteration_;
-
-    // if not a loop state var, see if we just finished the current sequence (dim 1)
-    if (!is_loop_state_var_ && cur_iteration_ % final_shape_[1] == 0) {
-      ++cur_slicer_iterator_;
-    } else {
-      ++(*cur_slicer_iterator_);
-    }
-  }
-
-  return *this;
-}
-
-ScanImpl::ScanImpl(int opset, OpKernelContextInternal& context,
+ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    int64_t num_scan_inputs,
                    const std::vector<int64_t>& directions)
-    : opset_{opset},
-      context_{context},
+    : context_{context},
       session_state_{session_state},
       subgraph_{*session_state.GetGraphViewer()},
       directions_{directions},
@@ -668,39 +310,6 @@ Status ScanImpl::ValidateInput() {
   return Status::OK();
 }
 
-Status ScanImpl::AllocateOutput(int index, bool is_loop_state_var) {
-  // use the shape from the subgraph output. we require this to be specified in the model or inferable.
-  auto& graph_outputs = subgraph_.GetOutputs();
-  auto* graph_output = graph_outputs.at(index);
-  auto* graph_output_shape = graph_output->Shape();
-
-  if (!graph_output_shape) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                           graph_output->Name(), " did not.");
-  }
-
-  TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
-  auto& graph_output_dims{output_shape.GetDims()};
-
-  std::vector<int64_t> scan_output_dims;
-  scan_output_dims.reserve(graph_output_dims.size() + 2);
-
-  scan_output_dims.push_back(batch_size_);
-
-  if (!is_loop_state_var) {
-    scan_output_dims.push_back(max_sequence_len_);
-  }
-
-  scan_output_dims.insert(scan_output_dims.cend(), graph_output_dims.cbegin(), graph_output_dims.cend());
-
-  std::unique_ptr<OutputIterator> output_iter;
-  OutputIterator::Create(context_, index, is_loop_state_var, TensorShape(scan_output_dims), output_iter);
-
-  output_iterators_.push_back(std::move(output_iter));
-
-  return Status::OK();
-}
-
 Status ScanImpl::AllocateOutputTensors() {
   Status status = Status::OK();
   auto& graph_outputs = subgraph_.GetOutputs();
@@ -711,12 +320,12 @@ Status ScanImpl::AllocateOutputTensors() {
   }
 
   for (int i = 0; i < num_loop_state_variables_; ++i) {
-    status = AllocateOutput(i, true);
+    status = AllocateOutput(context_, subgraph_, i, true, batch_size_, max_sequence_len_, output_iterators_);
     ORT_RETURN_IF_ERROR(status);
   }
 
   for (int i = num_loop_state_variables_, end = num_variadic_outputs_; i < end; ++i) {
-    status = AllocateOutput(i, false);
+    status = AllocateOutput(context_, subgraph_, i, false, batch_size_, max_sequence_len_, output_iterators_);
     ORT_RETURN_IF_ERROR(status);
   }
 
@@ -779,6 +388,8 @@ Status ScanImpl::Execute() {
   ORT_RETURN_IF_ERROR(status);
 
   for (int64_t b = 0; b < batch_size_; ++b) {
+    auto sequence_len = sequence_lens_[b];
+
     // Setup input MLValue streams
     std::vector<MLValueTensorSlicer<const MLValue>::Iterator> scan_input_stream_iterators;
     scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
@@ -793,7 +404,7 @@ Status ScanImpl::Execute() {
       } else {  // reverse
         scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue, 1, b).rbegin());
         // need to skip past the empty entries at the end of the input if sequence length is short
-        auto offset = max_sequence_len_ - sequence_lens_[b];
+        auto offset = max_sequence_len_ - sequence_len;
         if (offset > 0) {
           // reverse iterator so += moves backwards through the input
           scan_input_stream_iterators.back() += offset;
@@ -802,109 +413,21 @@ Status ScanImpl::Execute() {
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(batch_loop_state_variables[b],
-                             scan_input_stream_iterators,
-                             sequence_lens_[b]);
+    status = IterateSequence(context_, session_state_, subgraph_, batch_loop_state_variables[b],
+                             scan_input_stream_iterators, sequence_len, num_loop_state_variables_,
+                             num_variadic_inputs_, num_variadic_outputs_, implicit_inputs_,
+                             subgraph_output_names_, output_iterators_);
 
-    ORT_RETURN_IF_ERROR(status);
-  }
-
-  return status;
-}
-
-Status ScanImpl::IterateSequence(std::vector<LoopStateVariable>& loop_state_variables,
-                                 ConstTensorSlicerIterators& scan_input_stream_iterators,
-                                 int64_t seq_length) {
-  Status status = Status::OK();
-  auto& graph_inputs = subgraph_.GetInputs();
-  NameMLValMap feeds;
-  std::vector<MLValue> fetches;
-
-  feeds.reserve(num_variadic_inputs_ + implicit_inputs_.size());
-  fetches.resize(num_variadic_outputs_);
-
-  // pass in implicit inputs as feeds.
-  for (auto& entry : implicit_inputs_) {
-    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                entry.first, " did not.");
-    feeds[entry.first] = *entry.second;
-  }
-
-  int64_t seq_no = 0;
-  for (; seq_no < seq_length; ++seq_no) {
-    for (int input = 0; input < num_variadic_inputs_; ++input) {
-      // the ordering of the Scan inputs should match the ordering of the subgraph inputs
-      auto name = graph_inputs[input]->Name();
-
-      if (input < num_loop_state_variables_) {
-        // add loop state variable input
-        feeds[name] = loop_state_variables[input].Input();
-      } else {
-        // add sliced input
-        auto& iterator = scan_input_stream_iterators[input - num_loop_state_variables_];
-        feeds[name] = *iterator;
-
+    // zero out any remaining values in the sequence
+    for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {
+      for (int output = num_loop_state_variables_; output < num_variadic_outputs_; ++output) {
+        auto& iterator = *output_iterators_[output];
+        iterator.ZeroOutCurrent();
         ++iterator;
       }
     }
 
-    fetches.clear();
-
-    // one or more outputs have symbolic dimensions and need the first fetch to be copied to the OutputIterator
-    bool have_symbolic_dim_in_output = false;
-
-    for (int output = 0, end = num_variadic_outputs_; output < end; ++output) {
-      if (output < num_loop_state_variables_) {
-        // add loop state variable output
-        fetches.push_back(loop_state_variables[output].Output());
-      } else {
-        // add MLValue from sliced output
-        auto& iterator = *output_iterators_[output];
-        auto& mlvalue = *iterator;
-        fetches.push_back(mlvalue);
-
-        // mlvalue.IsAllocated will be false when the OutputIterator is using a temporary MLValue
-        // and not the overall output buffer.
-        have_symbolic_dim_in_output = seq_no == 0 &&
-                                      (mlvalue.IsAllocated() == false ||
-                                       have_symbolic_dim_in_output);  // don't unset
-      }
-    }
-
-    // Create Executor and run graph.
-    // TODO: Consider pulling ExecutionFrame up from within SequentialExecutor
-    // and separating it out a bit so we can maybe just update the feeds/fetches in the frame on each iteration.
-    // Many of the other pieces are constant across usages.
-    // Not sure how best to handle the memory pattern side of things though.
-    // For now just making it work. Optimization and refinement will follow.
-    SequentialExecutor executor{context_.GetTerminateFlag()};
-    status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
     ORT_RETURN_IF_ERROR(status);
-
-    // cycle the LoopStateVariable input/output in preparation for the next iteration
-    std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });
-
-    // and move the output iterators.
-    for (int output = num_loop_state_variables_; output < num_variadic_outputs_; ++output) {
-      auto& iterator = *output_iterators_[output];
-
-      // copy data from the fetch to the iterator so it can setup the overall output when the iterator is incremented.
-      // if the iterator is already using the overall output buffer IsAllocated() will be true and no copy is required.
-      if (have_symbolic_dim_in_output && (*iterator).IsAllocated() == false) {
-        *iterator = fetches[output];
-      }
-
-      ++iterator;
-    }
-  }
-
-  // zero out any remaining values in the sequence
-  for (; seq_length < max_sequence_len_; ++seq_length) {
-    for (int output = num_loop_state_variables_; output < num_variadic_outputs_; ++output) {
-      auto& iterator = *output_iterators_[output];
-      iterator.ZeroOutCurrent();
-      ++iterator;
-    }
   }
 
   return status;
