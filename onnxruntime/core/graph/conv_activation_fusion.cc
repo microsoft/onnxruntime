@@ -32,7 +32,6 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
 
     Node* conv_node = node;
     const Node& act_node = next_node;
-    std::vector<NodeArg> input_args, output_args;
 
     Node& fused_conv = graph.AddNode(graph.GenerateNodeName("fused " + conv_node->Name()), "FusedConv",
                                      "fused Conv " + conv_node->Name() + "with activation " + act_node.OpType(),
