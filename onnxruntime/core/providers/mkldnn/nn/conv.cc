@@ -406,9 +406,14 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // Reorder filter memory layout if necessary
     // Avoid data reordering. Save filter memory in mkldnn format from first iteration 
     // in execution provider mapped by weight name.
+<<<<<<< HEAD
 
     std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
     std::shared_ptr<mkldnn::memory> filter_dst_mem =nullptr;
+=======
+    std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
+    std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
+>>>>>>> e98e362d788712477973eec3373dcbacc81a1fdd
     filter_dst_mem = provider_->GetWeightMemory(weightKey);
 
     if (filter_dst_mem == nullptr) {
