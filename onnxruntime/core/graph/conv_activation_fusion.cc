@@ -72,7 +72,7 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
     removed_nodes.push_back(conv_node->Index());
   }
 
-  for (auto i : removed_nodes) {
+  for (int i = removed_nodes.size() - 1; i >= 0; --i) {
     graph.RemoveNode(i);
   }
 
