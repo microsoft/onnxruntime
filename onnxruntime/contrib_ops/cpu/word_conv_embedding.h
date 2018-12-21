@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-class WordConvEmbedding : public OpKernel {
+class WordConvEmbedding final : public OpKernel {
  public:
   explicit WordConvEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   }
@@ -38,7 +38,7 @@ class WordConvEmbedding : public OpKernel {
       int64_t filter_width,
       int64_t num_filters,
       float* output) const;
-  void CalculateLengthOfEachWordInASuquence(
+  void CalculateLengthOfEachWordInSequence(
       const int* seq_ptr,
       int* words_len_ptr,
       size_t seq_len,

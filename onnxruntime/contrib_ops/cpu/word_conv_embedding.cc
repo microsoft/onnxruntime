@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "word_conv_embedding.h"
 
 #include "core/util/math.h"
@@ -90,14 +93,14 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
 
     for (int64_t unfolded_inx = 0; unfolded_inx < unfolded_width; unfolded_inx++) {
       if (unfolded_inx > 0 && unfolded_inx > (words_len_ptr[word_inx] - filter_width)) break;
-      float* pcur = (float*)pactivationbuf + unfolded_inx * num_filters;
+      float* pcur = pactivationbuf + unfolded_inx * num_filters;
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
         pres[filter_inx] = std::max(pcur[filter_inx], pres[filter_inx]);
       }
     }
   }
 }
-void WordConvEmbedding::CalculateLengthOfEachWordInASuquence(
+void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
     const int* seq_ptr,
     int* words_len_ptr,
     size_t seq_len,
@@ -177,7 +180,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   std::memset(chars_embeddings_ptr.get(), 0, chars_embeddings_size * sizeof(float));
   std::memset(words_length_ptr.get(), 0, seq_len * sizeof(int));
 
-  CalculateLengthOfEachWordInASuquence(seq_ptr, words_length_ptr.get(), seq_len, word_len);
+  CalculateLengthOfEachWordInSequence(seq_ptr, words_length_ptr.get(), seq_len, word_len);
 
   CharEmbeddingLookup(seq_ptr,
                       w_char_embedding.Data<float>(),
