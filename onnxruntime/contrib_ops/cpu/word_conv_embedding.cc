@@ -69,15 +69,12 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
       tmp_unfolded_buffer_ptr += unfolded_kernal_size;
     }
 
-    // Matrix multiplication.
-    //mkl_set_num_threads_local( 1 );
     math::GemmEx<float, CPUMathUtil>(
         CblasNoTrans, CblasTrans,
         static_cast<int>(unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
         current_word_unfolded_buffer_p, static_cast<int>(unfolded_kernal_size),
         weights, static_cast<int>(unfolded_kernal_size), 0.0f,
         conv_buf_p, static_cast<int>(num_filters), &CPUMathUtil::Instance());
-    //MatrixMult( current_word_unfolded_buffer_p, weights, conv_buf_p, unfolded_width, num_filters, unfolded_kernal_size );
 
     for (int64_t unfolded_inx = 0; unfolded_inx < unfolded_width; unfolded_inx++)
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
