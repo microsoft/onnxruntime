@@ -353,11 +353,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                            padding_left_mkl, padding_right_mkl);
     ConvPrimitive<T>* conv_primitive = ConvPrimitivePool<T>::Get(conv_params);
 
-<<<<<<< HEAD
-=======
-    std::string convString = conv_params.ToString();
-
->>>>>>> using Conv Parameters key to make weights id unique
     auto conv_fwd_pd = conv_primitive->GetPrimitiveDesc();
 
     mkldnn::engine& cpu_engine = GetEngine();
@@ -412,8 +407,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // Avoid data reordering. Save filter memory in mkldnn format from first iteration 
     // in execution provider mapped by weight name.
 
-    std::string weightKey = convString + "-" + OpKernel::Node().InputDefs()[1]->Name();
-    std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
+    std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
+    std::shared_ptr<mkldnn::memory> filter_dst_mem =nullptr;
     filter_dst_mem = provider_->GetWeightMemory(weightKey);
 
     if (filter_dst_mem == nullptr) {
