@@ -218,7 +218,7 @@ activation.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "X", "Input for n-gram extraction", "T")
-      .Output(0, "Y", "NGram results", "T1")
+      .Output(0, "Y", "Ngram results", "T1")
       .TypeConstraint(
           "T",
           {"tensor(string)", "tensor(int32)", "tensor(int64)"},
@@ -228,16 +228,18 @@ activation.)DOC")
           {"tensor(float)"},
           "1-D tensor of floats")
       .Attr(
-          "N",
-          "Maximum n-gram length",
+          "max_gram_length",
+          "Maximum n-gram length. If this value is 3, 3-grams will be used to generate the output.",
           AttributeProto::INT)
       .Attr(
-          "M",
-          "Minimum n-gram length",
+          "min_gram_length",
+          "Minimum n-gram length. If this value is 2 and max_gram_length is 3, output may contain counts of 2-grams and 3-grams.",
           AttributeProto::INT)
       .Attr(
-          "S",
-          "Maximum number of items(integers/strings) to be skipped when constructing an n-gram from X.",
+          "max_skip_count",
+          "Maximum number of items (integers/strings) to be skipped when constructing an n-gram from X."
+          "If max_skip_count=1, min_gram_length=2, max_gram_length=3, this operator may generate 2-grams"
+          "with skip_count=0 and skip_count=1, and 3-grams with skip_count=0 and skip_count=1",
           AttributeProto::INT)
       .Attr(
           "pool_strings",
@@ -293,7 +295,7 @@ activation.)DOC")
           }
 
           auto greatest_hit = std::max_element(ngram_indexes.cbegin(), ngram_indexes.cend());
-          auto max_last_axis = *greatest_hit;
+          auto max_last_axis = *greatest_hit + 1;
 
           ONNX_NAMESPACE::TensorShapeProto output_shape;
           auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
@@ -301,12 +303,12 @@ activation.)DOC")
           if (dim_size == 0 || dim_size == 1) {
             output_shape.add_dim()->set_dim_value(max_last_axis);
           } else if (dim_size == 2) {
-            auto& zero_dim = input_shape.dim(0);
-            if (!zero_dim.has_dim_value()) {
+            auto& B_dim = input_shape.dim(0);
+            if (!B_dim.has_dim_value()) {
               fail_shape_inference(
                   "Input shape does not have first dimension value");
             }
-            output_shape.add_dim()->set_dim_value(zero_dim.dim_value());
+            output_shape.add_dim()->set_dim_value(B_dim.dim_value());
             output_shape.add_dim()->set_dim_value(max_last_axis);
           } else {
             fail_shape_inference(
@@ -316,26 +318,33 @@ activation.)DOC")
         }
       })
       .SetDoc(R"DOC(
-This transform extracts n-grams from the input sequence and save them as a vector.
- In contrast to standard n-gram extraction, here, the indexes of extracting an n-gram from the original
- sequence are not necessarily consecutive numbers. The discontinuity between indexes are controlled by the number of skips. 
- If the number of skips is 2, we should skip two tokens when scanning through the original sequence.
- Let's consider an example. Assume that input sequence is [94, 17, 36, 12, 28] and the number of skips is 2.
- The associated 2-grams are [94, 12] and [17, 28] respectively indexed by [0, 3] and [1, 4].
- If the number of skips becomes 0, the 2-grams generated are [94, 17], [17, 36], [36, 12], [12, 28]
- indexed by [0, 1], [1, 2], [2, 3], [3, 4], respectively. The output vector stores the count of each n-gram;
- Y[i] indicates the times that the i-th n-gram is found. The attribute "ngrams" is used to determine the mapping
- between index i and the corresponding n-gram. If "ngrams" is [ [94 , 17] , [ 17, 36 ] ], then the Y[0] (first element in Y)
- and Y[1] (second element in Y) are the counts of [94, 17] and [17, 36], respectively.
- An n-gram which cannot be found in pool_strings/pool_int64s should be ignored and has no effect on the output.
- Note that we may consider all skips up to S when generating the n-grams.
+This transform extracts n-grams from the input sequence and save them as a vector. Input can 
+be either a 1-D or 2-D tensor. For 1-D input, output is the n-gram representation of that input.  
+For 2-D input, the output is also a  2-D tensor whose i-th row is the n-gram representation of the i-th input row. 
+More specifically, if input shape is [C], the corresponding output shape would be [max(ngram_indexes) + 1]. 
+If input shape is [N, C], this operator produces a [N, max(ngram_indexes) + 1]-tensor. 
+ 
+In contrast to standard n-gram extraction, here, the indexes of extracting an n-gram from the original 
+sequence are not necessarily consecutive numbers. The discontinuity between indexes are controlled by the number of skips.  
+If the number of skips is 2, we should skip two tokens when scanning through the original sequence. 
+Let's consider an example. Assume that input sequence is [94, 17, 36, 12, 28] and the number of skips is 2. 
+The associated 2-grams are [94, 12] and [17, 28] respectively indexed by [0, 3] and [1, 4]. 
+If the number of skips becomes 0, the 2-grams generated are [94, 17], [17, 36], [36, 12], [12, 28] 
+indexed by [0, 1], [1, 2], [2, 3], [3, 4], respectively.
 
-The examples used above are true if mode is "TF". If mode is "IDF", all the counts larger than 1 would be truncated to 1 and
-the i-th element in weights would be used to scale (by multiplication) the count of the i-th n-gram in pool. If mode is "TFIDF",
-this operator first computes the counts of all n-grams and then scale them by the associated values in the weights attribute.
-
-Only one of pool_strings and pool_int64s can be set. If pool_int64s is set, the input should be an integer tensor.
-If pool_strings is set, the input must be a string tensor.
+The output vector stores the count of each n-gram; 
+Y[i] indicates the times that the i-th n-gram is found. The attribute ngram_indexes is used to determine the mapping 
+between index i and the corresponding n-gram. If pool_int64s is [94 , 17 ,17, 36], ngram_indexes is [1, 0],
+ngram_counts=[0, 0], then the Y[0] (first element in Y) and Y[1] (second element in Y) are the counts of [17, 36] and [94, 17],
+respectively. An n-gram which cannot be found in pool_strings/pool_int64s should be ignored and has no effect on the output. 
+Note that we may consider all skips up to S when generating the n-grams. 
+ 
+The examples used above are true if mode is "TF". If mode is "IDF", all the counts larger than 1 would be truncated to 1 and 
+the i-th element in weights would be used to scale (by multiplication) the count of the i-th n-gram in pool. If mode is "TFIDF", 
+this operator first computes the counts of all n-grams and then scale them by the associated values in the weights attribute. 
+ 
+Only one of pool_strings and pool_int64s can be set. If pool_int64s is set, the input should be an integer tensor. 
+If pool_strings is set, the input must be a string tensor. 
 )DOC");
 
   // Operators for linear 8 bit quanitzation support.

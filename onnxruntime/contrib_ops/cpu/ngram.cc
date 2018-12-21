@@ -208,18 +208,18 @@ enum WeightingCriteria {
 
 struct Ngram::Impl {
   WeightingCriteria weighting_criteria_ = kNone;
-  int64_t N_ = 0;
-  int64_t M_ = 0;
-  int64_t S_ = 0;
-  // This is the content of ngram_counts
-  // attribute. The starting indexes of 1-grams, 2-grams,
+  int64_t max_gram_length_ = 0;
+  int64_t min_gram_length_ = 0;
+  int64_t max_skip_count_ = 0;
+  // This is the content of ngram_counts attribute.
+  // The starting indexes of 1-grams, 2-grams,
   // and so on in pool. For example, if ngram_counts is [0, 17, 36],
   // the first index (zero-based) of 1-gram/2-gram/3-gram
   // in pool are 0/17/36.
-  std::vector<int64_t> ngram_start_indexes_;
-  // Contains output indexes for the output
+  std::vector<int64_t> ngram_counts_;
+  // Contains output indexes
   // represents ngram_indexes output
-  std::vector<int64_t> ngram_output_indexes_;
+  std::vector<int64_t> ngram_indexes_;
   std::vector<float> weights_;
 
   std::vector<std::string> pool_strings_;
@@ -230,14 +230,10 @@ struct Ngram::Impl {
   IntegerPoolSet int64_set_;
   size_t output_size_ = 0;
 
-  MLDataType int32_dt_;
-  MLDataType int64_dt_;
-  MLDataType string_dt_;
-  Impl() {
-    int32_dt_ = DataTypeImpl::GetType<int32_t>();
-    int64_dt_ = DataTypeImpl::GetType<int64_t>();
-    string_dt_ = DataTypeImpl::GetType<std::string>();
-  }
+  Impl() = default;
+  ~Impl() = default;
+  Impl(const Impl&) = delete;
+  Impl& operator=(const Impl&) = delete;
 
   template <typename T>
   auto PoolEnd() const;
@@ -245,9 +241,10 @@ struct Ngram::Impl {
   template <typename T>
   auto PoolFind(const ngram_details::NgramEntry<T>&) const;
 
-  void IncrementCount(size_t ngram_id, std::vector<uint32_t>& frequencies) const {
-    assert(ngram_id < ngram_output_indexes_.size());
-    auto output_idx = ngram_output_indexes_[ngram_id];
+  void IncrementCount(size_t ngram_id, size_t row_num,
+                      std::vector<uint32_t>& frequencies) const {
+    assert(ngram_id < ngram_indexes_.size());
+    auto output_idx = row_num * output_size_ + ngram_indexes_[ngram_id];
     assert(static_cast<size_t>(output_idx) < frequencies.size());
     ++frequencies[output_idx];
   }
@@ -294,36 +291,49 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   } else if (mode == "TFIDF") {
     impl_->weighting_criteria_ = kTFIDF;
   }
-  ORT_ENFORCE(impl_->weighting_criteria_ != kNone, "Unrecognized mode");
+  ORT_ENFORCE(impl_->weighting_criteria_ != kNone, "mode: ", mode, " is unrecognized, acceptable values are TF,IDF,TFIDF");
 
-  status = info.GetAttr("M", &impl_->M_);
-  ORT_ENFORCE(status.IsOK() && impl_->M_ > 0, "Positive Attr M is required");
-  status = info.GetAttr("N", &impl_->N_);
-  ORT_ENFORCE(status.IsOK() && impl_->N_ >= impl_->M_, "Positive M >= N is required");
-  status = info.GetAttr("S", &impl_->S_);
-  ORT_ENFORCE(status.IsOK() && impl_->N_ >= 0, "Non-negative number of skips S is required");
+  status = info.GetAttr("min_gram_length", &impl_->min_gram_length_);
+  ORT_ENFORCE(status.IsOK(), "min_gram_length is required");
+  ORT_ENFORCE(impl_->min_gram_length_ > 0, "Required min_gram_length must be positive: ", std::to_string(impl_->min_gram_length_));
 
-  status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_start_indexes_);
-  ORT_ENFORCE(status.IsOK() && !impl_->ngram_start_indexes_.empty(), "Non-empty ngram_counts is required");
-  ORT_ENFORCE(size_t(impl_->M_) <= impl_->ngram_start_indexes_.size(), "M must be inbounds of ngram_counts");
-  ORT_ENFORCE(size_t(impl_->N_) <= impl_->ngram_start_indexes_.size(), "N must be inbounds of ngram_counts");
+  status = info.GetAttr("max_gram_length", &impl_->max_gram_length_);
+  ORT_ENFORCE(status.IsOK(), "min_gram_length is required");
+  ORT_ENFORCE(impl_->max_gram_length_ >= impl_->min_gram_length_,
+              "min_gram_length >= max_gram_length required: ",
+              std::to_string(impl_->max_gram_length_), " >= ", std::to_string(impl_->min_gram_length_));
 
-  status = info.GetAttrs("ngram_indexes", impl_->ngram_output_indexes_);
-  ORT_ENFORCE(status.IsOK() && !impl_->ngram_output_indexes_.empty(), "Non-empty ngram_indexes is required");
+  status = info.GetAttr("max_skip_count", &impl_->max_skip_count_);
+  ORT_ENFORCE(status.IsOK(), "max_skip_count is required");
+  ORT_ENFORCE(impl_->max_skip_count_ >= 0, "max_skip_count must be non-negative: ", std::to_string(impl_->max_skip_count_));
+
+  status = info.GetAttrs(std::string("ngram_counts"), impl_->ngram_counts_);
+  ORT_ENFORCE(status.IsOK() && !impl_->ngram_counts_.empty(), "Non-empty ngram_counts is required");
+  ORT_ENFORCE(size_t(impl_->min_gram_length_) <= impl_->ngram_counts_.size(),
+              "min_gram_length must be inbounds of ngram_counts: ",
+              std::to_string(impl_->min_gram_length_), " <= ", std::to_string(impl_->ngram_counts_.size()));
+  ORT_ENFORCE(size_t(impl_->max_gram_length_) <= impl_->ngram_counts_.size(),
+              "max_gram_length must be inbounds of ngram_counts: ",
+              std::to_string(impl_->max_gram_length_), " <= ", std::to_string(impl_->ngram_counts_.size()));
+
+  status = info.GetAttrs("ngram_indexes", impl_->ngram_indexes_);
+  ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
-    ORT_ENFORCE(std::all_of(impl_->ngram_output_indexes_.cbegin(), impl_->ngram_output_indexes_.cend(),
+    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend(),
                             [](int64_t i) { return i >= 0; }),
                 "Negative ngram_indexes values are not allowed");
     // Set output size to max output index + 1;
-    auto greatest_hit = std::max_element(impl_->ngram_output_indexes_.cbegin(), impl_->ngram_output_indexes_.cend());
+    auto greatest_hit = std::max_element(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend());
     impl_->output_size_ = *greatest_hit + 1;
   }
 
   status = info.GetAttrs("weights", impl_->weights_);
   if (status.IsOK()) {
-    ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_output_indexes_.size(),
-                "weights and indexes must have equal size");
+    ORT_ENFORCE(impl_->weights_.size() == impl_->ngram_indexes_.size(),
+                "Got weights of size: ", std::to_string(impl_->weights_.size()),
+                " but ngram_indexes size: ", std::to_string(impl_->ngram_indexes_.size()),
+                " must be of equal size");
   }
 
   std::vector<int64_t> pool_int64s;
@@ -338,13 +348,13 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   // Iterator via the pool. Insert 1 item for 1-grams, 2 items for 2-grams, etc.
   const auto total_items = (impl_->pool_strings_.empty()) ? pool_int64s.size() : impl_->pool_strings_.size();
   size_t ngram_id = 0;
-  // Load into dictionary only required Ns
-  const size_t M = impl_->M_;
-  const size_t N = impl_->N_;
+  // Load into dictionary only required gram sizes
+  const size_t min_gram_length = impl_->min_gram_length_;
+  const size_t max_gram_length = impl_->max_gram_length_;
   size_t ngram_size = 1;
-  for (size_t i = 0; i < impl_->ngram_start_indexes_.size(); ++i) {
-    size_t start_idx = impl_->ngram_start_indexes_[i];
-    size_t end_idx = ((i + 1) < impl_->ngram_start_indexes_.size()) ? impl_->ngram_start_indexes_[i + 1] : total_items;
+  for (size_t i = 0; i < impl_->ngram_counts_.size(); ++i) {
+    size_t start_idx = impl_->ngram_counts_[i];
+    size_t end_idx = ((i + 1) < impl_->ngram_counts_.size()) ? impl_->ngram_counts_[i + 1] : total_items;
     ORT_ENFORCE(end_idx >= start_idx && end_idx <= total_items,
                 "n-gram counts out of bounds for ", std::to_string(ngram_size), "-grams");
     auto items = end_idx - start_idx;
@@ -352,8 +362,8 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
       ORT_ENFORCE((items % ngram_size == 0),
                   "Number of items must compose whole ", std::to_string(ngram_size), "-grams");
       auto ngrams = items / ngram_size;
-      // Skip loading into hash_set ngrams that are not N or not in the range of [M-N] for all=true;
-      if (ngram_size >= M && ngram_size <= N) {
+      // Skip loading into hash_set ngrams that are not in the range of [min_gram_length-max_gram_length]
+      if (ngram_size >= min_gram_length && ngram_size <= max_gram_length) {
         if (impl_->pool_strings_.empty()) {
           auto before_insert = impl_->int64_set_.size();
           Emplace(pool_int64s.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->int64_set_);
@@ -374,15 +384,23 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
 Ngram::~Ngram() {
 }
 
-void Ngram::OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& frequences) const {
+void Ngram::OutputResult(OpKernelContext* ctx, size_t B, const std::vector<uint32_t>& frequences) const {
+  const Impl& impl = *impl_;
   std::vector<int64_t> output_dims;
-  output_dims.push_back(frequences.size());
+  if (B == 0) {
+    output_dims.push_back(impl.output_size_);
+  } else {
+    output_dims.push_back(B);
+    output_dims.push_back(impl.output_size_);
+  }
 
   TensorShape output_shape(output_dims);
+  assert(frequences.size() == static_cast<size_t>(output_shape.Size()));
+
   auto Y = ctx->Output(0, output_shape);
   auto output_data = Y->MutableData<float>();
-  const auto& w = impl_->weights_;
-  switch (impl_->weighting_criteria_) {
+  const auto& w = impl.weights_;
+  switch (impl.weighting_criteria_) {
     case kTF: {
       for (auto f : frequences) {
         *output_data++ = static_cast<float>(f);
@@ -420,81 +438,126 @@ void Ngram::OutputResult(OpKernelContext* ctx, const std::vector<uint32_t>& freq
 }
 
 template <typename T>
-void Ngram::ComputeImpl(OpKernelContext* ctx) const {
+Status Ngram::ComputeImpl(OpKernelContext* ctx) const {
   const auto& impl = *impl_;
   auto const set_end = impl.PoolEnd<T>();
-  // Frequency holder, init all to zero
-  std::vector<uint32_t> frequencies;
-  frequencies.resize(impl.output_size_, 0);
-
-  const auto N = impl.N_;
-  const auto S = impl.S_ + 1;  // Convert to distance
-  auto start_ngram_size = impl.M_;
 
   auto X = ctx->Input<Tensor>(0);
-  size_t total_items = X->Shape().Size();
+  auto& input_shape = X->Shape();
+  const size_t total_items = input_shape.Size();
+
+  size_t b_dim = 0;
+  size_t B = 0;
+  size_t C = 0;
+  auto& input_dims = input_shape.GetDims();
+  if (input_dims.empty()) {
+    b_dim = 1;
+    C = 1;
+    assert(total_items == 1);
+  } else if (input_dims.size() == 1) {
+    b_dim = 1;
+    C = input_dims[0];
+    if (C < 1) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+    }
+  } else if (input_dims.size() == 2) {
+    B = input_dims[0];
+    C = input_dims[1];
+    b_dim = B;
+    if (B < 1 || C < 1) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+    }
+  } else {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+  }
+
+  assert((b_dim * C) == total_items);
+
+  // Frequency holder allocate [B..output_size_]
+  // and init all to zero
+  std::vector<uint32_t> frequencies;
+  frequencies.resize(b_dim * impl.output_size_, 0);
+
+  const auto max_gram_length = impl.max_gram_length_;
+  const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance
+  auto start_ngram_size = impl.min_gram_length_;
   auto const input_data = X->template Data<T>();
   auto const end_data = input_data + total_items;
   NgramEntry<T> sample;
 
-  // Treat unigrams in a special way
+  // Treat 1-grams in a special way
   if (start_ngram_size == 1) {
+    size_t row_num = 0;
     auto ngram_start = input_data;
     while (ngram_start < end_data) {
-      sample.Clear();
-      sample.AddItem(*ngram_start);
-      ++ngram_start;
-      auto hit = impl.PoolFind<T>(sample);
-      if (hit != set_end) {
-        // record frequency
-        auto ngram_id = hit->Id();
-        impl.IncrementCount(ngram_id, frequencies);
+      auto const ngram_row_end = ngram_start + C;
+      while (ngram_start < ngram_row_end) {
+        sample.Clear();
+        sample.AddItem(*ngram_start);
+        auto hit = impl.PoolFind<T>(sample);
+        if (hit != set_end) {
+          // record frequency
+          auto ngram_id = hit->Id();
+          impl.IncrementCount(ngram_id, row_num, frequencies);
+        }
+        ++ngram_start;
       }
+      ++row_num;
+      ngram_start = ngram_row_end;
     }
-    if (++start_ngram_size > N) {
-      OutputResult(ctx, frequencies);
-      return;
+    if (++start_ngram_size > max_gram_length) {
+      OutputResult(ctx, B, frequencies);
+      return Status::OK();
     }
   }
 
-  /// TODO: The following loop has a potential of
-  // parallelization if this code shows up during
-  // profiling. We could run loops with different skip
-  // values in parallel.
-  // Convert skip into distance between n-gram items
-  // by adding 1
-  for (auto si = 1; si <= S; ++si) {
+  for (auto skip_distance = 1; skip_distance <= max_skip_distance; ++skip_distance) {
     auto ngram_start = input_data;
+    size_t row_num = 0;
     while (ngram_start < end_data) {
-      // Check if any ni in [start_ngram_size..N]
-      // fit before end_data so we do not waste time adding [1..start_ngram_size)
-      // For that at least items with start_ngram_size should fit
-      auto at_least_this = ngram_start + si * (start_ngram_size - 1);
-      if (at_least_this >= end_data) {
-        break;
-      }
-      sample.Clear();
-      auto ngram_item = ngram_start;
-      for (auto ni = 1;
-           ni <= N &&
-           ngram_item < end_data;
-           ++ni, ngram_item += si) {
-        sample.AddItem(*ngram_item);
+      assert((B == 0) || (row_num < B));
+      auto const ngram_row_end = ngram_start + C;
+      assert(ngram_row_end <= end_data);
+      while (ngram_start < ngram_row_end) {
+        // Check if any n-gram size in [start_ngram_size..max_gram_length] range
+        // fit before the end of the row so we do not waste time adding [1..start_ngram_size)
+        // At least items of start_ngram_size should fit
+        // last row should match end_data
+        auto at_least_this = ngram_start + skip_distance * (start_ngram_size - 1);
+        if (at_least_this >= ngram_row_end) {
+          break;
+        }
+        sample.Clear();
+        auto ngram_item = ngram_start;
+        for (auto ngram_size = 1;
+             ngram_size <= max_gram_length &&
+             ngram_item < ngram_row_end;
+             ++ngram_size, ngram_item += skip_distance) {
+          sample.AddItem(*ngram_item);
 
-        // Do not test anything before start_ngram_size
-        if (ni >= start_ngram_size) {
-          auto hit = impl.PoolFind<T>(sample);
-          if (hit != set_end) {
-            // record frequency
-            auto ngram_id = hit->Id();
-            impl.IncrementCount(ngram_id, frequencies);
+          // Do not test anything before start_ngram_size
+          if (ngram_size >= start_ngram_size) {
+            auto hit = impl.PoolFind<T>(sample);
+            if (hit != set_end) {
+              // record frequency
+              auto ngram_id = hit->Id();
+              impl.IncrementCount(ngram_id, row_num, frequencies);
+            }
           }
         }
+        // Sliding window shift
+        ++ngram_start;
       }
-      ++ngram_start;
+      // Next row
+      ngram_start = ngram_row_end;
+      ++row_num;
     }
   }
-  OutputResult(ctx, frequencies);
+  OutputResult(ctx, B, frequencies);
+  return Status::OK();
 }
 
 Status Ngram::Compute(OpKernelContext* ctx) const {
@@ -502,15 +565,15 @@ Status Ngram::Compute(OpKernelContext* ctx) const {
 
   auto X = ctx->Input<Tensor>(0);
 
-  if (X->DataType() == impl_->int32_dt_) {
-    ComputeImpl<int32_t>(ctx);
-  } else if (X->DataType() == impl_->int64_dt_) {
-    ComputeImpl<int64_t>(ctx);
-  } else if (X->DataType() == impl_->string_dt_) {
-    ComputeImpl<std::string>(ctx);
+  if (X->DataType() == DataTypeImpl::GetType<int32_t>()) {
+    s = ComputeImpl<int32_t>(ctx);
+  } else if (X->DataType() == DataTypeImpl::GetType<int64_t>()) {
+    s = ComputeImpl<int64_t>(ctx);
+  } else if (X->DataType() == DataTypeImpl::GetType<std::string>()) {
+    s = ComputeImpl<std::string>(ctx);
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Invalid type of the input argument");
+    s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+               "Invalid type of the input argument");
   }
 
   return s;

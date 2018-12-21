@@ -14,16 +14,16 @@ constexpr const char* domain = onnxruntime::kMSDomain;
 const int opset_ver = 1;
 
 void InitTestAttr(OpTester& test, const std::string& mode,
-                  int64_t M, int64_t N, int64_t S,
+                  int64_t min_gram_length, int64_t max_gram_length, int64_t max_skip_count,
                   const std::vector<int64_t>& ngram_counts,
                   const std::vector<int64_t>& ngram_indexes,
                   const std::vector<float>& weights,
                   const std::vector<int64_t>& pool_int64s,
                   const std::vector<std::string>& pool_strings) {
   test.AddAttribute("mode", mode);
-  test.AddAttribute("M", M);
-  test.AddAttribute("N", N);
-  test.AddAttribute("S", S);
+  test.AddAttribute("min_gram_length", min_gram_length);
+  test.AddAttribute("max_gram_length", max_gram_length);
+  test.AddAttribute("max_skip_count", max_skip_count);
   test.AddAttribute("ngram_counts", ngram_counts);
   test.AddAttribute("ngram_indexes", ngram_indexes);
   // optional
@@ -48,9 +48,9 @@ using namespace ngram_test;
 // However, attribute all controls whether we consider all of the supplied ngram[M..N] sizes
 // into consideration or not.With all = false, we only consider N - grams.
 
-TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip0) {
+TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_Skip0) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N, weights empty, int32
+  // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -59,21 +59,68 @@ TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip0) {
                 5, 6, 7, 8, 6, 7},  //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{7};
-  // all=false, only bi-grams are counted
   std::vector<float> output = {0, 0, 0, 0, 1, 1, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TF_onlyBigrams_Skip0) {
+TEST(ContribOpNgramTest, Int32_TF_BatchOnlyBigrams_Skip0) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N, weights empty, string
+  // s=0, Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  // Tow batches by six
+  std::vector<int64_t> dims{2, 6};
+  std::vector<int32_t> input = {1, 1, 3, 3, 3, 7,
+                                8, 6, 7, 5, 6, 8};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{2, 7};
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0,
+                               0, 0, 0, 0, 1, 0, 1};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpNgramTest, String_TF_OnlyBigrams_Skip0) {
+  OpTester test("Ngram", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, string
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {},
+               {"two", "three", "five", "four",                     //1-grams
+                "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
+
+  std::vector<int64_t> dims{12};
+  std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
+                                 "six", "seven", "five", "six", "eight"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  std::vector<float> output = {0, 0, 0, 0, 1, 1, 1};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpNgramTest, String_TF_BatchOnlyBigrams_Skip0) {
+  OpTester test("Ngram", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -83,21 +130,24 @@ TEST(ContribOpTest, Ngram_String_TF_onlyBigrams_Skip0) {
                 "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
 
   std::vector<int64_t> dims{2, 6};
-  std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
-                                 "six", "seven", "five", "six", "eight"};
+  std::vector<std::string> input{"one", "one", "three", "three", "three", "seven",
+                                 "eight", "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
 
-  std::vector<int64_t> out_dims{7};
-  // all=false, only bi-grams are counted
-  std::vector<float> output = {0, 0, 0, 0, 1, 1, 1};
+  std::vector<int64_t> out_dims{2, 7};
+  // ["seven", "eight"] can not be found due to batch boundary and s=0
+  // bigram elements have to be next to each other
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0,
+                               0, 0, 0, 0, 1, 0, 1};
+
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_onlyBigrams_LevelEmpty) {
+TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_LevelEmpty) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N, weights empty, int32
+  // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 0},  // no unigrams, bi-grams start immediately
                {
@@ -110,21 +160,20 @@ TEST(ContribOpTest, Ngram_Int32_TF_AllFalse_onlyBigrams_LevelEmpty) {
                 5, 6, 7, 8, 6, 7},  //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{3};
-  // No 1-grams only bi-grams
   std::vector<float> output = {1, 1, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , M=N, weights empty, int32
+  // s=5, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -133,7 +182,7 @@ TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip5) {
                 5, 6, 7, 8, 6, 7},  //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
@@ -146,9 +195,60 @@ TEST(ContribOpTest, Ngram_Int32_TF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TF_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_TF_BatchOnlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N, weights empty, string
+  // s=5, , Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{2, 6};
+  std::vector<int32_t> input = {1, 1, 3, 3, 3, 7,
+                                8, 6, 7, 5, 6, 8};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{2, 7};
+  // Skip is 5 but we are constraint by row boundaries
+  // so count only 1 of each
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0,
+                               0, 0, 0, 0, 1, 1, 1};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpNgramTest, String_TF_onlyBigrams_Skip5) {
+  OpTester test("Ngram", opset_ver, domain);
+  // s=5, , Min=Max=2, weights empty, string
+  InitTestAttr(test, "TF", 2, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {},
+               {"two", "three", "five", "four",                     //1-grams
+                "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
+
+  std::vector<int64_t> dims{12};
+  std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
+                                 "six", "seven", "five", "six", "eight"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  // No 1-grams but Skip is 5 so we manage to count 3
+  // occurrences of [7,8] in one batch (row)
+  std::vector<float> output = {0, 0, 0, 0, 1, 3, 1};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpNgramTest, String_TF_BatchOnlyBigrams_Skip5) {
+  OpTester test("Ngram", opset_ver, domain);
+  // s=5, , Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -162,18 +262,17 @@ TEST(ContribOpTest, Ngram_String_TF_onlyBigrams_Skip5) {
                                  "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
 
-  std::vector<int64_t> out_dims{7};
-  // No 1-grams but Skip is 5 so we manage to count 3
-  // occurrences of [7,8]
-  std::vector<float> output = {0, 0, 0, 0, 1, 3, 1};
+  std::vector<int64_t> out_dims{2, 7};
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0,
+                               0, 0, 0, 0, 1, 1, 1};
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TF_UniAndBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_TF_UniAndBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , M=1, N=2, weights empty, int32
+  // s=5, , Min=1, Max=2, weights empty, int32
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -182,7 +281,7 @@ TEST(ContribOpTest, Ngram_Int32_TF_UniAndBigrams_Skip5) {
                 5, 6, 7, 8, 6, 7},  //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
@@ -194,9 +293,57 @@ TEST(ContribOpTest, Ngram_Int32_TF_UniAndBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TF_UniAndBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_TF_BatchUniAndBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=1, N=2, weights empty, string
+  // s=5, Min=1, Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 1, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{2, 6};
+  std::vector<int32_t> input = {1, 1, 3, 3, 3, 7,
+                                8, 6, 7, 5, 6, 8};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{2, 7};
+  // Counts are now per row (batch)
+  std::vector<float> output = {0, 3, 0, 0, 0, 0, 0,
+                               0, 0, 1, 0, 1, 1, 1};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpNgramTest, String_TF_UniAndBigrams_Skip5) {
+  OpTester test("Ngram", opset_ver, domain);
+  // s=5, Min=1, Max=2, weights empty, string
+  InitTestAttr(test, "TF", 1, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {},
+               {"two", "three", "five", "four",                     //1-grams
+                "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
+
+  std::vector<int64_t> dims{12};
+  std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
+                                 "six", "seven", "five", "six", "eight"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  std::vector<float> output = {0, 3, 1, 0, 1, 3, 1};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpNgramTest, String_TF_BatchUniAndBigrams_Skip5) {
+  OpTester test("Ngram", opset_ver, domain);
+  // s=5, Min=1, Max=2, weights empty, string
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -210,18 +357,20 @@ TEST(ContribOpTest, Ngram_String_TF_UniAndBigrams_Skip5) {
                                  "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
 
-  std::vector<int64_t> out_dims{7};
-  std::vector<float> output = {0, 3, 1, 0, 1, 3, 1};
+  std::vector<int64_t> out_dims{2, 7};
+  std::vector<float> output = {0, 3, 0, 0, 0, 0, 0,
+                               0, 0, 1, 0, 1, 1, 1};
+
   test.AddOutput<float>("Y", out_dims, output);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_IDF_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_IDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , M=N, weights empty, int32
+  // s=5, Min=Max=2, weights empty, int32
   // We change to IDF but do not supply weights so
-  // we should get all 1.0f
+  // we should get all 1.0f where count is not zero
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -230,7 +379,7 @@ TEST(ContribOpTest, Ngram_Int32_IDF_onlyBigrams_Skip5) {
                 5, 6, 7, 8, 6, 7},  //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
@@ -241,9 +390,9 @@ TEST(ContribOpTest, Ngram_Int32_IDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_IDF_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, String_IDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N, weights empty, string
+  // s=5, Min=Max=2, weights empty, string
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -252,7 +401,7 @@ TEST(ContribOpTest, Ngram_String_IDF_onlyBigrams_Skip5) {
                {"two", "three", "five", "four",                     //1-grams
                 "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
                                  "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
@@ -264,9 +413,9 @@ TEST(ContribOpTest, Ngram_String_IDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TFIDF_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_TFIDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , M=N=2, weights empty, int32
+  // s=5, Min=Max=2, weights empty, int32
   // We change to TFIDF but do not supply weights so
   // we should all get the original values as weights are 1.0f by
   // default
@@ -278,7 +427,7 @@ TEST(ContribOpTest, Ngram_Int32_TFIDF_onlyBigrams_Skip5) {
                 5, 6, 7, 8, 6, 7},  //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
@@ -289,9 +438,9 @@ TEST(ContribOpTest, Ngram_Int32_TFIDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TFIDF_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, String_TFIDF_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N=2, weights empty, string
+  // s=5, Min=Max=2, weights empty, string
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
                {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
@@ -300,7 +449,7 @@ TEST(ContribOpTest, Ngram_String_TFIDF_onlyBigrams_Skip5) {
                {"two", "three", "five", "four",                     //1-grams
                 "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
                                  "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
@@ -312,20 +461,20 @@ TEST(ContribOpTest, Ngram_String_TFIDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_IDFWeights_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_IDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , M=N=2, weights empty, int32
+  // s=5, Min=Max=2, weights specified, int32
   // We change to IDF with supplied weights. All
   // with non-zero counts must be replaced with the supplied weights
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
-               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
-               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
-               {2, 3, 5, 4,         //1-grams
-                5, 6, 7, 8, 6, 7},  //bi-grams
+               {0, 1, 2, 3, 4, 5, 6},                //7 output indexes
+               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},  // weights
+               {2, 3, 5, 4,                          //1-grams
+                5, 6, 7, 8, 6, 7},                   //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
@@ -336,18 +485,18 @@ TEST(ContribOpTest, Ngram_Int32_IDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_IDFWeights_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, String_IDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N=2, weights empty, string
+  // s=5, Min=Max=2, weights specified, string
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
-               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
-               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
+               {0, 1, 2, 3, 4, 5, 6},                //7 output indexes
+               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},  // weights
                {},
                {"two", "three", "five", "four",                     //1-grams
                 "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
                                  "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
@@ -359,20 +508,20 @@ TEST(ContribOpTest, Ngram_String_IDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_Int32_TFIDFWeights_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, Int32_TFIDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=5, , M=N=2, weights empty, int32
+  // s=5, Min=Max=2, weights specified, int32
   // We change to TFIDF with supplied weights.
   // We should have all counts scaled by weights
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
-               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
-               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
-               {2, 3, 5, 4,         //1-grams
-                5, 6, 7, 8, 6, 7},  //bi-grams
+               {0, 1, 2, 3, 4, 5, 6},                //7 output indexes
+               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},  // weights
+               {2, 3, 5, 4,                          //1-grams
+                5, 6, 7, 8, 6, 7},                   //bi-grams
                {});
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<int32_t> input = {1, 1, 3, 3, 3, 7, 8, 6, 7, 5, 6, 8};
   test.AddInput<int32_t>("T", dims, input);
 
@@ -383,18 +532,18 @@ TEST(ContribOpTest, Ngram_Int32_TFIDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpTest, Ngram_String_TFIDFWeights_onlyBigrams_Skip5) {
+TEST(ContribOpNgramTest, String_TFIDFWeights_onlyBigrams_Skip5) {
   OpTester test("Ngram", opset_ver, domain);
-  // 1 - 2, s=0, , M=N=2, weights empty, string
+  // s=5, Min=Max=2, weights specified, string
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
-               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
-               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},
+               {0, 1, 2, 3, 4, 5, 6},                //7 output indexes
+               {2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 2.0},  // weights
                {},
                {"two", "three", "five", "four",                     //1-grams
                 "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
 
-  std::vector<int64_t> dims{2, 6};
+  std::vector<int64_t> dims{12};
   std::vector<std::string> input{"one", "one", "three", "three", "three", "seven", "eight",
                                  "six", "seven", "five", "six", "eight"};
   test.AddInput<std::string>("T", dims, input);
