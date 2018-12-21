@@ -38,7 +38,7 @@ class WordConvEmbedding : public OpKernel {
       int64_t filter_width,
       int64_t num_filters,
       float* output) const;
-  void CalculateSuquenceWordsLength(
+  void CalculateLengthOfEachWordInASuquence(
       const int* seq_ptr,
       int* words_len_ptr,
       size_t seq_len,

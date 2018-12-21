@@ -97,7 +97,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     }
   }
 }
-void WordConvEmbedding::CalculateSuquenceWordsLength(
+void WordConvEmbedding::CalculateLengthOfEachWordInASuquence(
     const int* seq_ptr,
     int* words_len_ptr,
     size_t seq_len,
@@ -177,7 +177,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   std::memset(chars_embeddings_ptr.get(), 0, chars_embeddings_size * sizeof(float));
   std::memset(words_length_ptr.get(), 0, seq_len * sizeof(int));
 
-  CalculateSuquenceWordsLength(seq_ptr, words_length_ptr.get(), seq_len, word_len);
+  CalculateLengthOfEachWordInASuquence(seq_ptr, words_length_ptr.get(), seq_len, word_len);
 
   CharEmbeddingLookup(seq_ptr,
                       w_char_embedding.Data<float>(),
