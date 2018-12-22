@@ -14,6 +14,33 @@ namespace {
 bool IsFusableActivation(const Node& node) {
   return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
 }
+
+void HandleActNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
+  Node::EdgeSet output_edges, input_edges;
+  for (auto it = act.OutputEdgesBegin(); it != act.OutputEdgesEnd(); ++it) {
+    output_edges.insert(*it);
+  }
+
+  for (auto it = act.InputEdgesBegin(); it != act.InputEdgesEnd(); ++it) {
+    input_edges.insert(*it);
+  }
+
+  //remove output edge of activation
+  for (auto& output_edge : output_edges) {
+    NodeIndex dst_node_index = output_edge.GetNode().Index();
+    int src_arg_index = output_edge.GetSrcArgIndex();
+    int dst_arg_index = output_edge.GetDstArgIndex();
+    g.RemoveEdge(act.Index(), dst_node_index, src_arg_index, dst_arg_index);
+  }
+
+  //connect fused_conv node and nodes after activation nodes
+  for (auto& out : output_edges) {
+    NodeIndex dst_node_index = out.GetNode().Index();
+    int dst_arg_index = out.GetDstArgIndex();
+    g.AddEdge(fused_conv.Index(), dst_node_index, 0, dst_arg_index);
+  }
+}
+
 }  // namespace
 
 Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
@@ -42,7 +69,7 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
                                      "com.microsoft");
 
     //Add a new attribute to specify the activation type
-    fused_conv.AddAttribute("activation", "string");
+    fused_conv.AddAttribute("activation", act_node.OpType());
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {
@@ -51,6 +78,8 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
         fused_conv.AddAttribute(it->first, it->second);
       }
     }
+
+    HandleActNodeEdges(graph, act_node, fused_conv);
 
     // Replace the input of the node following activation node
     const NodeArg* act_output_def = act_node.OutputDefs()[0];
