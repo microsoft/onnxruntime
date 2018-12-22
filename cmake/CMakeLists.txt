@@ -62,6 +62,7 @@ option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
+option(onnxruntime_BUILD_ESSENTIALS "Build without optional features, e.g., profiling" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
@@ -123,6 +124,10 @@ set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
 
 if(CMAKE_CROSSCOMPILING)
   message("Doing crosscompiling")
+endif()
+
+if (onnxruntime_BUILD_ESSENTIALS)
+  add_definitions(-DBUILD_ESSENTIALS)
 endif()
 
 #Need python to generate def file 

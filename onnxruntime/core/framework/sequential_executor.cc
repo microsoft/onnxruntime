@@ -31,7 +31,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const std::vector<std::string>& output_names,
                                    std::vector<MLValue>& fetches,
                                    const logging::Logger& logger) {
+#ifndef BUILD_ESSENTIALS
   auto tp = session_state.Profiler().StartTime();
+#endif  // !BUILD_ESSENTIALS
 
   ExecutionFrame frame{feeds, output_names, fetches, session_state};
 
@@ -55,17 +57,18 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                                     session_state.GetGraphViewer()->GetNode(node_index)->Name());
+                             session_state.GetGraphViewer()->GetNode(node_index)->Name());
 
-    const std::string& node_name = p_op_kernel->Node().Name();
-    const std::string& op_name = p_op_kernel->KernelDef().OpName();
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(frame, *p_op_kernel, logger, p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
     // TODO: log kernel outputs?
 
+#ifndef BUILD_ESSENTIALS
     auto sync_time_begin = session_state.Profiler().StartTime();
+#endif  // !BUILD_ESSENTIALS
+
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
@@ -89,6 +92,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       }
     }
 
+#ifndef BUILD_ESSENTIALS
+    const std::string& node_name = p_op_kernel->Node().Name();
+    const std::string& op_name = p_op_kernel->KernelDef().OpName();
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_fence_before",
                                                    sync_time_begin,
@@ -98,13 +104,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
     auto kernel_begin_time = session_state.Profiler().StartTime();
+#endif  // !BUILD_ESSENTIALS
+
     ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
+
+#ifndef BUILD_ESSENTIALS
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_kernel_time",
                                                    kernel_begin_time,
                                                    {{"op_name", op_name}});
 
     sync_time_begin = session_state.Profiler().StartTime();
+#endif  // !BUILD_ESSENTIALS
+
     // sync after compute for outputs
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
@@ -126,10 +138,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
         fence->AfterUsedAsOutput(queue_id);
       }
     }
+
+#ifndef BUILD_ESSENTIALS
     session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                    node_name + "_fence_after",
                                                    sync_time_begin,
                                                    {{"op_name", op_name}});
+#endif  // !BUILD_ESSENTIALS
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
@@ -158,7 +173,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     }
   }
 
+#ifndef BUILD_ESSENTIALS
   session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+#endif  // !BUILD_ESSENTIALS
+
   return Status::OK();
 }
 
@@ -172,8 +190,8 @@ static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
   } else {
     // this should've been checked before already
     ORT_ENFORCE(output_names.size() == fetches.size(),
-                        "output_names vector size: " + std::to_string(output_names.size()) +
-                            " does not match that of fetches vector: " + std::to_string(fetches.size()));
+                "output_names vector size: " + std::to_string(output_names.size()) +
+                    " does not match that of fetches vector: " + std::to_string(fetches.size()));
   }
 
   auto idx = 0;

@@ -444,6 +444,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 #endif
 }
 
+#ifndef BUILD_ESSENTIALS
 TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
@@ -523,6 +524,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     count++;
   }
 }
+#endif // !BUILD_ESSENTIALS
 
 TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
   SessionOptions session_options;
