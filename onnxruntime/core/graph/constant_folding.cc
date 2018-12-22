@@ -34,8 +34,8 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
   // TODO Make it possible to pass the model directly to the session instead of having to dump it to a stream.
   std::stringstream model_istream;
   p_model->ToProto().SerializeToOstream(&model_istream);
-  ONNXRUNTIME_RETURN_IF_ERROR(session_object.Load(model_istream));
-  ONNXRUNTIME_RETURN_IF_ERROR(session_object.Initialize());
+  ORT_RETURN_IF_ERROR(session_object.Load(model_istream));
+  ORT_RETURN_IF_ERROR(session_object.Initialize());
 
   // Execute the subgraph. No inputs are needed as they are all initializers.
   std::vector<std::string> output_names;
@@ -49,7 +49,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
 
   // Go over all output node args and substitute them with the newly computed tensors, which will be
   // added to the graph as initializers.
-  ONNXRUNTIME_ENFORCE(fetches.size() == node.OutputDefs().size());
+  ORT_ENFORCE(fetches.size() == node.OutputDefs().size());
   for (int fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
     MLValue& mlvalue = fetches[fetch_idx];
     if (mlvalue.Fence()) {
@@ -83,7 +83,7 @@ bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
 void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,
                                                      const NodeArg& constant_node_arg,
                                                      ONNX_NAMESPACE::TensorProto& tensorproto) {
-  ONNXRUNTIME_ENFORCE(mlvalue.IsTensor());
+  ORT_ENFORCE(mlvalue.IsTensor());
   const Tensor& out_tensor = mlvalue.Get<Tensor>();
 
   // Set name, dimensions, type, and data of the TensorProto.
