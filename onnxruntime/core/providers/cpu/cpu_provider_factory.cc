@@ -46,13 +46,13 @@ constexpr OrtProviderFactoryInterface cpu_cls = {
 CpuProviderFactory::CpuProviderFactory() : cls(&cpu_cls), ref_count(1), create_arena(true) {}
 }  // namespace
 
-ORT_API_STATUS_IMPL(OrtCreateCpuExecutionProviderFactory, int use_arena, _Out_ OrtProviderFactoryInterface*** out) {
+ORT_API_STATUS(OrtCreateCpuExecutionProviderFactory, int use_arena, _Out_ OrtProviderFactoryInterface*** out) {
   CpuProviderFactory* ret = new CpuProviderFactory();
   ret->create_arena = (use_arena != 0);
   *out = (OrtProviderFactoryInterface**)ret;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type, _Out_ OrtAllocatorInfo** out) {
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type, _Out_ OrtAllocatorInfo** out) {
   return OrtCreateAllocatorInfo(onnxruntime::CPU, type, 0, mem_type, out);
 }

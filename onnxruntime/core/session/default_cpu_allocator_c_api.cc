@@ -77,7 +77,7 @@ ORT_ALLOCATOR_IMPL_END
 OrtAllocatorInterface OrtDefaultAllocator::table_ = {
     {OrtDefaultAllocator::AddRef_, OrtDefaultAllocator::Release_}, OrtDefaultAllocator::Alloc_, OrtDefaultAllocator::Free_, OrtDefaultAllocator::Info_};
 
-ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
+ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
   API_IMPL_BEGIN
   *out = OrtDefaultAllocator::Create();
   return nullptr;

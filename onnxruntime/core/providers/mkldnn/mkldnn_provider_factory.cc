@@ -46,7 +46,7 @@ constexpr OrtProviderFactoryInterface mkl_cls = {
 MkldnnProviderFactory::MkldnnProviderFactory() : cls(&mkl_cls), ref_count(1), create_arena(true) {}
 }  // namespace
 
-ORT_API_STATUS_IMPL(OrtCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ OrtProviderFactoryInterface*** out) {
+ORT_API_STATUS(OrtCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ OrtProviderFactoryInterface*** out) {
   MkldnnProviderFactory* ret = new MkldnnProviderFactory();
   ret->create_arena = (use_arena != 0);
   *out = (OrtProviderFactoryInterface**)ret;

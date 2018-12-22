@@ -36,9 +36,9 @@ struct OrtTensorTypeAndShapeInfo : public onnxruntime::ObjectBase<OrtTensorTypeA
 };
 
 #define API_IMPL_BEGIN try {
-#define API_IMPL_END                                           \
-  }                                                            \
-  catch (std::exception & ex) {                                \
+#define API_IMPL_END                                          \
+  }                                                           \
+  catch (std::exception & ex) {                               \
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
@@ -46,14 +46,14 @@ ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo) {
   return OrtTensorTypeAndShapeInfo::Create();
 }
 
-ORT_API_STATUS_IMPL(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* this_ptr, enum ONNXTensorElementDataType type) {
+ORT_API_STATUS(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* this_ptr, enum ONNXTensorElementDataType type) {
   API_IMPL_BEGIN
   this_ptr->type = type;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSetDims, _In_ OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
+ORT_API_STATUS(OrtSetDims, _In_ OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
   API_IMPL_BEGIN
   this_ptr->shape = onnxruntime::TensorShape(dim_values, dim_count);
   return nullptr;
@@ -137,8 +137,8 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const on
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGetTensorShapeAndType, _In_ const OrtValue* value,
-                    _Out_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS(OrtGetTensorShapeAndType, _In_ const OrtValue* value,
+               _Out_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
   const onnxruntime::Tensor& tensor = v->Get<onnxruntime::Tensor>();
@@ -169,7 +169,7 @@ ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value) {
  * \param value
  * \return The returned value should be freed by OrtReleaseObject after use
  */
-ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* value, struct OrtTypeInfo** out) {
+ORT_API_STATUS(OrtGetTypeInfo, _In_ const OrtValue* value, struct OrtTypeInfo** out) {
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
   onnxruntime::MLDataType type = v->Type();
   if (type == nullptr) {

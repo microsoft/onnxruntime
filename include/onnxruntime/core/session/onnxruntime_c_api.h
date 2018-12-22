@@ -63,23 +63,23 @@ extern "C" {
 // Copied from TensorProto::DataType
 // Currently, Ort doesn't support complex64, complex128, bfloat16 types
 typedef enum ONNXTensorElementDataType {
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED = 0,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT = 1,   // maps to c type float
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 = 2,   // maps to c type uint8_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 = 3,    // maps to c type int8_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 = 4,  // maps to c type uint16_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 = 5,   // maps to c type int16_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 = 6,   // maps to c type int32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 = 7,   // maps to c type int64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING = 8,  // maps to c++ type std::string
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL = 9,    //
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 = 10,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE = 11,      // maps to c type double
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 = 12,      // maps to c type uint32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 = 13,      // maps to c type uint64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 = 14,   // complex with float32 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 = 15,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 = 16,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,   // maps to c type float
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,   // maps to c type uint8_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8,    // maps to c type int8_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16,  // maps to c type uint16_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16,   // maps to c type int16_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,   // maps to c type int32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,   // maps to c type int64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,  // maps to c++ type std::string
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,    //
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,      // maps to c type double
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,      // maps to c type uint32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,      // maps to c type uint64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,    // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -93,31 +93,28 @@ typedef enum ONNXType {
 } ONNXType;
 
 typedef enum OrtLoggingLevel {
-  ORT_LOGGING_LEVEL_kVERBOSE = 0,
-  ORT_LOGGING_LEVEL_kINFO = 1,
-  ORT_LOGGING_LEVEL_kWARNING = 2,
-  ORT_LOGGING_LEVEL_kERROR = 3,
-  ORT_LOGGING_LEVEL_kFATAL = 4
+  ORT_LOGGING_LEVEL_kVERBOSE,
+  ORT_LOGGING_LEVEL_kINFO,
+  ORT_LOGGING_LEVEL_kWARNING,
+  ORT_LOGGING_LEVEL_kERROR,
+  ORT_LOGGING_LEVEL_kFATAL,
 } OrtLoggingLevel;
 
 typedef enum OrtErrorCode {
-  ORT_OK = 0,
-  ORT_FAIL = 1,
-  ORT_INVALID_ARGUMENT = 2,
-  ORT_NO_SUCHFILE = 3,
-  ORT_NO_MODEL = 4,
-  ORT_ENGINE_ERROR = 5,
-  ORT_RUNTIME_EXCEPTION = 6,
-  ORT_INVALID_PROTOBUF = 7,
-  ORT_MODEL_LOADED = 8,
-  ORT_NOT_IMPLEMENTED = 9,
-  ORT_INVALID_GRAPH = 10,
-  ORT_SHAPE_INFERENCE_NOT_REGISTERED = 11,
-  ORT_REQUIREMENT_NOT_REGISTERED = 12
+  ORT_OK,
+  ORT_FAIL,
+  ORT_INVALID_ARGUMENT,
+  ORT_NO_SUCHFILE,
+  ORT_NO_MODEL,
+  ORT_ENGINE_ERROR,
+  ORT_RUNTIME_EXCEPTION,
+  ORT_INVALID_PROTOBUF,
+  ORT_MODEL_LOADED,
+  ORT_NOT_IMPLEMENTED,
+  ORT_INVALID_GRAPH,
+  ORT_SHAPE_INFERENCE_NOT_REGISTERED,
+  ORT_REQUIREMENT_NOT_REGISTERED,
 } OrtErrorCode;
-
-// OrtStatus is always returned as a pointer. nullptr indicates success
-typedef void OrtStatus;
 
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) \
@@ -126,26 +123,13 @@ typedef void OrtStatus;
 #define ORT_API_STATUS(NAME, ...) \
   ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
-// Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT
-#define ORT_API_STATUS_IMPL(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
-
-#define ORT_RUNTIME_CLASS2(NAME, TYPE) \
-  ORT_API(void, OrtRelease##NAME, _Frees_ptr_opt_ TYPE* input);
-
 #define ORT_RUNTIME_CLASS(X)    \
   struct Ort##X;                \
   typedef struct Ort##X Ort##X; \
-  ORT_RUNTIME_CLASS2(X, Ort##X)
-
-// OrtStatus* is pointer to something like this:
-// struct OrtStatus {
-//   OrtErrorCode code;
-//   char msg[]; // a null-terminated string, var length
-// }
-ORT_RUNTIME_CLASS2(Status, void);
+  ORT_API(void, OrtRelease##X, _Frees_ptr_opt_ Ort##X* input);
 
 // The actual types defined have an Ort prefix
+ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(Provider);
 ORT_RUNTIME_CLASS(AllocatorInfo);
 ORT_RUNTIME_CLASS(Session);
@@ -422,8 +406,8 @@ ORT_API(uint32_t, OrtAddRefToObject, _In_ void* ptr);
 ORT_API(uint32_t, OrtReleaseObject, _Inout_opt_ void* ptr);
 
 typedef enum OrtAllocatorType {
-  OrtDeviceAllocator = 0,
-  OrtArenaAllocator = 1
+  OrtDeviceAllocator,
+  OrtArenaAllocator,
 } OrtAllocatorType;
 
 /**

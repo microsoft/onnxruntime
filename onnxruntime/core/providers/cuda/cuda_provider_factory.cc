@@ -46,7 +46,7 @@ constexpr OrtProviderFactoryInterface cuda_cls = {
 CUDAProviderFactory::CUDAProviderFactory() : cls(&cuda_cls), ref_count(1), device_id(0) {}
 }  // namespace
 
-ORT_API_STATUS_IMPL(OrtCreateCUDAExecutionProviderFactory, int device_id, _Out_ OrtProviderFactoryInterface*** out) {
+ORT_API_STATUS(OrtCreateCUDAExecutionProviderFactory, int device_id, _Out_ OrtProviderFactoryInterface*** out) {
   CUDAProviderFactory* ret = new CUDAProviderFactory();
   ret->device_id = device_id;
   *out = (OrtProviderFactoryInterface**)ret;
