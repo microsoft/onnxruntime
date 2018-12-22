@@ -8,6 +8,7 @@
 #include "core/framework/tensor.h"
 #include "core/graph/onnx_protobuf.h"
 
+using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
@@ -80,6 +81,9 @@ const DataTypeImpl* ElementTypeFromProto(int type) {
       return DataTypeImpl::GetType<uint64_t>();
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       return DataTypeImpl::GetType<MLFloat16>();
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      return DataTypeImpl::GetType<BFloat16>();
+
     default:
       ORT_NOT_IMPLEMENTED(__FUNCTION__, ":tensor type ", type, " is not supported");
   }

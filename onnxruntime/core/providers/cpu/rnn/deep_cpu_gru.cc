@@ -374,8 +374,10 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
+#ifndef USE_MKLDNN
     std::packaged_task<void()> task_fw{
         [&]() {
+#endif // ! USE_MKLDNN
           std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
               alloc, logger,
               seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
@@ -384,9 +386,11 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
               activation_funcs_.Entries()[1],
               clip_, ttp_);
           fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+#ifndef USE_MKLDNN
         }};
     auto task_results_fw = task_fw.get_future();
     ttp_.RunTask(std::move(task_fw));
+#endif // ! USE_MKLDNN
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
@@ -397,7 +401,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         clip_, ttp_);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
 
+#ifndef USE_MKLDNN
     task_results_fw.get();
+#endif // ! USE_MKLDNN
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,

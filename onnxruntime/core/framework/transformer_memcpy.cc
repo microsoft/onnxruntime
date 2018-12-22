@@ -68,25 +68,24 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
     kernel_registries.SearchKernelRegistry(node, &kci);
-    const auto* input_mem_types = kci ? &kci->kernel_def->InputMemoryType() : nullptr;
-    const auto* output_mem_types = kci ? &kci->kernel_def->InputMemoryType() : nullptr;
+
     ORT_ENFORCE(onnxruntime::Node::ForEachWithIndex(
-                            node.InputDefs(),
-                            [this, &input_mem_types](const onnxruntime::NodeArg& arg, size_t index) {
-                              if (input_mem_types && MemTypeOnCpuExplicitly(*input_mem_types, index))
-                                non_provider_input_defs_.insert(&arg);
-                              else
-                                provider_input_defs_.insert(&arg);
-                              return Status::OK();
-                            })
-                            .IsOK());
+                    node.InputDefs(),
+                    [this, &kci](const onnxruntime::NodeArg& arg, size_t index) {
+                      if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index)))
+                        non_provider_input_defs_.insert(&arg);
+                      else
+                        provider_input_defs_.insert(&arg);
+                      return Status::OK();
+                    })
+                    .IsOK());
     auto& output_defs = node.MutableOutputDefs();
     for (size_t i = 0; i < output_defs.size(); ++i) {
       auto arg = output_defs[i];
       if (!arg->Exists())
         continue;
 
-      if (output_mem_types && MemTypeOnCpuExplicitly(*output_mem_types, i))
+      if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->OutputMemoryType(i)))
         non_provider_output_defs_.insert(arg);
       else
         provider_output_defs_.insert(arg);

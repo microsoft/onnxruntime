@@ -309,13 +309,9 @@ int real_main(int argc, char* argv[]) {
       {"operator_rnn_single_layer", "disable reason"},
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
-      {"maxunpool_export_with_output_shape", "opset 9 not supported yet"},
-      {"maxunpool_export_without_output_shape", "opset 9 not supported yet"},
       {"upsample_nearest", "opset 9 not supported yet"},
       {"onehot_with_axis", "opset 9 not supported yet"},
       {"onehot_without_axis", "opset 9 not supported yet"},  // also has bug in current test re: output type. Spandan to fix.
-      {"sinh", "opset 9 not supported yet"},
-      {"cosh", "opset 9 not supported yet"},
       {"asinh", "opset 9 not supported yet"},
       {"acosh", "opset 9 not supported yet"},
       {"atanh", "opset 9 not supported yet"},

@@ -400,11 +400,10 @@ Status Pow<float>::Compute(OpKernelContext* context) const {
   std::function<void(EigenVectorMap<float>, ConstEigenVectorMap<float>, float)> input1scalar =
       [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = Eigen::pow(input0.array(), input1); };
   if (Y.Shape().Size() == 1) {
-    float value = * Y.Data<float>();
+    float value = *Y.Data<float>();
     if (value == 2.0) {
       input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::square(input0.array()); };
-    }
-    else if (value == 3.0) {
+    } else if (value == 3.0) {
       input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::cube(input0.array()); };
     }
   }
@@ -789,6 +788,46 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Atan<float>);
 
+template <typename T>
+class Sinh final : public OpKernel {
+ public:
+  explicit Sinh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).sinh();
+    return Status::OK();
+  }
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Sinh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Sinh<float>);
+
+template <typename T>
+class Cosh final : public OpKernel {
+ public:
+  explicit Cosh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).cosh();
+    return Status::OK();
+  }
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Cosh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Cosh<float>);
+
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
   return BroadcastTwo<float, float>(
@@ -887,7 +926,6 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X_ptr != nullptr);
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
-
   EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
 
   return Status::OK();

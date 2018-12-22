@@ -27,7 +27,7 @@
 namespace onnxruntime {
 
 template <typename T>
-class BatchNorm final : public OpKernel {
+class BatchNorm : public OpKernel {
  public:
   BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
     float tmp_eplison;
@@ -38,7 +38,7 @@ class BatchNorm final : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
- private:
+  protected:
   float epsilon_ = 1e-5f;
   int64_t is_test_;  // ignored in this implementation since we're doing inferencing only.
 };

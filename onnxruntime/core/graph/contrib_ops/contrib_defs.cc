@@ -8,6 +8,10 @@
 #include "core/graph/op.h"
 #include "onnx/defs/shape_inference.h"
 
+#ifdef MICROSOFT_INTERNAL
+#include "core/graph/contrib_ops/internal_schema_defs.h"
+#endif
+
 namespace ONNX_NAMESPACE {
 void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape);
 }
@@ -590,49 +594,49 @@ The bounding box coordinates corresponding to the selected indices can then be o
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
-    .SetDomain(kMSDomain)
-    .SinceVersion(1)
-    .Input  (0,  "data",    "Tensor of rank r >= 1.",            "T"    )
-    .Input  (1,  "indices", "Tensor of rank q >= 1.",            "Tind" )
-    .Output (0,  "output",  "Tensor of rank q-1+r-indices[-1].", "T"    )
-    .TypeConstraint(
-       "T",
-       OpSchema::all_tensor_types(),
-       "Constrain input and output types to any tensor type.")
-    .TypeConstraint(
-       "Tind",
-       {"tensor(int32)", "tensor(int64)"},
-       "Constrain indice type to int32 or int64")
-    .TypeAndShapeInferenceFunction( [] (ONNX_NAMESPACE::InferenceContext& ctx) {
-       propagateElemTypeFromInputToOutput(ctx, 0, 0);
-       if (!hasNInputShapes(ctx, 2)) {
-         fail_shape_inference("GatherND requires two tensor inputs.");
-       }
-       auto& data_shape    = ctx.getInputType(0)->tensor_type().shape();
-       auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-       auto  data_rank     = data_shape.dim_size();
-       auto  indices_rank  = indices_shape.dim_size();
-       if (data_rank < 1 || indices_rank < 1) {
-         fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
-       }
-       auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
-       if (last_indice_dimension > data_rank) {
-         fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
-       }
-       for (int i = 0; i < indices_rank - 1; ++i) {
-         *ctx.getOutputType(0)
-            ->mutable_tensor_type()
-            ->mutable_shape()
-            ->add_dim() = indices_shape.dim(i);
-       }
-       for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
-         *ctx.getOutputType(0)
-            ->mutable_tensor_type()
-            ->mutable_shape()
-            ->add_dim() = data_shape.dim(i);
-       }
-    })
-    .SetDoc(R"DOC(
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "data", "Tensor of rank r >= 1.", "T")
+      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
+      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indice type to int32 or int64")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 2)) {
+          fail_shape_inference("GatherND requires two tensor inputs.");
+        }
+        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        auto data_rank = data_shape.dim_size();
+        auto indices_rank = indices_shape.dim_size();
+        if (data_rank < 1 || indices_rank < 1) {
+          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
+        }
+        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
+        if (last_indice_dimension > data_rank) {
+          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
+        }
+        for (int i = 0; i < indices_rank - 1; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = data_shape.dim(i);
+        }
+      })
+      .SetDoc(R"DOC(
 Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
 slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
 Example 1:
@@ -653,6 +657,47 @@ Example 4:
   output  = [[[2,3]],[[4,5]]]
 )DOC");
 
+    ONNX_CONTRIB_OPERATOR_SCHEMA( WordConvEmbedding )
+       .SetDomain( kMSDomain )
+       .SinceVersion( 1 )
+       .Attr(
+          "embedding_size",
+          "Integer representing the embedding vector size for each word."
+          "If not provide, use the fileter size of conv weight",
+          AttributeProto::INT,
+          OPTIONAL)
+       .Attr(
+          "conv_window_size",
+          "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
+          "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
+          "If not provide, use the first dimension of conv kernal shape.",
+          AttributeProto::INT,
+          OPTIONAL)
+       .Attr(
+          "char_embedding_size",
+          "Integer representing the embedding vector size for each char."
+          "If not provide, use the char embedding size of embedding vector.",
+          AttributeProto::INT,
+          OPTIONAL)
+       .Input( 0, "Sequence", "Specify batchs of sequence words to embedding", "T" )
+       .Input( 1, "W", "Specify weights of conv", "T1" )
+       .Input( 2, "B", "Specify bias of conv", "T1" )
+       .Input( 3, "C", "Specify embedding vector of char", "T1" )
+       .Output( 0, "Y", "output", "T1" )
+       .TypeConstraint(
+          "T",
+          { "tensor(int32)" },
+          "Constrain to tensor(int32)." )
+       .TypeConstraint(
+          "T1",
+          { "tensor(float)" },
+          "Constrain to tensor(float).")
+       .SetDoc( R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC" );
+
+#ifdef MICROSOFT_INTERNAL
+    // register internal ops
+    RegisterInternalSchemas();
+#endif
 }
 }  // namespace contrib
 }  // namespace onnxruntime
