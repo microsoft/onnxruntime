@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <typeinfo>
+#include <math.h> //for fabs
 
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
