@@ -436,7 +436,17 @@ if (onnxruntime_USE_CUDA)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   find_package(CUDA 9.0 REQUIRED)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
-  set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+  set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
+
+  # There's a bug before CMake 3.12.2 for finding cublas_device in CUDA >= 9.2:
+  # See release note for details: https://blog.kitware.com/cmake-3-12-2-available-for-download/
+  #     FindCUDA: Do not find cublas_device on CUDA >= 9.2
+  if (CMAKE_VERSION VERSION_LESS 3.12.2)
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas)
+  else()
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_CUBLAS_LIBRARIES})
+  endif()
+
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cudnn)
