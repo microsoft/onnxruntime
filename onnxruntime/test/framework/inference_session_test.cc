@@ -68,7 +68,7 @@ class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-          [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+                                                 [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
         std::make_unique<DummyArena>(device_info.factory(0))));
   }
@@ -96,7 +96,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<::onnxruntime::KernelRegistry> GetKernelRegistry() const override {
     static std::shared_ptr<::onnxruntime::KernelRegistry>
-      kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
+        kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
     return kernel_registry;
   }
 
@@ -619,6 +619,21 @@ TEST(InferenceSessionTests, TestWithIstream) {
   ASSERT_TRUE(model_file_stream.good());
   ASSERT_TRUE(session_object.Load(model_file_stream).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  RunOptions run_options;
+  run_options.run_tag = "InferenceSessionTests.TestWithIstream";
+  RunModel(session_object, run_options);
+}
+
+TEST(InferenceSessionTests, TestWithExistingModel) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.TestWithExistingModel";
+
+  InferenceSession session_object{so};
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(MODEL_URI, model).IsOK());
+  ASSERT_TRUE(session_object.Initialize(model).IsOK());
 
   RunOptions run_options;
   run_options.run_tag = "InferenceSessionTests.TestWithIstream";

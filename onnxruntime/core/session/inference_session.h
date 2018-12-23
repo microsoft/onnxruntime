@@ -173,6 +173,14 @@ class InferenceSession {
   common::Status Initialize();
 
   /**
+    * Initializes with a Model instance. Initialization includes but is not
+    * limited to graph transformations, construction of kernels, etc.
+	* @param model Model to use. InferenceSession::Load must not have been called previously.
+    * @return OK if success. Error information if failure.
+    */
+  common::Status Initialize(std::shared_ptr<Model>& model);
+
+  /**
     * Run a pre-loaded and pre-intialized model.
     * Multiple threads are allowed to run this function; hence its thread-safe.
     * @param feeds named inputs owned by client code and should not be changed during
