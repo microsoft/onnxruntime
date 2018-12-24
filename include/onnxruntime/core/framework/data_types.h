@@ -5,8 +5,9 @@
 
 #include <string>
 #include <stdint.h>
-#include <unordered_map>
+#include <type_traits>
 #include <map>
+#include <unordered_map>
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
@@ -45,13 +46,76 @@ union MLFloat16 {
   MLFloat16() : val(0) {}
 };
 
-inline bool operator==(const MLFloat16& left, const MLFloat16& right)
-{
+inline bool operator==(const MLFloat16& left, const MLFloat16& right) {
   return left.val == right.val;
 }
 
-inline bool operator!=(const MLFloat16& left, const MLFloat16& right)
-{
+inline bool operator!=(const MLFloat16& left, const MLFloat16& right) {
+  return left.val != right.val;
+}
+
+struct ort_endian {
+  union q {
+    uint16_t v_;
+    uint8_t b_[2];
+    constexpr q(uint16_t v) noexcept : v_(v) {}
+  };
+  static constexpr bool is_little() {
+    return q(0x200).b_[0] == 0x0;
+  }
+  static constexpr bool is_big() {
+    return q(0x200).b_[0] == 0x2;
+  }
+};
+
+//BFloat16
+struct BFloat16 {
+  uint16_t val;
+  explicit BFloat16() : val(0) {}
+  explicit BFloat16(uint16_t v) : val(v) {}
+  explicit BFloat16(float v) {
+    uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
+    if (ort_endian::is_little()) {
+      val = dst[1];
+    } else {
+      val = dst[0];
+    }
+  }
+  float ToFloat() const {
+    float result;
+    uint16_t* dst = reinterpret_cast<uint16_t*>(&result);
+    if (ort_endian::is_little()) {
+      dst[1] = val;
+      dst[0] = 0;
+    } else {
+      dst[0] = val;
+      dst[1] = 0;
+    }
+    return result;
+  }
+};
+
+inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {
+  auto src = blf;
+  auto d = flt;
+  for (; size != 0; ++src, ++d, --size) {
+    *d = src->ToFloat();
+  }
+}
+
+inline void FloatToBFloat16(const float* flt, BFloat16* blf, size_t size) {
+  auto src = flt;
+  auto d = blf;
+  for (; size != 0; ++src, ++d, --size) {
+    new (d) BFloat16(*src);
+  }
+}
+
+inline bool operator==(const BFloat16& left, const BFloat16& right) {
+  return left.val == right.val;
+}
+
+inline bool operator!=(const BFloat16& left, const BFloat16& right) {
   return left.val != right.val;
 }
 
@@ -165,7 +229,7 @@ struct IsAnyOf<T, H, Tail...> {
 template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t> {
+                                              double, uint32_t, uint64_t, BFloat16> {
 };
 
 /// This template's Get() returns a corresponding MLDataType
@@ -203,7 +267,7 @@ struct SetMapTypes {
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
     ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
-                        " expected to be a registered ONNX type");
+                " expected to be a registered ONNX type");
     CopyMutableMapValue(*value_proto, proto);
   }
 };
@@ -220,7 +284,7 @@ struct SetSequenceType {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
     ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
-                        " expected to be a registered ONNX type");
+                " expected to be a registered ONNX type");
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };
@@ -482,7 +546,7 @@ class NonOnnxType : public DataTypeImpl {
 // thus a simple way to pre-instantiate a given template
 // at a registration time does not currently work and the macro
 // is needed.
-#define ORT_REGISTER_TENSOR_TYPE(ELEM_TYPE)     \
+#define ORT_REGISTER_TENSOR_TYPE(ELEM_TYPE)             \
   template <>                                           \
   MLDataType TensorType<ELEM_TYPE>::Type() {            \
     static TensorType<ELEM_TYPE> tensor_type;           \
@@ -493,7 +557,7 @@ class NonOnnxType : public DataTypeImpl {
     return TensorType<ELEM_TYPE>::Type();               \
   }
 
-#define ORT_REGISTER_MAP(TYPE)       \
+#define ORT_REGISTER_MAP(TYPE)               \
   template <>                                \
   MLDataType MapType<TYPE>::Type() {         \
     static MapType<TYPE> map_type;           \
@@ -504,7 +568,7 @@ class NonOnnxType : public DataTypeImpl {
     return MapType<TYPE>::Type();            \
   }
 
-#define ORT_REGISTER_SEQ(TYPE)       \
+#define ORT_REGISTER_SEQ(TYPE)               \
   template <>                                \
   MLDataType SequenceType<TYPE>::Type() {    \
     static SequenceType<TYPE> sequence_type; \
@@ -515,25 +579,25 @@ class NonOnnxType : public DataTypeImpl {
     return SequenceType<TYPE>::Type();       \
   }
 
-#define ORT_REGISTER_NON_ONNX_TYPE(TYPE) \
-  template <>                                    \
-  MLDataType NonOnnxType<TYPE>::Type() {         \
-    static NonOnnxType<TYPE> non_onnx_type;      \
-    return &non_onnx_type;                       \
-  }                                              \
-  template <>                                    \
-  MLDataType DataTypeImpl::GetType<TYPE>() {     \
-    return NonOnnxType<TYPE>::Type();            \
+#define ORT_REGISTER_NON_ONNX_TYPE(TYPE)     \
+  template <>                                \
+  MLDataType NonOnnxType<TYPE>::Type() {     \
+    static NonOnnxType<TYPE> non_onnx_type;  \
+    return &non_onnx_type;                   \
+  }                                          \
+  template <>                                \
+  MLDataType DataTypeImpl::GetType<TYPE>() { \
+    return NonOnnxType<TYPE>::Type();        \
   }
 
-#define ORT_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name) \
-  template <>                                                   \
-  MLDataType OpaqueType<CPPType, Domain, Name>::Type() {        \
-    static OpaqueType<CPPType, Domain, Name> opaque_type;       \
-    return &opaque_type;                                        \
-  }                                                             \
-  template <>                                                   \
-  MLDataType DataTypeImpl::GetType<CPPType>() {                 \
-    return OpaqueType<CPPType, Domain, Name>::Type();           \
+#define ORT_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name)   \
+  template <>                                             \
+  MLDataType OpaqueType<CPPType, Domain, Name>::Type() {  \
+    static OpaqueType<CPPType, Domain, Name> opaque_type; \
+    return &opaque_type;                                  \
+  }                                                       \
+  template <>                                             \
+  MLDataType DataTypeImpl::GetType<CPPType>() {           \
+    return OpaqueType<CPPType, Domain, Name>::Type();     \
   }
 }  // namespace onnxruntime

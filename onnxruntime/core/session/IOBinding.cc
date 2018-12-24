@@ -60,10 +60,9 @@ common::Status IOBinding::CopyOneInputAcrossDevices(const SessionState& session_
     size_t index = node_info.index;
     auto& node = *node_info.p_node;
     const KernelCreateInfo* kci = node_info.kci;
-    const auto* node_input_mem_types = (kci != nullptr) ? &kci->kernel_def->InputMemoryType() : nullptr;
 
     // node may declare input_mem_type to be on CPU explicitly
-    bool node_input_on_cpu = node_input_mem_types && MemTypeOnCpuExplicitly(*node_input_mem_types, index);
+    bool node_input_on_cpu = kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index));
     auto& required_provider_type = node_input_on_cpu ? onnxruntime::kCpuExecutionProvider : node.GetExecutionProviderType();
     if (!orig_mlvalue.IsTensor()) {
       // copying not supported for non-tensor types
