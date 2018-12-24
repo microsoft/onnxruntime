@@ -38,7 +38,7 @@
       <Visible>false</Visible>
     </None>
     
-    <None Include="$(buildDirectory)\..\models\**\*">
+    <None Include="$(buildDirectory)\models\**\*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         <Visible>false</Visible>
     </None>
