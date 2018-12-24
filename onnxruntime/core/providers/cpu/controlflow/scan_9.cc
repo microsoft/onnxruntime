@@ -285,6 +285,13 @@ Status ScanImpl::ValidateInput() {
   auto status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, graph_inputs);
   ORT_RETURN_IF_ERROR(status);
 
+  // validate the output directions match the number of Scan outputs if provided
+  if (output_directions_.size() > 0 && output_directions_.size() != num_variadic_outputs_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           output_directions_.size(), " values were provided in scan_output_directions . Expected ",
+                           num_variadic_outputs_);
+  }
+
   return Status::OK();
 }
 
@@ -297,14 +304,24 @@ Status ScanImpl::AllocateOutputTensors() {
                            " outputs but Scan expects ", num_variadic_outputs_);
   }
 
+  std::unique_ptr<OutputIterator> output_iter;
+
   for (int i = 0; i < num_loop_state_variables_; ++i) {
-    status = AllocateOutput(context_, subgraph_, i, true, -1, sequence_len_, output_iterators_);
+    status = AllocateOutput(context_, subgraph_, i, true, -1, sequence_len_, output_iter);
     ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
   }
 
   for (int i = num_loop_state_variables_, end = num_variadic_outputs_; i < end; ++i) {
-    status = AllocateOutput(context_, subgraph_, i, false, -1, sequence_len_, output_iterators_);
+    ScanDirection direction = ScanDirection::kForward;
+    const int scan_output_index = i - num_loop_state_variables_;
+    if (scan_output_index < output_directions_.size()) {
+      direction = static_cast<ScanDirection>(output_directions_[scan_output_index]);
+    }
+
+    status = AllocateOutput(context_, subgraph_, i, false, -1, sequence_len_, output_iter, direction);
     ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
   }
 
   return Status::OK();
@@ -332,7 +349,6 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
 Status ScanImpl::Execute() {
   Status status = Status::OK();
 
-  // for each batch item, std::vector of LoopStateVariables
   std::vector<LoopStateVariable> loop_state_variables;
   status = CreateLoopStateVariables(loop_state_variables);
   ORT_RETURN_IF_ERROR(status);

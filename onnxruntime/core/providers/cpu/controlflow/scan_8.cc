@@ -89,12 +89,12 @@ ONNX_CPU_OPERATOR_KERNEL(Scan,
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<8>);
 
-class ScanImpl {
+class Scan8Impl {
  public:
-  ScanImpl(OpKernelContextInternal& context,
-           const SessionState& session_state,
-           int64_t num_scan_inputs,
-           const std::vector<int64_t>& directions);
+  Scan8Impl(OpKernelContextInternal& context,
+            const SessionState& session_state,
+            int64_t num_scan_inputs,
+            const std::vector<int64_t>& directions);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -161,7 +161,7 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
   //       Consider how usage of ExecutionFrame and SequentialExecutor can be optimized
   //         - initial implementation is focused on making it work, rather than optimizing.
 
-  ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_};
+  Scan8Impl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -171,10 +171,10 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
-ScanImpl::ScanImpl(OpKernelContextInternal& context,
-                   const SessionState& session_state,
-                   int64_t num_scan_inputs,
-                   const std::vector<int64_t>& directions)
+Scan8Impl::Scan8Impl(OpKernelContextInternal& context,
+                     const SessionState& session_state,
+                     int64_t num_scan_inputs,
+                     const std::vector<int64_t>& directions)
     : context_{context},
       session_state_{session_state},
       subgraph_{*session_state.GetGraphViewer()},
@@ -189,7 +189,7 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
   num_loop_state_variables_ = num_variadic_inputs_ - gsl::narrow_cast<int>(num_scan_inputs);
 }
 
-Status ScanImpl::Initialize() {
+Status Scan8Impl::Initialize() {
   auto status = ValidateInput();
   ORT_RETURN_IF_ERROR(status);
 
@@ -223,8 +223,8 @@ static const MLValue& GetSubgraphInputMLValue(const OpKernelContextInternal& con
 }
 
 // Validate that the subgraph input has valid shapes
-Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var,
-                                       const std::vector<const NodeArg*>& graph_inputs) {
+Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_loop_state_var,
+                                        const std::vector<const NodeArg*>& graph_inputs) {
   // first dim is batch size. optional sequence dim. dim/s for the data.
   // if there is no dim for the data treat it as a scalar.
   bool has_seq_len_dim = !is_loop_state_var;
@@ -269,7 +269,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input, bool is_l
   return Status::OK();
 }
 
-Status ScanImpl::ValidateInput() {
+Status Scan8Impl::ValidateInput() {
   auto& graph_inputs = subgraph_.GetInputs();
   auto num_graph_inputs = graph_inputs.size();
 
@@ -310,7 +310,7 @@ Status ScanImpl::ValidateInput() {
   return Status::OK();
 }
 
-Status ScanImpl::AllocateOutputTensors() {
+Status Scan8Impl::AllocateOutputTensors() {
   Status status = Status::OK();
   auto& graph_outputs = subgraph_.GetOutputs();
 
@@ -319,21 +319,25 @@ Status ScanImpl::AllocateOutputTensors() {
                            " outputs but Scan expects ", num_variadic_outputs_);
   }
 
+  std::unique_ptr<OutputIterator> output_iter;
+
   for (int i = 0; i < num_loop_state_variables_; ++i) {
-    status = AllocateOutput(context_, subgraph_, i, true, batch_size_, max_sequence_len_, output_iterators_);
+    status = AllocateOutput(context_, subgraph_, i, true, batch_size_, max_sequence_len_, output_iter);
     ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
   }
 
   for (int i = num_loop_state_variables_, end = num_variadic_outputs_; i < end; ++i) {
-    status = AllocateOutput(context_, subgraph_, i, false, batch_size_, max_sequence_len_, output_iterators_);
+    status = AllocateOutput(context_, subgraph_, i, false, batch_size_, max_sequence_len_, output_iter);
     ORT_RETURN_IF_ERROR(status);
+    output_iterators_.push_back(std::move(output_iter));
   }
 
   return Status::OK();
 }
 
 // setup the loop state variables for each batch item
-Status ScanImpl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& batch_loop_state_variables) {
+Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& batch_loop_state_variables) {
   // Setup loop state variables
   // 1. Slice the input/output loop state variable tensors provided to Scan into the per-batch-item chunks
   //    (slice on the first dimension which is the batch size).
@@ -379,7 +383,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVaria
   return status;
 }
 
-Status ScanImpl::Execute() {
+Status Scan8Impl::Execute() {
   Status status = Status::OK();
 
   // for each batch item, std::vector of LoopStateVariables

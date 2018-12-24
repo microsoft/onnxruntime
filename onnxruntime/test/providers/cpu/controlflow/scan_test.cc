@@ -620,7 +620,7 @@ TEST(Scan, InvalidInput) {
           iteration_count_out, output_0, output_1, output_2, output_3,
           {},
           OpTester::ExpectResult::kExpectFailure,
-          "Number of entries in 'directions' was 3. Must match 'num_scan_inputs' of 2");
+          "Number of entries in 'directions' was 3 but expected 2");
 }
 
 // Test usage of multiple inputs of different types for variadic inputs

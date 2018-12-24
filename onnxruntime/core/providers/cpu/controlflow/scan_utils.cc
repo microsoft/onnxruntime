@@ -40,19 +40,20 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                 " but expected ", expected_num_entries);
 
     ORT_ENFORCE(std::all_of(directions.cbegin(), directions.cend(),
-                            [](int64_t i) { return i == static_cast<int64_t>(ScanDirection::kForward) ||
-                                                   i == static_cast<int64_t>(ScanDirection::kReverse); }),
+                            [](int64_t i) { return static_cast<ScanDirection>(i) == ScanDirection::kForward ||
+                                                   static_cast<ScanDirection>(i) == ScanDirection::kReverse; }),
                 "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
   } else {
     // default to forward if we know how many entries there should be
-    if (expected_num_entries > 0)
+    if (expected_num_entries > 0) {
       directions = std::vector<int64_t>(expected_num_entries, static_cast<int64_t>(ScanDirection::kForward));
+    }
   }
 }
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::vector<std::unique_ptr<OutputIterator>>& output_iterators) {
+                      std::unique_ptr<OutputIterator>& output_iterator, ScanDirection direction) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.
   auto& graph_outputs = subgraph.GetOutputs();
   auto* graph_output = graph_outputs.at(output_index);
@@ -69,7 +70,10 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   std::vector<int64_t> scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
 
-  if (batch_size > 0)
+  // v8 has batch size. v9 and later do not.
+  bool is_v8 = batch_size > 0;
+
+  if (is_v8)
     scan_output_dims.push_back(batch_size);
 
   if (!is_loop_state_var) {
@@ -78,17 +82,14 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
 
   scan_output_dims.insert(scan_output_dims.cend(), graph_output_dims.cbegin(), graph_output_dims.cend());
 
-  std::unique_ptr<OutputIterator> output_iter;
-  OutputIterator::Create(context, output_index, is_loop_state_var, TensorShape(scan_output_dims), output_iter);
-
-  output_iterators.push_back(std::move(output_iter));
+  OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
+                         output_iterator, direction);
 
   return Status::OK();
 }
 
 Status IterateSequence(OpKernelContextInternal& context,
                        const SessionState& session_state,
-
                        const GraphViewer& subgraph,
                        std::vector<LoopStateVariable>& loop_state_variables,
                        std::vector<MLValueTensorSlicer<const MLValue>::Iterator>& scan_input_stream_iterators,
@@ -267,17 +268,32 @@ static Status MakeShapeConcrete(const TensorShape& per_iteration_shape, TensorSh
 OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                int output_index,
                                bool is_loop_state_var,
-                               TensorShape final_shape)
+                               bool is_v8,
+                               TensorShape final_shape,
+                               ScanDirection direction)
     : context_{context},
       output_index_{output_index},
       final_shape_{final_shape},
       is_loop_state_var_{is_loop_state_var},
+      direction_{direction},
       cur_iteration_{0} {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 
-  // there are one or two dimensions being iterated depending on whether it's a loop state variable or scan input.
-  auto num_iteration_dims = is_loop_state_var_ ? 1 : 2;
-  num_iterations_ = final_shape_.Slice(0, num_iteration_dims).Size();
+  if (is_v8) {
+    // there are one or two dimensions being iterated depending on whether it's a loop state variable or scan input.
+    auto num_iteration_dims = is_loop_state_var_ ? 1 : 2;
+    num_iterations_ = final_shape_.Slice(0, num_iteration_dims).Size();
+  } else {
+    // batch dimension is not handled in v9 and later so for a loop state var there are no iterations, and for
+    // the scan outputs we use dimension 0 which is the sequence length.
+    if (is_loop_state_var)
+      num_iterations_ = 1;
+    else
+      num_iterations_ = final_shape_[0];
+  }
+
+  // if there are multiple dimensions to iterate use the slicer. for v8 there is always a batch dimension
+  use_slicer_ = is_v8 || num_iterations_ > 1;
 }
 
 Status OutputIterator::Initialize() {
@@ -313,18 +329,26 @@ Status OutputIterator::AllocateFinalBuffer() {
   // get the output tensor we just created as an MLValue
   final_output_mlvalue_ = context_.GetOutputMLValue(output_index_);
 
-  if (is_loop_state_var_) {
-    // only one entry is required as we slice on a single dimension
-    slicer_iterators_.push_back(MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).begin());
-  } else {
-    auto batch_size = final_shape_[0];
-    for (int i = 0; i < batch_size; ++i) {
-      // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
-      slicer_iterators_.push_back(MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_, 1, i).begin());
+  // if it's v8 there's always a batch size dimension so we need a slicer to hide that from each iteration
+  // if it's v9 or later we only need a slicer if there is more than 1 iteration
+  if (use_slicer_) {
+    if (is_loop_state_var_) {
+      // only one entry is required as we slice on a single dimension
+      slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
+                                      ? MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).begin()
+                                      : MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).rbegin());
+    } else {
+      auto batch_size = final_shape_[0];
+      for (int i = 0; i < batch_size; ++i) {
+        // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
+        slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
+                                        ? MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_, 1, i).begin()
+                                        : MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_, 1, i).rbegin());
+      }
     }
-  }
 
-  cur_slicer_iterator_ = slicer_iterators_.begin();
+    cur_slicer_iterator_ = slicer_iterators_.begin();
+  }
 
   return Status::OK();
 }
@@ -362,7 +386,10 @@ MLValue& OutputIterator::operator*() {
   ORT_ENFORCE(cur_iteration_ < num_iterations_);
 
   if (is_concrete_shape_)
-    return **cur_slicer_iterator_;
+    if (use_slicer_)
+      return **cur_slicer_iterator_;
+    else
+      return *final_output_mlvalue_;
   else
     return first_output_;
 }
@@ -377,11 +404,13 @@ OutputIterator& OutputIterator::operator++() {
 
     ++cur_iteration_;
 
-    // if not a loop state var, see if we just finished the current sequence (dim 1)
-    if (!is_loop_state_var_ && cur_iteration_ % final_shape_[1] == 0) {
-      ++cur_slicer_iterator_;
-    } else {
-      ++(*cur_slicer_iterator_);
+    if (use_slicer_) {
+      // if not a loop state var, see if we just finished the current sequence (dim 1)
+      if (!is_loop_state_var_ && cur_iteration_ % final_shape_[1] == 0) {
+        ++cur_slicer_iterator_;
+      } else {
+        ++(*cur_slicer_iterator_);
+      }
     }
   }
 

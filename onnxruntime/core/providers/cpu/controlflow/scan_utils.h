@@ -18,6 +18,9 @@ class OpKernelContextInternal;
 namespace scan {
 namespace detail {
 
+enum class ScanDirection { kForward = 0,
+                           kReverse = 1 };
+
 /**
 Class to provide input/output MLValue instances for a loop state variable.
 The MLValue flips between two internal temporary buffers to minimize copies.
@@ -69,9 +72,11 @@ class OutputIterator {
   static Status Create(OpKernelContextInternal& context,
                        int output_index,
                        bool is_loop_state_var,
+                       bool is_v8,
                        TensorShape final_shape,
-                       std::unique_ptr<OutputIterator>& iterator) {
-    iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, final_shape));
+                       std::unique_ptr<OutputIterator>& iterator,
+                       ScanDirection direction = ScanDirection::kForward) {
+    iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, is_v8, final_shape, direction));
     return iterator->Initialize();
   }
 
@@ -88,7 +93,9 @@ class OutputIterator {
   OutputIterator(OpKernelContextInternal& context,
                  int output_index,
                  bool is_loop_state_var,
-                 TensorShape final_shape);
+                 bool is_v8,
+                 TensorShape final_shape,
+                 ScanDirection direction);
 
   Status Initialize();
   Status AllocateFinalBuffer();
@@ -99,8 +106,10 @@ class OutputIterator {
   ONNX_NAMESPACE::TensorShapeProto per_iteration_shape_;
   TensorShape final_shape_;
   bool is_loop_state_var_;
+  ScanDirection direction_;
   int64_t num_iterations_;
   int64_t cur_iteration_;
+  bool use_slicer_;
 
   // is the final shape concrete, or does it have symbolic dimensions
   bool is_concrete_shape_;
@@ -116,15 +125,13 @@ class OutputIterator {
   MLValue* final_output_mlvalue_;
 };
 
-enum class ScanDirection { kForward = 0,
-                           kReverse = 1 };
-
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     std::vector<int64_t>& directions, int64_t expected_num_entries);
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::vector<std::unique_ptr<OutputIterator>>& output_iterators);
+                      std::unique_ptr<OutputIterator>& output_iterator,
+                      ScanDirection direction = ScanDirection::kForward);
 
 Status IterateSequence(OpKernelContextInternal& context,
                        const SessionState& session_state,
