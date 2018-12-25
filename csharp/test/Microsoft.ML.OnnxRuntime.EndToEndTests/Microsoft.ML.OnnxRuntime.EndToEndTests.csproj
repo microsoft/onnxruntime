@@ -26,7 +26,9 @@
   </ItemGroup-->
 
   <Target Name="ProtoGen" BeforeTargets="Build">
-    <Exec Command="$(ProtocDirectory)\protoc.exe  -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+    <Exec Command="dir $(ProtocDirectory)"/>
+    <Exec Command="dir $(ProtoSrc)"/>
+    <Exec Command="$(ProtocDirectory)\protoc.exe  -I=$(ProtoSrc) --csharp_out=$(MSBuildThisFileDirectory) $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
   </Target>
 
   <Target Name="ObtainPackageVersion" BeforeTargets="Restore;Build">
