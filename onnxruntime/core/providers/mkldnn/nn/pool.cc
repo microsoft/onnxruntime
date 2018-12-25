@@ -45,7 +45,7 @@ struct PoolParams {
   mkldnn::memory::dims& padding_right;
   bool count_include_pad;
 
-  PoolParams(std::string op_name, std::string version,
+  PoolParams(const std::string& op_name, const std::string& version,
              mkldnn::memory::dims& src_dims, mkldnn::memory::dims& dst_dims,
              mkldnn::memory::dims& kernel, mkldnn::memory::dims& strides,
              mkldnn::memory::dims& padding_left, mkldnn::memory::dims& padding_right,
@@ -90,9 +90,9 @@ class PoolPrimitive : public PrimitiveBase {
 
   ~PoolPrimitive() = default;
 
-  void Compute(const T* src_data, const T* dst_data) {
+  void Compute(const T* src_data, T* dst_data) {
     context_.src_mem->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
-    context_.dst_mem->set_data_handle(static_cast<void*>(const_cast<T*>(dst_data)));
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
     context_.stream->submit(context_.net);
 
     context_.src_mem->set_data_handle(nullptr);
@@ -326,7 +326,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
     }
-  } catch (mkldnn::error& e) {
+  } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 

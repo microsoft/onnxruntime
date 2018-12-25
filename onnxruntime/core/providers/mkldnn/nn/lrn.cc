@@ -1,4 +1,3 @@
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -25,13 +24,13 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 namespace {
 // Struct which encapsulates parameters for MKLDNN LRN primitive.
 struct LRNParams {
-  mkldnn::memory::dims& dims_;
+  const mkldnn::memory::dims& dims_;
   float alpha_;
   float beta_;
   float bias_;
   int size_;
 
-  LRNParams(mkldnn::memory::dims& dims, float alpha, float beta, float bias, int size)
+  LRNParams(const mkldnn::memory::dims& dims, float alpha, float beta, float bias, int size)
       : dims_(dims), alpha_(alpha), beta_(beta), bias_(bias), size_(size) {}
 
   // Used as the key for LRN Primitive Reuse LRN.
@@ -62,9 +61,9 @@ class LRNPrimitive : public PrimitiveBase {
 
   ~LRNPrimitive() = default;
 
-  void Compute(const T* src_data, const T* dst_data) {
+  void Compute(const T* src_data, T* dst_data) {
     context_.src_mem->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
-    context_.dst_mem->set_data_handle(static_cast<void*>(const_cast<T*>(dst_data)));
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
     context_.stream->submit(context_.net);
 
     context_.src_mem->set_data_handle(nullptr);
@@ -231,7 +230,7 @@ Status LRN<T>::Compute(OpKernelContext* context) const {
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
     }
-  } catch (mkldnn::error& e) {
+  } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 
