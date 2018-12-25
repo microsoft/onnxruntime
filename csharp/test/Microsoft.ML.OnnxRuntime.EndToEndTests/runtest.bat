@@ -1,3 +1,6 @@
+REM Copyright (c) Microsoft Corporation. All rights reserved.
+REM Licensed under the MIT License.
+
 @echo off
 SETLOCAL EnableDelayedExpansion
 
