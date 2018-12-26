@@ -17,9 +17,9 @@ OrtCreateDefaultAllocator
 OrtCreateInferenceSession
 OrtCreateRunOptions
 OrtCreateSessionOptions
-OrtCreateTensorAsONNXValue
+OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
-OrtCreateTensorWithDataAsONNXValue
+OrtCreateTensorWithDataAsOrtValue
 OrtDisableCpuMemArena
 OrtDisableMemPattern
 OrtDisableProfiling
@@ -50,7 +50,12 @@ OrtInferenceSessionGetOutputTypeInfo
 OrtInitialize
 OrtInitializeWithCustomLogger
 OrtIsTensor
+OrtReleaseAllocatorInfo
+OrtReleaseEnv
 OrtReleaseObject
+OrtReleaseSession
+OrtReleaseStatus
+OrtReleaseValue
 OrtRunInference
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
@@ -63,9 +68,4 @@ OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
-OrtTensorProtoToONNXValue
-ReleaseONNXEnv
-ReleaseOrtAllocatorInfo
-ReleaseONNXSession
-ReleaseONNXStatus
-ReleaseONNXValue
+OrtTensorProtoToOrtValue

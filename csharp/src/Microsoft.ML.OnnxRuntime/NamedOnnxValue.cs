@@ -161,7 +161,7 @@ namespace Microsoft.ML.OnnxRuntime
                 longShape[i] = (ulong)shape[i];
             }
 
-            IntPtr status = NativeMethods.OrtCreateTensorWithDataAsONNXValue(
+            IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
                     NativeMemoryAllocatorInfo.DefaultInstance.Handle,
                     dataBufferPointer,
                     (ulong)(dataBufferLength),

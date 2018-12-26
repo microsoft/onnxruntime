@@ -74,7 +74,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (_nativeHandle != IntPtr.Zero)
                 {
-                    NativeMethods.ReleaseONNXSession(_nativeHandle);
+                    NativeMethods.OrtReleaseSession(_nativeHandle);
                     _nativeHandle = IntPtr.Zero;
                 }
                 throw e;
@@ -178,7 +178,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     if (outputValueArray[i] != IntPtr.Zero)
                     {
-                        NativeMethods.ReleaseONNXValue(outputValueArray[i]);
+                        NativeMethods.OrtReleaseValue(outputValueArray[i]);
                     }
                 }
                 throw e;
@@ -188,7 +188,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // always unpin the input buffers, and delete the native Onnx value objects
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.ReleaseONNXValue(inputTensors[i]); // this should not release the buffer, but should delete the native tensor object
+                    NativeMethods.OrtReleaseValue(inputTensors[i]); // this should not release the buffer, but should delete the native tensor object
                     pinnedBufferHandles[i].Dispose();
                 }
             }
@@ -340,7 +340,7 @@ namespace Microsoft.ML.OnnxRuntime
             // cleanup unmanaged resources
             if (_nativeHandle != IntPtr.Zero)
             {
-                NativeMethods.ReleaseONNXSession(_nativeHandle);
+                NativeMethods.OrtReleaseSession(_nativeHandle);
             }
         }
 

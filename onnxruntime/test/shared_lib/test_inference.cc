@@ -13,20 +13,20 @@
 
 using namespace onnxruntime;
 
-void RunSession(OrtAllocator* env, ONNXSession* session_object,
+void RunSession(OrtAllocator* env, OrtSession* session_object,
                 const std::vector<size_t>& dims_x,
                 const std::vector<float>& values_x,
                 const std::vector<int64_t>& dims_y,
                 const std::vector<float>& values_y) {
-  std::unique_ptr<ONNXValue, decltype(&ReleaseONNXValue)> value_x(nullptr, ReleaseONNXValue);
-  std::vector<ONNXValue*> inputs(1);
-  inputs[0] = OrtCreateTensorAsONNXValue(env, dims_x, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> value_x(nullptr, OrtReleaseValue);
+  std::vector<OrtValue*> inputs(1);
+  inputs[0] = OrtCreateTensorAsOrtValue(env, dims_x, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
   value_x.reset(inputs[0]);
   void* raw_data;
   ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], &raw_data));
   memcpy(raw_data, values_x.data(), values_x.size() * sizeof(values_x[0]));
   std::vector<const char*> input_names{"X"};
-  ONNXValue* output_tensor = nullptr;
+  OrtValue* output_tensor = nullptr;
   const char* output_names[] = {"Y"};
   ORT_THROW_ON_ERROR(OrtRunInference(session_object, NULL, input_names.data(), inputs.data(), inputs.size(), output_names, 1, &output_tensor));
   ASSERT_NE(output_tensor, nullptr);
@@ -50,7 +50,7 @@ void RunSession(OrtAllocator* env, ONNXSession* session_object,
   for (size_t i = 0; i != total_len; ++i) {
     ASSERT_EQ(values_y[i], f[i]);
   }
-  ReleaseONNXValue(output_tensor);
+  OrtReleaseValue(output_tensor);
 }
 
 template <typename T>
@@ -98,7 +98,7 @@ void TestInference(OrtEnv* env, T model_uri,
   if (custom_op) {
     sf.AddCustomOp("libonnxruntime_custom_op_shared_lib_test.so");
   }
-  std::unique_ptr<ONNXSession, decltype(&ReleaseONNXSession)> inference_session(sf.OrtCreateInferenceSession(model_uri), ReleaseONNXSession);
+  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateInferenceSession(model_uri), OrtReleaseSession);
   std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
   // Now run
   RunSession(default_allocator.get(), inference_session.get(), dims_x, values_x, expected_dims_y, expected_values_y);
@@ -147,10 +147,10 @@ TEST_F(CApiTest, DISABLED_custom_op) {
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  ONNXSession* ret;
+  OrtSession* ret;
   ORT_THROW_ON_ERROR(::OrtCreateInferenceSession(env, model_uri, nullptr, &ret));
   ASSERT_NE(nullptr, ret);
-  ReleaseONNXSession(ret);
+  OrtReleaseSession(ret);
 }
 #endif
 TEST_F(CApiTest, create_tensor) {
@@ -158,8 +158,8 @@ TEST_F(CApiTest, create_tensor) {
   size_t expected_len = 2;
   std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
   {
-    std::unique_ptr<ONNXValue, decltype(&ReleaseONNXValue)> tensor(
-        OrtCreateTensorAsONNXValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), ReleaseONNXValue);
+    std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
+        OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), OrtReleaseValue);
     ORT_THROW_ON_ERROR(OrtFillStringTensor(tensor.get(), s, expected_len));
     std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
     {
@@ -185,9 +185,9 @@ TEST_F(CApiTest, create_tensor_with_data) {
   OrtAllocatorInfo* info;
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
   std::vector<size_t> dims = {4};
-  std::unique_ptr<ONNXValue, decltype(&ReleaseONNXValue)> tensor(
-      OrtCreateTensorWithDataAsONNXValue(info, values, values_length * sizeof(float), dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT), ReleaseONNXValue);
-  ReleaseOrtAllocatorInfo(info);
+  std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
+      OrtCreateTensorWithDataAsOrtValue(info, values, values_length * sizeof(float), dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT), OrtReleaseValue);
+  OrtReleaseAllocatorInfo(info);
   void* new_pointer;
   ORT_THROW_ON_ERROR(OrtGetTensorMutableData(tensor.get(), &new_pointer));
   ASSERT_EQ(new_pointer, values);

@@ -380,7 +380,6 @@ class PlannerImpl {
       ORT_ENFORCE(exec_provider);
 
       auto& default_allocator_info = exec_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
-      auto& mem_type_allocated_args = p_kernelDef->OutputMemoryType();
       auto& outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
 
@@ -389,14 +388,15 @@ class PlannerImpl {
         if (node_output->Exists()) {
           MLValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
+          ++UseCount(index);
           if (strcmp(default_allocator_info.name, CPU) != 0) {
             // By default, outputs of this node are allocated on the default device allocator,
             // except for outputs marked for allocation in MemoryType:
-            auto memory_type_iter = mem_type_allocated_args.find(i);
-            if (memory_type_iter == mem_type_allocated_args.end()) {
+            auto memory_type = p_kernelDef->OutputMemoryType(i);
+            if (memory_type == OrtMemTypeDefault) {
               AllocPlan(index).location = default_allocator_info;
             } else {
-              AllocPlan(index).location = exec_provider->GetAllocator(0, memory_type_iter->second)->Info();
+              AllocPlan(index).location = exec_provider->GetAllocator(0, memory_type)->Info();
             }
           }
         }
@@ -437,7 +437,7 @@ class PlannerImpl {
 
             thisplan.alloc_kind = AllocKind::kAllocateStatically;
             auto p_opkernelDef = utils::GetKernelDef(kernel_registry_, node);
-            if (MemTypeOnCpuExplicitly(p_opkernelDef->InputMemoryType(), index))
+            if (MemTypeOnCpuExplicitly(p_opkernelDef->InputMemoryType(index)))
               // weights are not output from any node, so it's OK to put its location on CPU provider
               thisplan.location = execution_providers_.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
             else
@@ -528,7 +528,7 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          if (0 == UseCount(original))
+          if (0 == --UseCount(original))
             freelist_.push_front(FreeBufferInfo(original, program_counter));
         }
       }

@@ -41,18 +41,18 @@ class DataRunner {
   ::onnxruntime::TIME_SPEC spent_time_;
 
  private:
-  ONNXSession* session;
+  OrtSession* session;
   CALL_BACK on_finished;
   OrtAllocatorInterface** const default_allocator;
   EXECUTE_RESULT RunTaskImpl(size_t task_id);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(DataRunner);
 
  public:
-  DataRunner(ONNXSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
+  DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
   virtual void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ORT_CALLBACK_INSTANCE pci) noexcept = 0;
   void RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result);
   virtual ~DataRunner() {
-    ReleaseONNXSession(session);
+    OrtReleaseSession(session);
     OrtReleaseObject(default_allocator);
   }
 
@@ -98,7 +98,7 @@ class SeqTestRunner : public DataRunner {
   size_t repeat_count_;
 
  public:
-  SeqTestRunner(ONNXSession* session1,
+  SeqTestRunner(OrtSession* session1,
                 ITestCase* c, size_t repeat_count,
                 TestCaseCallBack on_finished1);
 
@@ -115,7 +115,7 @@ class PTestRunner : public DataRunner {
  public:
   void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
 
-  PTestRunner(ONNXSession* session1,
+  PTestRunner(OrtSession* session1,
               ITestCase* c, PThreadPool tpool,
               TestCaseCallBack on_finished1);
 

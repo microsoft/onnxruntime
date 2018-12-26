@@ -128,11 +128,11 @@ class Initializer final {
     }
   }
 
-  ONNX_NAMESPACE::TensorProto_DataType data_type() const {
+  int data_type() const {
     return data_type_;
   }
 
-  ONNX_NAMESPACE::TensorProto_DataType& data_type() {
+  int& data_type() {
     return data_type_;
   }
 
@@ -372,7 +372,7 @@ class Initializer final {
   }
 
  private:
-  ONNX_NAMESPACE::TensorProto_DataType data_type_;
+  int data_type_;
   std::string name_;
   std::vector<int64_t> dims_;
   int64_t size_;

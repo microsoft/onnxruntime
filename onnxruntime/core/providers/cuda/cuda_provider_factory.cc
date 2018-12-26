@@ -15,7 +15,7 @@ struct CUDAProviderFactory {
   CUDAProviderFactory();
 };
 
-ONNXStatus* ORT_API_CALL CreateCuda(void* this_, OrtProvider** out) {
+OrtStatus* ORT_API_CALL CreateCuda(void* this_, OrtProvider** out) {
   CUDAExecutionProviderInfo info;
   CUDAProviderFactory* this_ptr = (CUDAProviderFactory*)this_;
   info.device_id = this_ptr->device_id;

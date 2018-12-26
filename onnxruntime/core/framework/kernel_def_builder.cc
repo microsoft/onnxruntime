@@ -66,20 +66,20 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
     return false;
 
   //check memory type
-  auto other_input_mem_types = other.InputMemoryType();
+  auto& other_input_mem_types = other.input_memory_type_args_;
   for (auto it : input_memory_type_args_) {
-    if (other_input_mem_types.count(it.first) && other_input_mem_types[it.first] == it.second)
+    if (other_input_mem_types.count(it.first) && other_input_mem_types.find(it.first)->second == it.second)
       return false;
   }
-  if (input_memory_type_args_.empty() && !other.InputMemoryType().empty())
+  if (input_memory_type_args_.empty() && !other.input_memory_type_args_.empty())
     return false;
 
-  auto other_output_mem_types = other.OutputMemoryType();
+  auto& other_output_mem_types = other.output_memory_type_args_;
   for (auto it : output_memory_type_args_) {
-    if (other_output_mem_types.count(it.first) && other_output_mem_types[it.first] == it.second)
+    if (other_output_mem_types.count(it.first) && other_output_mem_types.find(it.second)->second == it.second)
       return false;
   }
-  return !(output_memory_type_args_.empty() && !other.OutputMemoryType().empty());
+  return !(output_memory_type_args_.empty() && !other.output_memory_type_args_.empty());
 }
 
 KernelDefBuilder& KernelDefBuilder::SetName(const std::string& op_name) {

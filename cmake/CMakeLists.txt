@@ -374,29 +374,6 @@ else()
   endif()
 endif()
 
-if (onnxruntime_USE_TVM)
-  if (WIN32 AND MSVC)
-    # wd4100: identifier' : unreferenced formal parameter
-    # wd4244: conversion from 'int' to 'char', possible loss of data
-    # wd4251: class X needs to have dll-interface to be used by clients of class Y
-    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
-    # wd4275: non dll-interface class X used as base for dll-interface class Y
-    # wd4389: signed/unsigned mismatch
-    # wd4456: declaration of X hides previous local declaration
-    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
-  else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=extra" "-Wno-error=ignored-qualifiers")
-    if(HAS_UNUSED_PARAMETER)
-      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
-    endif()
-    if(HAS_CATCH_VALUE)
-      #TODO: send a PR to TVM and fix it
-      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
-    endif()
-  endif()
-  include(onnxruntime_codegen.cmake)
-endif()
-
 if (onnxruntime_USE_JEMALLOC)
   if (Win32)
     message( FATAL_ERROR "Jemalloc is not supported on Windows." )
@@ -412,11 +389,27 @@ include_directories(
   $<TARGET_PROPERTY:GSL,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
+if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
+  include(mkldnn)
+endif()
+
+if (onnxruntime_USE_MKLML)
+  add_definitions(-DUSE_MKLML=1)
+  # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
+  #add_definitions(-DUSE_MKLML_FOR_BLAS=1)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  link_directories(${MKLML_LIB_DIR})
+endif()
+
 if (onnxruntime_USE_MKLDNN)
   add_definitions(-DUSE_MKLDNN=1)
-  include(mkldnn)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mkldnn)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
 endif()
 
@@ -442,7 +435,6 @@ if (onnxruntime_USE_CUDA)
   endif ()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   find_package(CUDA 9.0 REQUIRED)
-  include(cub)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
@@ -453,7 +445,6 @@ if (onnxruntime_USE_CUDA)
     set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES cub)
 
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
@@ -463,6 +454,33 @@ if (onnxruntime_USE_CUDA)
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
   endif()
+endif()
+
+if (onnxruntime_USE_TVM)
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    # wd4251: class X needs to have dll-interface to be used by clients of class Y
+    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+    # wd4275: non dll-interface class X used as base for dll-interface class Y
+    # wd4389: signed/unsigned mismatch
+    # wd4456: declaration of X hides previous local declaration
+    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
+  else()
+    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=extra" "-Wno-error=ignored-qualifiers")
+    if(HAS_UNUSED_PARAMETER)
+      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
+    endif()
+    if(HAS_CATCH_VALUE)
+      #TODO: send a PR to TVM and fix it
+      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
+    endif()
+  endif()
+  include(onnxruntime_codegen.cmake)
+endif()
+
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

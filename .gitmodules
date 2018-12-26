@@ -16,3 +16,6 @@
 [submodule "cmake/external/gsl"]
 	path = cmake/external/gsl
 	url = https://github.com/Microsoft/GSL.git
+[submodule "cmake/external/gemmlowp"]
+	path = cmake/external/gemmlowp
+	url = https://github.com/google/gemmlowp.git

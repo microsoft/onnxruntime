@@ -6,5 +6,5 @@
 #include "core/common/status.h"
 
 namespace onnxruntime {
-ONNXStatus* ToONNXStatus(const onnxruntime::common::Status& st);
+OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
 };

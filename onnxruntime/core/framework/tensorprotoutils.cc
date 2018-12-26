@@ -138,6 +138,37 @@ common::Status GetTensorByTypeFromTensorProto<MLFloat16>(const TensorProto& tens
   return common::Status::OK();
 }
 
+template <>
+common::Status GetTensorByTypeFromTensorProto<BFloat16>(const TensorProto& tensor_proto,
+                                                        const TensorShape& tensor_shape,
+                                                        std::unique_ptr<Tensor>* p_tensor,
+                                                        AllocatorPtr alloc,
+                                                        void* preallocated,
+                                                        size_t preallocated_size) {
+  int64_t tensor_size = tensor_shape.Size();
+  if (tensor_size < 0) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Tensor shape cannot contain any negative value");
+  }
+  static_assert(sizeof(BFloat16) == sizeof(uint16_t), "BFloat16 must has 16 bit size");
+  size_t size_to_allocate;
+  if (!IAllocator::CalcMemSizeForArrayWithAlignment<256>(static_cast<size_t>(tensor_size), sizeof(BFloat16), &size_to_allocate)) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
+  }
+
+  if (preallocated && preallocated_size != size_to_allocate)
+    return Status(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size");
+
+  BFloat16* p_data = static_cast<BFloat16*>(preallocated ? preallocated : alloc->Alloc(size_to_allocate));
+  ORT_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
+  *p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<BFloat16>(),
+                                       tensor_shape,
+                                       static_cast<void*>(p_data),
+                                       alloc->Info(),
+                                       preallocated ? nullptr : alloc);  // no deleter for preallocated
+
+  return common::Status::OK();
+}
+
 Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& input, AllocatorPtr allocator, void* preallocated,
                             size_t preallocated_size, MLValue& value) {
   std::unique_ptr<Tensor> p_tensor;
@@ -174,6 +205,7 @@ common::Status GetTensorFromTensorProto(const TensorProto& tensor_proto,
     CASE_PROTO(UINT64, uint64_t);
     CASE_PROTO(STRING, std::string);
     CASE_PROTO(FLOAT16, MLFloat16);
+    CASE_PROTO(BFLOAT16, BFloat16);
     default: {
       std::ostringstream ostr;
       ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
@@ -208,6 +240,10 @@ TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
     dtype = TensorProto_DataType_UINT64;
   else if (tensor_type == DataTypeImpl::GetType<bool>())
     dtype = TensorProto_DataType_BOOL;
+  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())
+    dtype = TensorProto_DataType_FLOAT16;
+  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())
+    dtype = TensorProto_DataType_BFLOAT16;
 
   return dtype;
 }

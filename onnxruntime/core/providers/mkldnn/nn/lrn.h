@@ -11,7 +11,7 @@ namespace mkl_dnn {
 template <typename T>
 class LRN final : public onnxruntime::LRN<T> {
  public:
-  LRN(const OpKernelInfo& info) : onnxruntime::LRN<T>(info) {}
+  explicit LRN(const OpKernelInfo& info) : onnxruntime::LRN<T>(info) {}
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 };
