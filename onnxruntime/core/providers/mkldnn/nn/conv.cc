@@ -401,22 +401,34 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       DoReorder<T>(params);
       src_data = static_cast<T*>(dst.get_data_handle());
     }
+    // Reorder filter memory layout if necessary
+    // Avoid data reordering. Save filter memory in mkldnn format from first iteration 
+    // in execution provider mapped by weight name.
+    std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
+    std::shared_ptr<mkldnn::memory> filter_dst_mem =nullptr;
+    filter_dst_mem = provider_->GetWeightMemory(weightKey);
 
-    // Reorder filter memory layout if necessary.
-    if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
-      auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(filter_dims_mkl,
-                                                                    MklDnnType<T>(),
-                                                                    filter_format),
-                                               cpu_engine);
-      mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
-      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
-      // mkldnn using padding to allow use of blocked format.
-      filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
-      mkldnn::memory dst = mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get());
-      MemoryReorderParams params(src, dst);
-      DoReorder<T>(params);
-      filter_data = static_cast<T*>(dst.get_data_handle());
+    if (filter_dst_mem == nullptr) {
+      if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
+        auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
+          filter_dims_mkl, MklDnnType<T>(), filter_format), cpu_engine);
+        mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
+        filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
+        filter_dst_mem.reset(
+          new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
+        MemoryReorderParams params(src, *filter_dst_mem);
+        DoReorder<T>(params);
+        filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+        {
+          // make assignment threadsafe
+          std::lock_guard<std::mutex> lock(mutex_);
+          provider_->GetWeightsMap()[weightKey] = filter_dst_mem;
+        }
+      }
+    } else {
+      filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
     }
+
 
     // Allocate dst buffer if reorder is necessary
     if (dst_md.data.format != conv_primitive->GetDstMemoryFormat()) {
