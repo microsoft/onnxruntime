@@ -142,9 +142,9 @@ Status Slice<T, Tind>::Compute(OpKernelContext* ctx) const {
 
   if (has_axes_) {
     if (axes_.size() > starts_.size())
-      ORT_THROW("'axes' has more entries than the 'starts' attribute holds");
+      ORT_THROW("'axes' has more entries than the 'starts'");
     if (axes_.size() > ends_.size())
-      ORT_THROW("'axes' has more entries than the 'ends' attribute holds");
+      ORT_THROW("'axes' has more entries than the 'ends'");
   }
 
   // Initialize the starts & ends to the actual tensor shape

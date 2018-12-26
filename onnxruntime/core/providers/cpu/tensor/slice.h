@@ -9,21 +9,6 @@ namespace onnxruntime {
 
 class SliceBase {
  protected:
-/*
-  SliceBase(const OpKernelInfo& info) {
-    has_axes_ = info.GetAttrs("axes", axes_).IsOK();
-
-    ORT_ENFORCE(info.GetAttrs("starts", starts_).IsOK(), "Invalid 'starts' attribute value");
-    ORT_ENFORCE(info.GetAttrs("ends", ends_).IsOK(), "Invalid 'ends' attribute value");
-
-    if (has_axes_) {
-      if (axes_.size() > starts_.size())
-        ORT_THROW("'axes' has more entries than the 'starts' attribute holds");
-      if (axes_.size() > ends_.size())
-        ORT_THROW("'axes' has more entries than the 'ends' attribute holds");
-    }
-  }
-*/
   SliceBase(const OpKernelInfo& info) {
     has_axes_ = info.GetAttrs("axes", axes_).IsOK();
     info.GetAttrs("starts", starts_);
