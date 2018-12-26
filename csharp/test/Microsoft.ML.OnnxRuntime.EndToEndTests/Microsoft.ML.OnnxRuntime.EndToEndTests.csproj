@@ -31,7 +31,7 @@
     </None>
     
     <None Include="$(buildDirectory)\models\**\*">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         <Visible>false</Visible>
     </None>
   </ItemGroup>
