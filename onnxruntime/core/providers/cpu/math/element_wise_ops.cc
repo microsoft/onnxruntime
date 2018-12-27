@@ -828,6 +828,26 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cosh<float>);
 
+template <typename T>
+class Asinh final : public OpKernel {
+ public:
+  explicit Asinh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+    Y = std::asinh(X);
+    return Status::OK();
+  }
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Asinh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Asinh<float>);
+
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
   return BroadcastTwo<float, float>(
