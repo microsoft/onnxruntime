@@ -39,7 +39,7 @@ static void TestModelInfo(const OrtSession* inference_session, bool is_input, co
 TEST_F(CApiTest, input_output_type_info) {
   SessionOptionsWrapper sf(env);
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateInferenceSession(model_uri), OrtReleaseSession);
+  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   TestModelInfo(inference_session.get(), true, {1, 3, 224, 224});
   TestModelInfo(inference_session.get(), false, {1, 1000, 1, 1});
 }

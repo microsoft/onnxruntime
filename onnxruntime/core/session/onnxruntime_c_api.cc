@@ -357,9 +357,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
 }
 
 template <typename T>
-static OrtStatus* CreateInferenceSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
-                                             _In_ const OrtSessionOptions* options,
-                                             _Out_ OrtSession** out) {
+static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
+                                    _In_ const OrtSessionOptions* options,
+                                    _Out_ OrtSession** out) {
   API_IMPL_BEGIN
   auto sess = std::make_unique<::onnxruntime::InferenceSession>(options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
@@ -389,22 +389,22 @@ static OrtStatus* CreateInferenceSessionImpl(_In_ OrtEnv* env, _In_ T model_path
 }
 
 #ifdef _WIN32
-ORT_API_STATUS_IMPL(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const wchar_t* model_path,
+ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const wchar_t* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  return CreateInferenceSessionImpl(env, model_path, options, out);
+  return CreateSessionImpl(env, model_path, options, out);
   API_IMPL_END
 }
 #else
-ORT_API_STATUS_IMPL(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const char* model_path,
+ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const char* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  return CreateInferenceSessionImpl(env, model_path, options, out);
+  return CreateSessionImpl(env, model_path, options, out);
   API_IMPL_END
 }
 #endif
 
-ORT_API_STATUS_IMPL(OrtRunInference, _In_ OrtSession* sess,
+ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
                     _In_ OrtRunOptions* run_options,
                     _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                     _In_ const char* const* output_names1, size_t output_names_len, _Out_ OrtValue** output) {
@@ -526,7 +526,7 @@ ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
     delete[] reinterpret_cast<REAL_TYPE*>(value);                           \
   }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelInputs();
@@ -537,7 +537,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputCount, _In_ const OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
@@ -548,7 +548,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputCount, _In_ const OrtSession* se
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelInputs();
@@ -560,7 +560,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputTypeInfo, _In_ const OrtSession* 
   return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
   API_IMPL_END
 }
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
@@ -596,9 +596,9 @@ static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t ind
   return nullptr;
 }
 
-ORT_API(int, OrtIsTensor, _In_ const OrtValue* value) {
+ORT_API(bool, OrtIsTensor, _In_ const OrtValue* value) {
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
-  return v->IsTensor() ? 1 : 0;
+  return v->IsTensor();
 }
 
 ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
@@ -624,14 +624,14 @@ ORT_API(const struct OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAlloc
   }
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Out_ char** output) {
   API_IMPL_BEGIN
   return GetInputOutputNameImpl(sess, index, allocator, true, output);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Out_ char** output) {
   API_IMPL_BEGIN
   return GetInputOutputNameImpl(sess, index, allocator, false, output);

@@ -14,8 +14,8 @@ OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
 OrtCreateCpuExecutionProviderFactory
 OrtCreateDefaultAllocator
-OrtCreateInferenceSession
 OrtCreateRunOptions
+OrtCreateSession
 OrtCreateSessionOptions
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
@@ -41,12 +41,6 @@ OrtGetTensorShapeAndType
 OrtGetTensorShapeElementCount
 OrtGetTypeInfo
 OrtGetValueType
-OrtInferenceSessionGetInputCount
-OrtInferenceSessionGetInputName
-OrtInferenceSessionGetInputTypeInfo
-OrtInferenceSessionGetOutputCount
-OrtInferenceSessionGetOutputName
-OrtInferenceSessionGetOutputTypeInfo
 OrtInitialize
 OrtInitializeWithCustomLogger
 OrtIsTensor
@@ -62,6 +56,12 @@ OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
 OrtRunOptionsSetRunTag
 OrtRunOptionsSetTerminate
+OrtSessionGetInputCount
+OrtSessionGetInputName
+OrtSessionGetInputTypeInfo
+OrtSessionGetOutputCount
+OrtSessionGetOutputName
+OrtSessionGetOutputTypeInfo
 OrtSessionOptionsAppendExecutionProvider
 OrtSetDims
 OrtSetSessionLogId
