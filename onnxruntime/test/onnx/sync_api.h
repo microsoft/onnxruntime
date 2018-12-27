@@ -17,6 +17,8 @@
 using ORT_EVENT = HANDLE;
 using PThreadPool = onnxruntime::TaskThreadPool*;
 #define OnnxRuntimeCloseThreadpoolWork CloseThreadpoolWork
+using ORT_CALLBACK_INSTANCE = void*;
+
 inline PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env&) {
   return new onnxruntime::TaskThreadPool(std::thread::hardware_concurrency() / 2);
 }
@@ -28,7 +30,6 @@ using PThreadPool = Eigen::ThreadPoolInterface*;
 #define ORT_WORK void*
 struct OnnxRuntimeEvent;
 using ORT_EVENT = OnnxRuntimeEvent*;
-
 class OnnxRuntimeCallbackInstance;
 using ORT_CALLBACK_INSTANCE = OnnxRuntimeCallbackInstance*;
 using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work);
@@ -36,13 +37,13 @@ using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* context,
 inline void OnnxRuntimeCloseThreadpoolWork(ORT_WORK) {}
 #endif
 
-using ORT_CALLBACK_FUNCTION = void (*)(void* data);
+using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* data);
 
 //The returned value will be used with CreateAndSubmitThreadpoolWork function
 PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env& env);
 //Caller must delete the data pointer if this function returns a non-ok status. Otherwise, the ownership is transferred
 ::onnxruntime::common::Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool);
 ::onnxruntime::common::Status CreateOnnxRuntimeEvent(ORT_EVENT* out);
-::onnxruntime::common::Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_EVENT finish_event);
+::onnxruntime::common::Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVENT finish_event);
 ::onnxruntime::common::Status WaitAndCloseEvent(ORT_EVENT finish_event);
 void OrtCloseEvent(ORT_EVENT finish_event);

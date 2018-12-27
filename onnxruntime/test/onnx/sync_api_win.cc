@@ -8,7 +8,7 @@
 using ::onnxruntime::common::Status;
 
 Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
-  std::packaged_task<void()> work{std::bind(callback, data)};
+  std::packaged_task<void()> work{std::bind(callback, nullptr, data)};
   pool->RunTask(std::move(work));
   return Status::OK();
 }
@@ -37,7 +37,7 @@ Status CreateOnnxRuntimeEvent(ORT_EVENT* out) {
   return Status::OK();
 }
 
-Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_EVENT finish_event) {
+Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE, ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, "");
 
