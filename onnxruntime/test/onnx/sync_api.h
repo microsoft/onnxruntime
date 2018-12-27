@@ -21,7 +21,6 @@ inline PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env&) {
   return new onnxruntime::TaskThreadPool(std::thread::hardware_concurrency() / 2);
 }
 #else
-#define ORT_CALLBACK
 namespace Eigen {
 class ThreadPoolInterface;
 }

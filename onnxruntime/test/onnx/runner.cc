@@ -92,7 +92,7 @@ PTestRunner::PTestRunner(OrtSession* session1,
                          TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), next_test_to_run(0), finished(0), tpool_(tpool) {
 }
 
-void ORT_CALLBACK RunSingleDataItem(void* context) {
+void RunSingleDataItem(void* context) {
   DataTask* task((DataTask*)context);
   PTestRunner* env = task->env;
   const size_t task_id = task->task_id;
