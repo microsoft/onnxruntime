@@ -40,22 +40,27 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  std::shared_ptr<mkldnn::memory> GetWeightMemory(std::string weightName) {
-
+  std::shared_ptr<mkldnn::memory> Get_weight_memory(std::string weightName) {
     auto iter = weights_mem_map.find(weightName);
     if (iter != weights_mem_map.end())
       return iter->second;
     return nullptr;
   }
 
-  std::map<std::string, std::shared_ptr<mkldnn::memory>>& GetWeightsMap() {
-    return weights_mem_map;
+  void Set_weights_memory(std::string weight_key, 
+	  std::shared_ptr<mkldnn::memory> filter_dst_mem) {
+    {
+      // make assignment threadsafe
+      std::lock_guard<std::mutex> lock(mutex_);
+      weights_mem_map[weight_key] = filter_dst_mem;
+    }
   }
- 
-private:
+
+ private:
   // mkldnn formatted weights(filer data) memory from first iteration 
   // saved by weights name
   std::map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map;
+  mutable std::mutex mutex_;
 };
 
 }  // namespace onnxruntime
