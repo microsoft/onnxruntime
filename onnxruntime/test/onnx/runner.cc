@@ -25,15 +25,14 @@
 using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
-void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work) {
-  OnnxRuntimeCloseThreadpoolWork(work);
+void RunTestCase(void* context) {
   assert(context != nullptr);
   TestCaseTask* task((TestCaseTask*)context);
   ITestCase* info = task->env.tests[task->task_id];
   std::shared_ptr<TestCaseResult> ret;
   try {
-    RunSingleTestCase(info, task->env.sf, task->concurrent_runs, task->repeat_count, task->pool, pci, [task](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
-      return OnTestCaseFinished(pci, task, result);
+    RunSingleTestCase(info, task->env.sf, task->concurrent_runs, task->repeat_count, task->pool, [task](std::shared_ptr<TestCaseResult> result) {
+      return OnTestCaseFinished(task, result);
     });
     return;
   } catch (std::exception& ex) {
@@ -42,14 +41,14 @@ void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK
     (void)info->GetNodeName(&node_name);
     ret = std::make_shared<TestCaseResult>(info->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name);
   }
-  auto status = OnTestCaseFinished(pci, task, ret);
+  auto status = OnTestCaseFinished(task, ret);
   if (!status.IsOK()) {
     LOGF_DEFAULT(ERROR, "FATAL ERROR");
     abort();
   }
 }
 
-void PTestRunner::Start(ORT_CALLBACK_INSTANCE, size_t concurrent_runs) {
+void PTestRunner::Start(size_t concurrent_runs) {
   concurrent_runs = std::min<size_t>(std::max<size_t>(1, concurrent_runs), c_->GetDataCount());
   next_test_to_run = 0;
   for (size_t i = 0; i != concurrent_runs; ++i) {
@@ -72,12 +71,12 @@ bool PTestRunner::ScheduleNew() {
   return true;
 }
 
-void PTestRunner::OnTaskFinished(size_t, EXECUTE_RESULT, ORT_CALLBACK_INSTANCE pci) noexcept {
+void PTestRunner::OnTaskFinished(size_t, EXECUTE_RESULT) noexcept {
   try {
     ScheduleNew();
     if (++finished == c_->GetDataCount()) {
       //For each test case, only one DataTask can reach here
-      finish(pci);
+      finish();
     }
   } catch (std::exception& ex) {
     LOGF_DEFAULT(ERROR, "%s:unrecoverable error:%s,exit...\n", c_->GetTestCaseName().c_str(), ex.what());
@@ -93,16 +92,15 @@ PTestRunner::PTestRunner(OrtSession* session1,
                          TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), next_test_to_run(0), finished(0), tpool_(tpool) {
 }
 
-void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work) {
-  OnnxRuntimeCloseThreadpoolWork(work);
+void ORT_CALLBACK RunSingleDataItem(void* context) {
   DataTask* task((DataTask*)context);
   PTestRunner* env = task->env;
   const size_t task_id = task->task_id;
   delete task;
-  env->RunTask(task_id, instance, true);
+  env->RunTask(task_id, true);
 }
 
-Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result) {
+Status OnTestCaseFinished(TestCaseTask* task, std::shared_ptr<TestCaseResult> result) {
   FixedCountFinishCallback* finished = task->env.finished;
   auto task_id = task->task_id;
   bool failed = false;
@@ -121,8 +119,8 @@ Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::sh
     }
   }
   if (failed)
-    return finished->fail(pci);
-  return finished->onFinished(task_id, result, pci);
+    return finished->fail();
+  return finished->onFinished(task_id, result);
 }
 
 //Do not run this function in the thread pool passed in
@@ -168,7 +166,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
       ORT_EVENT ev;
       ORT_RETURN_IF_ERROR(CreateOnnxRuntimeEvent(&ev));
       try {
-        RunSingleTestCase(env.tests[i], env.sf, concurrent_runs, repeat_count, tpool, nullptr, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
+        RunSingleTestCase(env.tests[i], env.sf, concurrent_runs, repeat_count, tpool, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result) {
           //TODO:output this information to a xml
           if (concurrent_runs == 1) {
             TIME_SPEC ts = result->GetSpentTime();
@@ -177,7 +175,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
             LOGF_DEFAULT(ERROR, "Test %s finished in %.3g seconds, took %.3g for each input", test_case_name, spent, spent2);
           }
           results.push_back(result);
-          return OnnxRuntimeSetEventWhenCallbackReturns(pci, ev);
+          return OnnxRuntimeSetEventWhenCallbackReturns(ev);
         });
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
       } catch (std::exception& ex) {
@@ -294,7 +292,7 @@ DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1,
   SetTimeSpecToZero(&spent_time_);
 }
 
-void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result) {
+void DataRunner::RunTask(size_t task_id, bool store_result) {
   EXECUTE_RESULT res = EXECUTE_RESULT::UNKNOWN_ERROR;
   try {
     res = RunTaskImpl(task_id);
@@ -305,7 +303,7 @@ void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_r
   if (store_result) {
     result->SetResult(task_id, res);
   }
-  OnTaskFinished(task_id, res, pci);
+  OnTaskFinished(task_id, res);
 }
 
 std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const OrtValue* o, const OrtValue* expected_mlvalue, double per_sample_tolerance, double relative_per_sample_tolerance,
@@ -469,16 +467,16 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   return res;
 }
 
-void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
+void SeqTestRunner::Start(size_t) {
   const size_t data_count = c_->GetDataCount();
   for (size_t idx_repeat = 0; idx_repeat != repeat_count_; ++idx_repeat)
     for (size_t idx_data = 0; idx_data != data_count; ++idx_data) {
-      RunTask(idx_data, nullptr, idx_repeat == 0);
+      RunTask(idx_data, idx_repeat == 0);
     }
-  finish(pci);
+  finish();
 }
 
-void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
+void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
   {
@@ -504,11 +502,11 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
       r = new SeqTestRunner(session_object.get(), info, repeat_count, on_finished);
     }
     session_object.release();
-    r->Start(pci, concurrent_runs);
+    r->Start(concurrent_runs);
     return;
   }
 end:
-  on_finished(ret, pci);
+  on_finished(ret);
 }
 
 EXECUTE_RESULT StatusCodeToExecuteResult(int input) {

@@ -232,7 +232,8 @@ int real_main(int argc, char* argv[]) {
 #endif
     }
     TestEnv args(tests, stat, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
+    PThreadPool tPool = GetDefaultThreadPool(Env::Default());
+    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), tPool);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
@@ -243,6 +244,8 @@ int real_main(int argc, char* argv[]) {
     for (ITestCase* l : tests) {
       delete l;
     }
+
+    delete tPool;
   }
   std::map<std::string, std::string> broken_tests{
       {"AvgPool1d", "disable reason"},

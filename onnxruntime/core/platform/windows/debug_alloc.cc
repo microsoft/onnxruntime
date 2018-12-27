@@ -28,6 +28,7 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #pragma warning(disable : 26485)  // bounds.3 No array to pointer decay.
 #pragma warning(disable : 26490)  // type.1 Don't use reinterpret_cast
 #pragma warning(disable : 26493)  // type.4 Don't use C-style casts
+#pragma warning(disable : 4091)
 
 #include <windows.h>
 #include <sstream>
@@ -231,11 +232,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     else {
       // If we're on the command line (like on a build machine), output to the console and exit(-1)
       std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
-#if 0
-      // There is currently a memory leak due to a static thread_local variable not being destroyed on exit in mkldnn_common.h
-      // The bug is caused by sync_api.h using the windows thread pool functions instead of C++ std::async libraries.
       exit(-1);
-#endif
     }
 
   } else {

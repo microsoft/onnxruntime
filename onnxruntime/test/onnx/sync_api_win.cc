@@ -3,15 +3,13 @@
 
 #include "sync_api.h"
 #include <core/common/common.h>
+#include <core/common/task_thread_pool.h>
 
 using ::onnxruntime::common::Status;
 
 Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
-  PTP_WORK work = CreateThreadpoolWork(callback, data, pool);
-  if (!work) {
-    return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::FAIL, "create thread pool task failed");
-  }
-  SubmitThreadpoolWork(work);
+  std::packaged_task<void()> work{std::bind(callback, data)};
+  pool->RunTask(std::move(work));
   return Status::OK();
 }
 
@@ -39,12 +37,11 @@ Status CreateOnnxRuntimeEvent(ORT_EVENT* out) {
   return Status::OK();
 }
 
-Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVENT finish_event) {
+Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, "");
-  if (pci)
-    SetEventWhenCallbackReturns(pci, finish_event);
-  else if (!SetEvent(finish_event)) {
+
+  if (!SetEvent(finish_event)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetEvent failed");
   }
   return Status::OK();

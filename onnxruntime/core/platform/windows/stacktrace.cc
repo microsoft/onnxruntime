@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma warning(disable : 4091)
+
 #include "core/common/common.h"
 #include <iostream>
 #include <mutex>

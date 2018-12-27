@@ -33,16 +33,16 @@ class FixedCountFinishCallbackImpl {
     if (finish_event_) OrtCloseEvent(finish_event_);
   }
 
-  ::onnxruntime::common::Status fail(ORT_CALLBACK_INSTANCE pci) {
+  ::onnxruntime::common::Status fail() {
     {
       std::lock_guard<std::mutex> g(m_);
       failed = true;
       s_ = 0;  //fail earlier
     }
-    return OnnxRuntimeSetEventWhenCallbackReturns(pci, finish_event_);
+    return OnnxRuntimeSetEventWhenCallbackReturns(finish_event_);
   }
 
-  ::onnxruntime::common::Status onFinished(size_t task_index, std::shared_ptr<T> result, ORT_CALLBACK_INSTANCE pci) {
+  ::onnxruntime::common::Status onFinished(size_t task_index, std::shared_ptr<T> result) {
     int v;
     {
       std::lock_guard<std::mutex> g(m_);
@@ -50,7 +50,7 @@ class FixedCountFinishCallbackImpl {
       results_.at(task_index) = result;
     }
     if (v == 0) {
-      return OnnxRuntimeSetEventWhenCallbackReturns(pci, finish_event_);
+      return OnnxRuntimeSetEventWhenCallbackReturns(finish_event_);
     }
     return ::onnxruntime::common::Status::OK();
   }
