@@ -44,7 +44,7 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateInferenceSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
             
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
@@ -52,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 // get input count
                 ulong inputCount = 0;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtInferenceSessionGetInputCount(_nativeHandle, out inputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
 
                 // get all the output names
                 for (ulong i = 0; i < inputCount; i++)
@@ -62,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 // get output count
                 ulong outputCount = 0;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtInferenceSessionGetOutputCount(_nativeHandle, out outputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
 
                 // get all the output names
                 for (ulong i = 0; i < outputCount; i++)
@@ -148,7 +148,7 @@ namespace Microsoft.ML.OnnxRuntime
             string[] outputNamesArray = outputNames.ToArray();
             IntPtr[] outputValueArray = new IntPtr[outputNames.Count];
 
-            IntPtr status = NativeMethods.OrtRunInference(
+            IntPtr status = NativeMethods.OrtRun(
                                                 this._nativeHandle,
                                                 IntPtr.Zero,  // TODO: use Run options when Run options creation API is available
                                                               // Passing null uses the default run options in the C-api
@@ -212,7 +212,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr  status = NativeMethods.OrtInferenceSessionGetOutputName(
+            IntPtr  status = NativeMethods.OrtSessionGetOutputName(
                                                 _nativeHandle,
                                                 index,  
                                                 NativeMemoryAllocator.DefaultInstance.Handle,
@@ -238,7 +238,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtInferenceSessionGetInputName(
+            IntPtr status = NativeMethods.OrtSessionGetInputName(
                                                 _nativeHandle,
                                                 index,
                                                 NativeMemoryAllocator.DefaultInstance.Handle,
@@ -265,7 +265,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr typeInfo = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtInferenceSessionGetInputTypeInfo(_nativeHandle, index, out typeInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputTypeInfo(_nativeHandle, index, out typeInfo));
                 return GetMetadataFromTypeInfo(typeInfo);
             }
             finally
@@ -282,7 +282,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr typeInfo = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtInferenceSessionGetOutputTypeInfo(_nativeHandle, index, out typeInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputTypeInfo(_nativeHandle, index, out typeInfo));
                 return GetMetadataFromTypeInfo(typeInfo);
             }
             finally
