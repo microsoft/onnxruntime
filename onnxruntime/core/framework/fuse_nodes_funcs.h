@@ -11,15 +11,15 @@ class FuncManager {
 
   Status AddFuncInfo(const std::string& name, const std::string& dll_path);
 
-  Status AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionState create, DestroyFunctionState release);
+  Status AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionStateFunc create, DestroyFunctionStateFunc release);
 
-  Status GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionState* create, DestroyFunctionState* release) const;
+  Status GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
 
   struct FuncInfo {
     std::string dso_path;
     ComputeFunc compute_func;
-    CreateFunctionState create_state_func;
-    DestroyFunctionState release_state_func;
+    CreateFunctionStateFunc create_state_func;
+    DestroyFunctionStateFunc release_state_func;
   };
 
  private:

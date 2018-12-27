@@ -66,7 +66,7 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
   return true;
 }
 
-common::Status OpKernelInfo::GetFusedFuncs(ComputeFunc* compute, CreateFunctionState* create, DestroyFunctionState* release) const {
+common::Status OpKernelInfo::GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const {
   auto* funcs_mgr = session_state_.GetFuncMgr();
   return funcs_mgr->GetFuncs(node_.Name(), compute, create, release);
 }

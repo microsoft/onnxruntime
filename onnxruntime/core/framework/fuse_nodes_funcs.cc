@@ -10,7 +10,7 @@ Status FuncManager::AddFuncInfo(const std::string& name, const std::string& dll_
   return Status::OK();
 }
 
-Status FuncManager::AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionState create, DestroyFunctionState release) {
+Status FuncManager::AddFuncInfo(const std::string& name, ComputeFunc compute, CreateFunctionStateFunc create, DestroyFunctionStateFunc release) {
   auto it = fused_funcs_->find(name);
   if (it != fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " already exist.");
@@ -20,7 +20,7 @@ Status FuncManager::AddFuncInfo(const std::string& name, ComputeFunc compute, Cr
   return Status::OK();
 }
 
-Status FuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionState* create, DestroyFunctionState* release) const {
+Status FuncManager::GetFuncs(const std::string& name, ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const {
   auto it = fused_funcs_->find(name);
   if (it == fused_funcs_->end())
     return Status(common::ONNXRUNTIME, common::FAIL, "func info for node: " + name + " not found.");

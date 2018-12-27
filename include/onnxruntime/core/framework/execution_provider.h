@@ -26,14 +26,14 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
-using CreateFunctionState = std::function<int(ComputeContext*, FunctionState*)>;
+using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<int(FunctionState, ONNXRunTimeTensor*, size_t, ONNXRunTimeTensor*, size_t)>;
-using DestroyFunctionState = std::function<void(FunctionState)>;
+using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {
-  CreateFunctionState create_state_func;
+  CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
-  DestroyFunctionState release_state_func;
+  DestroyFunctionStateFunc release_state_func;
 };
 
 class IExecutionProvider {

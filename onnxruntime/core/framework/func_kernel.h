@@ -18,7 +18,7 @@ class FunctionKernel : public OpKernel {
   explicit FunctionKernel(const OpKernelInfo& info) : OpKernel(info) {
     num_inputs_ = info.node().InputDefs().size();
     num_outputs_ = info.node().OutputDefs().size();
-    CreateFunctionState create_func;
+    CreateFunctionStateFunc create_func;
     auto status = info.GetFusedFuncs(&func_, &create_func, &release_func_);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     if (create_func) {
@@ -75,7 +75,7 @@ class FunctionKernel : public OpKernel {
 
  private:
   ComputeFunc func_;
-  DestroyFunctionState release_func_;
+  DestroyFunctionStateFunc release_func_;
   FunctionState func_state_;
   size_t num_inputs_;
   size_t num_outputs_;

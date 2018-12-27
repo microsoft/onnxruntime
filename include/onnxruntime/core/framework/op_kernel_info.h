@@ -41,7 +41,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionState* create, DestroyFunctionState* release) const;
+  common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
 
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
