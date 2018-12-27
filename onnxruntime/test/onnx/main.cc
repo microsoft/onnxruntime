@@ -232,11 +232,28 @@ int real_main(int argc, char* argv[]) {
 #endif
     }
     TestEnv args(tests, stat, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
+
+    TP_CALLBACK_ENVIRON CallBackEnviron;
+    PTP_POOL pool = NULL;
+
+    InitializeThreadpoolEnvironment(&CallBackEnviron);
+
+    pool = CreateThreadpool(NULL);
+
+    if (NULL == pool) {
+      fprintf(stderr, "Unable to create threadpool");
+      return -1;
+    }
+
+    SetThreadpoolCallbackPool(&CallBackEnviron, pool);
+
+    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
+
+    CloseThreadpool(pool);
 
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);

@@ -26,9 +26,9 @@ struct TestCaseTask {
   const PThreadPool pool;
 };
 
-void RunTestCase(ORT_CALLBACK_INSTANCE instance, void* context);
+void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
 //TODO: implement this function for Linux
-void RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context);
+void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
 ::onnxruntime::common::Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result);
 
 class DataRunner {

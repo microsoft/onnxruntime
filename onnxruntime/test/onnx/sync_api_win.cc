@@ -3,27 +3,15 @@
 
 #include "sync_api.h"
 #include <core/common/common.h>
-#include <core/common/task_thread_pool.h>
 
 using ::onnxruntime::common::Status;
 
-static std::unique_ptr<onnxruntime::TaskThreadPool> default_pool;
-static std::once_flag default_pool_init;
-
-PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
-  std::call_once(default_pool_init, [&env] {
-    int core_num = env.GetNumCpuCores();
-    default_pool.reset(new onnxruntime::TaskThreadPool(core_num));
-  });
-  return default_pool.get();
-}
-
 Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
-  if (pool == NULL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "must provide a threadpool to run the tests concurrently on");
+  PTP_WORK work = CreateThreadpoolWork(callback, data, pool);
+  if (!work) {
+    return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::FAIL, "create thread pool task failed");
   }
-  std::packaged_task<void()> work{std::bind(callback, nullptr, data)};
-  pool->RunTask(std::move(work));
+  SubmitThreadpoolWork(work);
   return Status::OK();
 }
 
@@ -51,11 +39,12 @@ Status CreateOnnxRuntimeEvent(ORT_EVENT* out) {
   return Status::OK();
 }
 
-Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE, ORT_EVENT finish_event) {
+Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT, "");
-
-  if (!SetEvent(finish_event)) {
+  if (pci)
+    SetEventWhenCallbackReturns(pci, finish_event);
+  else if (!SetEvent(finish_event)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetEvent failed");
   }
   return Status::OK();
