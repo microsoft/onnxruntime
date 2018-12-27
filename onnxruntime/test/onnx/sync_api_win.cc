@@ -19,6 +19,9 @@ PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
 }
 
 Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
+  if (pool == NULL) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "must provide a threadpool to run the tests concurrently on");
+  }
   std::packaged_task<void()> work{std::bind(callback, nullptr, data)};
   pool->RunTask(std::move(work));
   return Status::OK();
