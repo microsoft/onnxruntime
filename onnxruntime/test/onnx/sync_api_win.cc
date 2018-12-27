@@ -7,6 +7,17 @@
 
 using ::onnxruntime::common::Status;
 
+static std::unique_ptr<onnxruntime::TaskThreadPool> default_pool;
+static std::once_flag default_pool_init;
+
+PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
+  std::call_once(default_pool_init, [&env] {
+    int core_num = env.GetNumCpuCores();
+    default_pool.reset(new onnxruntime::TaskThreadPool(core_num));
+  });
+  return default_pool.get();
+}
+
 Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data, PThreadPool pool) {
   std::packaged_task<void()> work{std::bind(callback, nullptr, data)};
   pool->RunTask(std::move(work));

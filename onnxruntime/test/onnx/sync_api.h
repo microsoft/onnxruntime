@@ -18,10 +18,6 @@ using ORT_EVENT = HANDLE;
 using PThreadPool = onnxruntime::TaskThreadPool*;
 #define OnnxRuntimeCloseThreadpoolWork CloseThreadpoolWork
 using ORT_CALLBACK_INSTANCE = void*;
-
-inline PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env&) {
-  return new onnxruntime::TaskThreadPool(std::thread::hardware_concurrency() / 2);
-}
 #else
 namespace Eigen {
 class ThreadPoolInterface;
