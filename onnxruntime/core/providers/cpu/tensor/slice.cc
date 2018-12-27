@@ -16,15 +16,6 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
       Slice<data_type, indice_type>);
 
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type, indice_type)                               \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                            \
-      DynamicSlice,                                                                          \
-      1,                                                                                     \
-      data_type##_##indice_type,                                                             \
-      KernelDefBuilder().TypeConstraint("T",    DataTypeImpl::GetTensorType<data_type>())    \
-                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<indice_type>()), \
-      Slice<data_type, indice_type>);
-
 ADD_TYPED_SLICE_OP(uint8_t,  int64_t);
 ADD_TYPED_SLICE_OP(uint16_t, int64_t);
 ADD_TYPED_SLICE_OP(uint32_t, int64_t);
@@ -38,6 +29,15 @@ ADD_TYPED_SLICE_OP(double,   int64_t);
 ADD_TYPED_SLICE_OP(MLFloat16,int64_t);
 ADD_TYPED_SLICE_OP(bool,     int64_t);
 ADD_TYPED_SLICE_OP(string,   int64_t);
+
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type, indice_type)                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                            \
+      DynamicSlice,                                                                          \
+      1,                                                                                     \
+      data_type##_##indice_type,                                                             \
+      KernelDefBuilder().TypeConstraint("T",    DataTypeImpl::GetTensorType<data_type>())    \
+                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<indice_type>()), \
+      Slice<data_type, indice_type>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t,  int32_t);
 ADD_TYPED_DYNAMIC_SLICE_OP(uint16_t, int32_t);
