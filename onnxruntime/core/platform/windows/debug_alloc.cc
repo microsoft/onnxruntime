@@ -235,7 +235,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
       
       //testing
       LOGF_DEFAULT(ERROR, "\n----- MEMORY LEAKS: %s %s", string.c_str(), "\n");
-      exit(-1);
+      //exit(-1);
     }
 
   } else {
