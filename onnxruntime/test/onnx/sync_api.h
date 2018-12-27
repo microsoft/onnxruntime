@@ -33,9 +33,7 @@ struct OnnxRuntimeEvent;
 using ORT_EVENT = OnnxRuntimeEvent*;
 class OnnxRuntimeCallbackInstance;
 using ORT_CALLBACK_INSTANCE = OnnxRuntimeCallbackInstance*;
-using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work);
-//Do nothing
-inline void OnnxRuntimeCloseThreadpoolWork(ORT_WORK) {}
+using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* context);
 #endif
 
 //The returned value will be used with CreateAndSubmitThreadpoolWork function
