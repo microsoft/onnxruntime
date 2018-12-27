@@ -28,7 +28,6 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #pragma warning(disable : 26485)  // bounds.3 No array to pointer decay.
 #pragma warning(disable : 26490)  // type.1 Don't use reinterpret_cast
 #pragma warning(disable : 26493)  // type.4 Don't use C-style casts
-#pragma warning(disable : 4091)
 
 #include <windows.h>
 #include <sstream>
