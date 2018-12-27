@@ -18,7 +18,6 @@ using ORT_EVENT = HANDLE;
 using PThreadPool = onnxruntime::TaskThreadPool*;
 #define OnnxRuntimeCloseThreadpoolWork CloseThreadpoolWork
 using ORT_CALLBACK_INSTANCE = void*;
-using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* data);
 
 inline PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env&) {
   return new onnxruntime::TaskThreadPool(std::thread::hardware_concurrency() / 2);
@@ -33,8 +32,9 @@ struct OnnxRuntimeEvent;
 using ORT_EVENT = OnnxRuntimeEvent*;
 class OnnxRuntimeCallbackInstance;
 using ORT_CALLBACK_INSTANCE = OnnxRuntimeCallbackInstance*;
-using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* context);
 #endif
+
+using ORT_CALLBACK_FUNCTION = void (*)(ORT_CALLBACK_INSTANCE pci, void* context);
 
 //The returned value will be used with CreateAndSubmitThreadpoolWork function
 PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env& env);

@@ -41,7 +41,7 @@ Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data,
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "pool cannot be NULL");
   pool->Schedule([=]() {
     OnnxRuntimeCallbackInstance instance;
-    callback(&instance, data, nullptr);
+    callback(&instance, data);
     Status st = instance.SignalAllEvents();
     if (!st.IsOK()) {
       LOGF_DEFAULT(ERROR, "SignalAllEvents failed:%s. aborting...\n", st.ErrorMessage().c_str());
