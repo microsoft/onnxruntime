@@ -340,10 +340,10 @@ if(NOT WIN32)
     set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/tml.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
-onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto protobuf::libprotobuf)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_test_data_proto)
+target_link_libraries(onnx_proto)
 
 set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
 set(onnx_test_runner_common_srcs

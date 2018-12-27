@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 add_library(onnx_proto ${ONNXRUNTIME_ROOT}/core/protobuf/onnx-ml.proto ${ONNXRUNTIME_ROOT}/core/protobuf/onnx-operators-ml.proto)
-target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/..")
+target_include_directories(onnx_proto PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/..")
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS TARGET onnx_proto)
 
 # Cpp Tests were added and they require googletest

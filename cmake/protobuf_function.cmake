@@ -143,6 +143,7 @@ function(onnxruntime_protobuf_generate)
   endif()
   if(onnxruntime_protobuf_generate_TARGET)
     target_sources(${onnxruntime_protobuf_generate_TARGET} PRIVATE ${_generated_srcs_all})
+    target_link_libraries(${onnxruntime_protobuf_generate_TARGET} PUBLIC protobuf::libprotobuf)
   endif()
 
 endfunction()
