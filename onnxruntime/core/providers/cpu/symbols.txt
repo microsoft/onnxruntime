@@ -50,7 +50,7 @@ OrtReleaseObject
 OrtReleaseSession
 OrtReleaseStatus
 OrtReleaseValue
-OrtRunInference
+OrtRun
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
