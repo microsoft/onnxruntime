@@ -96,7 +96,7 @@ void TestInference(OrtEnv* env, T model_uri,
     std::cout << "Running simple inference with default provider" << std::endl;
   }
   if (custom_op) {
-    sf.AddCustomOp("libonnxruntime_custom_op_shared_lib_test.so");
+    sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
