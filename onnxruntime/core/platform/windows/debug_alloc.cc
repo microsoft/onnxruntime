@@ -34,6 +34,7 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #include <iostream>
 #include "debug_alloc.h"
 #include <DbgHelp.h>
+#include "core/common/logging/logging.h"
 #pragma comment(lib, "Dbghelp.lib")
 
 _Ret_notnull_ _Post_writable_byte_size_(size) void* operator new(size_t size) { return DebugHeapAlloc(size, 1); }
@@ -231,6 +232,9 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     else {
       // If we're on the command line (like on a build machine), output to the console and exit(-1)
       std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
+      
+      //testing
+      LOGF_DEFAULT(ERROR, "\n----- MEMORY LEAKS: %s %s", string.c_str(), "\n");
       exit(-1);
     }
 
