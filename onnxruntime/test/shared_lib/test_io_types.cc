@@ -9,18 +9,18 @@ using namespace onnxruntime;
 static void TestModelInfo(const OrtSession* inference_session, bool is_input, const std::vector<int64_t>& dims) {
   size_t input_count;
   if (is_input) {
-    ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputCount(inference_session, &input_count));
+    ORT_THROW_ON_ERROR(OrtSessionGetInputCount(inference_session, &input_count));
   } else {
-    ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(inference_session, &input_count));
+    ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(inference_session, &input_count));
   }
   ASSERT_EQ(1, input_count);
   std::unique_ptr<OrtTypeInfo> input_type_info;
   {
     OrtTypeInfo* t;
     if (is_input) {
-      ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputTypeInfo(inference_session, 0, &t));
+      ORT_THROW_ON_ERROR(OrtSessionGetInputTypeInfo(inference_session, 0, &t));
     } else {
-      ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputTypeInfo(inference_session, 0, &t));
+      ORT_THROW_ON_ERROR(OrtSessionGetOutputTypeInfo(inference_session, 0, &t));
     }
     input_type_info.reset(t);
   }
