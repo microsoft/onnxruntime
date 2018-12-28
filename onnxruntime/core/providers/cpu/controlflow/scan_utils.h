@@ -146,6 +146,8 @@ Status IterateSequence(OpKernelContextInternal& context,
                        std::vector<std::string>& subgraph_output_names,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators);
 
+MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
+
 }  // namespace detail
 }  // namespace scan
 }  // namespace onnxruntime

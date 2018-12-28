@@ -185,6 +185,18 @@ Status IterateSequence(OpKernelContextInternal& context,
   return status;
 }
 
+MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
+  auto new_tensor = std::make_unique<Tensor>(data_type,
+                                             shape,
+                                             allocator->Alloc(shape.Size() * data_type->Size()),
+                                             allocator->Info(),
+                                             allocator);
+
+  return MLValue{new_tensor.release(),
+                 DataTypeImpl::GetType<Tensor>(),
+                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+};
+
 LoopStateVariable::LoopStateVariable(const MLValue& original_value,
                                      MLValue& final_value,
                                      const int64_t sequence_len,
@@ -202,26 +214,15 @@ LoopStateVariable::LoopStateVariable(const MLValue& original_value,
   // automatically at the end).
   // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
   // may make it harder to parallelize processing of the batch in the future.
-  auto allocate_tensor_in_mlvalue = [&]() {
-    auto new_tensor = std::make_unique<Tensor>(tensor.DataType(),
-                                               shape,
-                                               allocator->Alloc(shape.Size() * tensor.DataType()->Size()),
-                                               allocator->Info(),
-                                               allocator);
-
-    return MLValue{new_tensor.release(),
-                   DataTypeImpl::GetType<Tensor>(),
-                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
-  };
 
   // if length is > 1, we need a_ for the first output location. otherwise we use final_value for the output.
   if (sequence_len_ > 1) {
-    a_ = allocate_tensor_in_mlvalue();
+    a_ = AllocateTensorInMLValue(tensor.DataType(), shape, allocator);
   }
 
   // if length is > 2, we need b_ for the second output location
   if (sequence_len_ > 2) {
-    b_ = allocate_tensor_in_mlvalue();
+    b_ = AllocateTensorInMLValue(tensor.DataType(), shape, allocator);
   }
 }
 
@@ -292,7 +293,7 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
       num_iterations_ = final_shape_[0];
   }
 
-  // if there are multiple dimensions to iterate use the slicer. for v8 there is always a batch dimension
+  // if there are multiple iterations use the slicer. for v8 there is always a batch dimension
   use_slicer_ = is_v8 || num_iterations_ > 1;
 }
 

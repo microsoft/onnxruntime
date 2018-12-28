@@ -82,13 +82,6 @@ ONNX_OPERATOR_SET_SCHEMA(
     .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types"));
 */
 
-ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         8,
-                         KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         Scan<8>);
-
 class Scan8Impl {
  public:
   Scan8Impl(OpKernelContextInternal& context,
@@ -436,5 +429,12 @@ Status Scan8Impl::Execute() {
 
   return status;
 }
+
+ONNX_CPU_OPERATOR_KERNEL(Scan,
+                         8,
+                         KernelDefBuilder()
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                         Scan<8>);
 
 }  // namespace onnxruntime

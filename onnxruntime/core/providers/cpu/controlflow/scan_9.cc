@@ -17,6 +17,7 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cpu/tensor/transpose.h"
 
 #include "gsl/gsl_algorithm"
 
@@ -93,12 +94,6 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
 }
 */
-ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         9,
-                         KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         Scan<9>);
 
 class ScanImpl {
  public:
@@ -123,6 +118,9 @@ class ScanImpl {
   Status ValidateSubgraphInput(int start_input, int end_input,
                                const std::vector<const NodeArg*>& graph_inputs);
 
+  // setup inputs to subgraph, transposing if necessary
+  Status SetupInputs();
+
   Status AllocateOutputTensors();
   Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
 
@@ -142,6 +140,9 @@ class ScanImpl {
   const std::vector<int64_t>& input_directions_;
   const std::vector<int64_t>& output_directions_;
   const std::vector<int64_t>& axes_;
+
+  // inputs for graph. either original input value or transposed input if an axis other than 0 was specified
+  std::vector<MLValue> inputs_;
 
   std::vector<std::string> subgraph_output_names_;
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
@@ -215,12 +216,42 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
       implicit_inputs_{context_.GetImplicitInputs()} {
   num_variadic_inputs_ = context_.NumVariadicInputs(0);
   num_variadic_outputs_ = context_.OutputCount();
-
   num_loop_state_variables_ = num_variadic_inputs_ - gsl::narrow_cast<int>(num_scan_inputs);
+
+  inputs_.reserve(num_scan_inputs);
+}
+
+/**
+Calculate the transpose permutations and output shape by shifting the chosen axis to the first dimension.
+The other dimension indexes or values are pushed in order after the chosen axis.
+
+e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 2} and output shape will be {3, 2, 4}
+     if axis 2 is chosen the permutations will be {2, 0, 1} and the output shape will be {4, 2, 3}
+*/
+static void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
+                                     std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape) {
+  auto rank = input_shape.NumDimensions();
+  const auto& dims = input_shape.GetDims();
+
+  permutations.reserve(rank);
+  permutations[0] = axis;
+
+  output_shape.reserve(rank);
+  output_shape[0] = dims[axis];
+
+  for (int i = 0; i < rank; ++i) {
+    if (i != axis) {
+      permutations.push_back(i);
+      output_shape.push_back(dims[i]);
+    }
+  }
 }
 
 Status ScanImpl::Initialize() {
   auto status = ValidateInput();
+  ORT_RETURN_IF_ERROR(status);
+
+  status = SetupInputs();
   ORT_RETURN_IF_ERROR(status);
 
   auto& subgraph_outputs = subgraph_.GetOutputs();
@@ -295,6 +326,69 @@ Status ScanImpl::ValidateInput() {
   return Status::OK();
 }
 
+#define DispatchOnType(tensor_type, function, ...)            \
+  if (tensor_type == DataTypeImpl::GetType<float>())          \
+    function<float>(##__VA_ARGS__);                           \
+  else if (tensor_type == DataTypeImpl::GetType<double>())    \
+    function<double>(##__VA_ARGS__);                          \
+  else if (tensor_type == DataTypeImpl::GetType<int8_t>())    \
+    function<int8_t>(##__VA_ARGS__);                          \
+  else if (tensor_type == DataTypeImpl::GetType<int16_t>())   \
+    function<int16_t>(##__VA_ARGS__);                         \
+  else if (tensor_type == DataTypeImpl::GetType<int32_t>())   \
+    function<int32_t>(##__VA_ARGS__);                         \
+  else if (tensor_type == DataTypeImpl::GetType<int64_t>())   \
+    function<int64_t>(##__VA_ARGS__);                         \
+  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())   \
+    function<uint8_t>(##__VA_ARGS__);                         \
+  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())  \
+    function<uint16_t>(##__VA_ARGS__);                        \
+  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())  \
+    function<uint32_t>(##__VA_ARGS__);                        \
+  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())  \
+    function<uint64_t>(##__VA_ARGS__);                        \
+  else if (tensor_type == DataTypeImpl::GetType<bool>())      \
+    function<bool>(##__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>()) \
+    function<MLFloat16>(##__VA_ARGS__);                       \
+  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())  \
+  function<BFloat16>(##__VA_ARGS__)
+
+Status ScanImpl::SetupInputs() {
+  AllocatorPtr alloc;
+  auto num_scan_inputs = num_variadic_inputs_ - num_loop_state_variables_;
+
+  for (int i = 0; i < num_scan_inputs; ++i) {
+    auto sequence_dim = axes_[i];
+
+    if (sequence_dim == 0) {
+      // no transpose required
+      inputs_[i] = *context_.GetInputMLValue(i + num_loop_state_variables_);
+    } else {
+      auto& input_tensor = *context_.Input<Tensor>(i + num_loop_state_variables_);
+      const auto& input_shape = input_tensor.Shape();
+
+      std::vector<int64_t> permutations;
+      std::vector<int64_t> new_shape;
+      CalculateTransposedShape(input_shape, sequence_dim, permutations, new_shape);
+
+      if (!alloc) {
+        auto status = context_.GetTempSpaceAllocator(&alloc);
+        ORT_RETURN_IF_ERROR(status);
+      }
+
+      MLValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
+
+      DispatchOnType(input_tensor.DataType(), TransposeBase::DoTranspose,
+                     permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+
+      inputs_[i] = transpose_output;
+    }
+  }
+
+  return Status::OK();
+}
+
 Status ScanImpl::AllocateOutputTensors() {
   Status status = Status::OK();
   auto& graph_outputs = subgraph_.GetOutputs();
@@ -357,11 +451,11 @@ Status ScanImpl::Execute() {
   std::vector<MLValueTensorSlicer<const MLValue>::Iterator> scan_input_stream_iterators;
   scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
 
-  for (int i = num_loop_state_variables_, end = num_variadic_inputs_; i < end; ++i) {
-    const auto& mlvalue = *context_.GetInputMLValue(i);
+  for (int i = 0, end = num_variadic_inputs_ - num_loop_state_variables_; i < end; ++i) {
+    const auto& mlvalue = inputs_[i];
 
     // forward
-    if (input_directions_[i - num_loop_state_variables_] == static_cast<int64_t>(ScanDirection::kForward)) {
+    if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
       // the iterator is self contained, so we don't need to keep the MLValueTensorSlicer instance around
       scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue).begin());
     } else {  // reverse
@@ -378,4 +472,10 @@ Status ScanImpl::Execute() {
   return status;
 }
 
+ONNX_CPU_OPERATOR_KERNEL(Scan,
+                         9,
+                         KernelDefBuilder()
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                         Scan<9>);
 }  // namespace onnxruntime
