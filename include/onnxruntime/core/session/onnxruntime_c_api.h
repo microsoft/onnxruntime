@@ -6,7 +6,6 @@
 // =====================================================================================================
 
 #pragma once
-#include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -288,7 +287,7 @@ ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions*);
 
 // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
 // will exit as soon as possible if the flag is true.
-ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ bool value);
+ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
 
 /**
  * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
@@ -314,9 +313,9 @@ ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* i
 ORT_API_STATUS(OrtGetTensorMutableData, _Inout_ OrtValue* value, _Out_ void** out);
 
 /**
- * \Return true iff an OrtValue is a tensor
+ * \Return 1 iff an OrtValue is a tensor, 0 otherwise
  */
-ORT_API(bool, OrtIsTensor, _In_ const OrtValue* value);
+ORT_API(int, OrtIsTensor, _In_ const OrtValue* value);
 
 /**
  * \param value A tensor created from OrtCreateTensor... function.

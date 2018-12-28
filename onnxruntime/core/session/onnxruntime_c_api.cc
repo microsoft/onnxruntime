@@ -596,9 +596,9 @@ static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t ind
   return nullptr;
 }
 
-ORT_API(bool, OrtIsTensor, _In_ const OrtValue* value) {
+ORT_API(int, OrtIsTensor, _In_ const OrtValue* value) {
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
-  return v->IsTensor();
+  return v->IsTensor() ? 1 : 0;
 }
 
 ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
