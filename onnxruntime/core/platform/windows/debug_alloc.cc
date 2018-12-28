@@ -34,7 +34,6 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #include <iostream>
 #include "debug_alloc.h"
 #include <DbgHelp.h>
-#include "core/common/logging/logging.h"
 #pragma comment(lib, "Dbghelp.lib")
 
 _Ret_notnull_ _Post_writable_byte_size_(size) void* operator new(size_t size) { return DebugHeapAlloc(size, 1); }
