@@ -267,12 +267,14 @@ int real_main(int argc, char* argv[]) {
 #endif
 
     std::string res = stat.ToString();
-    LOGF_DEFAULT(ERROR, "\n Status Report: %s \n", res.c_str());
-
     fwrite(res.c_str(), 1, res.size(), stdout);
+    fflush(stdout);
+
     for (ITestCase* l : tests) {
       delete l;
     }
+
+    LOGF_DEFAULT(ERROR, "\n after test status output fwrite \n");
   }
   std::map<std::string, std::string> broken_tests{
       {"AvgPool1d", "disable reason"},
@@ -376,6 +378,8 @@ int real_main(int argc, char* argv[]) {
       result = -1;
     }
   }
+
+  LOGF_DEFAULT(ERROR, "\n result %d \n", result);
 
   return result;
 }
