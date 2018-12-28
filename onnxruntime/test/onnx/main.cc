@@ -266,9 +266,9 @@ int real_main(int argc, char* argv[]) {
 
 #endif
 
-    LOGF_DEFAULT(ERROR, "\n Status Report: %s \n", stat.ToString());
-
     std::string res = stat.ToString();
+    LOGF_DEFAULT(ERROR, "\n Status Report: %s \n", res.c_str());
+
     fwrite(res.c_str(), 1, res.size(), stdout);
     for (ITestCase* l : tests) {
       delete l;
