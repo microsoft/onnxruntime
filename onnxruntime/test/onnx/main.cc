@@ -17,6 +17,7 @@
 #include "sync_api.h"
 #include "providers.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/logging/logging.h"
 
 using namespace onnxruntime;
 
@@ -252,6 +253,8 @@ int real_main(int argc, char* argv[]) {
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
+      LOGF_DEFAULT(ERROR, "\n%s\n", st.ErrorMessage().c_str());
+
       return -1;
     }
 
