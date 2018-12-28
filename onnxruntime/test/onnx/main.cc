@@ -372,6 +372,7 @@ int real_main(int argc, char* argv[]) {
   for (const std::string& s : stat.GetFailedTest()) {
     if (broken_tests.find(s) == broken_tests.end()) {
       fprintf(stderr, "test %s failed, please fix it\n", s.c_str());
+      fflush(stderr);
       result = -1;
     }
   }
