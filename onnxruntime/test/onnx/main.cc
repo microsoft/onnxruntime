@@ -266,9 +266,9 @@ int real_main(int argc, char* argv[]) {
 
 #endif
 
-    std::string res = stat.ToString();
-    fwrite(res.c_str(), 1, res.size(), stdout);
-    fflush(stdout);
+    //std::string res = stat.ToString();
+    //fwrite(res.c_str(), 1, res.size(), stdout);
+    //fflush(stdout);
 
     for (ITestCase* l : tests) {
       delete l;
