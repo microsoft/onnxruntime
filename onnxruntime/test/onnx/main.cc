@@ -17,6 +17,7 @@
 #include "sync_api.h"
 #include "providers.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/logging/logging.h"
 
 using namespace onnxruntime;
 
@@ -389,6 +390,7 @@ int main(int argc, char* argv[]) {
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     fflush(stderr);
+    LOGF_DEFAULT(ERROR, "%s\n", ex.what());
     return -1;
   }
 }
