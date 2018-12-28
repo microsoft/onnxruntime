@@ -235,7 +235,6 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
           if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
           break;
         default:
-          LOGF_DEFAULT(ERROR, "\n Status Report failed \n");
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown result");
       }
     }

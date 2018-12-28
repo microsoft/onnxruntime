@@ -253,8 +253,6 @@ int real_main(int argc, char* argv[]) {
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
-      LOGF_DEFAULT(ERROR, "\n Run Tests failed: %s\n", st.ErrorMessage().c_str());
-
       return -1;
     }
 
@@ -267,6 +265,8 @@ int real_main(int argc, char* argv[]) {
     }
 
 #endif
+
+    LOGF_DEFAULT(ERROR, "\n Status Report: %s \n", stat.ToString());
 
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
