@@ -273,8 +273,6 @@ int real_main(int argc, char* argv[]) {
     for (ITestCase* l : tests) {
       delete l;
     }
-
-    LOGF_DEFAULT(ERROR, "\n after test status output fwrite \n");
   }
   std::map<std::string, std::string> broken_tests{
       {"AvgPool1d", "disable reason"},
@@ -379,8 +377,6 @@ int real_main(int argc, char* argv[]) {
     }
   }
 
-  LOGF_DEFAULT(ERROR, "\n result %d \n", result);
-
   return result;
 }
 #ifdef _WIN32
@@ -392,6 +388,10 @@ int main(int argc, char* argv[]) {
     return real_main(argc, argv);
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
+    fflush(stderr);
+
+    LOGF_DEFAULT(ERROR, "%s\n", ex.what());
+
     return -1;
   }
 }
