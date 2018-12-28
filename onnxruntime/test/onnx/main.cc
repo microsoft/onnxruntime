@@ -390,8 +390,6 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     fflush(stderr);
 
-    LOGF_DEFAULT(ERROR, "%s\n", ex.what());
-
     return -1;
   }
 }

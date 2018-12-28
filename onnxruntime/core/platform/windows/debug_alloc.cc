@@ -232,10 +232,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     else {
       // If we're on the command line (like on a build machine), output to the console and exit(-1)
       std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
-      
-      //testing
-      LOGF_DEFAULT(ERROR, "\n----- MEMORY LEAKS: %s %s", string.c_str(), "\n");
-      //exit(-1);
+      exit(-1);
     }
 
   } else {

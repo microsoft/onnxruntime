@@ -239,8 +239,6 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
       }
     }
   }
-
-  LOGF_DEFAULT(ERROR, "\n Status Report Succeeded \n");
   return common::Status::OK();
 }
 
