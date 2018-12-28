@@ -386,7 +386,9 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
 #endif
   try {
-    return real_main(argc, argv);
+    int returnVal = real_main(argc, argv);
+    LOGF_DEFAULT(ERROR, "%d\n", returnVal);
+    return returnVal;
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     fflush(stderr);
