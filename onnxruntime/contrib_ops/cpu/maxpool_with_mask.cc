@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "maxpool_with_mask.h"
-#include <omp.h>
 
 namespace onnxruntime {
 namespace contrib {
