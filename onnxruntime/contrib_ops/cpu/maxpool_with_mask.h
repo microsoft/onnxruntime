@@ -64,12 +64,10 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
             int64_t hend = std::min(hstart + kernel_shape[0], height);
             hstart = std::max(hstart, static_cast<int64_t>(0));
             float Yh = std::numeric_limits<float>::lowest();
-            int64_t h_index = -1;
             for (int64_t h = hstart; h < hend; ++h) {
               if (h >= 0 && m_d[h] == 0) break;  // if mask == 0, stop
               if (x_d[h] > Yh) {
                 Yh = x_d[h];
-                h_index = h;
               }
             }
             y_d[ph] = Yh;
@@ -100,16 +98,12 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
               wstart = std::max(wstart, static_cast<int64_t>(0));
               const int64_t pool_index = ph * pooled_width + pw;
               float Yh = std::numeric_limits<float>::lowest();
-              int64_t h_index = -1;
-              int64_t w_index = -1;
               for (int64_t h = hstart; h < hend; ++h) {
                 for (int64_t w = wstart; w < wend; ++w) {
                   const int64_t input_index = h * width + w;
                   if (input_index > 0 && m_d[input_index] == 0) break;  // if mask == 0, break
                   if (x_d[input_index] > Yh) {
                     Yh = x_d[input_index];
-                    h_index = h;
-                    w_index = w;
                   }
                 }
               }
@@ -146,9 +140,6 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
                 const int64_t pool_index =
                     ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
                 float Yh = std::numeric_limits<float>::lowest();
-                int64_t h_index = -1;
-                int64_t w_index = -1;
-                int64_t d_index = -1;
                 for (int64_t h = hstart; h < hend; ++h) {
                   for (int64_t w = wstart; w < wend; ++w) {
                     for (int64_t d = dstart; d < dend; ++d) {
@@ -156,9 +147,6 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
                       if (input_index > 0 && m_d[input_index] == 0) break;  // if mask == 0, break
                       if (x_d[input_index] > Yh) {
                         Yh = x_d[input_index];
-                        h_index = h;
-                        w_index = w;
-                        d_index = d;
                       }
                     }
                   }
