@@ -248,6 +248,9 @@ int real_main(int argc, char* argv[]) {
       return -1;
     }
 
+    SetThreadpoolThreadMinimum(pool, 2);
+    SetThreadpoolThreadMaximum(pool, GetNumCpuCores());
+
     SetThreadpoolCallbackPool(&CallBackEnviron, pool);
 
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
