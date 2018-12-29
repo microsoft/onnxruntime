@@ -10,9 +10,10 @@ namespace onnxruntime {
 class SliceBase {
  protected:
   SliceBase (const OpKernelInfo& info) {
-    info.GetAttrs("starts", attr_starts_);
-    info.GetAttrs("ends",   attr_ends_);
-    info.GetAttrs("axes",   attr_axes_);
+    auto has_starts = info.GetAttrs("starts", attr_starts_).IsOK();
+    auto has_ends   = info.GetAttrs("ends",   attr_ends_).IsOK();
+    auto has_axes   = info.GetAttrs("axes",   attr_axes_).IsOK();
+    ORT_ENFORCE(!has_axes || has_starts && has_ends, "Not all required attributes are specified");
   }
 
   Status PrepareForCompute(const std::vector<int64_t>& raw_starts,

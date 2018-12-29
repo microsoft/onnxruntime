@@ -123,21 +123,21 @@ void Slice<T, Tind, dynamic>::FillVectors(const OpKernelContext* context,
                                           std::vector<int64_t>&  input_axes) const {
   if (context->Input<Tensor>(1) != nullptr) {
     auto starts_tensor_ptr = context->Input<Tensor>(1);
-    input_starts = std::move(std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
-                                                   starts_tensor_ptr->Data<Tind>() +
-                                                   starts_tensor_ptr->Shape().Size()));
+    input_starts = std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
+                                         starts_tensor_ptr->Data<Tind>() +
+                                         starts_tensor_ptr->Shape().Size());
   }
   if (context->Input<Tensor>(2) != nullptr) {
     auto ends_tensor_ptr = context->Input<Tensor>(2);
-    input_ends = std::move(std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
-                                                 ends_tensor_ptr->Data<Tind>() +
-                                                 ends_tensor_ptr->Shape().Size()));
+    input_ends = std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
+                                       ends_tensor_ptr->Data<Tind>() +
+                                       ends_tensor_ptr->Shape().Size());
   }
   if (context->Input<Tensor>(3) != nullptr) {
     auto axes_tensor_ptr = context->Input<Tensor>(3);
-    input_axes = std::move(std::vector<int64_t> (axes_tensor_ptr->Data<Tind>(),
-                                                 axes_tensor_ptr->Data<Tind>() +
-                                                 axes_tensor_ptr->Shape().Size()));
+    input_axes = std::vector<int64_t> (axes_tensor_ptr->Data<Tind>(),
+                                       axes_tensor_ptr->Data<Tind>() +
+                                       axes_tensor_ptr->Shape().Size());
   }
 }
 
