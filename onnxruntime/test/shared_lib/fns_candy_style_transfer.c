@@ -6,15 +6,15 @@
 #include <assert.h>
 #include <png.h>
 
-#define ONNXRUNTIME_ABORT_ON_ERROR(expr)                         \
-  do {                                                           \
-    ONNXStatus* onnx_status = (expr);                            \
-    if (onnx_status != NULL) {                                   \
-      const char* msg = ONNXRuntimeGetErrorMessage(onnx_status); \
-      fprintf(stderr, "%s\n", msg);                              \
-      ReleaseONNXStatus(onnx_status);                            \
-      abort();                                                   \
-    }                                                            \
+#define ORT_ABORT_ON_ERROR(expr)                         \
+  do {                                                   \
+    OrtStatus* onnx_status = (expr);                     \
+    if (onnx_status != NULL) {                           \
+      const char* msg = OrtGetErrorMessage(onnx_status); \
+      fprintf(stderr, "%s\n", msg);                      \
+      OrtReleaseStatus(onnx_status);                     \
+      abort();                                           \
+    }                                                    \
   } while (0);
 
 /**
@@ -94,22 +94,22 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
 /**
  * \param tensor should be a float tensor in [N,C,H,W] format
  */
-static int write_tensor_to_png_file(ONNXValue* tensor, const char* output_file) {
-  struct ONNXRuntimeTensorTypeAndShapeInfo* shape_info;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeGetTensorShapeAndType(tensor, &shape_info));
-  size_t dim_count = ONNXRuntimeGetNumOfDimensions(shape_info);
+static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
+  struct OrtTensorTypeAndShapeInfo* shape_info;
+  ORT_ABORT_ON_ERROR(OrtGetTensorShapeAndType(tensor, &shape_info));
+  size_t dim_count = OrtGetNumOfDimensions(shape_info);
   if (dim_count != 4) {
     printf("output tensor must have 4 dimensions");
     return -1;
   }
   int64_t dims[4];
-  ONNXRuntimeGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0]));
+  OrtGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0]));
   if (dims[0] != 1 || dims[1] != 3) {
     printf("output tensor shape error");
     return -1;
   }
   float* f;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeGetTensorMutableData(tensor, (void**)&f));
+  ORT_ABORT_ON_ERROR(OrtGetTensorMutableData(tensor, (void**)&f));
   png_bytep model_output_bytes;
   png_image image;
   memset(&image, 0, (sizeof image));
@@ -132,7 +132,7 @@ static void usage() {
   printf("usage: <model_path> <input_file> <output_file> \n");
 }
 
-int run_inference(ONNXSession* session, const char* input_file, const char* output_file) {
+int run_inference(OrtSession* session, const char* input_file, const char* output_file) {
   size_t input_height;
   size_t input_width;
   float* model_input;
@@ -145,47 +145,47 @@ int run_inference(ONNXSession* session, const char* input_file, const char* outp
     free(model_input);
     return -1;
   }
-  ONNXRuntimeAllocatorInfo* allocator_info;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateCpuAllocatorInfo(ONNXRuntimeArenaAllocator, ONNXRuntimeMemTypeDefault, &allocator_info));
+  OrtAllocatorInfo* allocator_info;
+  ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   const size_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 
-  ONNXValue* input_tensor = NULL;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateTensorWithDataAsONNXValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
+  OrtValue* input_tensor = NULL;
+  ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
-  assert(ONNXRuntimeIsTensor(input_tensor) != 0);
-  ReleaseONNXRuntimeAllocatorInfo(allocator_info);
+  assert(OrtIsTensor(input_tensor));
+  OrtReleaseAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
-  ONNXValue* output_tensor = NULL;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeRunInference(session, NULL, input_names, (const ONNXValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+  OrtValue* output_tensor = NULL;
+  ORT_ABORT_ON_ERROR(OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
-  assert(ONNXRuntimeIsTensor(output_tensor) != 0);
+  assert(OrtIsTensor(output_tensor));
   int ret = 0;
   if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
     ret = -1;
   }
-  ReleaseONNXValue(output_tensor);
-  ReleaseONNXValue(input_tensor);
+  OrtReleaseValue(output_tensor);
+  OrtReleaseValue(input_tensor);
   free(model_input);
   return ret;
 }
 
-void verify_input_output_count(ONNXSession* session) {
+void verify_input_output_count(OrtSession* session) {
   size_t count;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeInferenceSessionGetInputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetInputCount(session, &count));
   assert(count == 1);
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeInferenceSessionGetOutputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetOutputCount(session, &count));
   assert(count == 1);
 }
 
 #ifdef USE_CUDA
-void enable_cuda(ONNXRuntimeSessionOptions* session_option) {
-  ONNXRuntimeProviderFactoryInterface** factory;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &factory));
-  ONNXRuntimeSessionOptionsAppendExecutionProvider(session_option, factory);
-  ONNXRuntimeReleaseObject(factory);
+void enable_cuda(OrtSessionOptions* session_option) {
+  OrtProviderFactoryInterface** factory;
+  ORT_ABORT_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &factory));
+  OrtSessionOptionsAppendExecutionProvider(session_option, factory);
+  OrtReleaseObject(factory);
 }
 #endif
 
@@ -197,19 +197,19 @@ int main(int argc, char* argv[]) {
   char* model_path = argv[1];
   char* input_file = argv[2];
   char* output_file = argv[3];
-  ONNXRuntimeEnv* env;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeInitialize(ONNXRUNTIME_LOGGING_LEVEL_kWARNING, "test", &env));
-  ONNXRuntimeSessionOptions* session_option = ONNXRuntimeCreateSessionOptions();
+  OrtEnv* env;
+  ORT_ABORT_ON_ERROR(OrtInitialize(ORT_LOGGING_LEVEL_kWARNING, "test", &env));
+  OrtSessionOptions* session_option = OrtCreateSessionOptions();
 #ifdef USE_CUDA
   enable_cuda(session_option);
 #endif
-  ONNXSession* session;
-  ONNXRUNTIME_ABORT_ON_ERROR(ONNXRuntimeCreateInferenceSession(env, model_path, session_option, &session));
+  OrtSession* session;
+  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
-  ONNXRuntimeReleaseObject(session_option);
-  ReleaseONNXSession(session);
-  ONNXRuntimeReleaseObject(env);
+  OrtReleaseObject(session_option);
+  OrtReleaseSession(session);
+  OrtReleaseObject(env);
   if (ret != 0) {
     fprintf(stderr, "fail\n");
   }

@@ -68,7 +68,7 @@ class ConvPrimitive : public PrimitiveBase {
   ~ConvPrimitive() = default;
 
   void Compute(const T* src_data, const T* filter_data,
-               const T* dst_data, const T* bias_data = nullptr) {
+               T* dst_data, const T* bias_data = nullptr) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.filter_mem->set_data_handle(
@@ -78,7 +78,7 @@ class ConvPrimitive : public PrimitiveBase {
           static_cast<void*>(const_cast<T*>(bias_data)));
     }
     context_.dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(dst_data)));
+        static_cast<void*>(dst_data));
     context_.stream->submit(context_.net);
 
     context_.src_mem->set_data_handle(nullptr);
@@ -265,7 +265,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   const int group_mkl = static_cast<int>(onnxruntime::ConvBase::group_);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::ConvBase::ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape = onnxruntime::ConvBase::ComputeKernelShape(W->Shape());
   const size_t kernel_rank = kernel_shape.size();
@@ -276,14 +276,14 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   if (kernel_rank + 2 != W->Shape().NumDimensions()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
                                    " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
                                    " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_rank; ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
                                      " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
                                      " W: ", W->Shape().ToString().c_str());
     }
@@ -305,7 +305,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ONNXRUNTIME_RETURN_IF_ERROR(onnxruntime::ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -334,7 +334,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   IAllocatorUniquePtr<void> src_reorder_buffer;
   IAllocatorUniquePtr<void> filter_reorder_buffer;
   IAllocatorUniquePtr<void> dst_reorder_buffer;
@@ -437,8 +437,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       DoReorder<T>(params);
     }
 
-  } catch (mkldnn::error& e) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
+  } catch (const mkldnn::error& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 
   return Status::OK();

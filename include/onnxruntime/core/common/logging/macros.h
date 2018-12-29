@@ -5,7 +5,7 @@
 // NOTE: Don't include this file directly. Include logging.h
 
 #define CREATE_MESSAGE(logger, severity, category, datatype)            \
-  ::onnxruntime::logging::Capture(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ONNXRUNTIME_WHERE)
+  ::onnxruntime::logging::Capture(logger, ::onnxruntime::logging::Severity::k##severity, category, datatype, ORT_WHERE)
 
 /*
   Both printf and stream style logging are supported.

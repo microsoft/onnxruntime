@@ -212,21 +212,36 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             foreach (var opset in opsets)
             {
                 var modelRoot = new DirectoryInfo(opset);
-                foreach (var model in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     // TODO: dims contains 'None'. Session throws error.
-                    if (model.ToString() == "test_tiny_yolov2")
+                    if (modelDir.Name== "test_tiny_yolov2")
                         continue;
+
+                    String onnxModelFileName = null;
                     try
                     {
-                        //TODO: sometimes, the file name is not 'model.onnx'
-                        var session = new InferenceSession($"{opset}\\{model}\\model.onnx");
+                        var onnxModelNames = modelDir.GetFiles("*.onnx");
+                        if (onnxModelNames.Count() != 1)
+                        {
+                            // TODO remove file "._resnet34v2.onnx" from test set
+                            if (onnxModelNames[0].Name == "._resnet34v2.onnx")
+                                onnxModelNames[0] = onnxModelNames[1];
+                            else
+                            {
+                                var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
+                                throw new Exception($"Opset {opset}: Model {modelDir}. Can't determine model file name. Found these :{modelNamesList}");
+                            }
+                        }
+
+                        onnxModelFileName = $"{opset}\\{modelDir.Name}\\{onnxModelNames[0].Name}";
+                        var session = new InferenceSession(onnxModelFileName);
                         var inMeta = session.InputMetadata;
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
                         var innodedims = innodepair.Value.Dimensions;
-                        var dataIn = LoadTensorFromFilePb($"{opset}\\{model}\\test_data_set_0\\input_0.pb");
-                        var dataOut = LoadTensorFromFilePb($"{opset}\\{model}\\test_data_set_0\\output_0.pb");
+                        var dataIn = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\input_0.pb");
+                        var dataOut = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\output_0.pb");
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
                         nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
@@ -237,9 +252,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                     catch (Exception ex)
                     {
-                        var msg = $"Opset {opset}: Model {model}: error = {ex.Message}";
-                        continue; //TODO: fix it
-                        //throw new Exception(msg);
+                        var msg = $"Opset {opset}: Model {modelDir}: ModelFile = {onnxModelFileName} error = {ex.Message}";
+                        throw new Exception(msg);
                     }
                 } //model
             } //opset
@@ -495,13 +509,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         class floatComparer : IEqualityComparer<float>
         {
-            private float tol = 1e-6f;
-            private float divtol = 1e-3f;
+            private float atol = 1e-3f;
+            private float rtol = 1.7e-2f;
+
             public bool Equals(float x, float y)
             {
-                if (y == 0)
-                    return (Math.Abs(x - y) < tol);
-                return (Math.Abs(1 - x / y) < divtol);
+                return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
             }
             public int GetHashCode(float x)
             {

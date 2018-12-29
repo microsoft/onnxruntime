@@ -83,9 +83,9 @@ static Status GenerateConstantOutput(Tensor& Y, TensorProto::DataType dtype, flo
       GenerateData<bool>(Y, value);
       break;
     case TensorProto::FLOAT16:
-      ONNXRUNTIME_NOT_IMPLEMENTED("FLOAT16 is not supported");
+      ORT_NOT_IMPLEMENTED("FLOAT16 is not supported");
     default:
-      ONNXRUNTIME_THROW("Unsupported data type of ", dtype);
+      ORT_THROW("Unsupported data type of ", dtype);
   }
 
   return Status::OK();
@@ -102,7 +102,7 @@ Status ConstantLike::Compute(OpKernelContext* ctx) const {
       dtype = utils::GetTensorProtoType(*X);
     }
   } else {
-    ONNXRUNTIME_ENFORCE(!shape_.empty(), "Neither Input tensor is not null nor shape attribute exists");
+    ORT_ENFORCE(!shape_.empty(), "Neither Input tensor is not null nor shape attribute exists");
     Y = ctx->Output(0, TensorShape(shape_));
   }
 

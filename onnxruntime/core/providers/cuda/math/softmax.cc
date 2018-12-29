@@ -39,8 +39,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto beta = Consts<CudaT>::Zero;
   CudnnTensor input_tensor;
   CudnnTensor output_tensor;
-  ONNXRUNTIME_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  ONNXRUNTIME_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(CudnnHandle(), CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
 
   return Status::OK();

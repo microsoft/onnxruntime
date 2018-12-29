@@ -96,7 +96,7 @@ namespace logging {
 using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 
 #ifndef NDEBUG
-ONNXRUNTIME_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
+ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
 #else
 constexpr bool vlog_enabled = false;  // no VLOG output
 #endif
@@ -202,7 +202,7 @@ class LoggingManager final {
   ~LoggingManager();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoggingManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LoggingManager);
 
   Timestamp GetTimestamp() const noexcept;
   void CreateDefaultLogger(const std::string& logger_id);

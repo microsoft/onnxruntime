@@ -52,7 +52,7 @@ template <typename T>
 OneHotEncoderOp<T>::OneHotEncoderOp(const OpKernelInfo& info) : OpKernel(info), zeros_(info.GetAttrOrDefault<int64_t>("zeros", 1)), num_categories_(0) {
   std::vector<int64_t> tmp_cats_int64s = info.GetAttrsOrDefault<int64_t>("cats_int64s");
   std::vector<std::string> tmp_cats_strings = info.GetAttrsOrDefault<string>("cats_strings");
-  ONNXRUNTIME_ENFORCE(tmp_cats_int64s.empty() || tmp_cats_strings.empty());
+  ORT_ENFORCE(tmp_cats_int64s.empty() || tmp_cats_strings.empty());
   if (!tmp_cats_int64s.empty()) {
     num_categories_ = tmp_cats_int64s.size();
     for (size_t idx = 0, end = tmp_cats_int64s.size(); idx < end; ++idx) {
@@ -64,14 +64,14 @@ OneHotEncoderOp<T>::OneHotEncoderOp(const OpKernelInfo& info) : OpKernel(info), 
       cats_strings_[tmp_cats_strings[idx]] = idx;
     }
   }
-  ONNXRUNTIME_ENFORCE(num_categories_ > 0);
+  ORT_ENFORCE(num_categories_ > 0);
 }
 
 template <typename T>
 common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
-  ONNXRUNTIME_ENFORCE(input_shape.NumDimensions() <= 2);
+  ORT_ENFORCE(input_shape.NumDimensions() <= 2);
 
   std::vector<int64_t> output_shape(input_shape.GetDims());
   output_shape.push_back(num_categories_);
@@ -96,7 +96,7 @@ template <>
 common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
-  ONNXRUNTIME_ENFORCE(input_shape.NumDimensions() <= 2);
+  ORT_ENFORCE(input_shape.NumDimensions() <= 2);
 
   std::vector<int64_t> output_shape(input_shape.GetDims());
   output_shape.push_back(num_categories_);

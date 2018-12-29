@@ -118,7 +118,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     sub_graph.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
   }
   //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
-  ONNXRUNTIME_ENFORCE(sub_graph.Resolve().IsOK());
+  ORT_ENFORCE(sub_graph.Resolve().IsOK());
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
@@ -207,7 +207,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     sub_graph.AddNode(node.name() + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
   }
   auto status = sub_graph.Resolve();
-  ONNXRUNTIME_ENFORCE(status.IsOK());
+  ORT_ENFORCE(status.IsOK());
 }
 
 FunctionImpl::~FunctionImpl() = default;

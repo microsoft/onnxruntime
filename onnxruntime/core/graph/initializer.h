@@ -42,7 +42,7 @@ class Initializer final {
         break;
       }
       default:
-        ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+        ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
         break;
     }
   }
@@ -65,7 +65,7 @@ class Initializer final {
       switch (data_type_) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           int64_t size = tensor_proto->float_data_size();
-          ONNXRUNTIME_ENFORCE(size_ == size, "size is different");
+          ORT_ENFORCE(size_ == size, "size is different");
           for (int i = 0; i < size_; i++) {
             float_data_.push_back(tensor_proto->float_data(i));
           }
@@ -73,14 +73,14 @@ class Initializer final {
         }
         case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
           int64_t size = tensor_proto->double_data_size();
-          ONNXRUNTIME_ENFORCE(size_ == size, "size is different");
+          ORT_ENFORCE(size_ == size, "size is different");
           for (int i = 0; i < size_; i++) {
             double_data_.push_back(tensor_proto->double_data(i));
           }
           break;
         }
         default:
-          ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+          ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
           break;
       }
     }
@@ -122,17 +122,17 @@ class Initializer final {
           break;
         }
         default:
-          ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
+          ORT_NOT_IMPLEMENTED(__FUNCTION__, "data type is not supported");
           break;
       }
     }
   }
 
-  ONNX_NAMESPACE::TensorProto_DataType data_type() const {
+  int data_type() const {
     return data_type_;
   }
 
-  ONNX_NAMESPACE::TensorProto_DataType& data_type() {
+  int& data_type() {
     return data_type_;
   }
 
@@ -342,7 +342,7 @@ class Initializer final {
       num *= dims_[k];
     }
 
-    int64_t n = size()/num;
+    int64_t n = size() / num;
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
@@ -372,7 +372,7 @@ class Initializer final {
   }
 
  private:
-  ONNX_NAMESPACE::TensorProto_DataType data_type_;
+  int data_type_;
   std::string name_;
   std::vector<int64_t> dims_;
   int64_t size_;

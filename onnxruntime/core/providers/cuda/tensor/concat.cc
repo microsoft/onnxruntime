@@ -18,7 +18,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count, p));
 
   int64_t output_offset = 0;
   auto element_bytes = p.output_tensor->DataType()->Size();

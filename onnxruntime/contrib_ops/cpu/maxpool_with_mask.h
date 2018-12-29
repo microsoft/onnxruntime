@@ -24,7 +24,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
 
     const TensorShape& x_shape = X->Shape();
     const TensorShape& m_shape = M->Shape();
-    ONNXRUNTIME_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
+    ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
     //TODO: fix this checker later
     //ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape mismatch: ", x_shape, " vs ", m_shape);

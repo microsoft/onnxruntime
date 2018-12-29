@@ -64,19 +64,19 @@ bool NonMaxSuppression<T>::SuppressByIOU(const T* boxes_data, int32_t box_index1
 template <typename T>
 Status NonMaxSuppression<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* boxes = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(boxes);
+  ORT_ENFORCE(boxes);
   const Tensor* scores = ctx->Input<Tensor>(1);
-  ONNXRUNTIME_ENFORCE(scores);
+  ORT_ENFORCE(scores);
 
   const TensorShape& boxes_shape = boxes->Shape();
   auto boxes_dims = boxes_shape.GetDims();
-  ONNXRUNTIME_RETURN_IF_NOT(boxes_shape.NumDimensions() == 2, "boxes must be a 2D tensor.");
+  ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 2, "boxes must be a 2D tensor.");
   int64_t num_boxes = boxes_dims[0];
-  ONNXRUNTIME_RETURN_IF_NOT(boxes_dims[1] == 4, "boxes shape must be a 2D tensor with shape [num_boxes, 4].");
+  ORT_RETURN_IF_NOT(boxes_dims[1] == 4, "boxes shape must be a 2D tensor with shape [num_boxes, 4].");
 
   const TensorShape& scores_shape = scores->Shape();
-  ONNXRUNTIME_RETURN_IF_NOT(scores_shape.NumDimensions() == 1, "boxes must be a 1D tensor.");
-  ONNXRUNTIME_RETURN_IF_NOT(scores_shape.GetDims()[0] == num_boxes, "scores and boxes should have same num_boxes.");
+  ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 1, "boxes must be a 1D tensor.");
+  ORT_RETURN_IF_NOT(scores_shape.GetDims()[0] == num_boxes, "scores and boxes should have same num_boxes.");
 
   if (max_output_size_ <= 0 || boxes_dims[0] == 0) {
     TensorShape output_shape({0});

@@ -12,7 +12,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 void SessionState::SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> graph_viewer) {
-  ONNXRUNTIME_ENFORCE(nullptr != graph_viewer);
+  ORT_ENFORCE(nullptr != graph_viewer);
   graph_viewer_ = std::move(graph_viewer);
 }
 
@@ -42,7 +42,7 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
 }
 
 void SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue) {
-  ONNXRUNTIME_ENFORCE(mlvalue_index >= 0 && mlvalue_index <= mlvalue_name_idx_map_.MaxIdx());
+  ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index <= mlvalue_name_idx_map_.MaxIdx());
   initialized_tensors_.insert({mlvalue_index, mlvalue});
 }
 
@@ -138,10 +138,10 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
                                            const SessionState& session_state) {
   auto entry = subgraph_session_states_.find(index);
 
-  // make sure this is new. internal logic error if it is not so using ONNXRUNTIME_ENFORCE.
+  // make sure this is new. internal logic error if it is not so using ORT_ENFORCE.
   if (entry != subgraph_session_states_.cend()) {
     const auto& existing_entries = entry->second;
-    ONNXRUNTIME_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(),
+    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(),
                         "Entry exists in node ", index, " for attribute ", attribute_name);
   }
 

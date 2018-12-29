@@ -39,9 +39,9 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSet(
     const std::string& domain,
     int baseline_opset_version,
     int opset_version) {
-  ONNXRUNTIME_RETURN_IF_ERROR(SetBaselineAndOpsetVersionForDomain(domain, baseline_opset_version, opset_version));
+  ORT_RETURN_IF_ERROR(SetBaselineAndOpsetVersionForDomain(domain, baseline_opset_version, opset_version));
   for (auto& schema : schemas)
-    ONNXRUNTIME_RETURN_IF_ERROR(RegisterOpSchema(std::move(schema)));
+    ORT_RETURN_IF_ERROR(RegisterOpSchema(std::move(schema)));
   return common::Status::OK();
 }
 

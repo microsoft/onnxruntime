@@ -374,6 +374,88 @@ else()
   endif()
 endif()
 
+if (onnxruntime_USE_JEMALLOC)
+  if (Win32)
+    message( FATAL_ERROR "Jemalloc is not supported on Windows." )
+  endif()
+  include(jemalloc)
+  add_definitions(-DUSE_JEMALLOC=1)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${JEMALLOC_STATIC_LIBRARIES})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
+endif()
+
+include_directories(
+  ${ONNXRUNTIME_INCLUDE_DIR}
+  $<TARGET_PROPERTY:GSL,INTERFACE_INCLUDE_DIRECTORIES>
+)
+
+if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
+  include(mkldnn)
+endif()
+
+if (onnxruntime_USE_MKLML)
+  add_definitions(-DUSE_MKLML=1)
+  # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
+  #add_definitions(-DUSE_MKLML_FOR_BLAS=1)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  link_directories(${MKLML_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_MKLDNN)
+  add_definitions(-DUSE_MKLDNN=1)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
+  link_directories(${MKLDNN_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_OPENBLAS)
+  add_definitions(-DUSE_OPENBLAS=1)
+  if (WIN32)
+    include_directories(${onnxruntime_OPENBLAS_HOME})
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_OPENBLAS_HOME}/lib/libopenblas.lib)
+  else()
+    # on linux we assume blas is installed via 'apt-get install libopenblas-dev'
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES openblas)
+  endif()
+endif()
+
+configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
+
+if (onnxruntime_USE_CUDA)
+  add_definitions(-DUSE_CUDA=1)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 14)
+  if (DEFINED onnxruntime_CUDA_HOME)
+    file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDA_TOOLKIT_ROOT_DIR)
+  endif ()
+  file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+  find_package(CUDA 9.0 REQUIRED)
+  set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
+  if (WIN32)
+    link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
+    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas)
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_100.dll /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
+  else()
+    link_directories(${onnxruntime_CUDNN_HOME}/lib64)
+    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
+
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream per-thread")
+  if (NOT WIN32)
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
+  endif()
+endif()
+
 if (onnxruntime_USE_TVM)
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter
@@ -397,69 +479,8 @@ if (onnxruntime_USE_TVM)
   include(onnxruntime_codegen.cmake)
 endif()
 
-if (onnxruntime_USE_JEMALLOC)
-  if (Win32)
-    message( FATAL_ERROR "Jemalloc is not supported on Windows." )
-  endif()
-  include(jemalloc)
-  add_definitions(-DUSE_JEMALLOC=1)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${JEMALLOC_STATIC_LIBRARIES})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
-endif()
-
-include_directories(
-  ${ONNXRUNTIME_INCLUDE_DIR}
-  $<TARGET_PROPERTY:GSL,INTERFACE_INCLUDE_DIRECTORIES>
-)
-
-if (onnxruntime_USE_MKLDNN)
-  add_definitions(-DUSE_MKLDNN=1)
-  include(mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mkldnn)
-  link_directories(${MKLDNN_LIB_DIR})
-endif()
-
-if (onnxruntime_USE_OPENBLAS)
-  add_definitions(-DUSE_OPENBLAS=1)
-  if (WIN32)
-    include_directories(${onnxruntime_OPENBLAS_HOME})
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_OPENBLAS_HOME}/lib/libopenblas.lib)
-  else()
-    # on linux we assume blas is installed via 'apt-get install libopenblas-dev'
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES openblas)
-  endif()
-endif()
-
-configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
-
-if (onnxruntime_USE_CUDA)
-  add_definitions(-DUSE_CUDA=1)
-  enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 14)
-  file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDA_TOOLKIT_ROOT_DIR)
-  file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-  find_package(CUDA 9.0 REQUIRED)
-  include(cub)
-  set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
-  if (WIN32)
-    link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas)
-  else()
-    link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES cub)
-
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream per-thread")
-  if (NOT WIN32)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
-  endif()
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

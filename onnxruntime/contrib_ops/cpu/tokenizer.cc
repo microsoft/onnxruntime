@@ -199,26 +199,26 @@ struct Tokenizer::SearchData {
 Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   int64_t mark = 0;
   auto status = info.GetAttr("mark", &mark);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mark is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute mark is not set");
   mark_ = mark != 0;
 
   status = info.GetAttr("pad_value", &pad_value_);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute pad_value is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute pad_value is not set");
 
   status = info.GetAttr("mincharnum", &mincharnum_);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
-  ONNXRUNTIME_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
+  ORT_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
+  ORT_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
 
   std::vector<std::string> separators;
   status = info.GetAttrs<std::string>("separators", separators);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute separators is not set");
-  ONNXRUNTIME_ENFORCE(!separators.empty(), "Requires at least one separator");
+  ORT_ENFORCE(status.IsOK(), "attribute separators is not set");
+  ORT_ENFORCE(!separators.empty(), "Requires at least one separator");
 
   char_tokenezation_ = (separators.size() == 1 &&
                         separators[0].empty());
 
-  ONNXRUNTIME_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
-                      "mincharnum is too big for char level tokenezation");
+  ORT_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
+              "mincharnum is too big for char level tokenezation");
 
   // Create TST and insert separators
   if (!char_tokenezation_) {
@@ -226,11 +226,11 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
     int priority = 0;  // earlier search patterns get priority
     for (const auto& sep : separators) {
-      ONNXRUNTIME_ENFORCE(!sep.empty(), "No empty separators allowed");
+      ORT_ENFORCE(!sep.empty(), "No empty separators allowed");
       std::wstring wsep = converter.from_bytes(sep);
-      ONNXRUNTIME_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
+      ORT_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
       bool result = sd->tst_.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
-      ONNXRUNTIME_ENFORCE(result, "duplicate separator detected");
+      ORT_ENFORCE(result, "duplicate separator detected");
       ++priority;
     }
     search_data_.swap(sd);
@@ -284,7 +284,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   while (curr_input != last) {
     const auto& s = *curr_input;
     if (mark_) {
-      new (output_data + output_index) std::string(&start_text, 1);
+      (output_data + output_index)->assign(&start_text, 1);
       ++output_index;
     }
     size_t tokens = 0;
@@ -295,20 +295,20 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
       assert(result);
       (void)result;
       assert(token_idx + tlen <= str_len);
-      new (output_data + output_index) std::string(s.substr(token_idx, tlen));
+      *(output_data + output_index) = s.substr(token_idx, tlen);
       ++output_index;
       token_idx += tlen;
       ++tokens;
     }
     if (mark_) {
-      new (output_data + output_index) std::string(&end_text, 1);
+      (output_data + output_index)->assign(&end_text, 1);
       ++output_index;
     }
     // Padding strings
     assert(tokens + (mark_ * 2) <= max_tokens);
     const size_t pads = max_tokens - (mark_ * 2) - tokens;
     for (size_t p = 0; p < pads; ++p) {
-      new (output_data + output_index) std::string(pad_value_);
+      *(output_data + output_index) = pad_value_;
       ++output_index;
     }
     ++curr_input;
@@ -422,21 +422,21 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
     size_t c_idx = output_index;
 #endif
     if (mark_) {
-      new (output_data + output_index) std::string(&start_text, 1);
+      (output_data + output_index)->assign(&start_text, 1);
       ++output_index;
     }
     // Output tokens for this row
     for (auto& token : row) {
-      new (output_data + output_index) std::string(converter.to_bytes(token));
+      *(output_data + output_index) = converter.to_bytes(token);
       ++output_index;
     }
     if (mark_) {
-      new (output_data + output_index) std::string(&end_text, 1);
+      (output_data + output_index)->assign(&end_text, 1);
       ++output_index;
     }
     const size_t pads = max_tokens - (mark_ * 2) - row.size();
     for (size_t p = 0; p < pads; ++p) {
-      new (output_data + output_index) std::string(pad_value_);
+      *(output_data + output_index) = pad_value_;
       ++output_index;
     }
 #ifdef _DEBUG

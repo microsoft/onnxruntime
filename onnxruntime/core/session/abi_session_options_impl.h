@@ -10,12 +10,12 @@
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
 
-struct ONNXRuntimeSessionOptions : public onnxruntime::ObjectBase<ONNXRuntimeSessionOptions> {
+struct OrtSessionOptions : public onnxruntime::ObjectBase<OrtSessionOptions> {
   onnxruntime::SessionOptions value;
   std::vector<std::string> custom_op_paths;
-  std::vector<ONNXRuntimeProviderFactoryInterface**> provider_factories;
-  ONNXRuntimeSessionOptions() = default;
-  ~ONNXRuntimeSessionOptions();
-  ONNXRuntimeSessionOptions(const ONNXRuntimeSessionOptions& other);
-  ONNXRuntimeSessionOptions& operator=(const ONNXRuntimeSessionOptions& other);
+  std::vector<OrtProviderFactoryInterface**> provider_factories;
+  OrtSessionOptions() = default;
+  ~OrtSessionOptions();
+  OrtSessionOptions(const OrtSessionOptions& other);
+  OrtSessionOptions& operator=(const OrtSessionOptions& other);
 };

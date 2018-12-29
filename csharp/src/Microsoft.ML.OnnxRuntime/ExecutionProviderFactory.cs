@@ -16,7 +16,7 @@ namespace Microsoft.ML.OnnxRuntime
             int useArenaInt = useArena ? 1 : 0;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateCpuExecutionProviderFactory(useArenaInt, out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCpuExecutionProviderFactory(useArenaInt, out handle));
             }
             catch(OnnxRuntimeException e)
             {
@@ -48,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
             int useArenaInt = useArena ? 1 : 0;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateMkldnnExecutionProviderFactory(useArenaInt, out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMkldnnExecutionProviderFactory(useArenaInt, out handle));
             }
             catch (OnnxRuntimeException e)
             {
@@ -70,6 +70,36 @@ namespace Microsoft.ML.OnnxRuntime
         }
     }
 
+    internal class CudaExecutionProviderFactory : NativeOnnxObjectHandle
+    {
+        protected static readonly Lazy<CudaExecutionProviderFactory> _default = new Lazy<CudaExecutionProviderFactory>(() => new CudaExecutionProviderFactory());
+
+        public CudaExecutionProviderFactory(int deviceId = 0)
+            : base(IntPtr.Zero)
+        {
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCUDAExecutionProviderFactory(deviceId, out handle));
+            }
+            catch (OnnxRuntimeException e)
+            {
+                if (IsInvalid)
+                {
+                    ReleaseHandle();
+                    handle = IntPtr.Zero;
+                }
+                throw e;
+            }
+        }
+
+        public static CudaExecutionProviderFactory Default
+        {
+            get
+            {
+                return _default.Value;
+            }
+        }
+    }
 
 
 

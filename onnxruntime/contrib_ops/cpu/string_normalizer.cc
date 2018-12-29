@@ -41,8 +41,8 @@ class Locale {
       : loc_(nullptr) {
     loc_ = _create_locale(LC_CTYPE, name.c_str());
     if (loc_ == nullptr) {
-      ONNXRUNTIME_THROW("Failed to construct locale with name:",
-                        name, ":", ":Please, install necessary language-pack-XX and configure locales");
+      ORT_THROW("Failed to construct locale with name:",
+                name, ":", ":Please, install necessary language-pack-XX and configure locales");
     }
   }
 
@@ -52,7 +52,7 @@ class Locale {
     }
   }
 
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
 
   void ChangeCase(StringNormalizer::CaseAction caseaction,
                   std::wstring& wstr) const {
@@ -77,11 +77,11 @@ class Locale {
  public:
   explicit Locale(const std::string& name) try : loc_(name) {
   } catch (const std::runtime_error& e) {
-    ONNXRUNTIME_THROW("Failed to construct locale with name:",
-                      name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
+    ORT_THROW("Failed to construct locale with name:",
+              name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
   }
 
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
 
   void ChangeCase(StringNormalizer::CaseAction caseaction,
                   std::wstring& wstr) const {
@@ -118,9 +118,8 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
   if (C == 0) {
     output_dims.push_back(1);
     TensorShape output_shape(output_dims);
-    auto output_ten = ctx->Output(0, output_shape);
-    auto output_default = output_ten->template MutableData<std::string>();
-    new (output_default) std::string();
+    // This will create one empty string
+    ctx->Output(0, output_shape);
     return Status::OK();
   }
 
@@ -141,11 +140,11 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
       }
       // In place transform
       loc.ChangeCase(caseaction, wstr);
-      new (output_data + output_idx) std::string(converter.to_bytes(wstr));
+      *(output_data + output_idx) = converter.to_bytes(wstr);
     } else {
       assert(caseaction == StringNormalizer::NONE);
       // Simple copy or move if the iterator points to a non-const string
-      new (output_data + output_idx) std::string(std::move(s));
+      *(output_data + output_idx) = std::move(s);
     }
     ++output_idx;
     ++first;
@@ -162,12 +161,12 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
                                                                compare_caseaction_(NONE) {
   int64_t iscasesensitive = 0;
   Status status = info.GetAttr("is_case_sensitive", &iscasesensitive);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
   is_case_sensitive_ = iscasesensitive != 0;
 
   std::string casechangeaction;
   status = info.GetAttr("casechangeaction", &casechangeaction);
-  ONNXRUNTIME_ENFORCE(status.IsOK(), "attribute caseaction is not set");
+  ORT_ENFORCE(status.IsOK(), "attribute caseaction is not set");
   if (casechangeaction == "LOWER") {
     casechangeaction_ = LOWER;
   } else if (casechangeaction == "UPPER") {
@@ -175,7 +174,7 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
   } else if (casechangeaction == "NONE") {
     casechangeaction_ = NONE;
   } else {
-    ONNXRUNTIME_ENFORCE(false, "attribute casechangeaction has invalid value");
+    ORT_ENFORCE(false, "attribute casechangeaction has invalid value");
   }
 
   if (!is_case_sensitive_) {
@@ -189,16 +188,16 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
 
   std::vector<std::string> swords = info.GetAttrsOrDefault<std::string>("stopwords");
   for (const auto& sw : swords) {
-    ONNXRUNTIME_ENFORCE(!sw.empty(), "Empty stopwords not allowed");
+    ORT_ENFORCE(!sw.empty(), "Empty stopwords not allowed");
     if (is_case_sensitive_) {
       auto p = stopwords_.insert(sw);
-      ONNXRUNTIME_ENFORCE(p.second, "Duplicate stopwords not allowed");
+      ORT_ENFORCE(p.second, "Duplicate stopwords not allowed");
     } else {
       std::wstring wstr = converter.from_bytes(sw);
-      ONNXRUNTIME_ENFORCE(wstr != wconv_error, "Stopword contains invalid utf8 chars");
+      ORT_ENFORCE(wstr != wconv_error, "Stopword contains invalid utf8 chars");
       locale.ChangeCase(compare_caseaction_, wstr);
       auto p = wstopwords_.insert(wstr);
-      ONNXRUNTIME_ENFORCE(p.second, "Duplicate stopwords not allowed");
+      ORT_ENFORCE(p.second, "Duplicate stopwords not allowed");
     }
   }
 }

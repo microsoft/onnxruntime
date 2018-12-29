@@ -18,21 +18,21 @@ class TypeProto;
  * the equivalent of onnx::TypeProto
  * This class is mainly for the C API
  */
-struct ONNXRuntimeTypeInfo : public onnxruntime::ObjectBase<ONNXRuntimeTypeInfo> {
+struct OrtTypeInfo : public onnxruntime::ObjectBase<OrtTypeInfo> {
  public:
-  friend class onnxruntime::ObjectBase<ONNXRuntimeTypeInfo>;
+  friend class onnxruntime::ObjectBase<OrtTypeInfo>;
 
-  ONNXRuntimeType type = ONNXRUNTIME_TYPE_UNKNOWN;
+  ONNXType type = ONNX_TYPE_UNKNOWN;
   //owned by this
   void* data = nullptr;
-  ONNXRuntimeTypeInfo(const ONNXRuntimeTypeInfo& other) = delete;
-  ONNXRuntimeTypeInfo& operator=(const ONNXRuntimeTypeInfo& other) = delete;
+  OrtTypeInfo(const OrtTypeInfo& other) = delete;
+  OrtTypeInfo& operator=(const OrtTypeInfo& other) = delete;
 
-  static ONNXStatus* FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
-                                      const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out);
-  static ONNXStatus* FromDataTypeImpl(const onnx::TypeProto*, ONNXRuntimeTypeInfo** out);
+  static OrtStatus* FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
+                                      const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out);
+  static OrtStatus* FromDataTypeImpl(const onnx::TypeProto*, OrtTypeInfo** out);
 
  private:
-  ONNXRuntimeTypeInfo(ONNXRuntimeType type, void* data) noexcept;
-  ~ONNXRuntimeTypeInfo();
+  OrtTypeInfo(ONNXType type, void* data) noexcept;
+  ~OrtTypeInfo();
 };

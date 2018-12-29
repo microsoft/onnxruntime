@@ -30,7 +30,7 @@ class ParallelExecutor : public IExecutor {
                          const logging::Logger& logger) override;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
 
   void RunNodeAsync(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
   void RunNodeAsyncInternal(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);

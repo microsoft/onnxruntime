@@ -93,12 +93,12 @@ Status If::Compute(OpKernelContext* ctx) const {
 
   auto attribute = condition ? "then_branch" : "else_branch";
   auto* session_state = ctx_internal->SubgraphSessionState(attribute);
-  ONNXRUNTIME_ENFORCE(session_state, "Subgraph SessionState was not found for '", attribute, "' attribute.");
+  ORT_ENFORCE(session_state, "Subgraph SessionState was not found for '", attribute, "' attribute.");
 
   IfImpl impl{*ctx_internal, *session_state};
 
   auto status = impl.Initialize();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   status = impl.Execute();
 
@@ -119,7 +119,7 @@ Status IfImpl::Initialize() {
   auto num_subgraph_outputs = graph_outputs.size();
 
   if (num_subgraph_outputs != num_outputs_) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
                                    " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }
 
@@ -132,7 +132,7 @@ Status IfImpl::Initialize() {
   }
 
   auto status = AllocateOutputTensors();
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   return Status::OK();
 }
@@ -144,7 +144,7 @@ Status IfImpl::AllocateOutputTensors() {
   for (auto& graph_output : subgraph_.GetOutputs()) {
     auto* graph_output_shape = graph_output->Shape();
     if (!graph_output_shape) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
                                      graph_output->Name(), " did not.");
     }
 
@@ -160,7 +160,7 @@ Status IfImpl::AllocateOutputTensors() {
       auto* tensor = context_.Output(index, output_shape);
 
       if (!tensor)
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
 
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     }
@@ -181,7 +181,7 @@ Status IfImpl::Execute() {
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
-    ONNXRUNTIME_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
+    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
                         entry.first, " did not.");
 
     // prune to values that are in this subgraph as the implicit inputs cover both 'then' and 'else' subgraphs.
@@ -202,7 +202,7 @@ Status IfImpl::Execute() {
 
   SequentialExecutor executor{context_.GetTerminateFlag()};
   status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   for (int i = 0; i < num_outputs_; ++i) {
     // TODO: Task 1913: Improve handling of If outputs to avoid copy when the shape is not known

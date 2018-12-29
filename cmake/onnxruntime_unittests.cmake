@@ -437,7 +437,7 @@ if (onnxruntime_USE_MKLML)
   add_custom_command(
     TARGET ${test_data_target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-    ${MKLDNN_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLDNN_LIB_DIR}/${IOMP5MD_SHARED_LIB}
+    ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
     $<TARGET_FILE_DIR:${test_data_target}>
     )
 endif()

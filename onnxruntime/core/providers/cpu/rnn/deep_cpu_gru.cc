@@ -273,9 +273,9 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
-    ONNXRUNTIME_NOT_IMPLEMENTED("GRU operator does not support double yet");
+    ORT_NOT_IMPLEMENTED("GRU operator does not support double yet");
   } else
-    ONNXRUNTIME_THROW("Invalid data type for GRU operator of ", data_type);
+    ORT_THROW("Invalid data type for GRU operator of ", data_type);
 
   return status;
 }
@@ -300,7 +300,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   int input_size = gsl::narrow<int>(X_shape[2]);
 
   auto status = ValidateCommonRnnInputs(X, W, R, B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // GRU outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
@@ -311,7 +311,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
   gsl::span<const T> input_weights = W.DataAsSpan<T>();
   gsl::span<const T> recurrent_weights = R.DataAsSpan<T>();
   gsl::span<const T> bias = B != nullptr ? B->DataAsSpan<T>() : gsl::span<const T>();
@@ -374,8 +374,10 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
+#ifndef USE_MKLDNN
     std::packaged_task<void()> task_fw{
         [&]() {
+#endif // ! USE_MKLDNN
           std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
               alloc, logger,
               seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
@@ -384,9 +386,11 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
               activation_funcs_.Entries()[1],
               clip_, ttp_);
           fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+#ifndef USE_MKLDNN
         }};
     auto task_results_fw = task_fw.get_future();
     ttp_.RunTask(std::move(task_fw));
+#endif // ! USE_MKLDNN
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
@@ -397,7 +401,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         clip_, ttp_);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
 
+#ifndef USE_MKLDNN
     task_results_fw.get();
+#endif // ! USE_MKLDNN
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
@@ -483,7 +489,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
 
       // replicate what we just wrote to the start of the output span so we have batch_size_ copies
       auto values = output.cbegin();
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(values, values + hidden_size_,
+      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(values, values + hidden_size_,
                                                                    output.begin() + hidden_size_,  // skip the first batch
                                                                    batch_size_ - 1));              // and replicate batch size - 1 times
     };
@@ -495,8 +501,8 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
     // how we treat the h weight depends on whether linear_before_reset_ is set
     if (linear_before_reset_) {
       // need to replicate Wb[o] and Rb[o] separately
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Wo.cbegin(), bias_Wo.cend(), batched_bias_Wh_.begin(), batch_size_));
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Ro.cbegin(), bias_Ro.cend(), batched_bias_Rh_.begin(), batch_size_));
+      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Wo.cbegin(), bias_Wo.cend(), batched_bias_Wh_.begin(), batch_size_));
+      ORT_IGNORE_RETURN_VALUE(RepeatVectorToConstructArray(bias_Ro.cbegin(), bias_Ro.cend(), batched_bias_Rh_.begin(), batch_size_));
     } else {
       combine_and_replicate(bias_Wo, bias_Ro, batched_bias_WRh_);
     }
@@ -1085,7 +1091,7 @@ void UniDirectionalGru<T>::SetNumThreads() {
     VLOGS(logger_, 1) << "Hidden Threads : " << hidden_num_threads_;
   }
 
-  ONNXRUNTIME_ENFORCE(hidden_num_threads_ >= 1);
+  ORT_ENFORCE(hidden_num_threads_ >= 1);
 }
 }  // namespace detail
 }  // namespace onnxruntime

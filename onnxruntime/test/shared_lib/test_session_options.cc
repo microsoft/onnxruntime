@@ -7,6 +7,6 @@
 using namespace onnxruntime;
 
 TEST_F(CApiTest, session_options) {
-  std::unique_ptr<ONNXRuntimeSessionOptions> options(ONNXRuntimeCreateSessionOptions());
+  std::unique_ptr<OrtSessionOptions> options(OrtCreateSessionOptions());
   ASSERT_NE(options, nullptr);
 }

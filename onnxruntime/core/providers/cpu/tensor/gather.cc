@@ -42,26 +42,26 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
   for (int64_t i = 0; i < N; ++i) {
     Tin idx = indices_data[i];
     if (idx < 0 || idx >= input_data_shape[axis]) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
                              " data_dim=", input_data_shape[axis]);
     }
   }
 
 #pragma omp parallel for
-  for (int64_t batch = 0; batch < M; ++batch) {
+  for (int64_t index = 0; index < M * N; ++index) {
+    int64_t batch = index / N, i = index % N;
+
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
-    for (int64_t i = 0; i < N; ++i) {
-      Tin idx = indices_data[i];
-      const int64_t src_offset = src_offset_batch + idx * block_size;
-      const int64_t dst_offset = dst_offset_batch + i * block_size;
+    Tin idx = indices_data[i];
+    const int64_t src_offset = src_offset_batch + idx * block_size;
+    const int64_t dst_offset = dst_offset_batch + i * block_size;
 
-      if (is_string_type) {
-        reinterpret_cast<std::string*>(dst_base)[dst_offset / element_bytes] =
-            reinterpret_cast<const std::string*>(src_base)[src_offset / element_bytes];
-      } else {
-        memcpy(dst_base + dst_offset, src_base + src_offset, block_size);
-      }
+    if (is_string_type) {
+      reinterpret_cast<std::string*>(dst_base)[dst_offset / element_bytes] =
+          reinterpret_cast<const std::string*>(src_base)[src_offset / element_bytes];
+    } else {
+      memcpy(dst_base + dst_offset, src_base + src_offset, block_size);
     }
   }
 
@@ -70,7 +70,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 
 Status Gather::Compute(OpKernelContext* context) const {
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(context, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
 
   const TensorShape& input_data_shape = p.input_tensor->Shape();
 
@@ -96,7 +96,7 @@ Status Gather::Compute(OpKernelContext* context) const {
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }
 
-  return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
 }
 
 }  // namespace onnxruntime

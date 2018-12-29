@@ -139,7 +139,7 @@ class Log final : public OpKernel {
 };
 
 template <typename T>
-class Sum_6 final : public OpKernel {
+class Sum_6 : public OpKernel {
  public:
   Sum_6(const OpKernelInfo& info) : OpKernel(info) {
   }
@@ -274,8 +274,8 @@ class Affine final : public OpKernel {
  public:
   Affine(const OpKernelInfo& info) : OpKernel(info) {
     // Either model-supplied or default values should be returned for alpha and beta
-    ONNXRUNTIME_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -308,7 +308,7 @@ template <typename T>
 class Scale final : public OpKernel {
  public:
   Scale(const OpKernelInfo& info) : OpKernel(info) {
-    ONNXRUNTIME_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
+    ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -350,7 +350,7 @@ struct BroadcastIterator {
   }
 
   void Init(int64_t axis, int64_t largest) {
-    ONNXRUNTIME_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
+    ORT_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
 
     deltas_.push_back(axis > 1);
     counts_.push_back(largest);
@@ -358,7 +358,7 @@ struct BroadcastIterator {
   }
 
   void Append(int64_t axis, int64_t largest) {
-    ONNXRUNTIME_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
+    ORT_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
 
     // If we're greater than 1, it doesn't matter what the other tensor does
     if (axis > 1) {
@@ -552,7 +552,7 @@ struct TBroadcastOutput {
 template <typename T>
 struct TensorAllocator {
   TensorAllocator(OpKernelContext& context) {
-    ONNXRUNTIME_ENFORCE(context.GetTempSpaceAllocator(&allocator_).IsOK());
+    ORT_ENFORCE(context.GetTempSpaceAllocator(&allocator_).IsOK());
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
@@ -597,7 +597,7 @@ Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1S
 template <typename TInput, typename TOutput, typename Input0Scalar, typename Input1Scalar, typename General>
 Status BroadcastVariadic(const Node& node, OpKernelContext& context, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   auto input_count = node.InputArgCount().front();
-  ONNXRUNTIME_ENFORCE(input_count >= 1, "Must have 1 or more inputs");
+  ORT_ENFORCE(input_count >= 1, "Must have 1 or more inputs");
 
   // One item is trivial, just copy across and exit
   if (input_count == 1) {
