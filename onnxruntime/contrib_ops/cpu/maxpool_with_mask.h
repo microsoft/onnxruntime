@@ -66,7 +66,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
             float Yh = std::numeric_limits<float>::lowest();
             int64_t h_index = -1;
             for (int64_t h = hstart; h < hend; ++h) {
-              if (m_d[h] == 0) break;  // if mask == 0, stop
+              if (h >= 0 && m_d[h] == 0) break;  // if mask == 0, stop
               if (x_d[h] > Yh) {
                 Yh = x_d[h];
                 h_index = h;
@@ -83,10 +83,11 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t x_step = height * width;
         int64_t y_step = pooled_height * pooled_width;
         const int64_t total_channels = x_shape[0] * channels;
+        const int64_t total_mask_channels = m_shape[0] * m_shape[1];
 #pragma omp parallel for
         for (int64_t c = 0; c < total_channels; ++c) {
           const float* x_d = X_data + c * x_step;
-          const int32_t* m_d = M_data + c * x_step;
+          const int32_t* m_d = M_data + (c * x_step) % total_mask_channels;
           float* y_d = Y_data + c * y_step;
 
           for (int64_t ph = 0; ph < pooled_height; ++ph) {
@@ -104,7 +105,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
               for (int64_t h = hstart; h < hend; ++h) {
                 for (int64_t w = wstart; w < wend; ++w) {
                   const int64_t input_index = h * width + w;
-                  if (m_d[input_index] == 0) break;  // if mask == 0, break
+                  if (input_index > 0 && m_d[input_index] == 0) break;  // if mask == 0, break
                   if (x_d[input_index] > Yh) {
                     Yh = x_d[input_index];
                     h_index = h;
@@ -122,11 +123,12 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t x_step = height * width * depth;
         int64_t y_step = pooled_height * pooled_width * pooled_depth;
         const int64_t total_channels = x_shape[0] * channels;
+        const int64_t total_mask_channels = m_shape[0] * m_shape[1];
 
 #pragma omp parallel for
         for (int64_t c = 0; c < total_channels; ++c) {
           const float* x_d = X_data + c * x_step;
-          const int32_t* m_d = M_data + c * x_step;
+          const int32_t* m_d = M_data + (c * x_step) % total_mask_channels;
           float* y_d = Y_data + c * y_step;
 
           for (int64_t ph = 0; ph < pooled_height; ++ph) {
@@ -151,7 +153,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
                   for (int64_t w = wstart; w < wend; ++w) {
                     for (int64_t d = dstart; d < dend; ++d) {
                       const int64_t input_index = h * width * depth + w * depth + d;
-                      if (m_d[input_index] == 0) break;  // if mask == 0, break
+                      if (input_index > 0 && m_d[input_index] == 0) break;  // if mask == 0, break
                       if (x_d[input_index] > Yh) {
                         Yh = x_d[input_index];
                         h_index = h;
