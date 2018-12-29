@@ -78,12 +78,12 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 }  // namespace
 
 Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
-		                    const std::vector<int64_t>& raw_ends, 
-		                    std::vector<int64_t>&&      raw_axes,
-				    const size_t                dimension_count,
+                                    const std::vector<int64_t>& raw_ends, 
+                                    std::vector<int64_t>&&      raw_axes,
+                                    const size_t                dimension_count,
                                     const std::vector<int64_t>& input_dimensions,
-				    std::vector<int64_t>&       starts,
-				    std::vector<int64_t>&       output_dims) const {
+                                    std::vector<int64_t>&       starts,
+                                    std::vector<int64_t>&       output_dims) const {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
   if (axes.size() == 0) {
@@ -115,9 +115,9 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 
 template <typename T, typename Tind, bool dynamic>
 void Slice<T, Tind, dynamic>::FillVectors(const OpKernelContext* context,
-	                                  std::vector<int64_t>&  raw_starts,
-	                                  std::vector<int64_t>&  raw_ends,
-	                                  std::vector<int64_t>&  raw_axes) const {
+                                          std::vector<int64_t>&  raw_starts,
+                                          std::vector<int64_t>&  raw_ends,
+                                          std::vector<int64_t>&  raw_axes) const {
   bool has_axes = false;
   if (dynamic) {
     if (context->Input<Tensor>(1) != nullptr) {
@@ -146,7 +146,7 @@ void Slice<T, Tind, dynamic>::FillVectors(const OpKernelContext* context,
   }
   if (has_axes) {
     ORT_ENFORCE(raw_axes.size() == raw_starts.size() && raw_axes.size() == raw_ends.size(),
-		"Invalid axes attribute or input value");
+                "Invalid axes attribute or input value");
   } else {
     ORT_ENFORCE(raw_starts.size() == raw_ends.size(), "starts and ends mismatch");
   }
@@ -167,8 +167,8 @@ Status Slice<T, Tind, dynamic>::Compute(OpKernelContext* ctx) const {
 
   FillVectors(ctx, raw_starts, raw_ends, raw_axes);
   ORT_RETURN_IF_ERROR(PrepareForCompute(raw_starts, raw_ends, std::move(raw_axes),
-			                dimension_count, input_dimensions,
-					starts, output_dims));
+                      dimension_count, input_dimensions,
+                      starts, output_dims));
 
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
