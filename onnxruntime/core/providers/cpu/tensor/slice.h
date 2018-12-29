@@ -9,24 +9,24 @@ namespace onnxruntime {
 
 class SliceBase {
  protected:
-  SliceBase(const OpKernelInfo& info) {
-    has_axes_ = info.GetAttrs("axes", axes_).IsOK();
-    info.GetAttrs("starts", starts_);
-    info.GetAttrs("ends", ends_);
-  }
-
-  Status PrepareForCompute(const size_t dimension_count, const std::vector<int64_t>& input_dimensions,
-                           std::vector<int64_t>& starts, std::vector<int64_t>& output_dims) const;
-
-  mutable bool has_axes_;
-  mutable std::vector<int64_t> starts_, ends_, axes_;
+  Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+		           const std::vector<int64_t>& raw_ends, 
+		           std::vector<int64_t>&&      raw_axes,
+			   const size_t                dimension_count,
+		           const std::vector<int64_t>& input_dimensions,
+			   std::vector<int64_t>&       starts,
+			   std::vector<int64_t>&       output_dims) const;
 };
 
-template <typename T, typename Tind>
+template <typename T, typename Tind, bool dynamic = true>
 struct Slice final : public OpKernel, public SliceBase {
-  Slice(const OpKernelInfo& info) : OpKernel(info), SliceBase(info) {}
-
+  Slice(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
+private:
+  void FillVectors(const OpKernelContext* context,
+	           std::vector<int64_t>&  raw_starts,
+	           std::vector<int64_t>&  raw_ends,
+	           std::vector<int64_t>&  raw_axes) const;
 };  // namespace onnxruntime
 
 }  // namespace onnxruntime

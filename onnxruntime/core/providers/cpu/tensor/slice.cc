@@ -14,7 +14,7 @@ namespace onnxruntime {
       1,                                                                                \
       data_type,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
-      Slice<data_type, indice_type>);
+      Slice<data_type, indice_type, false>);
 
 ADD_TYPED_SLICE_OP(uint8_t,  int64_t);
 ADD_TYPED_SLICE_OP(uint16_t, int64_t);
@@ -76,20 +76,20 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
   return v;
 }
 }  // namespace
-Status SliceBase::PrepareForCompute(const size_t dimension_count, const std::vector<int64_t>& input_dimensions,
-                                    std::vector<int64_t>& starts, std::vector<int64_t>& output_dims) const {
+
+Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
+		                    const std::vector<int64_t>& raw_ends, 
+		                    std::vector<int64_t>&&      raw_axes,
+				    const size_t                dimension_count,
+                                    const std::vector<int64_t>& input_dimensions,
+				    std::vector<int64_t>&       starts,
+				    std::vector<int64_t>&       output_dims) const {
   // Initialize axes to the provided axes attribute or to the default sequence
-  std::vector<int64_t> axes(axes_);
-  if (!has_axes_) {
+  std::vector<int64_t> axes(raw_axes);
+  if (axes.size() == 0) {
     //axes are omitted, they are set to[0, ..., ndim - 1]
     axes.resize(starts.size());
-    for (size_t i = 0; i < starts.size(); i++)
-      axes[i] = i;
-
-    if (axes.size() > starts_.size())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has more entries than the 'starts' attribute holds");
-    if (axes.size() > ends_.size())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has more entries than the 'ends' attribute holds");
+    std::iota(axes.begin(), axes.end(), 0);
   }
 
   // Iterate through the provided axes and override the start/end ranges
@@ -97,12 +97,12 @@ Status SliceBase::PrepareForCompute(const size_t dimension_count, const std::vec
     auto axis = static_cast<size_t>(axes[axesIndex]);
     if (axis >= dimension_count)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
-    auto start = starts_[axesIndex];
+    auto start = raw_starts[axesIndex];
     if (start < 0)
       start += input_dimensions[axis];
     starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
-    auto end = ends_[axesIndex];
+    auto end = raw_ends[axesIndex];
     if (end < 0)
       end += input_dimensions[axis];
     output_dims[axis] = clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis];
@@ -113,46 +113,62 @@ Status SliceBase::PrepareForCompute(const size_t dimension_count, const std::vec
   return Status::OK();
 }
 
-template <typename T, typename Tind>
-Status Slice<T, Tind>::Compute(OpKernelContext* ctx) const {
+template <typename T, typename Tind, bool dynamic>
+void Slice<T, Tind, dynamic>::FillVectors(const OpKernelContext* context,
+	                                  std::vector<int64_t>&  raw_starts,
+	                                  std::vector<int64_t>&  raw_ends,
+	                                  std::vector<int64_t>&  raw_axes) const {
+  bool has_axes = false;
+  if (dynamic) {
+    if (context->Input<Tensor>(1) != nullptr) {
+      auto starts_tensor_ptr = context->Input<Tensor>(1);
+      raw_starts = std::move(std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
+                                                   starts_tensor_ptr->Data<Tind>() +
+                                                   starts_tensor_ptr->Shape().Size()));
+    }
+    if (context->Input<Tensor>(2) != nullptr) {
+      auto ends_tensor_ptr = context->Input<Tensor>(2);
+      raw_ends = std::move(std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
+                                                 ends_tensor_ptr->Data<Tind>() +
+                                                 ends_tensor_ptr->Shape().Size()));
+    }
+    if (context->Input<Tensor>(3) != nullptr) {
+      has_axes = true;
+      auto axes_tensor_ptr = context->Input<Tensor>(3);
+      raw_axes = std::move(std::vector<int64_t> (axes_tensor_ptr->Data<Tind>(),
+                                                 axes_tensor_ptr->Data<Tind>() +
+                                                 axes_tensor_ptr->Shape().Size()));
+    }
+  } else {
+    ORT_ENFORCE(Info().GetAttrs("starts", raw_starts).IsOK(), "Invalid 'starts' attribute value");
+    ORT_ENFORCE(Info().GetAttrs("ends",   raw_ends).IsOK(),   "Invalid 'ends' attribute value");
+    has_axes = Info().GetAttrs("axes",    raw_axes).IsOK();
+  }
+  if (has_axes) {
+    ORT_ENFORCE(raw_axes.size() == raw_starts.size() && raw_axes.size() == raw_ends.size(),
+		"Invalid axes attribute or input value");
+  } else {
+    ORT_ENFORCE(raw_starts.size() == raw_ends.size(), "starts and ends mismatch");
+  }
+}
+
+template <typename T, typename Tind, bool dynamic>
+Status Slice<T, Tind, dynamic>::Compute(OpKernelContext* ctx) const {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   auto& input_tensor = *input_tensor_ptr;
   auto& input_dimensions = input_tensor.Shape().GetDims();
 
-  if (ctx->Input<Tensor>(1) != nullptr) {
-    auto starts_tensor_ptr = ctx->Input<Tensor>(1);
-    starts_ = std::move(std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
-                                              starts_tensor_ptr->Data<Tind>() +
-                                              starts_tensor_ptr->Shape().Size()));
-  }
-  if (ctx->Input<Tensor>(2) != nullptr) {
-    auto ends_tensor_ptr = ctx->Input<Tensor>(2);
-    ends_ = std::move(std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
-                                            ends_tensor_ptr->Data<Tind>() +
-                                            ends_tensor_ptr->Shape().Size()));
-  }
-  if (ctx->Input<Tensor>(3) != nullptr) {
-    has_axes_ = true;
-    auto axes_tensor_ptr = ctx->Input<Tensor>(3);
-    axes_ = std::move(std::vector<int64_t> (axes_tensor_ptr->Data<Tind>(),
-                                            axes_tensor_ptr->Data<Tind>() +
-                                            axes_tensor_ptr->Shape().Size()));
-  }
-
-  if (has_axes_) {
-    if (axes_.size() > starts_.size())
-      ORT_THROW("'axes' has more entries than the 'starts'");
-    if (axes_.size() > ends_.size())
-      ORT_THROW("'axes' has more entries than the 'ends'");
-  }
-
   // Initialize the starts & ends to the actual tensor shape
   const size_t dimension_count = input_dimensions.size();
+  std::vector<int64_t> raw_starts, raw_ends, raw_axes;
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  ORT_RETURN_IF_ERROR(PrepareForCompute(dimension_count, input_dimensions, starts, output_dims));
+  FillVectors(ctx, raw_starts, raw_ends, raw_axes);
+  ORT_RETURN_IF_ERROR(PrepareForCompute(raw_starts, raw_ends, std::move(raw_axes),
+			                dimension_count, input_dimensions,
+					starts, output_dims));
 
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
