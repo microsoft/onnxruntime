@@ -58,6 +58,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--pb_home", help="Path to protobuf installation")
+    parser.add_argument("--download_test_data", action="store_true", 
+                        help='''Downloads test data without running the tests''')
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
     parser.add_argument("--cuda_home", help="Path to CUDA home."
@@ -237,7 +239,7 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
     has_test_data = False
-    if args.enable_onnx_tests:
+    if args.enable_onnx_tests or args.download_test_data:
       has_test_data = download_test_data(build_dir, test_data_url, test_data_checksum, args.azure_sas_key)
     #create a shortcut for test models if there is a 'models' folder in build_dir
     if has_test_data and is_windows():

@@ -26,6 +26,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 Status MaxUnpool::Compute(OpKernelContext* context) const {
   // Get pooled values tensor
   const Tensor* X = context->Input<Tensor>(0);
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const TensorShape& X_shape = X->Shape();
   const float* X_data = X->template Data<float>();
 
@@ -62,12 +63,13 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   bool padsInferred = false;
 
   if (num_inputs_ == 3) {
-    auto& tensor_shape = *context->Input<Tensor>(2);
-    ORT_RETURN_IF_NOT(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
+    auto tensor_shape = context->Input<Tensor>(2);
+    if (tensor_shape == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
     // Turn the shape tensor data into an actual shape
-    const int64_t* p_shape = tensor_shape.template Data<int64_t>();
-    std::vector<int64_t> shape{p_shape, p_shape + tensor_shape.Shape().Size()};
+    const int64_t* p_shape = tensor_shape->template Data<int64_t>();
+    std::vector<int64_t> shape{p_shape, p_shape + tensor_shape->Shape().Size()};
     givenOutputShape = shape;
 
     inferredPads.resize(inferredOutputShape.size() * 2, 0);

@@ -10,7 +10,7 @@ namespace mkl_dnn {
 template <typename T>
 class Conv final : public onnxruntime::Conv<T> {
  public:
-  Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info) {
+  explicit Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

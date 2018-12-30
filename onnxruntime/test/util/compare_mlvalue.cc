@@ -13,11 +13,11 @@
 using namespace onnxruntime;
 
 #if (!EIGEN_VERSION_AT_LEAST(3, 3, 6))
-  namespace Eigen {
-    namespace half_impl {
-      using __half_raw = ::Eigen::half_impl::__half;
-    }
-  }
+namespace Eigen {
+namespace half_impl {
+using __half_raw = ::Eigen::half_impl::__half;
+}
+}  // namespace Eigen
 #endif
 
 #define CASE_TYPE(X)                             \
@@ -131,6 +131,29 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
+std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
+                                                             double per_sample_tolerance,
+                                                             double relative_per_sample_tolerance,
+                                                             bool post_processing) {
+  const size_t size1 = expected_value.Shape().Size();
+  const BFloat16* expected_output = expected_value.template Data<BFloat16>();
+  const BFloat16* real_output = outvalue.template Data<BFloat16>();
+  for (size_t di = 0; di != size1; ++di) {
+    float expected = expected_output[di].ToFloat();
+    float real = real_output[di].ToFloat();
+    real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
+    const double diff = fabs(expected - real);
+    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
+    if (diff > rtol || (std::isnan(diff) && !std::isnan(expected))) {
+      std::ostringstream oss;
+      oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
+
+      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+    }
+  }
+  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+}
+
 std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue, const Tensor& expected_tensor,
                                                          double per_sample_tolerance,
                                                          double relative_per_sample_tolerance,
@@ -170,6 +193,9 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
   } else if (p1 == DataTypeImpl::GetType<MLFloat16>()) {
     return CompareFloat16Result(outvalue, expected_tensor,
                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing);
+  } else if (p1 == DataTypeImpl::GetType<BFloat16>()) {
+    return CompareBFloat16Result(outvalue, expected_tensor,
+                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else {
     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
   }
@@ -259,6 +285,8 @@ const char* ElementTypeToString(MLDataType type) {
 
   else if (type == DataTypeImpl::GetType<MLFloat16>()) {
     return "tensor(MLFloat16)";
+  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+    return "tensor(bfloat16)";
   } else {
     return "unknown";
   }
@@ -330,7 +358,7 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
-    if (OrtIsTensor(o) == 0) {
+    if (!OrtIsTensor(o)) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
 
