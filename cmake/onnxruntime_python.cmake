@@ -162,12 +162,14 @@ add_custom_command(
 )
 
 if (onnxruntime_USE_MKLDNN)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
+  if (onnxruntime_MKLDNN_LIBRARY_TYPE STREQUAL SHARED)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB}
+          $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+    )
+  endif()
 endif()
 if (onnxruntime_USE_TVM)
   add_custom_command(
