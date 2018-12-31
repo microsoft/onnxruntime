@@ -251,7 +251,11 @@ int real_main(int argc, char* argv[]) {
     SetThreadpoolThreadMinimum(pool, 2);
     SetThreadpoolThreadMaximum(pool, GetNumCpuCores());
 
+    auto cleanupgroup = CreateThreadpoolCleanupGroup();
+
     SetThreadpoolCallbackPool(&CallBackEnviron, pool);
+
+    SetThreadpoolCallbackCleanupGroup(&CallBackEnviron, cleanupgroup, NULL);
 
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
     if (!st.IsOK()) {
@@ -259,7 +263,10 @@ int real_main(int argc, char* argv[]) {
       return -1;
     }
 
+    CloseThreadpoolCleanupGroupMembers(cleanupgroup, 0, NULL);
+    CloseThreadpoolCleanupGroup(cleanupgroup);
     CloseThreadpool(pool);
+
 #else
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
