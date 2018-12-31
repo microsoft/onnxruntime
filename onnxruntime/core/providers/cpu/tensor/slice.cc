@@ -150,7 +150,6 @@ Status Slice<T, Tind, dynamic>::Compute(OpKernelContext* ctx) const {
 
   // Initialize the starts & ends to the actual tensor shape
   const size_t dimension_count = input_dimensions.size();
-  std::vector<int64_t> input_starts, input_ends, input_axes;
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
