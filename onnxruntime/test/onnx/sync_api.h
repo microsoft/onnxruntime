@@ -19,8 +19,7 @@ using ORT_EVENT = HANDLE;
 using ORT_WORK = PTP_WORK;
 using PThreadPool = PTP_CALLBACK_ENVIRON;
 using ORT_CALLBACK_FUNCTION = PTP_WORK_CALLBACK;
-//#define OnnxRuntimeCloseThreadpoolWork CloseThreadpoolWork
-inline void OnnxRuntimeCloseThreadpoolWork(ORT_WORK) {}
+#define OnnxRuntimeCloseThreadpoolWork CloseThreadpoolWork
 
 inline PThreadPool GetDefaultThreadPool(const ::onnxruntime::Env&) {
   return nullptr;
