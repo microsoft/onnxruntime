@@ -1,7 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
-if(UNIX)
+if(APPLE)
+  set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_symbols.lst)
+  set(OUTPUT_STYLE clang)
+elseif(UNIX)
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime.lds)
   set(OUTPUT_STYLE gcc)
 else()
@@ -30,7 +32,11 @@ set_target_properties(onnxruntime PROPERTIES VERSION ${VERSION_NUMBER})
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} ${date_INCLUDE_DIR})
 
-if(UNIX)
+if(APPLE)
+  set(BEGIN_WHOLE_ARCHIVE -Wl,-force_load)
+  set(ONNXRUNTIME_SO_LINK_FLAG -Xlinker -exported_symbols_list ${SYMBOL_FILE})
+  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+elseif(UNIX)
   set(BEGIN_WHOLE_ARCHIVE -Xlinker --whole-archive)
   set(END_WHOLE_ARCHIVE -Xlinker --no-whole-archive)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined")
@@ -38,15 +44,21 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${SYMBOL_FILE}")
 endif()
 
+set(ONNXRUNTIME_WHOLE_ARCHIVE_LIBS)
+foreach(var IN ITEMS
+        ${onnxruntime_libs}
+        ${PROVIDERS_CUDA}
+        ${PROVIDERS_MKLDNN}
+        onnxruntime_util
+        onnxruntime_providers
+        onnxruntime_framework)
+  if(var)
+    list(APPEND ONNXRUNTIME_WHOLE_ARCHIVE_LIBS ${BEGIN_WHOLE_ARCHIVE} ${var} ${END_WHOLE_ARCHIVE})
+  endif()
+endforeach()
+
 target_link_libraries(onnxruntime PRIVATE
-    ${BEGIN_WHOLE_ARCHIVE}
-    ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
-    onnxruntime_providers    
-    onnxruntime_util
-    onnxruntime_framework
-    ${END_WHOLE_ARCHIVE}
+    ${ONNXRUNTIME_WHOLE_ARCHIVE_LIBS}
     onnxruntime_graph
     onnxruntime_common
     onnx
@@ -55,9 +67,9 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_tvm_libs}
     ${onnxruntime_EXTERNAL_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
-    ${ONNXRUNTIME_CUDA_LIBRARIES})
+    ${ONNXRUNTIME_CUDA_LIBRARIES}
+    ${ONNXRUNTIME_SO_LINK_FLAG})
 
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG})
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
 
 install(TARGETS onnxruntime
