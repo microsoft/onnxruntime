@@ -293,24 +293,32 @@ if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
           "X.shape[1] == (W.shape[1] * group) == C "
           "(assuming zero based indices for the shape array). "
           "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
-          "T1")
+          "T2")
       .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "tensor(float)")
-      .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T1")
+      .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T2")
       .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "tensor(float)")
-      .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T1")
-      .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T2", OpSchema::Optional)
+      .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T3")
+      .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T4", OpSchema::Optional)
       .Output(
           0,
           "y",
           "Output data tensor that contains the result of the "
           "convolution. The output dimensions are functions "
           "of the kernel size, stride size, and pad lengths.",
-          "T1")
+          "T3")
       .TypeConstraint(
           "T1",
           {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
-          "Constrain input, filter, and output types to 8-bit or 16-bit integer tensors.")
-      .TypeConstraint("T2", {"tensor(int32)", "tensor(uint32)"}, "Constrain bias type to 32-bit integer tensor.")
+          "Constrain input types to 8-bit or 16-bit integer tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain filter types to 8-bit or 16-bit integer tensors.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain output types to 8-bit or 16-bit integer tensors.")
+      .TypeConstraint("T4", {"tensor(int32)", "tensor(uint32)"}, "Constrain bias type to 32-bit integer tensor.")
       .Attr(
           "auto_pad",
           auto_pad_doc,

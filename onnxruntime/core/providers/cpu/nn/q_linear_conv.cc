@@ -1,0 +1,136 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/cpu/nn/q_linear_conv.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+
+namespace onnxruntime {
+
+Status QLinearConv::Compute(OpKernelContext* context) const {
+  size_t num_inputs = OpKernel::Node().InputDefs().size();
+  const Tensor* X = context->Input<Tensor>(0);
+  const Tensor* X_Scale = context->Input<Tensor>(1);
+  const Tensor* X_Zero_Point = context->Input<Tensor>(2);
+  const Tensor* W = context->Input<Tensor>(3);
+  const Tensor* W_Scale = context->Input<Tensor>(4);
+  const Tensor* W_Zero_Point = context->Input<Tensor>(5);
+  const Tensor* Y_Scale = context->Input<Tensor>(6);
+  const Tensor* Y_Zero_Point = context->Input<Tensor>(7);
+  const Tensor* B = num_inputs == 9 ? context->Input<Tensor>(8) : nullptr;
+  const int64_t N = X->Shape()[0];
+  const int64_t C = X->Shape()[1];
+  const int64_t M = W->Shape()[0];
+  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+
+  std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
+
+  if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                           " W: ", W->Shape().ToString().c_str());
+  }
+
+  for (size_t i = 0; i < kernel_shape.size(); ++i) {
+    if (kernel_shape[i] != W->Shape()[i + 2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                             " W: ", W->Shape().ToString().c_str());
+    }
+  }
+
+  std::vector<int64_t> pads(pads_);
+  if (pads.empty()) {
+    pads.resize(kernel_shape.size() * 2, 0);
+  }
+  std::vector<int64_t> dilations(dilations_);
+  if (dilations.empty()) {
+    dilations.resize(kernel_shape.size(), 1);
+  }
+  std::vector<int64_t> strides(strides_);
+  if (strides.empty()) {
+    strides.resize(kernel_shape.size(), 1);
+  }
+
+  std::vector<int64_t> Y_dims;
+  Y_dims.insert(Y_dims.begin(), {N, M});
+  TensorShape input_shape = X->Shape().Slice(2);
+  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  Tensor* Y = context->Output(0, TensorShape(Y_dims));
+  TensorShape output_shape = Y->Shape().Slice(2);
+
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  const float* Xdata = X->template Data<float>();
+  float* Ydata = Y->template MutableData<float>();
+
+  const size_t kernel_rank = kernel_shape.size();
+
+  const int64_t input_image_size = input_shape.Size();
+  const int64_t output_image_size = output_shape.Size();
+  const int64_t kernel_size = TensorShape(kernel_shape).Size();
+  const int64_t X_offset = C / group_ * input_image_size;
+  const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group_;
+  const int64_t W_offset = W->Shape().Size() / group_;
+  const int64_t kernel_dim = C / group_ * kernel_size;
+  const int64_t col_buffer_size = kernel_dim * output_image_size;
+
+  auto col_data = alloc->Alloc(sizeof(float) * col_buffer_size);
+  BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+  float* col_buffer_data = static_cast<float*>(col_buffer.get());
+
+  TensorShape image_shape = X->Shape().Slice(1);
+  std::vector<int64_t> col_buffer_shape{kernel_dim};
+  col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
+                          output_shape.GetDims().end());
+
+  for (int image_id = 0; image_id < N; ++image_id) {
+    for (int group_id = 0; group_id < group_; ++group_id) {
+      math::Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>(
+          Xdata + group_id * X_offset,
+          image_shape.GetDims().data(),
+          col_buffer_shape.data(),
+          C * input_image_size,
+          col_buffer_size,
+          kernel_shape.data(),
+          strides.data(),
+          dilations.data(),
+          pads.data(),
+          static_cast<int>(kernel_shape.size()),
+          col_buffer_data,
+          &CPUMathUtil::Instance());
+      math::Gemm<float, CPUMathUtil>(
+          CblasNoTrans,
+          CblasNoTrans,
+          M / group_,
+          output_image_size,
+          kernel_dim,
+          1,
+          W->template Data<float>() + group_id * W_offset,
+          col_buffer_data,
+          0,
+          Ydata + group_id * Y_offset,
+          &CPUMathUtil::Instance());
+    }
+
+    if (B != nullptr) {
+      auto Ymatrix = EigenMatrixMap<float>(Ydata, output_image_size, M);
+      auto Bvec = ConstEigenVectorMap<float>(B->template Data<float>(), M);
+      Ymatrix.rowwise() += Bvec.transpose();
+    }
+
+    Xdata += X_offset * group_;
+    Ydata += Y_offset * group_;
+  }
+
+  return Status::OK();
+}
+
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    QLinearConv,
+    1,
+    int,                                                                         //TODO: int8
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int>()),  //TODO: int8
+    QLinearConv);
+}  // namespace onnxruntime
