@@ -244,27 +244,36 @@ int real_main(int argc, char* argv[]) {
     pool = CreateThreadpool(NULL);
 
     if (NULL == pool) {
-      //fprintf(stderr, "Unable to create threadpool");
+      fprintf(stderr, "Unable to create threadpool");
       return -1;
     }
 
-    SetThreadpoolThreadMinimum(pool, 2);
     SetThreadpoolThreadMaximum(pool, GetNumCpuCores());
 
-    auto cleanupgroup = CreateThreadpoolCleanupGroup();
+    if (FALSE == SetThreadpoolThreadMinimum(pool, 2)) {
+      fprintf(stderr, "SetThreadpoolThreadMinimum failed. LastError: %u\n",
+              GetLastError());
+    }
+
+    PTP_CLEANUP_GROUP CleanUpGroup = CreateThreadpoolCleanupGroup();
+
+    if (NULL == CleanUpGroup) {
+      fprintf(stderr, "CreateThreadpoolCleanupGroup failed. LastError: %u\n",
+              GetLastError());
+    }
 
     SetThreadpoolCallbackPool(&CallBackEnviron, pool);
 
-    SetThreadpoolCallbackCleanupGroup(&CallBackEnviron, cleanupgroup, NULL);
+    SetThreadpoolCallbackCleanupGroup(&CallBackEnviron, CleanUpGroup, NULL);
 
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
     if (!st.IsOK()) {
-      //fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
+      fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
 
-    CloseThreadpoolCleanupGroupMembers(cleanupgroup, 0, NULL);
-    CloseThreadpoolCleanupGroup(cleanupgroup);
+    CloseThreadpoolCleanupGroupMembers(CleanUpGroup, 0, NULL);
+    CloseThreadpoolCleanupGroup(CleanUpGroup);
     CloseThreadpool(pool);
 
 #else
@@ -276,10 +285,8 @@ int real_main(int argc, char* argv[]) {
 
 #endif
 
-    //std::string res = stat.ToString();
-    //fwrite(res.c_str(), 1, res.size(), stdout);
-    //fflush(stdout);
-
+    std::string res = stat.ToString();
+    fwrite(res.c_str(), 1, res.size(), stdout);
     for (ITestCase* l : tests) {
       delete l;
     }
@@ -382,8 +389,7 @@ int real_main(int argc, char* argv[]) {
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
     if (broken_tests.find(s) == broken_tests.end()) {
-      //fprintf(stderr, "test %s failed, please fix it\n", s.c_str());
-      //fflush(stderr);
+      fprintf(stderr, "test %s failed, please fix it\n", s.c_str());
       result = -1;
     }
   }
@@ -396,13 +402,9 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
 #endif
   try {
-    int returnVal = real_main(argc, argv);
-    //LOGF_DEFAULT(ERROR, "%d\n", returnVal);
-    return returnVal;
-  } catch (std::exception&) {
-    //fprintf(stderr, "%s\n", ex.what());
-    //fflush(stderr);
-    //LOGF_DEFAULT(ERROR, "%s\n", ex.what());
+    return real_main(argc, argv);
+  } catch (std::exception& ex) {
+    fprintf(stderr, "%s\n", ex.what());
     return -1;
   }
 }
