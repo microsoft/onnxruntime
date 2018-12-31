@@ -267,7 +267,7 @@ int real_main(int argc, char* argv[]) {
       return -1;
     }
 
-    CloseThreadpoolCleanupGroupMembers(CleanUpGroup, 0, NULL);
+    CloseThreadpoolCleanupGroupMembers(CleanUpGroup, TRUE, NULL);
     CloseThreadpoolCleanupGroup(CleanUpGroup);
     CloseThreadpool(pool);
 #else
