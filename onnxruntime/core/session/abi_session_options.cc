@@ -97,6 +97,6 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
   return 0;
 }
 
-ORT_API(void, OrtAddCustomOp, _In_ OrtSessionOptions* options, const char* custom_op_path) {
-  options->custom_op_paths.emplace_back(custom_op_path);
+ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path) {
+  options->custom_op_paths.emplace_back(lib_path);
 }
