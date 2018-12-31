@@ -17,7 +17,6 @@
 #include "sync_api.h"
 #include "providers.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/logging/logging.h"
 
 using namespace onnxruntime;
 
@@ -235,7 +234,6 @@ int real_main(int argc, char* argv[]) {
     TestEnv args(tests, stat, sf);
 
 #ifdef _WIN32
-
     TP_CALLBACK_ENVIRON CallBackEnviron;
     PTP_POOL pool = NULL;
 
@@ -263,7 +261,6 @@ int real_main(int argc, char* argv[]) {
     }
 
     SetThreadpoolCallbackPool(&CallBackEnviron, pool);
-
     SetThreadpoolCallbackCleanupGroup(&CallBackEnviron, CleanUpGroup, NULL);
 
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
@@ -275,14 +272,12 @@ int real_main(int argc, char* argv[]) {
     CloseThreadpoolCleanupGroupMembers(CleanUpGroup, 0, NULL);
     CloseThreadpoolCleanupGroup(CleanUpGroup);
     CloseThreadpool(pool);
-
 #else
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
-
 #endif
 
     std::string res = stat.ToString();
