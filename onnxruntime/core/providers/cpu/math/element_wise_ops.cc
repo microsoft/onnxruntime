@@ -837,7 +837,12 @@ class Asinh final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    Y = std::asinh(X);
+    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
+    auto Y_data = Y->template MutableData<float>();
+    auto out = gsl::make_span(Y_data, Y->Shape().Size());
+    for (int64_t index = 0; index, out.size(); ++index) {
+      out[index] = std::asinh<float>(out[index]);
+    }
     return Status::OK();
   }
 };
