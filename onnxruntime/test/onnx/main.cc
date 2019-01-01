@@ -69,11 +69,6 @@ int GetNumCpuCores() {
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
-  TP_CALLBACK_ENVIRON callBackEnviron;
-  PTP_POOL pool = NULL;
-
-  InitializeThreadpoolEnvironment(&callBackEnviron);
-
 #else
 int real_main(int argc, char* argv[]) {
 #endif
@@ -240,7 +235,10 @@ int real_main(int argc, char* argv[]) {
     TestEnv args(tests, stat, sf);
 
 #ifdef _WIN32
+    TP_CALLBACK_ENVIRON callBackEnviron;
+    PTP_POOL pool = NULL;
 
+    InitializeThreadpoolEnvironment(&callBackEnviron);
     pool = CreateThreadpool(NULL);
 
     if (NULL == pool) {
@@ -248,7 +246,7 @@ int real_main(int argc, char* argv[]) {
       return -1;
     }
 
-    SetThreadpoolThreadMaximum(pool, 2);  //sGetNumCpuCores());
+    SetThreadpoolThreadMaximum(pool, GetNumCpuCores());
 
     if (FALSE == SetThreadpoolThreadMinimum(pool, 2)) {
       fprintf(stderr, "SetThreadpoolThreadMinimum failed. LastError: %u\n", GetLastError());
