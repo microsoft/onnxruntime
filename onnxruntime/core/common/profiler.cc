@@ -41,7 +41,7 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
   EventRecord event(category, logging::GetProcessId(),
-                    logging::GetThreadId(), event_name, ts, dur, { event_args.begin(), event_args.end() });
+                    logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {
@@ -97,6 +97,10 @@ std::string Profiler::EndProfiling() {
   profile_stream_.close();
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
+}
+
+bool Profiler::FEnabled() const {
+  return enabled_;
 }
 
 //

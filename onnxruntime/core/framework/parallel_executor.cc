@@ -31,7 +31,11 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
                                  const std::vector<std::string>& output_names,
                                  std::vector<MLValue>& fetches,
                                  const logging::Logger& logger) {
-  auto tp = session_state.Profiler().StartTime();
+  TimePoint tp;
+  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  if (f_profiler_enabled) {
+    session_state.Profiler().StartTime();
+  }
 
   root_frame_ = std::make_unique<ExecutionFrame>(feeds, output_names, fetches, session_state);
   //std::cout << "start nodes:" << std::endl;
@@ -72,7 +76,9 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
     }
   }
 
-  session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "ParallelExecutor::Execute", tp);
+  if (f_profiler_enabled) {
+    session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "ParallelExecutor::Execute", tp);
+  }
   return Status::OK();
 }
 
@@ -83,7 +89,7 @@ void ParallelExecutor::RunNodeAsync(size_t p_node_index,
     RunNodeAsyncInternal(p_node_index, session_state, logger);
   } catch (...) {
     FinishNodeRun();
-	throw;
+    throw;
   }
 }
 
@@ -95,6 +101,9 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
   size_t node_index = p_node_index;
   bool keep_running = true;
   auto graph_viewer = session_state.GetGraphViewer();
+  TimePoint sync_time_begin;
+  TimePoint kernel_begin_time;
+  bool f_profiler_enabled = session_state.Profiler().FEnabled();
   // Avoid context switching if possible.
   while (keep_running) {
     // TODO: Convert RunNodeAsync return Status.
@@ -109,14 +118,16 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr) {
       ORT_THROW("Got nullptr from GetKernel for node: ",
-                        graph_viewer->GetNode(node_index)->Name());
+                graph_viewer->GetNode(node_index)->Name());
     }
 
     OpKernelContextInternal op_kernel_context(*root_frame_, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
 
-    auto sync_time_begin = session_state.Profiler().StartTime();
+    if (f_profiler_enabled) {
+      sync_time_begin = session_state.Profiler().StartTime();
+    }
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
 
@@ -141,31 +152,31 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       }
     }
 
-    const std::string& node_name = p_op_kernel->Node().Name();
-    const std::string& op_name = p_op_kernel->KernelDef().OpName();
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                     p_op_kernel->Node().Name() + "_fence_before",
+                                                     sync_time_begin,
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_before",
-                                                   sync_time_begin,
-                                                   {{"op_name", op_name}});
+      kernel_begin_time = session_state.Profiler().StartTime();
+    }
 
     // call compute on the kernel
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
-
-    auto kernel_begin_time = session_state.Profiler().StartTime();
 
     // Execute the kernel.
     auto status = p_op_kernel->Compute(&op_kernel_context);
     if (!status.IsOK()) {
       ORT_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
     }
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                     p_op_kernel->Node().Name() + "_kernel_time",
+                                                     kernel_begin_time,
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_kernel_time",
-                                                   kernel_begin_time,
-                                                   {{"op_name", op_name}});
-
-    sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().StartTime();
+    }
     // sync after compute for outputs
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
@@ -187,11 +198,12 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
         fence->AfterUsedAsOutput(queue_id);
       }
     }
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_after",
-                                                   sync_time_begin,
-                                                   {{"op_name", op_name}});
-
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                     p_op_kernel->Node().Name() + "_fence_after",
+                                                     sync_time_begin,
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+    }
     //std::cout << "Run async node finish: " << p_node_index << std::endl;
 
     keep_running = false;
@@ -241,8 +253,8 @@ Status ParallelExecutor::FetchOutput(const MLValueNameIdxMap& name_idx_map,
   } else {
     // this should've been checked before already
     ORT_ENFORCE(output_names.size() == fetches.size(),
-                        "output_names vector size: " + std::to_string(output_names.size()) +
-                            " does not match that of fetches vector: " + std::to_string(fetches.size()));
+                "output_names vector size: " + std::to_string(output_names.size()) +
+                    " does not match that of fetches vector: " + std::to_string(fetches.size()));
   }
 
   auto idx = 0;

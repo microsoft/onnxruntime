@@ -40,6 +40,8 @@ class Profiler {
   */
   TimePoint StartTime() const;
 
+  bool FEnabled() const;
+
   /*
   Record a single event. Time is measured till the call of this function from
   the start_time.
