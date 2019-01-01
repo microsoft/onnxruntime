@@ -18,6 +18,7 @@ void Profiler::Initialize(const logging::Logger* session_logger) {
 
 void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   ORT_ENFORCE(custom_logger != nullptr);
+  enabled_ = true;
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
   profiling_start_time_ = StartTime();
@@ -35,8 +36,6 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      TimePoint& start_time,
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
                                      bool /*sync_gpu*/) {
-  if (!enabled_ && !profile_with_logger_)
-    return;
   long long dur = TimeDiffMicroSeconds(start_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
@@ -97,17 +96,6 @@ std::string Profiler::EndProfiling() {
   profile_stream_.close();
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
-}
-
-bool Profiler::FEnabled() const {
-  return enabled_;
-}
-
-//
-// Conditionally sync the GPU if the syncGPU flag is set.
-//
-void ProfilerSyncGpu() {
-  ORT_NOT_IMPLEMENTED("Needs to implement only for gpus");
 }
 
 }  // namespace profiling

@@ -34,7 +34,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
   TimePoint tp;
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
   if (f_profiler_enabled) {
-    session_state.Profiler().StartTime();
+    tp = session_state.Profiler().StartTime();
   }
 
   root_frame_ = std::make_unique<ExecutionFrame>(feeds, output_names, fetches, session_state);

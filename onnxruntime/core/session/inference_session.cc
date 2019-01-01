@@ -185,7 +185,7 @@ class InferenceSession::Impl {
   }
 
   common::Status Load(std::unique_ptr<ModelProto> p_model_proto) {
-    TimePoint tp = session_profiler_.StartTime();
+    auto tp = session_profiler_.StartTime();
     try {
       LOGS(*session_logger_, INFO) << "Loading model using model_proto";
       std::lock_guard<std::mutex> l(session_mutex_);
