@@ -26,7 +26,7 @@ using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
 void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work) {
-  OnnxRuntimeCloseThreadpoolWork(work);
+  //OnnxRuntimeCloseThreadpoolWork(work);
   assert(context != nullptr);
   TestCaseTask* task((TestCaseTask*)context);
   ITestCase* info = task->env.tests[task->task_id];
@@ -94,7 +94,7 @@ PTestRunner::PTestRunner(OrtSession* session1,
 }
 
 void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work) {
-  OnnxRuntimeCloseThreadpoolWork(work);
+  //OnnxRuntimeCloseThreadpoolWork(work);
   DataTask* task((DataTask*)context);
   PTestRunner* env = task->env;
   const size_t task_id = task->task_id;

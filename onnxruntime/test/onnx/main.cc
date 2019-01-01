@@ -69,6 +69,11 @@ int GetNumCpuCores() {
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
+  TP_CALLBACK_ENVIRON callBackEnviron;
+  PTP_POOL pool = NULL;
+
+  InitializeThreadpoolEnvironment(&callBackEnviron);
+
 #else
 int real_main(int argc, char* argv[]) {
 #endif
@@ -220,6 +225,7 @@ int real_main(int argc, char* argv[]) {
       return -1;
 #endif
     }
+
     if (enable_mkl) {
 #ifdef USE_MKLDNN
       OrtProviderFactoryInterface** f;
@@ -234,10 +240,6 @@ int real_main(int argc, char* argv[]) {
     TestEnv args(tests, stat, sf);
 
 #ifdef _WIN32
-    TP_CALLBACK_ENVIRON CallBackEnviron;
-    PTP_POOL pool = NULL;
-
-    InitializeThreadpoolEnvironment(&CallBackEnviron);
 
     pool = CreateThreadpool(NULL);
 
@@ -246,31 +248,33 @@ int real_main(int argc, char* argv[]) {
       return -1;
     }
 
-    SetThreadpoolThreadMaximum(pool, GetNumCpuCores());
+    SetThreadpoolThreadMaximum(pool, 2);  //sGetNumCpuCores());
 
     if (FALSE == SetThreadpoolThreadMinimum(pool, 2)) {
       fprintf(stderr, "SetThreadpoolThreadMinimum failed. LastError: %u\n", GetLastError());
     }
 
-    PTP_CLEANUP_GROUP CleanUpGroup = CreateThreadpoolCleanupGroup();
+    PTP_CLEANUP_GROUP cleanUpGroup = CreateThreadpoolCleanupGroup();
 
-    if (NULL == CleanUpGroup) {
+    if (NULL == cleanUpGroup) {
       fprintf(stderr, "CreateThreadpoolCleanupGroup failed. LastError: %u\n", GetLastError());
     }
 
-    SetThreadpoolCallbackPool(&CallBackEnviron, pool);
-    SetThreadpoolCallbackCleanupGroup(&CallBackEnviron, CleanUpGroup, NULL);
+    SetThreadpoolCallbackPool(&callBackEnviron, pool);
+    SetThreadpoolCallbackCleanupGroup(&callBackEnviron, cleanUpGroup, NULL);
 
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &CallBackEnviron);
+    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), &callBackEnviron);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
 
-    CloseThreadpoolCleanupGroupMembers(CleanUpGroup, TRUE, NULL);
-    CloseThreadpoolCleanupGroup(CleanUpGroup);
+    CloseThreadpoolCleanupGroupMembers(cleanUpGroup, FALSE, NULL);
+    CloseThreadpoolCleanupGroup(cleanUpGroup);
     CloseThreadpool(pool);
-    DestroyThreadpoolEnvironment(&CallBackEnviron);
+    DestroyThreadpoolEnvironment(&callBackEnviron);
+
+    Sleep(5000);
 #else
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
