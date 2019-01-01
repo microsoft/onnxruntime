@@ -122,11 +122,13 @@ void Slice<T, Tind, dynamic>::FillVectors(const OpKernelContext* context,
   ORT_ENFORCE(context->Input<Tensor>(2) != nullptr, "Required ends input is missing");
 
   auto starts_tensor_ptr = context->Input<Tensor>(1);
+  ORT_ENFORCE(starts_tensor_ptr->Shape().NumDimensions() == 1, "Starts input must be a 1-D array");
   input_starts = std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
                                        starts_tensor_ptr->Data<Tind>() +
                                        starts_tensor_ptr->Shape().Size());
  
   auto ends_tensor_ptr = context->Input<Tensor>(2);
+  ORT_ENFORCE(ends_tensor_ptr->Shape().NumDimensions() == 1, "ends input must be a 1-D array");
   input_ends = std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
                                      ends_tensor_ptr->Data<Tind>() +
                                      ends_tensor_ptr->Shape().Size());
@@ -158,12 +160,10 @@ Status Slice<T, Tind, dynamic>::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> input_starts, input_ends, input_axes;
     FillVectors(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                        dimension_count, input_dimensions,
-                        starts, output_dims));
+                        dimension_count, input_dimensions, starts, output_dims));
   } else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
-                        dimension_count, input_dimensions,
-                        starts, output_dims));
+                        dimension_count, input_dimensions, starts, output_dims));
   }
 
   TensorShape output_shape(output_dims);
