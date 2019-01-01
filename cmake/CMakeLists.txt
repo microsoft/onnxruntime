@@ -322,7 +322,7 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    #only treat warning as error on x64 platform. For x86, right no there are too many warnings to fix
+    # treat warning as error only on x64 platform. For x86, there are too many warnings to fix.
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
@@ -330,6 +330,14 @@ if (WIN32)
         set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
       endforeach()
     endif()
+
+    # set linker flags to minimize the binary size.
+    if (MSVC)
+      foreach(type EXE SHARED)    
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF")
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+      endforeach()
+    endif()      
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning in Linux
