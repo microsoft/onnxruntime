@@ -49,7 +49,7 @@ TEST(DynamicSliceTest, dynamic_slice_with_axes) {
   test1.AddInput  <int32_t> ("data",   {3,3}, {1,2,3,4,5,6,7,8,9});
   test1.AddInput  <int32_t> ("starts", {1},   {1});
   test1.AddInput  <int32_t> ("ends",   {1},   {3});
-  test1.AddInput  <int32_t> ("axes",   {1},   {1});
+  test1.AddInput  <int32_t> ("axes",   {1},   {-1});
   test1.AddOutput <int32_t> ("output", {3,2}, {2,3,5,6,8,9});
   test1.Run();
 

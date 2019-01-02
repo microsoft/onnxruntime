@@ -94,8 +94,8 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 
   // Iterate through the provided axes and override the start/end ranges
   for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
-    auto axis = static_cast<size_t>(axes[axesIndex]);
-    if (axis >= dimension_count)
+    auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
+    if (axis > static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
     auto start = raw_starts[axesIndex];
     if (start < 0)
