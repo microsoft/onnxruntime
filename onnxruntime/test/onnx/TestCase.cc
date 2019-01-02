@@ -531,18 +531,18 @@ Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx
   if (!has_valid_names) {
     size_t count;
     if (is_input) {
-      ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtSessionGetInputCount(session, &count));
     } else {
-      ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &count));
     }
     if (count != test_data_pbs.size())
       ORT_THROW("data count mismatch");
     for (size_t i = 0; i != count; ++i) {
       char* temp_name;
       if (is_input) {
-        ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtSessionGetInputName(session, i, allocator, &temp_name));
       } else {
-        ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, allocator, &temp_name));
       }
       var_names[i] = temp_name;
       (*allocator)->Free(allocator, temp_name);
