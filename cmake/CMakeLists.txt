@@ -442,7 +442,7 @@ if (onnxruntime_USE_CUDA)
 	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_100.dll /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
+    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas culibos)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
