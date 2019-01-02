@@ -316,11 +316,13 @@ Status ScanImpl::ValidateInput() {
   auto status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, graph_inputs);
   ORT_RETURN_IF_ERROR(status);
 
+  // validate the axes values
+
   // validate the output directions match the number of Scan outputs if provided
   if (output_directions_.size() > 0 && output_directions_.size() != static_cast<size_t>(num_variadic_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           output_directions_.size(), " values were provided in scan_output_directions . Expected ",
-                           num_variadic_outputs_);
+                           "Number of entries in 'scan_output_directions' was ", output_directions_.size(),
+                           " but expected", num_variadic_outputs_);
   }
 
   return Status::OK();
