@@ -56,7 +56,7 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
   return builder;
 }
 
-Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState& session_state) const {
+Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, FuncManager* func_mgr) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -137,17 +137,17 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
       }
     }
     if (nodes_need_compile.size() > 0) {
-      if (session_state.ExportDll()) {
+      if (export_dll) {
         std::string dll_path;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, dll_path));
         for (auto* node : nodes_need_compile)
-          ORT_RETURN_IF_ERROR(const_cast<FuncManager*>(session_state.GetFuncMgr())->AddFuncInfo(node->Name(), dll_path));
+          ORT_RETURN_IF_ERROR(func_mgr->AddFuncInfo(node->Name(), dll_path));
       } else {
         std::vector<NodeComputeInfo> node_compute_funcs;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, node_compute_funcs));
         ORT_ENFORCE(node_compute_funcs.size() == nodes_need_compile.size(), "Provider doesn't return correct number of compiled functions");
         for (auto j = 0; j < nodes_need_compile.size(); j++)
-          ORT_RETURN_IF_ERROR(const_cast<FuncManager*>(session_state.GetFuncMgr())->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
+          ORT_RETURN_IF_ERROR(func_mgr->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
       }
       for (auto* node : nodes_need_compile) {
         //prepare the func kernel
@@ -181,7 +181,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    this->Partition(graph, session_state);
+    this->Partition(graph, export_dll, func_mgr);
   }
 
   //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
