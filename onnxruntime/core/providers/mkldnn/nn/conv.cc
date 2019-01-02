@@ -4,6 +4,8 @@
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
+#include <thread>
+#include <mutex>
 
 #include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/nn/conv.h"
@@ -255,45 +257,14 @@ class ConvPrimitivePool : public PrimitivePool<T> {
 }  // namespace
 
 template <typename T>
-std::shared_ptr<mkldnn::memory> Conv<T>::Reorder_weights(OpKernelContext* context,
-    const mkldnn::memory::dims& src_dims, const mkldnn::memory::dims& filter_dims,
-    const mkldnn::memory::dims& bias_dims, const mkldnn::memory::dims& dst_dims,
-    const mkldnn::memory::dims& strides, const mkldnn::memory::dims& dilations,
-    const mkldnn::memory::dims& padding_left, const mkldnn::memory::dims& padding_right,
-    mkldnn::memory::format& filter_format,
-    mkldnn::memory::dims& filter_dims_mkl) const {
-    const Tensor* W = context->Input<Tensor>(1);
-    const T* filter_data = W->template Data<T>();
-
-    std::string weight_key = OpKernel::Node().InputDefs()[1]->Name();
-    std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
-    filter_dst_mem = provider_->Get_weight_memory(weight_key);
-    ConvParams conv_params(src_dims, filter_dims, bias_dims, dst_dims, strides, dilations,
-      padding_left, padding_right);
-    ConvPrimitive<T>* conv_primitive = ConvPrimitivePool<T>::Get(conv_params);
-    auto conv_fwd_pd = conv_primitive->GetPrimitiveDesc();
-    mkldnn::engine& cpu_engine = GetEngine();
-
-    AllocatorPtr alloc;
-    context->GetTempSpaceAllocator(&alloc);
-    IAllocatorUniquePtr<void> filter_reorder_buffer;
-
-    auto pd = mkldnn::memory::primitive_desc(
-      mkldnn::memory::desc(
-        filter_dims_mkl, MklDnnType<T>(), filter_format), cpu_engine);
-    mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
-    filter_reorder_buffer = 
-      IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
-    filter_dst_mem.reset(
-      new mkldnn::memory(
-      conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
-    MemoryReorderParams params(src, *filter_dst_mem);
-    DoReorder<T>(params);
-    provider_->Set_weights_memory(weight_key, filter_dst_mem);
-
-    return filter_dst_mem;
+void Conv<T>::ReoderFilterMemory(const mkldnn::memory& src, const mkldnn::memory& dst) const {
+  MemoryReorderParams params(src, dst);
+  DoReorder<T>(params);
+  std::string weight_name = OpKernel::Node().InputDefs()[1]->Name();
+  std::shared_ptr<mkldnn::memory> p = std::make_shared<mkldnn::memory>(dst);
+  provider_->SetWeightsMemory(weight_name, p);
 }
-  
+
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
@@ -317,15 +288,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   if (kernel_rank + 2 != W->Shape().NumDimensions()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                   " W: ", W->Shape().ToString().c_str());
+                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                           " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_rank; ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                     " W: ", W->Shape().ToString().c_str());
+                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                             " W: ", W->Shape().ToString().c_str());
     }
   }
 
@@ -441,19 +412,32 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       DoReorder<T>(params);
       src_data = static_cast<T*>(dst.get_data_handle());
     }
+
     // Reorder filter memory layout if necessary
-    // Avoid data reordering. Save filter memory in mkldnn format from first iteration 
+    // Avoid data reordering. Save filter memory in mkldnn format from first iteration
     // in execution provider mapped by weight name.
     std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
-    std::shared_ptr<mkldnn::memory> filter_dst_mem =nullptr;
-    filter_dst_mem = provider_->Get_weight_memory(weightKey);
+    std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
+    filter_dst_mem = provider_->GetWeightsMemory(weightKey);
 
     if (filter_dst_mem == nullptr) {
-      if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
-        filter_dst_mem = Reorder_weights(context, src_dims_mkl, filter_dims_mkl, bias_dims_mkl,
-          dst_dims_mkl, strides_mkl, dilations_mkl,
-          padding_left_mkl, padding_right_mkl, filter_format, filter_dims_mkl);
-        filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+      std::lock_guard<std::mutex> lock(mutex_);
+      // check if the last thread has already reordered weight's memory
+      filter_dst_mem = provider_->GetWeightsMemory(weightKey);
+
+      if (filter_dst_mem == nullptr) {
+        if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
+          auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
+                                                       filter_dims_mkl, MklDnnType<T>(), filter_format),
+                                                   cpu_engine);
+          mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
+          filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
+          filter_dst_mem.reset(
+              new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
+          ReoderFilterMemory(src, *filter_dst_mem);
+          filter_dst_mem = provider_->GetWeightsMemory(weightKey);
+          filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+        }
       }
     } else {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
