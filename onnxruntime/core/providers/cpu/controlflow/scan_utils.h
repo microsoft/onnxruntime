@@ -102,6 +102,7 @@ class OutputIterator {
   Status MakeConcrete();
 
   OpKernelContextInternal& context_;
+  bool is_v8_;
   const int output_index_;
   ONNX_NAMESPACE::TensorShapeProto per_iteration_shape_;
   TensorShape final_shape_;
@@ -109,7 +110,6 @@ class OutputIterator {
   ScanDirection direction_;
   int64_t num_iterations_;
   int64_t cur_iteration_;
-  bool use_slicer_;
 
   // is the final shape concrete, or does it have symbolic dimensions
   bool is_concrete_shape_;

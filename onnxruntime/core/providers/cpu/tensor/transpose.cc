@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -85,7 +86,7 @@ static void DoTransposeSingleBlock(size_t num_elts_in_block, const T* source, T*
 }
 
 template <typename T>
-Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
@@ -132,6 +133,12 @@ Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, cons
   return Status::OK();
 }
 
+Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+  Status retval = Status::OK();
+  DispatchOnTensorTypeWithReturn(input.DataType(), retval, DoTypedTranspose, permutations, input, output);
+  return retval;
+}
+
 template <>
 Status Transpose<float>::Compute(OpKernelContext* ctx) const {
   // Get input and output:
@@ -150,7 +157,7 @@ Status Transpose<float>::Compute(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor& Y = *ctx->Output(0, output_shape);
 
-  TransposeBase::DoTranspose<float>(*p_perm, X, Y);
+  DoTypedTranspose<float>(*p_perm, X, Y);
 
   return Status::OK();
 }

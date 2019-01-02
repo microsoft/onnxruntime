@@ -227,7 +227,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
     auto& input_tensor = GetSubgraphInputTensor(context_, i);
     const auto& input_shape = input_tensor.Shape();
 
-    if (input_shape.NumDimensions() < min_dims_required)
+    if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
@@ -266,7 +266,7 @@ Status Scan8Impl::ValidateInput() {
   auto& graph_inputs = subgraph_.GetInputs();
   auto num_graph_inputs = graph_inputs.size();
 
-  if (num_graph_inputs != num_variadic_inputs_) {
+  if (num_graph_inputs != static_cast<size_t>(num_variadic_inputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' expects ", num_graph_inputs,
                            " inputs but Scan was only given ", num_variadic_inputs_);
   }
@@ -307,7 +307,7 @@ Status Scan8Impl::AllocateOutputTensors() {
   Status status = Status::OK();
   auto& graph_outputs = subgraph_.GetOutputs();
 
-  if (graph_outputs.size() != num_variadic_outputs_) {
+  if (graph_outputs.size() != static_cast<size_t>(num_variadic_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
                            " outputs but Scan expects ", num_variadic_outputs_);
   }
@@ -430,11 +430,11 @@ Status Scan8Impl::Execute() {
   return status;
 }
 
-ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         8,
-                         KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                         Scan<8>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                   8, 8,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Scan<8>);
 
 }  // namespace onnxruntime

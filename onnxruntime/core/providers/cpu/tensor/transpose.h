@@ -11,7 +11,6 @@ namespace onnxruntime {
 
 class TransposeBase {
  public:
-  template <typename T>
   static Status DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output);
 
  protected:

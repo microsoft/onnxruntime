@@ -273,6 +273,7 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                TensorShape final_shape,
                                ScanDirection direction)
     : context_{context},
+      is_v8_{is_v8},
       output_index_{output_index},
       final_shape_{final_shape},
       is_loop_state_var_{is_loop_state_var},
@@ -292,9 +293,6 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
     else
       num_iterations_ = final_shape_[0];
   }
-
-  // if there are multiple iterations use the slicer. for v8 there is always a batch dimension
-  use_slicer_ = is_v8 || num_iterations_ > 1;
 }
 
 Status OutputIterator::Initialize() {
@@ -332,7 +330,7 @@ Status OutputIterator::AllocateFinalBuffer() {
 
   // if it's v8 there's always a batch size dimension so we need a slicer to hide that from each iteration
   // if it's v9 or later we only need a slicer if there is more than 1 iteration
-  if (use_slicer_) {
+  if (is_v8_) {
     if (is_loop_state_var_) {
       // only one entry is required as we slice on a single dimension
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
@@ -349,6 +347,14 @@ Status OutputIterator::AllocateFinalBuffer() {
     }
 
     cur_slicer_iterator_ = slicer_iterators_.begin();
+  } else {
+    // nothing to slice for a loop state var. slice on dimension 0 (sequence) for the scan outputs.
+    if (!is_loop_state_var_) {
+      slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
+                                      ? MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).begin()
+                                      : MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).rbegin());
+      cur_slicer_iterator_ = slicer_iterators_.begin();
+    }
   }
 
   return Status::OK();
@@ -387,7 +393,8 @@ MLValue& OutputIterator::operator*() {
   ORT_ENFORCE(cur_iteration_ < num_iterations_);
 
   if (is_concrete_shape_)
-    if (use_slicer_)
+    // for v8 both outputs and loop state vars use slicers. for v9 only outputs do
+    if (is_v8_ || !is_loop_state_var_)
       return **cur_slicer_iterator_;
     else
       return *final_output_mlvalue_;
@@ -405,18 +412,21 @@ OutputIterator& OutputIterator::operator++() {
 
     ++cur_iteration_;
 
-    if (use_slicer_) {
+    if (is_v8_) {
       // if not a loop state var, see if we just finished the current sequence (dim 1)
       if (!is_loop_state_var_ && cur_iteration_ % final_shape_[1] == 0) {
         ++cur_slicer_iterator_;
       } else {
         ++(*cur_slicer_iterator_);
       }
+    } else if (!is_loop_state_var_) {
+      // v9 output uses iterator
+      ++(*cur_slicer_iterator_);
     }
   }
 
   return *this;
-}
+}  // namespace detail
 
 }  // namespace detail
 }  // namespace scan

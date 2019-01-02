@@ -230,7 +230,7 @@ e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 
 */
 static void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
                                      std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape) {
-  auto rank = input_shape.NumDimensions();
+  int64_t rank = input_shape.NumDimensions();
   const auto& dims = input_shape.GetDims();
 
   permutations.reserve(rank);
@@ -239,7 +239,7 @@ static void CalculateTransposedShape(const TensorShape& input_shape, int64_t axi
   output_shape.reserve(rank);
   output_shape[0] = dims[axis];
 
-  for (int i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     if (i != axis) {
       permutations.push_back(i);
       output_shape.push_back(dims[i]);
@@ -278,7 +278,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
     auto& input_tensor = *context_.Input<Tensor>(i);
     const auto& input_shape = input_tensor.Shape();
 
-    if (input_shape.NumDimensions() < min_dims_required)
+    if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
@@ -305,7 +305,7 @@ Status ScanImpl::ValidateInput() {
   auto& graph_inputs = subgraph_.GetInputs();  // required inputs
   auto num_graph_inputs = graph_inputs.size();
 
-  if (num_variadic_inputs_ < num_graph_inputs) {
+  if (static_cast<size_t>(num_variadic_inputs_) < num_graph_inputs) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' requires ", num_graph_inputs,
                            " inputs but Scan was only given ", num_variadic_inputs_);
   }
@@ -317,7 +317,7 @@ Status ScanImpl::ValidateInput() {
   ORT_RETURN_IF_ERROR(status);
 
   // validate the output directions match the number of Scan outputs if provided
-  if (output_directions_.size() > 0 && output_directions_.size() != num_variadic_outputs_) {
+  if (output_directions_.size() > 0 && output_directions_.size() != static_cast<size_t>(num_variadic_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            output_directions_.size(), " values were provided in scan_output_directions . Expected ",
                            num_variadic_outputs_);
@@ -326,35 +326,36 @@ Status ScanImpl::ValidateInput() {
   return Status::OK();
 }
 
-#define DispatchOnType(tensor_type, function, ...)            \
-  if (tensor_type == DataTypeImpl::GetType<float>())          \
-    function<float>(##__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<double>())    \
-    function<double>(##__VA_ARGS__);                          \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())    \
-    function<int8_t>(##__VA_ARGS__);                          \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())   \
-    function<int16_t>(##__VA_ARGS__);                         \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())   \
-    function<int32_t>(##__VA_ARGS__);                         \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())   \
-    function<int64_t>(##__VA_ARGS__);                         \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())   \
-    function<uint8_t>(##__VA_ARGS__);                         \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())  \
-    function<uint16_t>(##__VA_ARGS__);                        \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())  \
-    function<uint32_t>(##__VA_ARGS__);                        \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())  \
-    function<uint64_t>(##__VA_ARGS__);                        \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())      \
-    function<bool>(##__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>()) \
-    function<MLFloat16>(##__VA_ARGS__);                       \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())  \
-  function<BFloat16>(##__VA_ARGS__)
+//#define DispatchOnType(tensor_type, function, ...)            \
+//  if (tensor_type == DataTypeImpl::GetType<float>())          \
+//    function<float>(__VA_ARGS__);                             \
+//  else if (tensor_type == DataTypeImpl::GetType<double>())    \
+//    function<double>(__VA_ARGS__);                            \
+//  else if (tensor_type == DataTypeImpl::GetType<int8_t>())    \
+//    function<int8_t>(__VA_ARGS__);                            \
+//  else if (tensor_type == DataTypeImpl::GetType<int16_t>())   \
+//    function<int16_t>(__VA_ARGS__);                           \
+//  else if (tensor_type == DataTypeImpl::GetType<int32_t>())   \
+//    function<int32_t>(__VA_ARGS__);                           \
+//  else if (tensor_type == DataTypeImpl::GetType<int64_t>())   \
+//    function<int64_t>(__VA_ARGS__);                           \
+//  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())   \
+//    function<uint8_t>(__VA_ARGS__);                           \
+//  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())  \
+//    function<uint16_t>(__VA_ARGS__);                          \
+//  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())  \
+//    function<uint32_t>(__VA_ARGS__);                          \
+//  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())  \
+//    function<uint64_t>(__VA_ARGS__);                          \
+//  else if (tensor_type == DataTypeImpl::GetType<bool>())      \
+//    function<bool>(__VA_ARGS__);                              \
+//  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>()) \
+//    function<MLFloat16>(__VA_ARGS__);                         \
+//  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())  \
+//  function<BFloat16>(__VA_ARGS__)
 
 Status ScanImpl::SetupInputs() {
+  auto status = Status::OK();
   AllocatorPtr alloc;
   auto num_scan_inputs = num_variadic_inputs_ - num_loop_state_variables_;
 
@@ -363,7 +364,7 @@ Status ScanImpl::SetupInputs() {
 
     if (sequence_dim == 0) {
       // no transpose required
-      inputs_[i] = *context_.GetInputMLValue(i + num_loop_state_variables_);
+      inputs_.push_back(*context_.GetInputMLValue(i + num_loop_state_variables_));
     } else {
       auto& input_tensor = *context_.Input<Tensor>(i + num_loop_state_variables_);
       const auto& input_shape = input_tensor.Shape();
@@ -373,27 +374,27 @@ Status ScanImpl::SetupInputs() {
       CalculateTransposedShape(input_shape, sequence_dim, permutations, new_shape);
 
       if (!alloc) {
-        auto status = context_.GetTempSpaceAllocator(&alloc);
+        status = context_.GetTempSpaceAllocator(&alloc);
         ORT_RETURN_IF_ERROR(status);
       }
 
       MLValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      DispatchOnType(input_tensor.DataType(), TransposeBase::DoTranspose,
-                     permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = TransposeBase::DoTranspose(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      ORT_RETURN_IF_ERROR(status);
 
-      inputs_[i] = transpose_output;
+      inputs_.push_back(transpose_output);
     }
   }
 
-  return Status::OK();
+  return status;
 }
 
 Status ScanImpl::AllocateOutputTensors() {
   Status status = Status::OK();
   auto& graph_outputs = subgraph_.GetOutputs();
 
-  if (graph_outputs.size() != num_variadic_outputs_) {
+  if (graph_outputs.size() != static_cast<size_t>(num_variadic_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
                            " outputs but Scan expects ", num_variadic_outputs_);
   }
@@ -409,7 +410,7 @@ Status ScanImpl::AllocateOutputTensors() {
   for (int i = num_loop_state_variables_, end = num_variadic_outputs_; i < end; ++i) {
     ScanDirection direction = ScanDirection::kForward;
     const int scan_output_index = i - num_loop_state_variables_;
-    if (scan_output_index < output_directions_.size()) {
+    if (static_cast<size_t>(scan_output_index) < output_directions_.size()) {
       direction = static_cast<ScanDirection>(output_directions_[scan_output_index]);
     }
 

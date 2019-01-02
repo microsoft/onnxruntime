@@ -13,6 +13,7 @@ namespace onnxruntime {
 namespace test {
 
 struct RunOptions {
+  bool is_v8 = true;
   bool include_dim_values_in_main_graph = false;
   bool include_dim_values_in_subgraph = true;
   bool include_types_in_subgraph = true;
@@ -27,7 +28,7 @@ static const float kOuterNodeAddValue = 42.f;
 
 class ScanOpTester : public OpTester {
  public:
-  ScanOpTester() : OpTester("Scan", 8) {
+  ScanOpTester(int opset_version = 8) : OpTester("Scan", opset_version) {
   }
 
  protected:
@@ -248,27 +249,27 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
   }
 }
 
-void RunTest(const std::string test_name, int64_t batch_size, int64_t max_sequence_len, int64_t input_size,
-             std::vector<int64_t>* directions,
-             std::vector<int64_t>* sequence_lens,
-             std::vector<float>& loop_state_in_0,
-             std::vector<float> input_0,
-             std::vector<float> input_1,
-             std::vector<float>& loop_state_out_0,
-             std::vector<float> output_0,
-             std::vector<float> output_1,
-             std::vector<float> output_2,
-             std::vector<float> output_3,
-             RunOptions options = {},
-             OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-             const std::string& failure_message = "") {
+void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t max_sequence_len, int64_t input_size,
+                std::vector<int64_t>* directions,
+                std::vector<int64_t>* sequence_lens,
+                std::vector<float>& loop_state_in_0,
+                std::vector<float> input_0,
+                std::vector<float> input_1,
+                std::vector<float>& loop_state_out_0,
+                std::vector<float> output_0,
+                std::vector<float> output_1,
+                std::vector<float> output_2,
+                std::vector<float> output_3,
+                RunOptions options = {},
+                OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                const std::string& failure_message = "") {
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
   Model model(test_name);
   auto& graph = model.MainGraph();
   CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   auto& proto = graph.ToGraphProto();
 
-  ScanOpTester test;
+  ScanOpTester test{8};
 
   test.AddAttribute("body", proto);
   test.AddAttribute<int64_t>("num_scan_inputs", 2);
@@ -308,6 +309,68 @@ void RunTest(const std::string test_name, int64_t batch_size, int64_t max_sequen
   test.Run(expect_result, failure_message);
 }
 
+void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
+                std::vector<int64_t>* input_directions,
+                std::vector<int64_t>* axes,
+                std::vector<int64_t>* output_directions,
+                std::vector<float>& loop_state_in_0,
+                std::vector<float> input_0,
+                std::vector<float> input_1,
+                std::vector<float>& loop_state_out_0,
+                std::vector<float> output_0,
+                std::vector<float> output_1,
+                std::vector<float> output_2,
+                std::vector<float> output_3,
+                RunOptions options = {},
+                OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                const std::string& failure_message = "") {
+  // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
+  Model model(test_name);
+  auto& graph = model.MainGraph();
+  CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
+  auto& proto = graph.ToGraphProto();
+
+  ScanOpTester test{9};
+
+  test.AddAttribute("body", proto);
+  test.AddAttribute<int64_t>("num_scan_inputs", 2);
+
+  if (input_directions != nullptr) {
+    test.AddAttribute<std::vector<int64_t>>("scan_input_directions", *input_directions);
+  }
+
+  if (axes != nullptr) {
+    test.AddAttribute<std::vector<int64_t>>("axes", *axes);
+  }
+
+  if (output_directions != nullptr) {
+    test.AddAttribute<std::vector<int64_t>>("scan_output_directions", *output_directions);
+  }
+
+  test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
+
+  std::vector<int64_t> loop_state_shape;
+  if (!options.scalar_loop_state_value) {
+    loop_state_shape.push_back(1);
+  }
+
+  test.AddInput<float>("scan_loop_state_in_0", loop_state_shape, loop_state_in_0);
+
+  std::vector<int64_t> input_shape{sequence_len, input_size};
+  test.AddInput<float>("scan_input_0", input_shape, input_0);
+  test.AddInput<float>("scan_input_1", input_shape, input_1);
+
+  test.AddOutput<float>("scan_loop_state_out_0", loop_state_shape, loop_state_out_0);
+
+  std::vector<int64_t> output_shape{sequence_len, 1};
+  test.AddOutput<float>("scan_output_0", output_shape, output_0);
+  test.AddOutput<float>("scan_output_1", output_shape, output_1);
+  test.AddOutput<float>("scan_output_2", output_shape, output_2);
+  test.AddOutput<float>("scan_output_3", output_shape, output_3);
+
+  test.Run(expect_result, failure_message);
+}
+
 void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, const std::string& expected_error = "") {
   const int64_t batch_size = 1;
   const int64_t sequence_len = 2;
@@ -315,7 +378,8 @@ void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, const std
 
   std::vector<float> iteration_count_in{0.f};
 
-  // batch_size, max_sequence_len, input_size
+  // v8: batch_size, max_sequence_len, input_size
+  // v9: sequence_len, input_size
   std::vector<float> input_0{1.f, 2.f,
                              4.f, 3.f};
   std::vector<float> input_1{3.f, 4.f,
@@ -331,23 +395,44 @@ void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, const std
   std::vector<float> output_2{3.f + output_adjust, 2.f + output_adjust};
   std::vector<float> output_3{4.f + output_adjust, 1.f + output_adjust};
 
-  RunTest("ShortSequenceOneInBatchOneLoopStateVar", batch_size, sequence_len, input_size,
-          nullptr, nullptr,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3,
-          options,
-          expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
-          expected_error);
+  if (options.is_v8) {
+    RunTest_v8("ShortSequenceOneInBatchOneLoopStateVar", batch_size, sequence_len, input_size,
+               nullptr, nullptr,
+               iteration_count_in, input_0, input_1,
+               iteration_count_out, output_0, output_1, output_2, output_3,
+               options,
+               expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+               expected_error);
+  } else {
+    RunTest_v9("ShortSequenceOneInBatchOneLoopStateVar", input_size, sequence_len,
+               nullptr, nullptr, nullptr,
+               iteration_count_in, input_0, input_1,
+               iteration_count_out, output_0, output_1, output_2, output_3,
+               options,
+               expected_error.empty() ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
+               expected_error);
+  }
 }
 
-TEST(Scan, ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_TypeAndShapeInSubgraph) {
+#define TEST_8_AND_9(function) \
+  TEST(Scan8, function) {      \
+    function(true);            \
+  }                            \
+                               \
+  TEST(Scan9, function) {      \
+    function(false);           \
+  }
+void ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_TypeAndShapeInSubgraph(bool is_v8) {
   RunOptions options{};
+  options.is_v8 = is_v8;
   options.include_dim_values_in_main_graph = false;
   options.include_types_in_subgraph = true;
   options.include_dim_values_in_subgraph = true;
 
   ShortSequenceOneInBatchOneLoopStateVar(options);
 }
+
+TEST_8_AND_9(ShortSequenceOneInBatchOneLoopStateVar_NoShapeInMainGraph_TypeAndShapeInSubgraph);
 
 TEST(Scan, ShortSequenceOneInBatchOneLoopStateVar_ShapeInMainGraph_NoTypeAndShapeInSubgraph) {
   RunOptions options{};
@@ -452,10 +537,10 @@ TEST(Scan, ShortSequenceTwoInBatchOneLoopStateVar) {
   std::vector<float> output_2{3.f, 2.f, -3.f, -2.f};
   std::vector<float> output_3{4.f, 1.f, -4.f, -1.f};
 
-  RunTest("ShortSequenceTwoInBatchOneLoopStateVar", batch_size, sequence_len, input_size,
-          nullptr, nullptr,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("ShortSequenceTwoInBatchOneLoopStateVar", batch_size, sequence_len, input_size,
+             nullptr, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan, MixedSequenceLens) {
@@ -493,10 +578,10 @@ TEST(Scan, MixedSequenceLens) {
   std::vector<float> output_2{3.f, 0.f, -3.f, -2.f};
   std::vector<float> output_3{4.f, 0.f, -4.f, -1.f};
 
-  RunTest("MixedSequenceLens", batch_size, max_sequence_len, input_size,
-          nullptr, &sequence_lens,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("MixedSequenceLens", batch_size, max_sequence_len, input_size,
+             nullptr, &sequence_lens,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan, MixedSequenceLensReverse) {
@@ -537,10 +622,10 @@ TEST(Scan, MixedSequenceLensReverse) {
   std::vector<float> output_2{3.f, 0.f, -2.f, -3.f};
   std::vector<float> output_3{4.f, 0.f, -1.f, -4.f};
 
-  RunTest("MixedSequenceLensReverse", batch_size, max_sequence_len, input_size,
-          &directions, &sequence_lens,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("MixedSequenceLensReverse", batch_size, max_sequence_len, input_size,
+             &directions, &sequence_lens,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
@@ -575,10 +660,10 @@ TEST(Scan, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
   std::vector<float> output_2{3.f, 2.f, -3.f, -2.f};
   std::vector<float> output_3{4.f, 1.f, -4.f, -1.f};
 
-  RunTest("ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput", batch_size, sequence_len, input_size,
-          &directions, nullptr,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3);
+  RunTest_v8("ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput", batch_size, sequence_len, input_size,
+             &directions, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 TEST(Scan, InvalidInput) {
@@ -603,24 +688,24 @@ TEST(Scan, InvalidInput) {
   // invalid direction value - only 0 or 1 are valid
   std::vector<int64_t> directions = {2, 1};
 
-  RunTest("InvalidDirectionsValue", batch_size, sequence_len, input_size,
-          &directions, nullptr,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3,
-          {},
-          OpTester::ExpectResult::kExpectFailure,
-          "Invalid values in 'directions'.");
+  RunTest_v8("InvalidDirectionsValue", batch_size, sequence_len, input_size,
+             &directions, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3,
+             {},
+             OpTester::ExpectResult::kExpectFailure,
+             "Invalid values in 'directions'.");
 
   // mismatch between direction entries and num inputs
   directions = {1, 0, 1};  // too many entries - should match the number of inputs (2)
 
-  RunTest("InvalidNumEntriesInDirections", batch_size, sequence_len, input_size,
-          &directions, nullptr,
-          iteration_count_in, input_0, input_1,
-          iteration_count_out, output_0, output_1, output_2, output_3,
-          {},
-          OpTester::ExpectResult::kExpectFailure,
-          "Number of entries in 'directions' was 3 but expected 2");
+  RunTest_v8("InvalidNumEntriesInDirections", batch_size, sequence_len, input_size,
+             &directions, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3,
+             {},
+             OpTester::ExpectResult::kExpectFailure,
+             "Number of entries in 'directions' was 3 but expected 2");
 }
 
 // Test usage of multiple inputs of different types for variadic inputs
