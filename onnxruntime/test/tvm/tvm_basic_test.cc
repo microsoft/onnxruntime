@@ -164,7 +164,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         sub_graph->SetMetaDef(meta_def);
         //TODO:set fuse kernel func;
         result.push_back(
-            std::make_unique<ComputeCapability>(std::move(sub_graph), true));
+            std::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
     return std::move(result);

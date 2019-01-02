@@ -33,7 +33,7 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       if (registry->TryFindKernel(node, Type()) != nullptr) {
         std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph), false));
+        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
   }

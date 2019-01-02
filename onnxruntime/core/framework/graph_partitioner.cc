@@ -122,7 +122,16 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, const SessionState
           std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
           auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
           fused_node.SetExecutionProviderType(provider->Type());
-          if (capability->need_compile)
+          // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
+          bool need_compile = true;
+          for (auto* kernel_registry : kernel_registries) {
+            if (kernel_registry->TryFindKernel(fused_node, provider->Type())) {
+              need_compile = false;
+              break;
+            }
+          }
+
+          if (need_compile)
             nodes_need_compile.push_back(&fused_node);
         }
       }
