@@ -145,7 +145,9 @@ class InferenceSession::Impl {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
       return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_uri", tp);
+    if (session_profiler_.FEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_uri", tp);
+    }
     return common::Status::OK();
   }
 
@@ -176,7 +178,9 @@ class InferenceSession::Impl {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
       return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
+    if (session_profiler_.FEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
+    }
     return Status::OK();
   }
 
@@ -207,7 +211,9 @@ class InferenceSession::Impl {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
       return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
+    if (session_profiler_.FEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
+    }
     return Status::OK();
   }
 
@@ -244,7 +250,9 @@ class InferenceSession::Impl {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
       return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_istream", tp);
+    if (session_profiler_.FEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_istream", tp);
+    }
     return common::Status::OK();
   }
 
@@ -419,7 +427,9 @@ class InferenceSession::Impl {
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     }
 
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
+    if (session_profiler_.FEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "session_initialization", tp);
+    }
     return status;
   }
 
@@ -841,7 +851,9 @@ class InferenceSession::Impl {
       ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
 
     --current_num_runs_;
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+    if (session_profiler_.FEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+    }
     return retval;
   }
 

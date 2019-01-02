@@ -358,7 +358,7 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
-    if (OrtIsTensor(o) == 0) {
+    if (!OrtIsTensor(o)) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
 
