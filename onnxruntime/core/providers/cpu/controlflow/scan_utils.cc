@@ -13,13 +13,9 @@
 
 #include "gsl/gsl_algorithm"
 
-//#include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
-//#include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
-
-//#include "core/providers/cpu/tensor/utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -73,8 +69,9 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   // v8 has batch size. v9 and later do not.
   bool is_v8 = batch_size > 0;
 
-  if (is_v8)
+  if (is_v8) {
     scan_output_dims.push_back(batch_size);
+  }
 
   if (!is_loop_state_var) {
     scan_output_dims.push_back(sequence_len);
@@ -330,7 +327,6 @@ Status OutputIterator::AllocateFinalBuffer() {
   final_output_mlvalue_ = context_.GetOutputMLValue(output_index_);
 
   // if it's v8 there's always a batch size dimension so we need a slicer to hide that from each iteration
-  // if it's v9 or later we only need a slicer if there is more than 1 iteration
   if (is_v8_) {
     if (is_loop_state_var_) {
       // only one entry is required as we slice on a single dimension
@@ -427,7 +423,7 @@ OutputIterator& OutputIterator::operator++() {
   }
 
   return *this;
-}  // namespace detail
+}
 
 }  // namespace detail
 }  // namespace scan

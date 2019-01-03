@@ -176,9 +176,6 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
   if (info.GetAttrs<int64_t>("axes", axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(axes_.size()) == num_scan_inputs_,
                 "Number of entries in 'axes' was ", axes_.size(), " but expected ", num_scan_inputs_);
-
-    // can't do any other validation if we support negatively indexed axes as the min/max value allowed is
-    // dependent on the input received by Compute
   } else {
     axes_ = std::vector<int64_t>(num_scan_inputs_, 0);
   }
@@ -189,10 +186,6 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
-
-  // TODO:
-  //       Consider how usage of ExecutionFrame and SequentialExecutor can be optimized
-  //         - initial implementation is focused on making it work, rather than optimizing.
 
   ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_, output_directions_, axes_};
 
@@ -220,7 +213,7 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
       implicit_inputs_{context_.GetImplicitInputs()} {
   num_variadic_inputs_ = context_.NumVariadicInputs(0);
   num_variadic_outputs_ = context_.OutputCount();
-  num_loop_state_variables_ = num_variadic_inputs_ - gsl::narrow_cast<int>(num_scan_inputs);
+  num_loop_state_variables_ = num_variadic_inputs_ - num_scan_inputs_;
 
   inputs_.reserve(num_scan_inputs_);
   axes_.reserve(num_scan_inputs_);
@@ -324,7 +317,7 @@ Status ScanImpl::ValidateInput() {
     if (axis != 0) {
       int64_t input_rank = context_.Input<Tensor>(i + num_loop_state_variables_)->Shape().NumDimensions();
       // check axis is valid for input_rank and also handle any negative axis value
-      if (axis >= -input_rank && axis <= input_rank - 1)
+      if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
       else
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in axes for input ", i,
@@ -341,7 +334,7 @@ Status ScanImpl::ValidateInput() {
   ORT_RETURN_IF_ERROR(status);
 
   // validate the output directions match the number of Scan outputs if provided
-  if (output_directions_.size() > 0 &&
+  if (!output_directions_.empty() &&
       output_directions_.size() != static_cast<size_t>(num_variadic_outputs_ - num_loop_state_variables_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Number of entries in 'scan_output_directions' was ", output_directions_.size(),
@@ -349,7 +342,7 @@ Status ScanImpl::ValidateInput() {
   }
 
   return Status::OK();
-}  // namespace onnxruntime
+}
 
 Status ScanImpl::SetupInputs() {
   auto status = Status::OK();
@@ -418,7 +411,6 @@ Status ScanImpl::AllocateOutputTensors() {
   return Status::OK();
 }
 
-// setup the loop state variables for each batch item
 Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables) {
   AllocatorPtr alloc;
   auto status = context_.GetTempSpaceAllocator(&alloc);
