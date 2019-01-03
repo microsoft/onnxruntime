@@ -312,7 +312,7 @@ activation.)DOC")
             output_shape.add_dim()->set_dim_value(max_last_axis);
           } else {
             fail_shape_inference(
-                "Input shape must either be [C] or [B][C]");
+                "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
           }
           updateOutputShape(ctx, 0, output_shape);
         }
