@@ -26,7 +26,9 @@ Status Slice::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  ORT_RETURN_IF_ERROR(PrepareForCompute(dimension_count, input_dimensions, starts, output_dims));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
+			                dimension_count, input_dimensions,
+					starts, output_dims));
 
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);

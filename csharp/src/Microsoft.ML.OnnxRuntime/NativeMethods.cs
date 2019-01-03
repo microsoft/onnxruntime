@@ -43,14 +43,14 @@ namespace Microsoft.ML.OnnxRuntime
         #region InferenceSession API
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* OrtStatus* */OrtCreateInferenceSession(
+        public static extern IntPtr /* OrtStatus* */OrtCreateSession(
                                                         IntPtr /* (OrtEnv*) */ environment,
                                                         [MarshalAs(UnmanagedType.LPWStr)]string modelPath, //the model path is consumed as a wchar* in the C-api
                                                         IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                         out IntPtr /**/ session);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(ONNStatus*)*/ OrtRunInference(
+        public static extern IntPtr /*(ONNStatus*)*/ OrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
                                                 string[] inputNames,
@@ -65,25 +65,25 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtInferenceSessionGetInputCount(
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionGetInputCount(
                                                 IntPtr /*(OrtSession*)*/ session, 
                                                 out ulong /* TODO: size_t */ count);
 
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtInferenceSessionGetOutputCount(
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionGetOutputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out ulong /*TODO: size_t port*/ count);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/OrtInferenceSessionGetInputName(
+        public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputName(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 ulong index,  //TODO: port size_t 
                                                 IntPtr /*(OrtAllocator*)*/ allocator, 
                                                 out IntPtr /*(char**)*/name);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/OrtInferenceSessionGetOutputName(
+        public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetOutputName(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 ulong index,  //TODO: port size_t 
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
@@ -91,14 +91,14 @@ namespace Microsoft.ML.OnnxRuntime
 
         // release the typeinfo using OrtReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/OrtInferenceSessionGetInputTypeInfo(
+        public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session, 
                                                 ulong index, //TODO: port for size_t
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
 
         // release the typeinfo using OrtReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/OrtInferenceSessionGetOutputTypeInfo(
+        public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetOutputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session, 
                                                 ulong index, //TODO: port for size_t
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);

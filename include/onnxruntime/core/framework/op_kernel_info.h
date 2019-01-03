@@ -31,6 +31,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   const OrtAllocatorInfo& GetAllocatorInfo(int device_id, OrtMemType mem_type) const;
 
+  const AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+
   const KernelDef& GetKernelDef() const;
 
   const IExecutionProvider* GetExecutionProvider() const noexcept;
@@ -38,6 +40,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const onnxruntime::Node& node() const noexcept;
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
+
+  common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
 
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
