@@ -192,6 +192,7 @@ Status Sum<T>::Compute(OpKernelContext* context) const {
   std::vector<mkldnn::memory::dims> src_dims;
 
   const Tensor* X1 = context->Input<Tensor>(0);
+  if (X1 == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   Tensor* Y = context->Output(0, X1->Shape());
   int dimensions = static_cast<int>(X1->Shape().NumDimensions());
 
@@ -204,6 +205,7 @@ Status Sum<T>::Compute(OpKernelContext* context) const {
 
   for (int i = 0; i < num_inputs; i++) {
     const Tensor* X = context->Input<Tensor>(i);
+    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     mkldnn::memory::dims src_dims_mkl(
       X->Shape().GetDims().begin(), X->Shape().GetDims().end());
     src_dims.push_back(src_dims_mkl);

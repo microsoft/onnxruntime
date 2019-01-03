@@ -1,7 +1,7 @@
 include (ExternalProject)
 
 if (onnxruntime_USE_PREINSTALLED_EIGEN)
-    set(eigen_INCLUDE_DIRS ${eigen_SOURCE_PATH})
+    file(TO_CMAKE_PATH ${eigen_SOURCE_PATH} eigen_INCLUDE_DIRS)
     ExternalProject_Add(eigen
         PREFIX eigen
         SOURCE_DIR ${eigen_SOURCE_PATH}
