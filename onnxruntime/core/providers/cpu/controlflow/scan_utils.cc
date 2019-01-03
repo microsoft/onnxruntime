@@ -39,10 +39,10 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                 "Number of entries in '", attr_name, "' was ", directions.size(),
                 " but expected ", expected_num_entries);
 
-    ORT_ENFORCE(std::all_of(directions.cbegin(), directions.cend(),
-                            [](int64_t i) { return static_cast<ScanDirection>(i) == ScanDirection::kForward ||
-                                                   static_cast<ScanDirection>(i) == ScanDirection::kReverse; }),
-                "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
+    bool valid = std::all_of(directions.cbegin(), directions.cend(),
+                             [](int64_t i) { return static_cast<ScanDirection>(i) == ScanDirection::kForward ||
+                                                    static_cast<ScanDirection>(i) == ScanDirection::kReverse; });
+    ORT_ENFORCE(valid, "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
   } else {
     // default to forward if we know how many entries there should be
     if (expected_num_entries > 0) {
@@ -300,7 +300,8 @@ Status OutputIterator::Initialize() {
 
   if (is_loop_state_var_ && !is_concrete_shape_) {
     // copy the shape from the input initial value which will have a concrete shape.
-    auto* input = context_.Input<Tensor>(output_index_ + 1);  // +1 to skip the sequence_len input
+    // +1 to skip the sequence_len input if v8
+    auto* input = context_.Input<Tensor>(is_v8_ ? output_index_ + 1 : output_index_);
     status = MakeShapeConcrete(input->Shape(), final_shape_);
     ORT_RETURN_IF_ERROR(status);
 

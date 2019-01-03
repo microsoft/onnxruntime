@@ -743,7 +743,7 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "Invalid values in 'scan_input_directions'.");
+               "Invalid values in 'scan_output_directions'.");
   }
 
   // mismatch between direction entries and num inputs
@@ -777,13 +777,13 @@ static void InvalidInput(bool is_v8) {
 
   if (!is_v8) {
     std::vector<int64_t> axes = {2, -1};  // only 2 dims in input so 2 is invalid
-    RunTest_v9("InvalidNumEntriesInAxes", sequence_len, input_size,
+    RunTest_v9("InvalidEntryInAxes", sequence_len, input_size,
                nullptr, &axes, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "Invalid value in axes");
+               "Invalid value in axes for input 0 of 2. Input tensor rank was 2");
 
     axes = {0, 1, 2};
     RunTest_v9("InvalidNumEntriesInAxes", sequence_len, input_size,
@@ -792,14 +792,14 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "3 values were provided in axes. Expected 3");
+               "[ShapeInferenceError] Number of axes specified (3) is not equal to number of scan inputs (2).");
   }
 }
 
 TEST_8_AND_9(InvalidInput);
 
 // Test usage of multiple inputs of different types for variadic inputs
-TEST(Scan, MixedTypeInputs) {
+void MixedTypeInputs(bool is_v8) {
   // Construct scan body subgraph with 2 state variables, 2 scan inputs, 2 scan outputs
   // of different types (1 float and 1 int64 of each):
   // state-in-1 => scan-out-1
@@ -841,16 +841,22 @@ TEST(Scan, MixedTypeInputs) {
   auto& scan_body = graph.ToGraphProto();
 
   // Construct and run scan test
-  ScanOpTester test;
+  ScanOpTester test{is_v8 ? 8 : 9};
 
   int64_t batch_size = 1, sequence_len = 3, input_size = 1;
-  std::vector<int64_t> seq_shape{batch_size, sequence_len, input_size};
-  std::vector<int64_t> state_shape{batch_size, input_size};
+  std::vector<int64_t> seq_shape{sequence_len, input_size};
+  std::vector<int64_t> state_shape{input_size};
+
+  if (is_v8) {
+    seq_shape.insert(seq_shape.begin(), batch_size);
+    state_shape.insert(state_shape.begin(), batch_size);
+
+    test.AddMissingOptionalInput<int64_t>();
+  }
 
   test.AddAttribute("body", scan_body);
   test.AddAttribute<int64_t>("num_scan_inputs", 2);
 
-  test.AddMissingOptionalInput<int64_t>();
   test.AddInput<float>("initial_state_1", state_shape, {0.0});
   test.AddInput<int64_t>("initial_state_2", state_shape, {0});
   test.AddInput<float>("scan_input_1", seq_shape, {1.0, 2.0, 3.0});
@@ -864,14 +870,11 @@ TEST(Scan, MixedTypeInputs) {
   test.Run();
 }
 
-/*
-TODO: Probably convert existing test to handle both v8 and v9 
-TEST(Scan9, MixedTypeInputs) {
-*/
+TEST_8_AND_9(MixedTypeInputs);
 
 // create a subgraph that will have unknown dimensions in both the loop state variable and output
 // after shape inferencing.
-TEST(Scan, UnknownDimInSubgraphOutput) {
+void UnknownDimInSubgraphOutput(bool is_v8) {
   Model model("ScanBody");
   auto& graph = model.MainGraph();
 
@@ -900,24 +903,30 @@ TEST(Scan, UnknownDimInSubgraphOutput) {
   auto& scan_body = graph.ToGraphProto();
 
   // Construct and run scan test
-  ScanOpTester test;
+  ScanOpTester test{is_v8 ? 8 : 9};
 
   int64_t batch_size = 1, sequence_len = 3, input_size = 1;
-  std::vector<int64_t> seq_shape{batch_size, sequence_len, input_size};
-  std::vector<int64_t> state_shape{batch_size, input_size};
+  std::vector<int64_t> seq_shape{sequence_len, input_size};
+  std::vector<int64_t> state_shape{input_size};
+
+  if (is_v8) {
+    seq_shape.insert(seq_shape.begin(), batch_size);
+    state_shape.insert(state_shape.begin(), batch_size);
+
+    test.AddMissingOptionalInput<int64_t>();
+  }
 
   test.AddAttribute("body", scan_body);
   test.AddAttribute<int64_t>("num_scan_inputs", 1);
-  test.AddMissingOptionalInput<int64_t>();
 
   // we add a symbolic dimension to both the initial state and the scan input so we test
   // the path that handles loop state variables (OutputIterator::Initialize) and
   // the path that handles subgraph outputs (OutputIterator::MakeConcrete).
   // Note that we cross the values over in the subgraph, so the symbolic dimension in
   // initial_state_1 affects scan_out_1, and the symbolic dimension in scan_input_1 affects state_out_1.
-  test.AddShapeToTensorData(true, 1);  // add shape and symbolic dim in dim 1 for initial_state_1
+  test.AddShapeToTensorData(true, is_v8 ? 1 : 0);  // symbolic dim in input size dim for initial_state_1
   test.AddInput<float>("initial_state_1", state_shape, {0.0});
-  test.AddShapeToTensorData(true, 2);  // add shape and symbolic dim in dim 2 for scan_input_1
+  test.AddShapeToTensorData(true, is_v8 ? 2 : 1);  // symbolic dim in seq length dim for scan_input_1
   test.AddInput<float>("scan_input_1", seq_shape, {1.0, 2.0, 3.0});
 
   test.AddOutput<float>("final_state_1", state_shape, {3.0});
@@ -925,5 +934,8 @@ TEST(Scan, UnknownDimInSubgraphOutput) {
 
   test.Run();
 }
+
+TEST_8_AND_9(UnknownDimInSubgraphOutput);
+
 }  // namespace test
 }  // namespace onnxruntime

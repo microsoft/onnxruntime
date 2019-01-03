@@ -16,6 +16,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 
+#include "core/providers/common.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
@@ -132,6 +133,7 @@ class ScanImpl {
   const GraphViewer& subgraph_;
 
   int num_loop_state_variables_;
+  int num_scan_inputs_;
   int num_variadic_inputs_;
   int num_variadic_outputs_;
 
@@ -139,7 +141,8 @@ class ScanImpl {
 
   const std::vector<int64_t>& input_directions_;
   const std::vector<int64_t>& output_directions_;
-  const std::vector<int64_t>& axes_;
+  const std::vector<int64_t>& axes_from_attribute_;
+  std::vector<int64_t> axes_;
 
   // inputs for graph. either original input value or transposed input if an axis other than 0 was specified
   std::vector<MLValue> inputs_;
@@ -210,15 +213,17 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
     : context_{context},
       session_state_{session_state},
       subgraph_{*session_state.GetGraphViewer()},
+      num_scan_inputs_{gsl::narrow_cast<int>(num_scan_inputs)},
       input_directions_{input_directions},
       output_directions_{output_directions},
-      axes_{axes},
+      axes_from_attribute_{axes},
       implicit_inputs_{context_.GetImplicitInputs()} {
   num_variadic_inputs_ = context_.NumVariadicInputs(0);
   num_variadic_outputs_ = context_.OutputCount();
   num_loop_state_variables_ = num_variadic_inputs_ - gsl::narrow_cast<int>(num_scan_inputs);
 
-  inputs_.reserve(num_scan_inputs);
+  inputs_.reserve(num_scan_inputs_);
+  axes_.reserve(num_scan_inputs_);
 }
 
 /**
@@ -310,58 +315,46 @@ Status ScanImpl::ValidateInput() {
                            " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
+  // validate/calculate the axes values and populate axes_.
+  // we already checked that axes_from_attribute_.size() == num_scan_inputs_.
+  for (int i = 0; i < num_scan_inputs_; ++i) {
+    auto axis = axes_from_attribute_[i];
+
+    // zero is always valid, so only do extra checks for non-zero values
+    if (axis != 0) {
+      int64_t input_rank = context_.Input<Tensor>(i + num_loop_state_variables_)->Shape().NumDimensions();
+      // check axis is valid for input_rank and also handle any negative axis value
+      if (axis >= -input_rank && axis <= input_rank - 1)
+        axis = HandleNegativeAxis(axis, input_rank);
+      else
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in axes for input ", i,
+                               " of ", axis, ". Input tensor rank was ", input_rank);
+    }
+
+    axes_.push_back(axis);
+  }
+
   // no validation for loop state variables
 
   // validate the scan inputs
   auto status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, graph_inputs);
   ORT_RETURN_IF_ERROR(status);
 
-  // validate the axes values
-
   // validate the output directions match the number of Scan outputs if provided
   if (output_directions_.size() > 0 && output_directions_.size() != static_cast<size_t>(num_variadic_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Number of entries in 'scan_output_directions' was ", output_directions_.size(),
-                           " but expected", num_variadic_outputs_);
+                           " but expected ", num_variadic_outputs_);
   }
 
   return Status::OK();
-}
-
-//#define DispatchOnType(tensor_type, function, ...)            \
-//  if (tensor_type == DataTypeImpl::GetType<float>())          \
-//    function<float>(__VA_ARGS__);                             \
-//  else if (tensor_type == DataTypeImpl::GetType<double>())    \
-//    function<double>(__VA_ARGS__);                            \
-//  else if (tensor_type == DataTypeImpl::GetType<int8_t>())    \
-//    function<int8_t>(__VA_ARGS__);                            \
-//  else if (tensor_type == DataTypeImpl::GetType<int16_t>())   \
-//    function<int16_t>(__VA_ARGS__);                           \
-//  else if (tensor_type == DataTypeImpl::GetType<int32_t>())   \
-//    function<int32_t>(__VA_ARGS__);                           \
-//  else if (tensor_type == DataTypeImpl::GetType<int64_t>())   \
-//    function<int64_t>(__VA_ARGS__);                           \
-//  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())   \
-//    function<uint8_t>(__VA_ARGS__);                           \
-//  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())  \
-//    function<uint16_t>(__VA_ARGS__);                          \
-//  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())  \
-//    function<uint32_t>(__VA_ARGS__);                          \
-//  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())  \
-//    function<uint64_t>(__VA_ARGS__);                          \
-//  else if (tensor_type == DataTypeImpl::GetType<bool>())      \
-//    function<bool>(__VA_ARGS__);                              \
-//  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>()) \
-//    function<MLFloat16>(__VA_ARGS__);                         \
-//  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())  \
-//  function<BFloat16>(__VA_ARGS__)
+}  // namespace onnxruntime
 
 Status ScanImpl::SetupInputs() {
   auto status = Status::OK();
   AllocatorPtr alloc;
-  auto num_scan_inputs = num_variadic_inputs_ - num_loop_state_variables_;
 
-  for (int i = 0; i < num_scan_inputs; ++i) {
+  for (int i = 0; i < num_scan_inputs_; ++i) {
     auto sequence_dim = axes_[i];
 
     if (sequence_dim == 0) {
@@ -454,7 +447,7 @@ Status ScanImpl::Execute() {
   std::vector<MLValueTensorSlicer<const MLValue>::Iterator> scan_input_stream_iterators;
   scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
 
-  for (int i = 0, end = num_variadic_inputs_ - num_loop_state_variables_; i < end; ++i) {
+  for (int i = 0, end = num_scan_inputs_; i < end; ++i) {
     const auto& mlvalue = inputs_[i];
 
     // forward
