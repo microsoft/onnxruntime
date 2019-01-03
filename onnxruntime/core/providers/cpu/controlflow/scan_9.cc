@@ -239,10 +239,10 @@ static void CalculateTransposedShape(const TensorShape& input_shape, int64_t axi
   const auto& dims = input_shape.GetDims();
 
   permutations.reserve(rank);
-  permutations[0] = axis;
+  permutations.push_back(axis);
 
   output_shape.reserve(rank);
-  output_shape[0] = dims[axis];
+  output_shape.push_back(dims[axis]);
 
   for (int64_t i = 0; i < rank; ++i) {
     if (i != axis) {
@@ -341,10 +341,11 @@ Status ScanImpl::ValidateInput() {
   ORT_RETURN_IF_ERROR(status);
 
   // validate the output directions match the number of Scan outputs if provided
-  if (output_directions_.size() > 0 && output_directions_.size() != static_cast<size_t>(num_variadic_outputs_)) {
+  if (output_directions_.size() > 0 &&
+      output_directions_.size() != static_cast<size_t>(num_variadic_outputs_ - num_loop_state_variables_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Number of entries in 'scan_output_directions' was ", output_directions_.size(),
-                           " but expected ", num_variadic_outputs_);
+                           " but expected ", num_variadic_outputs_ - num_loop_state_variables_);
   }
 
   return Status::OK();

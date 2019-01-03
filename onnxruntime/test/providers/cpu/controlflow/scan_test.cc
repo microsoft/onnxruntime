@@ -688,14 +688,93 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
              iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
-TEST(Scan9, ReversedOutput) {
-  //
-  // TODO
-  //
+TEST(Scan9, ReversedInput) {
+  const int64_t sequence_len = 2;
+  const int64_t input_size = 2;
+
+  std::vector<float> iteration_count_in{0.f};
+
+  std::vector<int64_t> input_directions{0, 1};  // reverse second input
+
+  // max_sequence_len, input_size
+  std::vector<float> input_0{1.f, 2.f,
+                             3.f, 4.f};
+
+  std::vector<float> input_1{11.f, 12.f,
+                             13.f, 14.f};
+
+  std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
+
+  // max_sequence_len, 1
+  std::vector<float> output_0{1.f, 3.f};
+  std::vector<float> output_1{2.f, 4.f};
+  std::vector<float> output_2{13.f, 11.f};
+  std::vector<float> output_3{14.f, 12.f};
+
+  RunTest_v9("ReversedInput", sequence_len, input_size,
+             &input_directions, nullptr, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
-TEST(Scan9, NegativeAxis) {
-  // a negative value in axes should be supported if in range
+TEST(Scan9, ReversedOutput) {
+  const int64_t sequence_len = 2;
+  const int64_t input_size = 2;
+
+  std::vector<float> iteration_count_in{0.f};
+
+  std::vector<int64_t> output_directions{0, 1, 1, 0};  // reverse 2 out of the 4 outputs
+
+  // max_sequence_len, input_size
+  std::vector<float> input_0{1.f, 2.f,
+                             3.f, 4.f};
+
+  std::vector<float> input_1{11.f, 12.f,
+                             13.f, 14.f};
+
+  std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
+
+  // max_sequence_len, 1
+  std::vector<float> output_0{1.f, 3.f};
+  std::vector<float> output_1{4.f, 2.f};
+  std::vector<float> output_2{13.f, 11.f};
+  std::vector<float> output_3{12.f, 14.f};
+
+  RunTest_v9("ReversedOutput", sequence_len, input_size,
+             nullptr, nullptr, &output_directions,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
+}
+
+TEST(Scan9, TransposeInput) {
+  const int64_t sequence_len = 2;
+  const int64_t input_size = 2;
+
+  std::vector<float> iteration_count_in{0.f};
+
+  // transpose should also support negative axis
+  std::vector<int64_t> axes{1, -1};  // transpose both inputs on axis 1
+
+  // inputs are {input_size, sequence_len}, but will be transposed to {sequence_len, input_size} by the axes values
+  std::vector<float> input_0{1.f, 3.f,
+                             2.f, 4.f};
+  std::vector<float> input_1{11.f, 13.f,
+                             12.f, 14.f};
+
+  std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
+
+  // max_sequence_len, 1
+  // concatenated transposed input should yield 1, 2, 11, 12 for the first item in the sequence, and 3, 4, 12, 14
+  // for the second
+  std::vector<float> output_0{1.f, 3.f};
+  std::vector<float> output_1{2.f, 4.f};
+  std::vector<float> output_2{11.f, 13.f};
+  std::vector<float> output_3{12.f, 14.f};
+
+  RunTest_v9("TransposeInput", sequence_len, input_size,
+             nullptr, &axes, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
 }
 
 static void InvalidInput(bool is_v8) {
@@ -772,7 +851,7 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "Number of entries in 'scan_output_directions' was 3 but expected 5");
+               "Number of entries in 'scan_output_directions' was 3 but expected 4");
   }
 
   if (!is_v8) {

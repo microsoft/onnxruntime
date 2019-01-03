@@ -134,9 +134,19 @@ static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const T
 }
 
 Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
-  Status retval = Status::OK();
-  DispatchOnTensorTypeWithReturn(input.DataType(), retval, DoTypedTranspose, permutations, input, output);
-  return retval;
+  Status status = Status::OK();
+
+  auto input_type = input.DataType();
+  auto output_type = output.DataType();
+
+  if (input_type != output_type) {
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
+                             input_type, " != ", output_type);
+  } else {
+    DispatchOnTensorTypeWithReturn(input_type, status, DoTypedTranspose, permutations, input, output);
+  }
+
+  return status;
 }
 
 template <>
