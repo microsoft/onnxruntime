@@ -10,10 +10,11 @@ namespace onnxruntime {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Gemm,                                                       \
       kOnnxDomain,                                                \
       7,                                                          \
+      9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
