@@ -417,23 +417,22 @@ void Ngram::OutputResult(OpKernelContext* ctx, size_t B, const std::vector<uint3
           *output_data++ = (f > 0) ? 1.0f : 0;
         }
       }
-      break;
-      case kTFIDF: {
-        if (!w.empty()) {
-          assert(frequences.size() == w.size());
-          for (size_t i = 0; i < frequences.size(); ++i) {
-            *output_data++ = frequences[i] * w[i];
-          }
-        } else {
-          for (auto f : frequences) {
-            *output_data++ = static_cast<float>(f);
-          }
+    } break;
+    case kTFIDF: {
+      if (!w.empty()) {
+        assert(frequences.size() == w.size());
+        for (size_t i = 0; i < frequences.size(); ++i) {
+          *output_data++ = frequences[i] * w[i];
         }
-      } break;
-      case kNone:  // fall-through
-      default:
-        assert(false);
-    }
+      } else {
+        for (auto f : frequences) {
+          *output_data++ = static_cast<float>(f);
+        }
+      }
+    } break;
+    case kNone:  // fall-through
+    default:
+      assert(false);
   }
 }
 
