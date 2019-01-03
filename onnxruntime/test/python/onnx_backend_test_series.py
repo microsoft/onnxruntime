@@ -16,11 +16,9 @@ backend_test = onnx.backend.test.BackendTest(c2, __name__)
 # Type not supported
 backend_test.exclude(r'(FLOAT16)')
 
-backend_test.exclude(r'(test_acosh_cpu.*'
+backend_test.exclude(r'('
 '|test_acosh_example_cpu.*'
-'|test_asinh_cpu.*'
 '|test_asinh_example_cpu.*'
-'|test_atanh_cpu.*'
 '|test_atanh_example_cpu.*'
 '|test_convtranspose_1d_cpu.*'
 '|test_convtranspose_3d_cpu.*'

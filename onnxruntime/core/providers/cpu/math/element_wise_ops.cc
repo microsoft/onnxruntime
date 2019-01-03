@@ -838,10 +838,10 @@ class Asinh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
     MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
-    auto Y_data = Y->template MutableData<float>();
-    auto out = gsl::make_span(Y_data, Y->Shape().Size());
-    for (int64_t index = 0; index, out.size(); ++index) {
-      out[index] = std::asinh<float>(out[index]);
+    auto Y_data = Y.template MutableData<float>();
+    auto out = gsl::make_span(Y_data, Y.Shape().Size());
+    for (int64_t index = 0; index < out.size(); ++index) {
+      out[index] = std::asinh(out[index]);
     }
     return Status::OK();
   }
@@ -852,6 +852,56 @@ ONNX_CPU_OPERATOR_KERNEL(
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Asinh<float>);
+
+template <typename T>
+class Acosh final : public OpKernel {
+ public:
+  explicit Acosh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
+    auto Y_data = Y.template MutableData<float>();
+    auto out = gsl::make_span(Y_data, Y.Shape().Size());
+    for (int64_t index = 0; index < out.size(); ++index) {
+      out[index] = std::acosh(out[index]);
+    }
+    return Status::OK();
+  }
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Acosh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Acosh<float>);
+
+template <typename T>
+class Atanh final : public OpKernel {
+ public:
+  explicit Atanh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
+    auto Y_data = Y.template MutableData<float>();
+    auto out = gsl::make_span(Y_data, Y.Shape().Size());
+    for (int64_t index = 0; index < out.size(); ++index) {
+      out[index] = std::atanh(out[index]);
+    }
+    return Status::OK();
+  }
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Atanh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Atanh<float>);
 
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
