@@ -13,6 +13,7 @@
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
 
@@ -73,81 +74,209 @@ class UnionSet {
   std::vector<int> farthers_;
 };
 
-void FuseAdd(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<ComputeCapability>>& capacities) {
-  std::vector<onnxruntime::NodeIndex> add_nodes;
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Add") {
-      add_nodes.push_back(node.Index());
-    }
-  }
-
-  UnionSet set(static_cast<int>(add_nodes.size()));
-  for (int i = 0; i < add_nodes.size(); ++i) {
-    auto node = graph.GetNode(add_nodes[i]);
-    for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-      auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it).Index());
-      if (index_it != add_nodes.end()) {
-        set.merge(i, static_cast<int>(index_it - add_nodes.begin()));
-      }
-    }
-  }
-
-  std::vector<std::vector<onnxruntime::NodeIndex>> groups;
-  groups.resize(add_nodes.size());
-  for (int i = 0; i < set.farthers_.size(); ++i) {
-    groups[set.get(i)].push_back(add_nodes[i]);
-  }
-
-  for (auto& group : groups) {
-    if (group.size() > 1) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-      std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
-      for (auto index : group) {
-        sub_graph->nodes.push_back(index);
-        auto node = graph.GetNode(index);
-        for (auto input : node->InputDefs()) {
-          auto it = fused_outputs.find(input);
-          if (it != fused_outputs.end()) {
-            fused_outputs.erase(it);
-          } else {
-            fused_inputs.insert(input);
-          }
-        }
-        for (auto output : node->OutputDefs()) {
-          auto it = fused_inputs.find(output);
-          if (it != fused_inputs.end()) {
-            fused_inputs.erase(it);
-          } else {
-            fused_outputs.insert(output);
-          }
-        }
-      }
-
-      auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-      meta_def->name = "TVMFuseAdd";
-      meta_def->domain = "FuseTest";
-      for (auto input : fused_inputs) {
-        meta_def->inputs.push_back(input->Name());
-      }
-
-      for (auto output : fused_outputs) {
-        meta_def->outputs.push_back(output->Name());
-      }
-
-      meta_def->since_version = 1;
-      meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-      sub_graph->SetMetaDef(meta_def);
-      //TODO:set fuse kernel func;
-      capacities.push_back(
-          std::make_unique<ComputeCapability>(
-            std::move(sub_graph),
-            [](const OpKernelInfo& info) -> OpKernel* {
-              return new TVMFuseAddKernels<DefaultTVMScheduleGenerator, BuildStackVMDefaultModule>(info); }));
-    }
-  }
+static DLDataType GetDataType(DType type) {
+  if (type == DType::TDouble) {
+    return {kDLFloat, 64, 1};
+  } else
+    ORT_THROW("not implement.");
 }
 
 namespace test {
+
+struct TVMFuncState {
+  AllocateFunc test_allocate_func = nullptr;
+  DestroyFunc test_release_func = nullptr;
+  AllocatorHandle allocator = nullptr;
+  tvm::runtime::Module* module = nullptr;
+};
+
+class FuseExecutionProviderX : public CPUExecutionProvider {
+ public:
+  explicit FuseExecutionProviderX(const CPUExecutionProviderInfo& info) : CPUExecutionProvider(info) {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
+    std::vector<std::unique_ptr<ComputeCapability>> result;
+    std::vector<onnxruntime::NodeIndex> add_nodes;
+    for (auto& node : graph_viewer.Nodes()) {
+      if (node.OpType() == "Add") {
+        add_nodes.push_back(node.Index());
+      }
+    }
+
+    UnionSet set(static_cast<int>(add_nodes.size()));
+    for (int i = 0; i < add_nodes.size(); ++i) {
+      auto node = graph_viewer.GetNode(add_nodes[i]);
+      for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+        auto index_it = std::find(add_nodes.begin(), add_nodes.end(), (*it).Index());
+        if (index_it != add_nodes.end()) {
+          set.merge(i, static_cast<int>(index_it - add_nodes.begin()));
+        }
+      }
+    }
+
+    std::vector<std::vector<onnxruntime::NodeIndex>> groups;
+    groups.resize(add_nodes.size());
+    for (int i = 0; i < set.farthers_.size(); ++i) {
+      groups[set.get(i)].push_back(add_nodes[i]);
+    }
+
+    for (auto& group : groups) {
+      if (group.size() > 1) {
+        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+        std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
+        for (auto index : group) {
+          sub_graph->nodes.push_back(index);
+          auto node = graph_viewer.GetNode(index);
+          for (auto input : node->InputDefs()) {
+            auto it = fused_outputs.find(input);
+            if (it != fused_outputs.end()) {
+              fused_outputs.erase(it);
+            } else {
+              fused_inputs.insert(input);
+            }
+          }
+          for (auto output : node->OutputDefs()) {
+            auto it = fused_inputs.find(output);
+            if (it != fused_inputs.end()) {
+              fused_inputs.erase(it);
+            } else {
+              fused_outputs.insert(output);
+            }
+          }
+        }
+
+        auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+        meta_def->name = "TVMFuseAdd";
+        meta_def->domain = "FuseTest";
+        for (auto input : fused_inputs) {
+          meta_def->inputs.push_back(input->Name());
+        }
+
+        for (auto output : fused_outputs) {
+          meta_def->outputs.push_back(output->Name());
+        }
+
+        meta_def->since_version = 1;
+        meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+        sub_graph->SetMetaDef(meta_def);
+        //TODO:set fuse kernel func;
+        result.push_back(
+            std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      }
+    }
+    return std::move(result);
+  }
+
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    for (auto* fused_node : fused_nodes) {
+      auto func_body = fused_node->GetFunctionBody();
+      if (!func_body)
+        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
+      //1. compile the onnxruntime Graph to tvm graph.
+      auto tvm_graph_ = CompileToTVM(func_body->Body(), kCpuExecutionProvider);
+      //2. create schedule for tvm graph, this step is depends on the execution provider/hardware.
+      auto s = DefaultTVMScheduleGenerator(tvm_graph_);
+      //3. Build module
+      std::vector<tvm::Tensor> tvm_args;
+      for (auto& t : tvm_graph_.inputs_) {
+        tvm_args.push_back(t.tvm_tensor_);
+      }
+      for (auto& t : tvm_graph_.outputs_) {
+        tvm_args.push_back(t.tvm_tensor_);
+      }
+
+      std::vector<std::string> func_names;
+      auto module_ptr = std::make_shared<tvm::runtime::Module>();
+      *module_ptr = BuildStackVMDefaultModule(s, tvm::build_config(), tvm_args, func_names);
+      modules_[fused_node->Name()] = module_ptr;
+
+      NodeComputeInfo compute_info;
+
+      compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+        auto* p = new TVMFuncState();
+        *p = {context->allocate_func, context->release_func, context->allocator_handle, modules_[context->node_name].get()};
+        *state = p;
+        return 0;
+      };
+
+      compute_info.release_state_func = [](FunctionState state) {
+        if (state)
+          delete state;
+      };
+
+      //we use lambda to capture the tvm model, so we can use it to get the funciton.
+      compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
+        TVMFuncState* tvm_state = reinterpret_cast<TVMFuncState*>(state);
+
+        auto eval_func_name = "func";
+        DLContext cpu_context = {kDLCPU, 0};
+        size_t n_args = num_inputs + num_outputs;
+        std::vector<DLTensor> dl_tensors(n_args);
+        std::vector<TVMValue> tvm_values(n_args);
+        std::vector<int> tvm_type_codes(n_args);
+        for (auto i = 0; i < num_inputs; i++) {
+          tvm_type_codes[i] = kNDArrayContainer;
+          dl_tensors[i].ctx = cpu_context;
+          dl_tensors[i].dtype = GetDataType(input_tensors[i].dtype);
+          dl_tensors[i].strides = nullptr;
+          dl_tensors[i].byte_offset = 0;
+          dl_tensors[i].data = input_tensors[i].data;
+          dl_tensors[i].ndim = input_tensors[i].ndim;
+          dl_tensors[i].shape = input_tensors[i].shape;
+          tvm_values[i].v_handle = &dl_tensors[i];
+        }
+
+        for (auto i = 0; i < num_outputs; i++) {
+          //setup output tensor property
+          //todo: type should be set by framework.
+          output_tensors[i].dtype = input_tensors[0].dtype;
+          //todo: shape inference
+          output_tensors[i].ndim = input_tensors[0].ndim;
+          output_tensors[i].shape = new int64_t[output_tensors[i].ndim];
+          memcpy(output_tensors[i].shape, input_tensors[0].shape, sizeof(int64_t) * output_tensors[i].ndim);
+          int64_t size = 1;
+          for (auto j = 0; j < output_tensors[i].ndim; j++)
+            size *= output_tensors[i].shape[j];
+          output_tensors[i].data = (*(tvm_state->test_allocate_func))(tvm_state->allocator, sizeof(double) * size, 64);
+
+          tvm_type_codes[num_inputs + i] = kNDArrayContainer;
+          dl_tensors[num_inputs + i].ctx = cpu_context;
+          dl_tensors[num_inputs + i].dtype = GetDataType(output_tensors[i].dtype);
+          dl_tensors[num_inputs + i].strides = nullptr;
+          dl_tensors[num_inputs + i].byte_offset = 0;
+          dl_tensors[num_inputs + i].data = output_tensors[i].data;
+          dl_tensors[num_inputs + i].ndim = output_tensors[i].ndim;
+          dl_tensors[num_inputs + i].shape = output_tensors[i].shape;
+          tvm_values[num_inputs + i].v_handle = &dl_tensors[num_inputs + i];
+        }
+
+        auto evaluate_func_ = tvm_state->module->GetFunction(eval_func_name);
+        tvm::TVMArgs tvm_args(&tvm_values[0], &tvm_type_codes[0], static_cast<int>(n_args));
+        tvm::TVMRetValue rvalue;
+        try {
+          evaluate_func_.CallPacked(tvm_args, &rvalue);
+        } catch (std::exception ex) {
+          return -1;
+        }
+        if (rvalue.type_code() != kNull) {
+          return -1;  // TODO: get error code.
+        } else {
+          return 0;
+        }
+      };
+      node_compute_funcs.push_back(compute_info);
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::unordered_map<std::string, std::shared_ptr<tvm::runtime::Module>> modules_;
+};
 
 static void RunSession(InferenceSession& session_object,
                        RunOptions& run_options,
@@ -189,10 +318,8 @@ TEST(TVMTest, Fuse_Add_Test) {
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
   CPUExecutionProviderInfo info;
-
-  auto cpu_xp = std::make_unique<CPUExecutionProvider>(info);
-  cpu_xp->InsertFusedRules(FuseAdd);
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(cpu_xp)).IsOK());
+  auto tvm_xp = std::make_unique<FuseExecutionProviderX>(info);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(tvm_xp)).IsOK());
   EXPECT_TRUE(session_object.Load(MODEL_URI).IsOK());
   EXPECT_TRUE(session_object.Initialize().IsOK());
 
@@ -227,14 +354,16 @@ TEST(TVMTest, Basic) {
   auto A = placeholder(shape, Float(64), "A");
   auto B = placeholder(shape, Float(64), "B");
   auto D = placeholder(shape, Float(64), "D");
-  auto C = compute(A->shape, [&A, &B](Expr i) {
-    return A[i] + B[i];
-  },
-                   "C");
-  auto E = compute(A->shape, [&C, &D](Expr i) {
-    return C[i] + D[i];
-  },
-                   "E");
+  auto C = compute(
+      A->shape, [&A, &B](Expr i) {
+        return A[i] + B[i];
+      },
+      "C");
+  auto E = compute(
+      A->shape, [&C, &D](Expr i) {
+        return C[i] + D[i];
+      },
+      "E");
 
   auto s = create_schedule({E->op});
   auto args = Array<Tensor>({A, B, D, E});

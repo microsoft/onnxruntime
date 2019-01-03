@@ -444,13 +444,25 @@ if (onnxruntime_USE_CUDA)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   find_package(CUDA 9.0 REQUIRED)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
+  set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
+
+  # There's a bug before CMake 3.12.2 for finding cublas_device in CUDA >= 9.2:
+  # See release note for details: https://blog.kitware.com/cmake-3-12-2-available-for-download/
+  #     FindCUDA: Do not find cublas_device on CUDA >= 9.2
+  if (CMAKE_VERSION VERSION_LESS 3.12.2)
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas)
+  else()
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_CUBLAS_LIBRARIES})
+  endif()
+
+  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cudnn)
+
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas)
-	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_100.dll /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_${CUDA_VERSION_MAJOR}${CUDA_VERSION_MINOR}.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas culibos)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
