@@ -257,15 +257,6 @@ class ConvPrimitivePool : public PrimitivePool<T> {
 }  // namespace
 
 template <typename T>
-void Conv<T>::ReoderFilterMemory(const mkldnn::memory& src, const mkldnn::memory& dst) const {
-  MemoryReorderParams params(src, dst);
-  DoReorder<T>(params);
-  std::string weight_name = OpKernel::Node().InputDefs()[1]->Name();
-  std::shared_ptr<mkldnn::memory> p = std::make_shared<mkldnn::memory>(dst);
-  provider_->SetWeightsMemory(weight_name, p);
-}
-
-template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
 
@@ -416,28 +407,23 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // Reorder filter memory layout if necessary
     // Avoid data reordering. Save filter memory in mkldnn format from first iteration
     // in execution provider mapped by weight name.
-    std::string weightKey = OpKernel::Node().InputDefs()[1]->Name();
+    auto weight_name = OpKernel::Node().InputDefs()[1]->Name();
     std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
-    filter_dst_mem = provider_->GetWeightsMemory(weightKey);
+    filter_dst_mem = provider_->GetWeightsMemory(weight_name);
 
-    if (filter_dst_mem == nullptr) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      // check if the last thread has already reordered weight's memory
-      filter_dst_mem = provider_->GetWeightsMemory(weightKey);
-
-      if (filter_dst_mem == nullptr) {
-        if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
-          auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
-                                                       filter_dims_mkl, MklDnnType<T>(), filter_format),
-                                                   cpu_engine);
-          mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
-          filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
-          filter_dst_mem.reset(
-              new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
-          ReoderFilterMemory(src, *filter_dst_mem);
-          filter_dst_mem = provider_->GetWeightsMemory(weightKey);
-          filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-        }
+   if (filter_dst_mem == nullptr) {
+      if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
+        auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
+                                                     filter_dims_mkl, MklDnnType<T>(), filter_format),
+                                                 cpu_engine);
+        mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
+        filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
+        filter_dst_mem.reset(
+            new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
+        MemoryReorderParams params(src, *filter_dst_mem);
+        DoReorder<T>(params);
+        provider_->SetWeightsMemory(weight_name, filter_dst_mem);
+        filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       }
     } else {
       filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());

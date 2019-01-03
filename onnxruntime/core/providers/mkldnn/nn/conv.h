@@ -8,10 +8,6 @@
 
 namespace onnxruntime {
 namespace mkl_dnn {
-namespace {
-// Struct which encapsulates parameters for MKLDNN Conv primitive.
-struct ConvParams;
-};
 
 template <typename T>
 class Conv final : public onnxruntime::Conv<T> {
@@ -24,11 +20,7 @@ class Conv final : public onnxruntime::Conv<T> {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  void ReoderFilterMemory(const mkldnn::memory& src, const mkldnn::memory& dst) const;
-
- private:
   MKLDNNExecutionProvider* provider_;
-  mutable std::mutex mutex_;
 };
 }  // namespace mkl_dnn
 }  // namespace onnxruntime
