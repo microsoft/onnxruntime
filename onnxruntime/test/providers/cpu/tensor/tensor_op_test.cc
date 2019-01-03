@@ -279,16 +279,24 @@ TEST(TensorOpTest, CastFromFloat16) {
 
 TEST(TensorOpTest, CastFromString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  std::initializer_list<std::string> string_data = {"0.0f", "1.0f", "2.0f", "3.0f", "4.0f", "5.0f", "6.0f", "7.0f"};
-  const std::initializer_list<float> float_output{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  std::initializer_list<std::string> string_data = {"-INF", "1.0f", "2.0f", "3.0f", "4.0f", "5.0f", "6.0f", "NaN"};
+  const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, NAN};
   TestCastOp(string_data, float_output, shape, TensorProto::FLOAT);
+
+  std::initializer_list<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
+  const std::initializer_list<int16_t> int_16_output = {0, 1, 2, 3, 4, 5, 6, 7};
+  TestCastOp(int_string_data, int_16_output, shape, TensorProto::INT16);
 }
 
 TEST(TensorOpTest, CastToString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::initializer_list<float> float_input = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-  std::initializer_list<std::string> string_output = {"0", "1", "2", "3", "4", "5", "6", "7"};
+  const std::initializer_list<float> float_input = {NAN, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, std::numeric_limits<float>::infinity()};
+  std::initializer_list<std::string> string_output = {"NaN", "1", "2", "3", "4", "5", "6", "INF"};
   TestCastOp(float_input, string_output, shape, TensorProto::STRING);
+
+  std::initializer_list<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
+  const std::initializer_list<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
+  TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING);
 }
 
 TEST(TensorOpTest, CropBorderOnly) {

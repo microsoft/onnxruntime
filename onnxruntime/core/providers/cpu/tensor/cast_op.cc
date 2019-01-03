@@ -83,7 +83,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
         }                                                                                                                          \
         break;                                                                                                                     \
       case TensorProto_DataType_STRING:                                                                                            \
-        CastToStringData<in_type>(X, Y, shape, context);                                                                           \
+        CastToStringData<in_type>(X, Y, shape);                                                                                    \
         break;                                                                                                                     \
       case TensorProto_DataType_UNDEFINED:                                                                                         \
         ORT_THROW("Cast op must have 'to' argument of type DataType"); /*break;*/                                          \

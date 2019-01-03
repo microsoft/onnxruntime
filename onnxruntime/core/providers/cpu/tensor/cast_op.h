@@ -67,14 +67,19 @@ inline void CastFloat16Data(const Tensor* in, Tensor* out, const TensorShape& sh
 }
 
 template <typename SrcType>
-inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape, const AllocatorPtr& allocator) {
-  ORT_ENFORCE(allocator != nullptr);
+inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape) {
   const int64_t len = shape.Size();
   ORT_ENFORCE(len > 0);
   for (int i = 0; i < len; ++i) {
-    std::ostringstream convert;
-    convert << in->Data<SrcType>()[i];
-    out->MutableData<std::string>()[i] = convert.str();
+    if (std::is_floating_point<SrcType>::value && std::isnan(in->Data<SrcType>()[i])) {
+      out->MutableData<std::string>()[i] = "NaN";
+    } else if (std::is_floating_point<SrcType>::value && std::isinf(in->Data<SrcType>()[i])) {
+      out->MutableData<std::string>()[i] = "INF";
+    } else {
+	  std::ostringstream convert;
+	  convert << in->Data<SrcType>()[i];
+	  out->MutableData<std::string>()[i] = convert.str();
+	}
   }
 }
 
@@ -91,6 +96,7 @@ inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape&
     tmp_tensor.MutableData<double>()[i] = std::stod(in->Data<std::string>()[i]);
   }
   CastData<double, DstType>(&tmp_tensor, out, shape);
+  allocator->Free(buffer);
 }
 
 template <typename T>
@@ -122,10 +128,8 @@ class Cast final : public OpKernel {
   }
 
   template <typename SrcType>
-  Status CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape, OpKernelContext* context) const {
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-    ::onnxruntime::CastToStringData<SrcType>(in, out, shape, allocator);
+  Status CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape) const {
+    ::onnxruntime::CastToStringData<SrcType>(in, out, shape);
     return Status::OK();
   }
 
