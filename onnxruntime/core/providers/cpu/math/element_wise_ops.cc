@@ -837,14 +837,21 @@ class Asinh final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
+
+    auto X_data = X.template Data<float>();
     auto Y_data = Y.template MutableData<float>();
+
+    auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
-    for (int64_t index = 0; index < out.size(); ++index) {
-      out[index] = std::asinh(out[index]);
+
+    for (int64_t index = 0; index < in.size(); ++index) {
+      out[index] = std::asinh(in[index]);
     }
     return Status::OK();
   }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Asinh);
 };
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -862,14 +869,21 @@ class Acosh final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
+
+    auto X_data = X.template Data<float>();
     auto Y_data = Y.template MutableData<float>();
+
+    auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
-    for (int64_t index = 0; index < out.size(); ++index) {
-      out[index] = std::acosh(out[index]);
+
+    for (int64_t index = 0; index < in.size(); ++index) {
+      out[index] = std::acosh(in[index]);
     }
     return Status::OK();
   }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Acosh);
 };
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -887,14 +901,21 @@ class Atanh final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X);
+
+    auto X_data = X.template Data<float>();
     auto Y_data = Y.template MutableData<float>();
+
+    auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
-    for (int64_t index = 0; index < out.size(); ++index) {
-      out[index] = std::atanh(out[index]);
+
+    for (int64_t index = 0; index < in.size(); ++index) {
+      out[index] = std::atanh(in[index]);
     }
     return Status::OK();
   }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Atanh);
 };
 
 ONNX_CPU_OPERATOR_KERNEL(
