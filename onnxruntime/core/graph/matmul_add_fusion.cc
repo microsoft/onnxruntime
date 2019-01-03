@@ -49,22 +49,31 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
     // Gemm only support Matrix, need to check the shape of MatMul and Add
     auto matmul_a_shape = matmul_input_defs[0]->Shape();
     auto matmul_b_shape = matmul_input_defs[1]->Shape();
-    if (nullptr == matmul_a_shape || nullptr == matmul_b_shape ||
-        2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
+    if (nullptr == matmul_a_shape || nullptr == matmul_b_shape ) {
+      continue;
+    } else if (1 == matmul_a_shape->dim_size() && 2 == matmul_b_shape->dim_size()) {
+      // MatMul has shape [K] * [K, N], reset it to [1, K] * [K, N], so that it can work for Gemm
+      auto mutable_matmul_a_shape = const_cast<onnx::TensorShapeProto*>(matmul_a_shape);
+      auto dim_0 = mutable_matmul_a_shape->mutable_dim(0);
+      auto dim_1 = (const_cast<onnx::TensorShapeProto*>(matmul_a_shape))->add_dim();
+      (*dim_1) = (*dim_0);
+      dim_0->set_dim_value(1);
+    }if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
+      // Gemm only support Matrix
       continue;
     }
 
     auto matmul_output_name = matmul_node->OutputDefs()[0]->Name();
     auto gemm_input_defs = matmul_input_defs;
     if (matmul_output_name == add_input_defs[0]->Name()) {
-      // matmul output as Add_A, should used Add_B as input C for gemm
+      // matmul output as Add_A, should use Add_B as input C for gemm
       // Gemm only support unidirectional broadcast on C
       if (add_input_defs[1]->Shape()->dim_size() > 2) {
         continue;
       }
       gemm_input_defs.push_back(add_input_defs[1]);
     } else {
-      // matmul output as Add_B, should used Add_A as input C for gemm
+      // matmul output as Add_B, should use Add_A as input C for gemm
       // Gemm only support unidirectional broadcast on C
       if (add_input_defs[0]->Shape()->dim_size() > 2) {
         continue;
