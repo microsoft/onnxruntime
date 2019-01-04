@@ -7,7 +7,8 @@
 #TODO: Get this working, not tested yet
 
 SOURCE_ROOT=$1
-NUGET_REPO_DIRNAME=$2   # path relative to BUILD_DIR
+BUILD_DIR=$2
+NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
 IMAGE="ubuntu16.04"
 PYTHON_VER=3.5
 OldDir=$(pwd)
