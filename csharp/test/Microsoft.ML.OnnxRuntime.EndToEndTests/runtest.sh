@@ -6,7 +6,12 @@ LocalNuGetRepo=$1
 SourceRoot=$2
 
 @echo "Downloading test data"
-python build.by --update --download_test_data
+python build.py --update --download_test_data
+if [ $? -ne 0 ]
+    echo "Failed to download test data"
+    exit 1
+)
+
 
 MajorVersion=$(cat $SourceRoot/VERSION_NUMBER)
 VersionSuffix=
