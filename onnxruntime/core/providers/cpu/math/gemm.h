@@ -42,6 +42,7 @@ class Gemm final : public OpKernel {
     int64_t N = helper.N();
     int64_t K = helper.K();
     auto Y = context->Output(0, TensorShape({M, N}));
+    T_Y* y_data = Y->template MutableData<T_Y>();
 
     //bias
     // Todo: we might should move this part into math::gemm to let eigen
@@ -101,8 +102,10 @@ class Gemm final : public OpKernel {
         X->template Data<T_X>(),
         W->template Data<T_W>(),
         beta_,
-        Y->template MutableData<T_Y>(),
+        y_data,
         &CPUMathUtil::Instance());
+
+    FuseActivation<T_Y>(activation_, y_data, M * N, leaky_relu_alpha_);
 
     return Status::OK();
   }
@@ -112,6 +115,11 @@ class Gemm final : public OpKernel {
   CBLAS_TRANSPOSE trans_B_;
   float alpha_;
   float beta_;
+
+protected:
+  // For fused gemm + activation
+  std::string activation_;
+  float leaky_relu_alpha_;
 };
 
 }  // namespace onnxruntime

@@ -88,7 +88,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              Ydata);
 
     //TODO: this will be replaced with Tracy's changes.
-    fuse_activation(activation_, Ydata, Y->Shape().Size(), alpha_);
+    FuseActivation(activation_, Ydata, Y->Shape().Size(), alpha_);
 
   } else {
     const int64_t input_image_size = input_shape.Size();
@@ -144,7 +144,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         Ymatrix.rowwise() += Bvec.transpose();
       }
 
-      fuse_activation(activation_, Ydata, Y_offset * group_, alpha_);
+      FuseActivation(activation_, Ydata, Y_offset * group_, alpha_);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;

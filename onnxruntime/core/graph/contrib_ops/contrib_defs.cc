@@ -138,6 +138,96 @@ activation.)DOC")
         ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+The FusedGemm operator schema is the same as Gemm besides it includes attributes 
+activation and leaky_relu_alpha.)DOC")
+      .Input(
+          0,
+          "A",
+          "Input tensor A. "
+          "The shape of A should be (M, K) if transA is 0, "
+          "or (K, M) if transA is non-zero.",
+          "T")
+      .Input(
+          1,
+          "B",
+          "Input tensor B. "
+          "The shape of B should be (K, N) if transB is 0, "
+          "or (N, K) if transB is non-zero.",
+          "T")
+      .Input(
+          2,
+          "C",
+          "Input tensor C. "
+          "The shape of C should be unidirectional broadcastable to (M, N).",
+          "T")
+      .Output(0, "Y", "Output tensor of shape (M, N).", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int32)",
+           "tensor(int64)"},
+          "Constrain input and output types to float/int tensors.")
+      .Attr(
+          "transA",
+          "Whether A should be transposed",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "alpha",
+          "Scalar multiplier for the product of input tensors A * B.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "beta",
+          "Scalar multiplier for input tensor C.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "activation",
+          "",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Attr(
+          "leaky_relu_alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL)
+       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+         if (hasNInputShapes(ctx, 2)) {
+           auto transAAttr = ctx.getAttribute("transA");
+           bool transA =
+               transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+           auto transBAttr = ctx.getAttribute("transB");
+           bool transB =
+               transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+           auto& first_input_shape = getInputShape(ctx, 0);
+           auto& second_input_shape = getInputShape(ctx, 1);
+           if (first_input_shape.dim_size() != 2)
+             fail_shape_inference("First input does not have rank 2");
+           if (second_input_shape.dim_size() != 2)
+             fail_shape_inference("Second input does not have rank 2");
+           updateOutputShape(
+               ctx,
+               0,
+               {first_input_shape.dim(transA ? 1 : 0),
+                second_input_shape.dim(transB ? 0 : 1)});
+         }
+       });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ExpandDims)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
