@@ -60,7 +60,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
 | [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime/)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](https://pypi.org/project/onnxruntime/)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
-| [C#](docs/CSharp_API.md) | [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
+| [C#](docs/CSharp_API.md) | [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Linux - Coming Soon<br>Mac - Coming Soon| [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Linux - Coming Soon<br>Mac - Coming Soon|
 | [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
 | [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
 
