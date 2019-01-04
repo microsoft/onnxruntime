@@ -260,7 +260,8 @@ class InferenceSession::Impl {
                                        const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                        const ExecutionProviders& providers,
                                        KernelRegistryManager& kernel_registry_manager,
-                                       const InsertCastTransformer& insert_cast_transformer) {
+                                       const InsertCastTransformer& insert_cast_transformer,
+                                       const SessionState& session_state) {
     // The transformer order:
     // 1. built-in graph rewriter
     // 2. each execution provider's transformer
@@ -275,7 +276,7 @@ class InferenceSession::Impl {
 
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
-    ORT_RETURN_IF_ERROR(partitioner.Partition(graph));
+    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), const_cast<FuncManager*>(session_state.GetFuncMgr())));
 
     // Insert copy nodes.
     for (auto& provider : providers) {
@@ -395,12 +396,14 @@ class InferenceSession::Impl {
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR(TransformGraph(graph, graph_transformation_mgr_,
                                          execution_providers_, kernel_registry_manager_,
-                                         insert_cast_transformer_));
+                                         insert_cast_transformer_,
+                                         session_state_));
 
       ORT_RETURN_IF_ERROR(utils::ForAllMutableSubgraphs(graph, [this](Graph& subgraph) {
         return TransformGraph(subgraph, graph_transformation_mgr_,
                               execution_providers_, kernel_registry_manager_,
-                              insert_cast_transformer_);
+                              insert_cast_transformer_,
+                              session_state_);
       }));
 
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
