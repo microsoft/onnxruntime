@@ -12,7 +12,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     internal static class NativeMethods
     {
-        private const string nativeLib = "onnxruntime.dll";
+        private const string nativeLib = "onnxruntime";
         internal const CharSet charSet = CharSet.Ansi;
 
         #region Runtime/Environment API
