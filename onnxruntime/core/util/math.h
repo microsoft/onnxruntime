@@ -325,9 +325,25 @@ void Axpby(
     const T b,
     T* y,
     Provider* provider);
-
 template <typename T, class Provider, int order>
 void Im2colNd(
+    const T* data_img,
+    const int64_t* im_shape,
+    const int64_t* col_shape,
+    const int64_t img_size,
+    const int64_t col_size,
+    const int64_t* kernel_shape,
+    const int64_t* stride,
+    const int64_t* dilation,
+    const int64_t* pad,
+    const int64_t N,
+    T* data_col,
+    Provider* /*provider*/,
+    bool accumulate_output = false,
+    T padding_value = 0);
+
+template <typename T, class Provider>
+void Im2colNd<T, Provider, StorageOrder::NCHW>(
 	const T* data_img,
 	const int64_t* im_shape,
 	const int64_t* col_shape,
@@ -339,9 +355,9 @@ void Im2colNd(
 	const int64_t* pad,
 	const int64_t N,
 	T* data_col,
-	Provider* provider,
-	bool accumulate_output = false,
-	T padding_value = 0) {
+	Provider* /*provider*/,
+	bool accumulate_output,
+	T padding_value) {
   int64_t kernel_size = 1;
   for (int64_t i = 0; i < N; ++i) {
     kernel_size *= kernel_shape[i];
