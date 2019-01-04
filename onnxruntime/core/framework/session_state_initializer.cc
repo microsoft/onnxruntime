@@ -64,11 +64,9 @@ SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
 
 common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
-  // the graph now is fixed and graph viewer is created and set for execution.
   session_state_.SetGraphViewer(std::make_unique<onnxruntime::GraphViewer>(graph_));
 
   auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
-
   // populate the SessionState MLValueNameIdxMap
   ORT_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(graph_, mlvalue_name_idx_map, logger_));
 
