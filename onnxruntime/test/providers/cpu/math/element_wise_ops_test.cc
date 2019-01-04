@@ -829,6 +829,21 @@ TEST(MathOpTest, Cosh) {
   TrigTest<std::cosh>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
 }
 
+TEST(MathOpTest, Asinh) {
+  OpTester test("Asinh", 9);
+  TrigTest<std::asinh>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+TEST(MathOpTest, Acosh) {
+  OpTester test("Acosh", 9);
+  TrigTest<std::acosh>(test, {1.0f, 1.1f, 3.0f, 10.0f, 100.0f});
+}
+
+TEST(MathOpTest, Atanh) {
+  OpTester test("Atanh", 9);
+  TrigTest<std::atanh>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+}
+
 TEST(MathOpTest, Expand_8_3x3) {
   OpTester test("Expand", 8);
   test.AddInput<float>("data_0", {1}, {1.0f});
