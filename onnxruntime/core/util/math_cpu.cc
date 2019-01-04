@@ -475,15 +475,15 @@ void GemmBatched<float, CPUMathUtil>(
   }
 }
 
-// MKL will be implmenet as an execution provider
-////////////////////////////////////////////////////////////////////////////////
-// MKL VML alternatives.
-// Depending on whether we are using MKL, we will delegate the Caffe math
-// functions that are VML-related to either the VML call or the Eigen
-// implementation. If you are setting the flags (such as AVX) right for your CPU
-// architecture, usually Eigen will deliver a throughput as fast as the VML
-// functions.
-////////////////////////////////////////////////////////////////////////////////
+  // MKL will be implmenet as an execution provider
+  ////////////////////////////////////////////////////////////////////////////////
+  // MKL VML alternatives.
+  // Depending on whether we are using MKL, we will delegate the Caffe math
+  // functions that are VML-related to either the VML call or the Eigen
+  // implementation. If you are setting the flags (such as AVX) right for your CPU
+  // architecture, usually Eigen will deliver a throughput as fast as the VML
+  // functions.
+  ////////////////////////////////////////////////////////////////////////////////
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
   template <>                                                                  \
@@ -875,7 +875,7 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(
     float* data_img,
     CPUMathUtil* context) {
   Set<float, CPUMathUtil>(img_size, 0, data_img, context);
-  Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>(
+  Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
       data_col,
       img_shape,
       col_shape,
