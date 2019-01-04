@@ -11,7 +11,7 @@ namespace mkl_dnn {
 template <typename T, typename PoolType>
 class Pool final : public onnxruntime::Pool<T, PoolType> {
  public:
-  Pool(const OpKernelInfo& info) : onnxruntime::Pool<T, PoolType>(info) {
+  explicit Pool(const OpKernelInfo& info) : onnxruntime::Pool<T, PoolType>(info) {
     // Since there are multiple versions of Pooling kernels, we need to use
     // the opset version as part of the key for caching Pooling Primitives.
     int start, end;

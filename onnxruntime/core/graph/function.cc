@@ -117,6 +117,14 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
     sub_graph.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
   }
+
+  for (auto input : meta_def->inputs) {
+    const onnx::TensorProto* initializer = nullptr;
+    if (graph.GetInitializedTensor(input, initializer)) {
+      sub_graph.AddInitializedTensor(*initializer);
+    }
+  }
+
   //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
   ORT_ENFORCE(sub_graph.Resolve().IsOK());
 }

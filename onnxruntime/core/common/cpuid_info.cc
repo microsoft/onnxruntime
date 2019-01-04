@@ -56,6 +56,7 @@ CPUIDInfo::CPUIDInfo() noexcept {
       int value = XGETBV();
       bool has_avx = (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
       bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
+      has_f16c_ = has_avx && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
 
       if (num_IDs >= 7) {
         GetCPUID(7, data);

@@ -322,7 +322,7 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    #only treat warning as error on x64 platform. For x86, right no there are too many warnings to fix
+    # treat warning as error only on x64 platform. For x86, there are too many warnings to fix.
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
@@ -330,6 +330,14 @@ if (WIN32)
         set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
       endforeach()
     endif()
+
+    # set linker flags to minimize the binary size.
+    if (MSVC)
+      foreach(type EXE SHARED)    
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF")
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+      endforeach()
+    endif()      
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning in Linux
@@ -397,15 +405,19 @@ if (onnxruntime_USE_MKLML)
   add_definitions(-DUSE_MKLML=1)
   # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
   #add_definitions(-DUSE_MKLML_FOR_BLAS=1)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mklml)
+  if (WIN32 OR APPLE)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
+  else()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
   link_directories(${MKLML_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_MKLDNN)
   add_definitions(-DUSE_MKLDNN=1)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mkldnn)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
 endif()
 
@@ -432,13 +444,25 @@ if (onnxruntime_USE_CUDA)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   find_package(CUDA 9.0 REQUIRED)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
+  set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
+
+  # There's a bug before CMake 3.12.2 for finding cublas_device in CUDA >= 9.2:
+  # See release note for details: https://blog.kitware.com/cmake-3-12-2-available-for-download/
+  #     FindCUDA: Do not find cublas_device on CUDA >= 9.2
+  if (CMAKE_VERSION VERSION_LESS 3.12.2)
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas)
+  else()
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_CUBLAS_LIBRARIES})
+  endif()
+
+  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cudnn)
+
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas)
-	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_100.dll /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_${CUDA_VERSION_MAJOR}${CUDA_VERSION_MINOR}.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
@@ -473,6 +497,10 @@ if (onnxruntime_USE_TVM)
     endif()
   endif()
   include(onnxruntime_codegen.cmake)
+endif()
+
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

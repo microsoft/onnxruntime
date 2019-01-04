@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <atomic>
 
+using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
@@ -102,6 +103,8 @@ inline ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
     type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<MLFloat16>()) {
     type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<BFloat16>()) {
+    type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<double>()) {
     type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint32_t>()) {

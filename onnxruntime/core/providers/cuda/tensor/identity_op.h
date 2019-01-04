@@ -17,6 +17,7 @@ class IdentityOp final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
+    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const TensorShape& shape = X->Shape();
     Tensor* Y = context->Output(0, shape);
     auto X_type = X->DataType();
