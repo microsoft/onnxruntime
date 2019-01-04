@@ -20,15 +20,15 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                   " W: ", W->Shape().ToString().c_str());
+                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                           " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_shape.size(); ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                     " W: ", W->Shape().ToString().c_str());
+                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                             " W: ", W->Shape().ToString().c_str());
     }
   }
 
@@ -111,7 +111,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < group_; ++group_id) {
-        math::Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>(
+        math::Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
             col_buffer_shape.data(),
