@@ -7,8 +7,8 @@
 #include <thread>
 #include <mutex>
 
-#include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/nn/conv.h"
+#include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 
 namespace onnxruntime {

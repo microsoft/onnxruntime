@@ -10,11 +10,9 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_transformer.h"
 
-#ifndef MKLDNN_HPP
 namespace mkldnn {
-class memory;
+struct memory;
 };
-#endif
 
 namespace onnxruntime {
 
