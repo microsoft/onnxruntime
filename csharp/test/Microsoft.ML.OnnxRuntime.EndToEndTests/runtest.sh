@@ -4,10 +4,11 @@
 
 LocalNuGetRepo=$1
 SourceRoot=$2
+BuildDir=$3
 
-@echo "Downloading test data"
-python $SourceRoot/tools/ci_build/build.py --update --download_test_data
-if [ $? -ne 0 ]
+echo "Downloading test data"
+python $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir
+if [ $? -ne 0 ]; then
     echo "Failed to download test data"
     exit 1
 fi
@@ -22,13 +23,13 @@ export CurrentOnnxRuntimeVersion=$MajorVersion$VersionSuffix
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
 dotnet restore $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo --configfile $SourceRoot/csharp/Nuget.CSharp.config
-if [ $? -ne 0 ]
+if [ $? -ne 0 ]; then
     echo "Failed to restore nuget packages for the test project"
     exit 1
 fi
 
 dotnet test $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
-if [ $? -ne 0 ]
+if [ $? -ne 0 ]; then
     echo "Failed to build or execute the end-to-end test"
     exit 1
 fi
