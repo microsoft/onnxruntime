@@ -198,7 +198,7 @@ int main(int argc, char* argv[]) {
   char* input_file = argv[2];
   char* output_file = argv[3];
   OrtEnv* env;
-  ORT_ABORT_ON_ERROR(OrtInitialize(ORT_LOGGING_LEVEL_kWARNING, "test", &env));
+  ORT_ABORT_ON_ERROR(OrtInitialize(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_option = OrtCreateSessionOptions();
 #ifdef USE_CUDA
   enable_cuda(session_option);
