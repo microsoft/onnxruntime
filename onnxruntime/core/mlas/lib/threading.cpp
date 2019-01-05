@@ -130,8 +130,9 @@ MlasExecuteThreaded(
     //
     // Execute the routine for the specified number of iterations.
     //
-
-    #pragma omp parallel for
+#if defined(_OPENMP)
+#pragma omp parallel for
+#endif
     for (int32_t tid = 0; tid < Iterations; tid++) {
         ThreadedRoutine(Context, tid);
     }

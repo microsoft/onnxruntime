@@ -3,8 +3,11 @@
 
 add_library(onnx_proto ${ONNXRUNTIME_ROOT}/core/protobuf/onnx-ml.proto ${ONNXRUNTIME_ROOT}/core/protobuf/onnx-operators-ml.proto)
 target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/..")
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS TARGET onnx_proto)
-
+target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
+onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_proto)
+if (WIN32)
+  target_compile_options(onnx_proto PRIVATE /wd4146) # unary minus operator applied to unsigned type
+endif()
 # Cpp Tests were added and they require googletest
 # since we have our own copy, try using that
 set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
@@ -24,7 +27,9 @@ file(GLOB_RECURSE onnx_exclude_src
 list(REMOVE_ITEM onnx_src ${onnx_exclude_src})
 add_library(onnx ${onnx_src})
 add_dependencies(onnx onnx_proto)
-target_include_directories(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_INCLUDE_DIRECTORIES> "${ONNX_SOURCE_ROOT}")
+target_include_directories(onnx PUBLIC "${ONNX_SOURCE_ROOT}")
+target_include_directories(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_INCLUDE_DIRECTORIES>)
+target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
 target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx")
 if (WIN32)
     target_compile_options(onnx PRIVATE
@@ -49,3 +54,7 @@ else()
     target_compile_options(onnx_proto PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()
+
+
+set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
+set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")

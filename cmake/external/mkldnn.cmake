@@ -53,11 +53,11 @@ if (onnxruntime_USE_MKLDNN)
   set(MKLDNN_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/mkl-dnn/install)
   set(MKLDNN_LIB_DIR ${MKLDNN_INSTALL}/lib)
   set(MKLDNN_INCLUDE_DIR ${MKLDNN_INSTALL}/include)
-
-  set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/platform.cmake.patch)
-  # discard prior changes due to patching in mkldnn source to unblock incremental builds.
-  set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
-
+  if(NOT onnxruntime_BUILD_FOR_NATIVE_MACHINE)
+    set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/platform.cmake.patch)
+    # discard prior changes due to patching in mkldnn source to unblock incremental builds.
+    set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
+  endif()
   ExternalProject_Add(project_mkldnn
     PREFIX mkl-dnn
     GIT_REPOSITORY ${MKLDNN_URL}
