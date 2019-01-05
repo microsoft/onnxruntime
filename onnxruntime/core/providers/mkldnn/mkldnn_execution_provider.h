@@ -53,10 +53,14 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  void SetWeightsMemory(std::string weight_key,
+  void SetWeightsMemory(const std::string& weight_key,
                         const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
     std::lock_guard<std::mutex> lock(mutex_);
     weights_mem_map_[weight_key] = filter_dst_mem;
+  }
+
+  std::mutex& GetMutex() {
+    return conv_mutex_;
   }
 
  private:
@@ -64,6 +68,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   // saved by weights name
   std::map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map_;
   mutable std::mutex mutex_;
+  std::mutex conv_mutex_;
 };
 
 }  // namespace onnxruntime

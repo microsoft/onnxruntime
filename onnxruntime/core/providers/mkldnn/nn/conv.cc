@@ -409,26 +409,30 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // in execution provider mapped by weight name.
     auto weight_name = OpKernel::Node().InputDefs()[1]->Name();
     std::shared_ptr<mkldnn::memory> filter_dst_mem = nullptr;
-    filter_dst_mem = provider_->GetWeightsMemory(weight_name);
+    {
+      // lock to make sure reordering is done only once
+      std::lock_guard<std::mutex> lock(provider_->GetMutex());
+      filter_dst_mem = provider_->GetWeightsMemory(weight_name);
 
-   if (filter_dst_mem == nullptr) {
-      if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
-        auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
-                                                     filter_dims_mkl, MklDnnType<T>(), filter_format),
-                                                 cpu_engine);
-        mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
-        filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
-        filter_dst_mem.reset(
+      if (filter_dst_mem == nullptr) {
+        if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
+          auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
+            filter_dims_mkl, MklDnnType<T>(), filter_format),
+            cpu_engine);
+          mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
+          filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
+          filter_dst_mem.reset(
             new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
-        MemoryReorderParams params(src, *filter_dst_mem);
-        DoReorder<T>(params);
-        provider_->SetWeightsMemory(weight_name, filter_dst_mem);
+          MemoryReorderParams params(src, *filter_dst_mem);
+          DoReorder<T>(params);
+          provider_->SetWeightsMemory(weight_name, filter_dst_mem);
+          filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+        }
+      }
+      else {
         filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       }
-    } else {
-      filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
     }
-
     // Allocate dst buffer if reorder is necessary
     if (dst_md.data.format != conv_primitive->GetDstMemoryFormat()) {
       // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
