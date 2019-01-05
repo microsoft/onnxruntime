@@ -18,8 +18,8 @@ void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool u
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OpSchema;
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -560,7 +560,16 @@ The integer convolution operator consumes an input tensor, a filter, and a paddi
           "(assuming zero based indices for the shape array). "
           "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
           "T2")
-      .Input(2, "z", "Padding value (zero_point normally), it's optional and default value is 0.", "T1", OpSchema::Optional)
+      .Input(2, "x_zero_point",
+             "Zero point tensor for input 'x'. It's optional and default value is 0. It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements "
+             "should be equal to the number of channels of input 'x'.",
+             "T1", OpSchema::Optional)
+      .Input(3, "w_zero_point",
+             "Scale tensor for input 'w'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number "
+             "of elements should be equal to the number of channels of input 'w'.",
+             "T2", OpSchema::Optional)
       .Output(
           0,
           "y",
@@ -614,6 +623,16 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
  The production MUST never overflow. The accumulation may overflow if and only if in 32 bits.)DOC")
       .Input(0, "A", "N-dimensional matrix A", "T1")
       .Input(1, "B", "N-dimensional matrix B", "T2")
+      .Input(2, "a_zero_point",
+             "Zero point tensor for input 'A'. It's optional and default value is 0. It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-row quantization. If it's a 1-D tensor, its number of elements "
+             "should be equal to the number of rows of input 'A'.",
+             "T1", OpSchema::Optional)
+      .Input(3, "b_zero_point",
+             "Scale tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+             "of elements should be equal to the number of columns of input 'B'.",
+             "T2", OpSchema::Optional)
       .Output(0, "Y", "Matrix multiply results from A * B", "T3")
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input A data types as 8-bit integer tensor")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data types as 8-bit integer tensor")
