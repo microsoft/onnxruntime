@@ -19,6 +19,7 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/graph/graph_viewer.h"
+#include "core/framework/fuse_nodes_funcs.h"
 
 namespace onnxruntime {
 
@@ -148,6 +149,10 @@ class SessionState {
   TaskThreadPool* GetThreadPool() const { return thread_pool_; }
   void SetThreadPool(TaskThreadPool* p_pool) { thread_pool_ = p_pool; }
 
+  bool ExportDll() const { return export_fused_dll_; }
+  void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
+  const FuncManager* GetFuncMgr() const { return &fused_funcs_mgr_; }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -183,5 +188,8 @@ class SessionState {
                          std::unordered_map<std::string, gsl::not_null<const SessionState*>>>;
   SubgraphSessionStateMap subgraph_session_states_;
   TaskThreadPool* thread_pool_ = nullptr;
+
+  bool export_fused_dll_ = false;
+  FuncManager fused_funcs_mgr_;
 };
 }  // namespace onnxruntime

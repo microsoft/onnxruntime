@@ -82,7 +82,7 @@ int real_main(int argc, char* argv[]) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_kWARNING;
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
     while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
@@ -91,7 +91,7 @@ int real_main(int argc, char* argv[]) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_kINFO;
+          logging_level = ORT_LOGGING_LEVEL_INFO;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
@@ -270,11 +270,6 @@ int real_main(int argc, char* argv[]) {
       {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
-      {"dynamic_slice", "disable reason"},
-      {"dynamic_slice_default_axes", "disable reason"},
-      {"dynamic_slice_end_out_of_bounds", "disable reason"},
-      {"dynamic_slice_neg", "disable reason"},
-      {"dynamic_slice_start_out_of_bounds", "disable reason"},
       {"eyelike_populate_off_main_diagonal", "disable reason"},
       {"eyelike_with_dtype", "disable reason"},
       {"eyelike_without_dtype", "disable reason"},
@@ -310,11 +305,6 @@ int real_main(int argc, char* argv[]) {
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
       {"upsample_nearest", "opset 9 not supported yet"},
-      {"onehot_with_axis", "opset 9 not supported yet"},
-      {"onehot_without_axis", "opset 9 not supported yet"},  // also has bug in current test re: output type. Spandan to fix.
-      {"asinh", "opset 9 not supported yet"},
-      {"acosh", "opset 9 not supported yet"},
-      {"atanh", "opset 9 not supported yet"},
       {"sinh_example", "opset 9 not supported yet"},
       {"cosh_example", "opset 9 not supported yet"},
       {"asinh_example", "opset 9 not supported yet"},
