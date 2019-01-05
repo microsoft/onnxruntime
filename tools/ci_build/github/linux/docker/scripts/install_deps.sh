@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 #install ninja
 aria2c -q -d /tmp https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip
 unzip -oq /tmp/ninja-linux.zip -d /usr/bin
@@ -55,9 +56,9 @@ fi
 
 #The last onnx version will be kept
 
-aria2c -q -d /tmp/src  http://bitbucket.org/eigen/eigen/get/3.3.5.tar.bz2
-tar -jxf /tmp/src/eigen-eigen-b3f3d4950030.tar.bz2 -C /usr/include
-mv /usr/include/eigen-eigen-b3f3d4950030 /usr/include/eigen3
+aria2c -q -d /tmp/src  http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2
+tar -jxf /tmp/src/eigen-eigen-323c052e1731.tar.bz2 -C /usr/include
+mv /usr/include/eigen-eigen-323c052e1731 /usr/include/eigen3
 
 rm -rf /tmp/src
 
