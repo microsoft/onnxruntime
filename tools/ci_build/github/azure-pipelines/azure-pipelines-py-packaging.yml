@@ -73,6 +73,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
+      Python37:
+        python.version: '3.7'
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
   steps:
@@ -128,6 +130,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
+      Python37:
+        python.version: '3.7'
   steps:
     - task: CondaEnvironment@1
       inputs:
@@ -192,7 +196,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
-
+      Python37:
+        python.version: '3.7'
   steps:
     - task: CondaEnvironment@1
       inputs:
@@ -221,11 +226,4 @@ jobs:
 
     - script: 'sudo rm -rf $(Agent.BuildDirectory)'
       displayName: 'Clean build folders/files'
-      condition: always()
-
-    - task: CmdLine@1
-      displayName: 'Deactivating Conda Environment'
-      inputs:
-        filename: deactivate
-      continueOnError: true
       condition: always()
