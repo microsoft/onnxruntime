@@ -816,8 +816,10 @@ static void InvalidInput(bool is_v8) {
                OpTester::ExpectResult::kExpectFailure,
                "Invalid values in 'scan_input_directions'.");
 
+    std::vector<int64_t> output_directions = {0, 2, 1, 0};
+
     RunTest_v9("InvalidOutputDirectionsValue", sequence_len, input_size,
-               nullptr, nullptr, &directions,
+               nullptr, nullptr, &output_directions,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
@@ -825,8 +827,8 @@ static void InvalidInput(bool is_v8) {
                "Invalid values in 'scan_output_directions'.");
   }
 
-  // mismatch between direction entries and num inputs
-  directions = {1, 0, 1};  // too many entries - should match the number of inputs (2)
+  // mismatch between direction entries and num inputs/outputs
+  directions = {1, 0, 1};  // too many entries for the 2 inputs, too few for the 4 outputs
 
   if (is_v8) {
     RunTest_v8("InvalidNumEntriesInDirections", batch_size, sequence_len, input_size,

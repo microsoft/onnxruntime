@@ -165,13 +165,11 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
-  ReadDirections(info, "scan_input_directions", input_directions_, num_scan_inputs_);
+  auto num_loop_state_vars = info.GetInputCount() - num_scan_inputs_;
+  auto num_scan_outputs = info.GetOutputCount() - num_loop_state_vars;
 
-  // we don't know the concrete number of outputs until Compute is called, as the subgraph may have optional inputs
-  // so proto.input_size() - num_scan_inputs_ does not necessarily == num state variables.
-  // num scan outputs == proto.output_size() - num state variables.
-  // read the provided attribute with a size that will be >= num scan outputs and validate later
-  ReadDirections(info, "scan_output_directions", output_directions_, -1);
+  ReadDirections(info, "scan_input_directions", input_directions_, num_scan_inputs_);
+  ReadDirections(info, "scan_output_directions", output_directions_, num_scan_outputs);
 
   if (info.GetAttrs<int64_t>("axes", axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(axes_.size()) == num_scan_inputs_,
@@ -332,14 +330,6 @@ Status ScanImpl::ValidateInput() {
   // validate the scan inputs
   auto status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, graph_inputs);
   ORT_RETURN_IF_ERROR(status);
-
-  // validate the output directions match the number of Scan outputs if provided
-  if (!output_directions_.empty() &&
-      output_directions_.size() != static_cast<size_t>(num_variadic_outputs_ - num_loop_state_variables_)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Number of entries in 'scan_output_directions' was ", output_directions_.size(),
-                           " but expected ", num_variadic_outputs_ - num_loop_state_variables_);
-  }
 
   return Status::OK();
 }

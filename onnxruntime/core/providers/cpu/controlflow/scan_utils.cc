@@ -29,11 +29,11 @@ namespace scan {
 namespace detail {
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    std::vector<int64_t>& directions, int64_t expected_num_entries) {
+                    std::vector<int64_t>& directions, int64_t num_entries) {
   if (info.GetAttrs<int64_t>(attr_name, directions).IsOK()) {
-    ORT_ENFORCE(expected_num_entries < 0 || gsl::narrow_cast<int64_t>(directions.size()) == expected_num_entries,
+    ORT_ENFORCE(num_entries < 0 || gsl::narrow_cast<int64_t>(directions.size()) == num_entries,
                 "Number of entries in '", attr_name, "' was ", directions.size(),
-                " but expected ", expected_num_entries);
+                " but expected ", num_entries);
 
     bool valid = std::all_of(directions.cbegin(), directions.cend(),
                              [](int64_t i) { return static_cast<ScanDirection>(i) == ScanDirection::kForward ||
@@ -41,9 +41,7 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
     ORT_ENFORCE(valid, "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
   } else {
     // default to forward if we know how many entries there should be
-    if (expected_num_entries > 0) {
-      directions = std::vector<int64_t>(expected_num_entries, static_cast<int64_t>(ScanDirection::kForward));
-    }
+    directions = std::vector<int64_t>(num_entries, static_cast<int64_t>(ScanDirection::kForward));
   }
 }
 
