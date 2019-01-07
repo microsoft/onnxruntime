@@ -8,15 +8,24 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
-    Slice,
-    kOnnxDomain,
-    1,
-    kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Slice);
+#define REGISTER_TYPED_SLICE(Tindice, dynamic)                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
+      Slice,                                                                              \
+      kOnnxDomain,                                                                        \
+      1,                                                                                  \
+      Tindice,                                                                            \
+      kCudaExecutionProvider,                                                             \
+      KernelDefBuilder().TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tindice>()),  \
+      Slice<Tindice, dynamic>);
 
-Status Slice::ComputeInternal(OpKernelContext* ctx) const {
+REGISTER_TYPED_SLICE(int32_t, false) 
+REGISTER_TYPED_SLICE(int64_t, false) 
+REGISTER_TYPED_SLICE(int32_t, true) 
+REGISTER_TYPED_SLICE(int64_t, true) 
+
+template<typename Tind, bool dynamic>
+Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
   auto& input_dimensions = input_tensor->Shape().GetDims();
@@ -26,9 +35,16 @@ Status Slice::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
-			                dimension_count, input_dimensions,
-					starts, output_dims));
+  if (dynamic) {
+    std::vector<int64_t> input_starts, input_ends, input_axes;
+    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
+    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
+                        dimension_count, input_dimensions, starts, output_dims));
+
+  } else {
+    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
+	                    dimension_count, input_dimensions, starts, output_dims));
+  }
 
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);

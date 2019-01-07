@@ -113,11 +113,11 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   return Status::OK();
 }
 
-template <typename T, typename Tind, bool dynamic>
-void Slice<T, Tind, dynamic>::FillVectors(const OpKernelContext* context,
-                                          std::vector<int64_t>&  input_starts,
-                                          std::vector<int64_t>&  input_ends,
-                                          std::vector<int64_t>&  input_axes) const {
+template <typename Tind>
+void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
+                                     std::vector<int64_t>&  input_starts,
+                                     std::vector<int64_t>&  input_ends,
+                                     std::vector<int64_t>&  input_axes) const {
   ORT_ENFORCE(context->Input<Tensor>(1) != nullptr, "Required starts input is missing");
   ORT_ENFORCE(context->Input<Tensor>(2) != nullptr, "Required ends input is missing");
 
@@ -158,7 +158,7 @@ Status Slice<T, Tind, dynamic>::Compute(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectors(ctx, input_starts, input_ends, input_axes);
+    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                         dimension_count, input_dimensions, starts, output_dims));
   } else {
