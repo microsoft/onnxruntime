@@ -44,7 +44,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -74,7 +76,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -112,7 +116,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -241,7 +247,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -271,7 +279,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -313,7 +323,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;

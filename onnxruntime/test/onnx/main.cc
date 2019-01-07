@@ -82,7 +82,7 @@ int real_main(int argc, char* argv[]) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_kWARNING;
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
     while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
@@ -91,7 +91,7 @@ int real_main(int argc, char* argv[]) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_kINFO;
+          logging_level = ORT_LOGGING_LEVEL_INFO;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));

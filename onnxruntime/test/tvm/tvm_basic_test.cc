@@ -205,7 +205,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
 
       compute_info.release_state_func = [](FunctionState state) {
         if (state)
-          delete state;
+          delete static_cast<TVMFuncState*>(state);
       };
 
       //we use lambda to capture the tvm model, so we can use it to get the funciton.

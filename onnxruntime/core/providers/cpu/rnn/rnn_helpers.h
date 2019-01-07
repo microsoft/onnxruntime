@@ -113,9 +113,10 @@ void ReverseSequence(gsl::span<const T> inputs,
 
     if (seq_len == 0)
       continue;
-
-    // Parallel execute the loop.
-    #pragma omp for
+#ifdef USE_OPENMP
+// Parallel execute the loop.
+#pragma omp parallel for
+#endif
     for (int j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
@@ -124,7 +125,10 @@ void ReverseSequence(gsl::span<const T> inputs,
       gsl::copy(src, dest);
     }
 
-    #pragma omp for
+#ifdef USE_OPENMP
+// Parallel execute the loop.
+#pragma omp parallel for
+#endif
     for (int j = seq_len; j < max_sequence_length; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * j * batch_size * input_size + i * input_size, input_size);
