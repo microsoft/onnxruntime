@@ -40,9 +40,10 @@ add_library(onnxruntime_common ${onnxruntime_common_src})
 if(NOT WIN32)
 	target_link_libraries(onnxruntime_common dl)
 endif()
-target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT} ${date_INCLUDE_DIR})
-# logging uses date. threadpool uses eigen
-add_dependencies(onnxruntime_common date eigen gsl)
+onnxruntime_add_include_to_target(onnxruntime_common gsl date)
+target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT})
+#threadpool uses eigen
+add_dependencies(onnxruntime_common eigen)
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
