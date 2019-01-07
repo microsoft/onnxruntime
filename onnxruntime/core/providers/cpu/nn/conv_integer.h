@@ -7,9 +7,9 @@
 
 namespace onnxruntime {
 
-class QLinearConv : public OpKernel, public ConvBase {
+class ConvInteger : public OpKernel, public ConvBase {
  public:
-  QLinearConv(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  ConvInteger(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
