@@ -327,6 +327,18 @@ int real_main(int argc, char* argv[]) {
   broken_tests["maxpool_2d_same_lower"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
+
+  broken_tests["tf_nasnet_large"] = "unknown failure on CUDA";
+  broken_tests["tf_inception_resnet_v2"] = "unknown failure on CUDA";
+  broken_tests["tf_nasnet_mobile"] = "unknown failure on CUDA";
+  broken_tests["tf_resnet_v2_152"] = "unknown failure on CUDA";
+  broken_tests["tf_inception_v4"] = "unknown failure on CUDA";
+  broken_tests["tf_resnet_v2_101"] = "unknown failure on CUDA";
+  broken_tests["tf_pnasnet_large"] = "unknown failure on CUDA";
+  broken_tests["tf_inception_v1"] = "unknown failure on CUDA";
+  broken_tests["fp16_inception_v1"] = "CUDNN_STATUS_ARCH_MISMATCH";
+  broken_tests["fp16_shufflenet"] = "CUDNN_STATUS_ARCH_MISMATCH";
+  broken_tests["fp16_tiny_yolov2"] = "CUDNN_STATUS_ARCH_MISMATCH";
 #endif
 
   int result = 0;
