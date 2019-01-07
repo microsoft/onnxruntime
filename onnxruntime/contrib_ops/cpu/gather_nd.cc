@@ -45,7 +45,9 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   auto output_tensor = context->Output(0,TensorShape(shape));
   std::vector<int64_t> element_counts(last_indice_dimension, 0LL); // Number of elements for each input dimension
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
   for (int64_t i = 0; i < last_indice_dimension; ++i) {
     element_counts[i] = input_shape.SizeFromDimension(i + 1);
   }
@@ -54,7 +56,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   p.element_bytes    = input_tensor->DataType()->Size();
   p.element_to_copy  = input_shape.SizeFromDimension(last_indice_dimension);
   p.bytes_to_copy    = p.element_bytes * p.element_to_copy;
-  auto indice_offset = static_cast<const Tind*>(context->Input<Tensor>(1)->DataRaw());
+  auto indice_offset = indice_tensor->Data<Tind>();
   auto offset_count  = indice_shape.Size() / last_indice_dimension; // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
@@ -62,11 +64,13 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     p.input_str_base  = static_cast<const std::string*>(input_tensor->DataRaw());
     p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
   } else {
-    p.input_base      = static_cast<const uint8_t*>(context->Input<Tensor>(0)->DataRaw());
+    p.input_base      = static_cast<const uint8_t*>(input_tensor->DataRaw());
     p.output_base     = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   }
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
   for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {
       auto indice = *(indice_offset + i * last_indice_dimension + j);
@@ -91,7 +95,9 @@ Status GatherND::Compute(OpKernelContext* context) const {
 }
 
 Status GatherND::GatherNumber(const Prepare& p) const {
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
     memcpy(p.output_base + i * p.bytes_to_copy,
            p.input_base + p.element_offsets[i] * p.element_bytes,
@@ -101,7 +107,9 @@ Status GatherND::GatherNumber(const Prepare& p) const {
 }
 
 Status GatherND::GatherString(const Prepare& p) const {
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
   for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
     for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
       p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
