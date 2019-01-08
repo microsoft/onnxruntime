@@ -58,7 +58,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--pb_home", help="Path to protobuf installation")
-    parser.add_argument("--download_test_data", action="store_true", 
+    parser.add_argument("--download_test_data", action="store_true",
                         help='''Downloads test data without running the tests''')
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
@@ -132,7 +132,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None):
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
-            my_env["PATH"] += os.pathsep + dll_path
+            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
         else:
             if "LD_LIBRARY_PATH" in my_env:
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
@@ -311,7 +311,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         os.makedirs(config_build_dir, exist_ok=True)
 
         if args.use_tvm:
-            os.environ["PATH"] += os.pathsep + os.path.join(config_build_dir, "external", "tvm", config)
+            os.environ["PATH"] = os.path.join(config_build_dir, "external", "tvm", config) + os.pathsep + os.environ["PATH"]
 
         run_subprocess(cmake_args  + ["-DCMAKE_BUILD_TYPE={}".format(config)], cwd=config_build_dir)
 
