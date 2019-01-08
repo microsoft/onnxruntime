@@ -41,7 +41,7 @@ if(NOT WIN32)
 	target_link_libraries(onnxruntime_common dl)
 endif()
 onnxruntime_add_include_to_target(onnxruntime_common gsl date)
-target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT})
+target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 #threadpool uses eigen
 add_dependencies(onnxruntime_common eigen)
 

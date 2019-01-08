@@ -159,6 +159,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
