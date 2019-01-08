@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
 using namespace ::onnxruntime::common;
+using namespace ::onnxruntime::cuda;
 using namespace std;
 
 namespace onnxruntime {
@@ -123,23 +125,40 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
 
   auto starts_tensor_ptr = context->Input<Tensor>(1);
   ORT_ENFORCE(starts_tensor_ptr->Shape().NumDimensions() == 1, "Starts input must be a 1-D array");
+#ifdef USE_CUDA
+  input_starts = std::vector<int64_t> (reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(starts_tensor_ptr->Data<Tind>()),
+                                       reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(starts_tensor_ptr->Data<Tind>()) +
+                                       starts_tensor_ptr->Shape().Size());
+#else
   input_starts = std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
                                        starts_tensor_ptr->Data<Tind>() +
                                        starts_tensor_ptr->Shape().Size());
- 
+#endif
   auto ends_tensor_ptr = context->Input<Tensor>(2);
   ORT_ENFORCE(ends_tensor_ptr->Shape().NumDimensions() == 1, "ends input must be a 1-D array");
+#ifdef USE_CUDA
+  input_ends = std::vector<int64_t> (reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(ends_tensor_ptr->Data<Tind>()),
+                                     reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(ends_tensor_ptr->Data<Tind>()) +
+                                     ends_tensor_ptr->Shape().Size());
+#else
   input_ends = std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
                                      ends_tensor_ptr->Data<Tind>() +
                                      ends_tensor_ptr->Shape().Size());
+#endif
 
   ORT_ENFORCE(input_starts.size() == input_ends.size(), "Found mismatch between starts and ends input");
 
   if (context->Input<Tensor>(3) != nullptr) {
     auto axes_tensor_ptr = context->Input<Tensor>(3);
+#ifdef USE_CUDA
+    input_axes = std::vector<int64_t> (reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(axes_tensor_ptr->Data<Tind>()),
+                                       reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(axes_tensor_ptr->Data<Tind>()) +
+                                       axes_tensor_ptr->Shape().Size());
+#else
     input_axes = std::vector<int64_t> (axes_tensor_ptr->Data<Tind>(),
                                        axes_tensor_ptr->Data<Tind>() +
                                        axes_tensor_ptr->Shape().Size());
+#endif
     ORT_ENFORCE(input_axes.size() == input_starts.size(), "Axes input is invalid");
   }
 }
