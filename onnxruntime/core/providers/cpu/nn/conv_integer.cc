@@ -4,6 +4,7 @@
 #include "core/providers/cpu/nn/conv_integer.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "public/gemmlowp.h"
 
 namespace onnxruntime {
 
@@ -13,13 +14,26 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const Tensor* W = context->Input<Tensor>(1);
   const Tensor* X_Zero_Point = nullptr;
   const Tensor* W_Zero_Point = nullptr;
+  int32_t input_offset = 0, filter_offset = 0;
   if (num_inputs >= 3) {
-    X_Zero_Point = context->Input<Tensor>(2);  
+    X_Zero_Point = context->Input<Tensor>(2);
+    if (X_Zero_Point->Shape().NumDimensions() == 0 ||
+        (X_Zero_Point->Shape().NumDimensions() == 1 && X_Zero_Point->Shape().GetDims().size() == 1)) {
+      input_offset = static_cast<int32_t>(*(X_Zero_Point->Data<uint8_t>()));
+    } else {
+      //TODO: NOT supported.
+    }
   }
   if (num_inputs >= 4) {
     W_Zero_Point = context->Input<Tensor>(3);
+    if (W_Zero_Point->Shape().NumDimensions() == 0 ||
+        (W_Zero_Point->Shape().NumDimensions() == 1 && W_Zero_Point->Shape().GetDims().size() == 1)) {
+      filter_offset = static_cast<int32_t>(*(W_Zero_Point->Data<uint8_t>()));
+    } else {
+      //TODO: NOT supported.
+    }
   }
-  
+
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
@@ -102,18 +116,25 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
           static_cast<int>(kernel_shape.size()),
           col_buffer_data,
           &CPUMathUtil::Instance());
-      /*math::Gemm<uint8_t, CPUMathUtil>(
-          CblasNoTrans,
-          CblasNoTrans,
-          M / group_,
-          output_image_size,
-          kernel_dim,
-          1,
-          W->template Data<float>() + group_id * W_offset,
-          col_buffer_data,
-          0,
-          Ydata + group_id * Y_offset,
-          &CPUMathUtil::Instance());*/
+
+      const uint8_t* filter_data_as_uint8 = W->template Data<uint8_t>() + group_id * W_offset;
+      static const gemmlowp::MapOrder ResultOrder = gemmlowp::MapOrder::RowMajor;
+      static const gemmlowp::MapOrder LhsOrder = gemmlowp::MapOrder::RowMajor;
+      static const gemmlowp::MapOrder RhsOrder = gemmlowp::MapOrder::RowMajor;
+      gemmlowp::MatrixMap<const std::uint8_t, LhsOrder> lhs(
+          col_buffer_data, M / group_, kernel_dim);
+      gemmlowp::MatrixMap<const std::uint8_t, RhsOrder> rhs(
+          filter_data_as_uint8, kernel_dim, output_image_size);
+      gemmlowp::MatrixMap<std::int32_t, ResultOrder> result(
+          Ydata, M / group_, output_image_size);
+      const std::tuple<> empty_pipeline = {};
+
+      gemmlowp::GemmContext gemm_context;
+      // TODO: worker thread pool needs to be handled.
+      gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
+                                       gemmlowp::DefaultL8R8BitDepthParams>(
+          &gemm_context, lhs, rhs, &result, -input_offset, -filter_offset,
+          empty_pipeline);
     }
 
     Xdata += X_offset * group_;
@@ -126,7 +147,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     ConvInteger,
     1,
-    int,                                                                         //TODO: int8
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int>()),  //TODO: int8
+    uint8_t,
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()).TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
 }  // namespace onnxruntime
