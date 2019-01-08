@@ -4,9 +4,9 @@
 #include "test_allocator.h"
 
 MockedOrtAllocator::MockedOrtAllocator() {
-  OrtAllocator::Alloc = [](void* this_, size_t size) { return reinterpret_cast<MockedOrtAllocator*>(this_)->Alloc(size); };
-  OrtAllocator::Free = [](void* this_, void* p) { reinterpret_cast<MockedOrtAllocator*>(this_)->Free(p); };
-  OrtAllocator::Info = [](const void* this_) { return reinterpret_cast<const MockedOrtAllocator*>(this_)->Info(); };
+  OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<MockedOrtAllocator*>(this_)->Alloc(size); };
+  OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<MockedOrtAllocator*>(this_)->Free(p); };
+  OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const MockedOrtAllocator*>(this_)->Info(); };
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
 }
 

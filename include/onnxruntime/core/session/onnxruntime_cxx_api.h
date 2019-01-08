@@ -28,7 +28,7 @@ namespace std {
 template <>
 struct default_delete<OrtAllocator> {
   void operator()(OrtAllocator* ptr) {
-    OrtReleaseDefaultAllocator(ptr);
+    OrtReleaseAllocator(ptr);
   }
 };
 

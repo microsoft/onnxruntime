@@ -5,13 +5,20 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
-struct OrtDefaultAllocator : OrtAllocator {
+// In the future we'll have more than one allocator type. Since all allocators are of type 'OrtAllocator' and there is a single
+// OrtReleaseAllocator function, we need to have a common base type that lets us delete them.
+struct OrtAllocatorImpl : OrtAllocator {
+  virtual ~OrtAllocatorImpl() {}
+};
+
+struct OrtDefaultAllocator : OrtAllocatorImpl {
   OrtDefaultAllocator() {
-    OrtAllocator::Alloc = [](void* this_, size_t size) { return reinterpret_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
-    OrtAllocator::Free = [](void* this_, void* p) { reinterpret_cast<OrtDefaultAllocator*>(this_)->Free(p); };
-    OrtAllocator::Info = [](const void* this_) { return reinterpret_cast<const OrtDefaultAllocator*>(this_)->Info(); };
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
+    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
+    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
     ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
   }
+
   ~OrtDefaultAllocator() {
     OrtReleaseAllocatorInfo(cpuAllocatorInfo);
   }
@@ -47,7 +54,7 @@ ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtReleaseDefaultAllocator, _In_ OrtAllocator* allocator) {
-  delete static_cast<OrtDefaultAllocator*>(allocator);
+ORT_API_STATUS_IMPL(OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
+  delete static_cast<OrtAllocatorImpl*>(allocator);
   return nullptr;
 }

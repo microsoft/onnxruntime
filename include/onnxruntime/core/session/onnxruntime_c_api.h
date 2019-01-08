@@ -160,11 +160,12 @@ typedef struct OrtObject {
 
 } OrtObject;
 
-// When passing in an allocator to any ORT function,
+// When passing in an allocator to any ORT function, be sure that the allocator object
+// is not destroyed until the last allocated object using it is freed.
 typedef struct OrtAllocator {
-  void*(ORT_API_CALL* Alloc)(void* this_, size_t size);
-  void(ORT_API_CALL* Free)(void* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const void* this_);
+  void*(ORT_API_CALL* Alloc)(OrtAllocator* this_, size_t size);
+  void(ORT_API_CALL* Free)(OrtAllocator* this_, void* p);
+  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const OrtAllocator* this_);
 } OrtAllocator;
 
 // Inherented from OrtObject
@@ -440,7 +441,7 @@ ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API(const OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr);
 
 ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
-ORT_API_STATUS(OrtReleaseDefaultAllocator, _In_ OrtAllocator* allocator);
+ORT_API_STATUS(OrtReleaseAllocator, _In_ OrtAllocator* allocator);
 
 /**
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
