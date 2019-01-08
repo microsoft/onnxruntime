@@ -14,10 +14,20 @@ template <typename T1, typename T2, typename T3>
 class MatMulInteger final : public OpKernel {
  public:
   MatMulInteger(const OpKernelInfo& info) : OpKernel(info) {
+    if (info.GetInputCount() > 2) {
+      has_a_zero_point_ = true;
+      has_b_zero_point_ = true;
+    } else {
+      has_a_zero_point_ = false;
+      has_b_zero_point_ = false;
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
-  
+
+ private:
+  bool has_a_zero_point_;
+  bool has_b_zero_point_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime

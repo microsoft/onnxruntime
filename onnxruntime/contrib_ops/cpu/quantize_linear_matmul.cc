@@ -1,19 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/quantize_linear_matmul.h"
-#include "core/providers/cpu/math/matmul_helper.h"
-#define ENABLE_LOW_PRECISION_COMPUTATION
-#if defined(ENABLE_LOW_PRECISION_COMPUTATION)
 #pragma warning(disable : 4244)
 #pragma warning(disable : 4267)
-#include "../../cmake/external/gemmlowp/public/gemmlowp.h"
-#endif  // USE_LOW_PRECISION_LIB
+
+#include "contrib_ops/cpu/quantize_linear_matmul.h"
+#include "core/providers/cpu/math/matmul_helper.h"
+#include "../cmake/external/gemmlowp/public/gemmlowp.h"
+
 
 namespace onnxruntime {
 namespace contrib {
 
-#ifdef ENABLE_LOW_PRECISION_COMPUTATION
 // only register this operator if low precision computation is enabled. 
 ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul,
@@ -49,7 +47,6 @@ Status GemmlowpMultiply(OpKernelContext* ctx, const uint8_t* lhs_data, const uin
 
   return Status::OK();
 }
-#endif
 
 void QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, int* right_shift) {
   uint32_t* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
@@ -113,7 +110,6 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
   int right_shift;
   QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
 
-#ifdef ENABLE_LOW_PRECISION_COMPUTATION
   for (int i = 0; i < helper.OutputOffsets().size(); i++) {
     GemmlowpMultiply(ctx,
                      a->template Data<uint8_t>() + helper.LeftOffsets()[i],
@@ -128,7 +124,6 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
                      integer_multiplier,
                      right_shift);
   }
-#endif
 
   return Status::OK();
 }

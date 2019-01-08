@@ -1,20 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/matmul_integer.h"
-#include "core/providers/cpu/math/matmul_helper.h"
-#define ENABLE_LOW_PRECISION_COMPUTATION
-
-#if defined(ENABLE_LOW_PRECISION_COMPUTATION)
 #pragma warning(disable : 4244)
 #pragma warning(disable : 4267)
+#include "contrib_ops/cpu/matmul_integer.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "../../cmake/external/gemmlowp/public/gemmlowp.h"
-#endif  // USE_LOW_PRECISION_LIB
 
 namespace onnxruntime {
 namespace contrib {
 
-#ifdef ENABLE_LOW_PRECISION_COMPUTATION
 // only register this operator if low precision computation is enabled.
 ONNX_OPERATOR_KERNEL_EX(
     MatMulInteger,
@@ -44,26 +39,22 @@ Status GemmlowpMultiply(OpKernelContext* ctx, const uint8_t* lhs_data, const uin
 
   return Status::OK();
 }
-#endif
 
-void ZeropointValidationHelper(const Tensor* lhs_zero_point, const Tensor* rhs_zero_point, int M, int K) {
-  ORT_ENFORCE(lhs_zero_point->Shape().NumDimensions() == 0 || lhs_zero_point->Shape().NumDimensions() == 1,
+void ZeropointValidationHelper(const Tensor* zero_point, int broadcastDim) {
+  ORT_ENFORCE(zero_point->Shape().NumDimensions() == 0, "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+
+  /*
+  ORT_ENFORCE(zero_point->Shape().NumDimensions() == 0 || zero_point->Shape().NumDimensions() == 1,
               "zero_point must be a scalar or a 1D tensor");
-  ORT_ENFORCE(rhs_zero_point->Shape().NumDimensions() == 0 || rhs_zero_point->Shape().NumDimensions() == 1,
-              "zero_point must be a scalar or a 1D tensor");
-  if (lhs_zero_point->Shape().NumDimensions() == 1) {
-    ORT_ENFORCE(lhs_zero_point->Shape().Size() == M,
+  if (zero_point->Shape().NumDimensions() == 1) {
+    ORT_ENFORCE(zero_point->Shape().Size() == broadcastDim,
                 "when lhs_zero_point is 1D tensor, size should be equal to rows for lhs matrix");
-  }
-  if (rhs_zero_point->Shape().NumDimensions() == 1) {
-    ORT_ENFORCE(lhs_zero_point->Shape().Size() == K,
-                "when rhs_zero_point is 1D tensor, size should be equal to rows for lhs matrix");
-  }
+  } */
 }
 
 Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
-  auto b = ctx->Input<Tensor>(2);
+  auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
 
   MatMulComputeHelper helper;
@@ -71,24 +62,30 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // validate zero points
-  auto a_zero_point = ctx->Input<Tensor>(1);
-  auto b_zero_point = ctx->Input<Tensor>(3);
-  ZeropointValidationHelper(a_zero_point, b_zero_point,
-                            static_cast<int>(helper.M()), static_cast<int>(helper.K()));
+  int32_t a_offset = 0;
+  int32_t b_offset = 0;
+  if (has_a_zero_point_) {
+    auto a_zero_point = ctx->Input<Tensor>(2);
+    ZeropointValidationHelper(a_zero_point, static_cast<int>(helper.M()));
+    a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
+  }
+  if (has_b_zero_point_) {
+    auto b_zero_point = ctx->Input<Tensor>(3);
+    ZeropointValidationHelper(b_zero_point, static_cast<int>(helper.K()));
+    b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
+  }
 
-#ifdef ENABLE_LOW_PRECISION_COMPUTATION
   for (int i = 0; i < helper.OutputOffsets().size(); i++) {
     GemmlowpMultiply(ctx,
                      a->template Data<uint8_t>() + helper.LeftOffsets()[i],
                      b->template Data<uint8_t>() + helper.RightOffsets()[i],
                      y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
-                     *a_zero_point->template Data<uint8_t>(),
-                     *b_zero_point->template Data<uint8_t>(),
+                     a_offset,
+                     b_offset,
                      static_cast<int>(helper.M()),
                      static_cast<int>(helper.N()),
                      static_cast<int>(helper.K()));
   }
-#endif
 
   return Status::OK();
 }
