@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #pragma warning(disable : 4267)
+#endif
 
 #include "contrib_ops/cpu/quantize_linear_matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "../cmake/external/gemmlowp/public/gemmlowp.h"
-
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
     QLinearMatMul<uint8_t, uint8_t, uint8_t>);
 
-Status GemmlowpMultiply(OpKernelContext* ctx, const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
+Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
                         const int lhs_offset, const int rhs_offset, const int result_offset,
                         int m, int n, int k, int32_t int_multiplier, int32_t right_shift) {
   gemmlowp::OutputStageQuantizeDownInt32ByFixedPoint quantize_down_stage;
@@ -78,6 +79,7 @@ void ScaleAndZeropointPairValidationHelper(const Tensor* scale, const Tensor* ze
   }
 }
 
+template<>
 Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(3);
@@ -111,8 +113,7 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
   QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
 
   for (int i = 0; i < helper.OutputOffsets().size(); i++) {
-    GemmlowpMultiply(ctx,
-                     a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+    GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
                      b->template Data<uint8_t>() + helper.RightOffsets()[i],
                      y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
                      *a_zero_point->template Data<uint8_t>(),
