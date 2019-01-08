@@ -74,7 +74,7 @@ def GenSharedWeights():
     data_x = np.random.rand(1,*x.shape).astype(np.float32)
     data_y = y.eval(data_x)
     Save('test_shared_weights', y, data_x, data_y)
-    
+
 def GenSimpleMNIST():
     input_dim = 784
     num_output_classes = 10
@@ -134,7 +134,7 @@ def GenLSTMx4(use_scan):
     data_feature = np.random.rand(1,64,128).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
     Save('test_LSTMx4_' + postfix, model, data_feature, data_output)
-    
+
 def GenScan():
     np.random.seed(0)
     feature = C.sequence.input_variable((3,), np.float32)
