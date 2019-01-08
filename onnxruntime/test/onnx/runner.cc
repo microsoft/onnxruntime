@@ -322,11 +322,11 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   // Create output feed
   size_t output_count;
-  ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &output_count));
+  ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = nullptr;
-    ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, default_allocator, &output_name));
+    ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, default_allocator, &output_name));
     assert(output_name != nullptr);
     output_names[i] = output_name;
     (*default_allocator)->Free(default_allocator, output_name);
@@ -348,7 +348,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     for (size_t i = 0; i != output_count; ++i) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
-    auto onnx_status = OrtRunInference(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
+    auto onnx_status = OrtRun(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
     if (onnx_status != nullptr) {
       std::string onnx_runtime_error_message = OrtGetErrorMessage(onnx_status);
       OrtReleaseStatus(onnx_status);
@@ -493,7 +493,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     auto sf2 = sf.clone();
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());
     std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> session_object(
-        sf2.OrtCreateInferenceSession(info->GetModelUrl()), OrtReleaseSession);
+        sf2.OrtCreateSession(info->GetModelUrl()), OrtReleaseSession);
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
     //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
     if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")

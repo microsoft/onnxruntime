@@ -26,6 +26,7 @@ if [ $BUILD_DEVICE = "gpu" ]; then
 else
     python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
         --config Debug Release --build_shared_lib \
+        --use_tvm \
         --skip_submodule_sync --enable_onnx_tests \
         --enable_pybind \
         --parallel --use_mkldnn --build_shared_lib $BUILD_EXTR_PAR

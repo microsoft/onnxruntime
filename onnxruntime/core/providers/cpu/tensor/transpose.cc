@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -34,10 +35,10 @@ void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upp
 
 // DoTranspose: copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-void DoTranspose(int64_t num_axes, const std::vector<int64_t>& target_dims,
-                 size_t num_blocks, size_t num_elts_in_block,
-                 const std::vector<size_t>& stride,
-                 float* target, const float* source) {
+template <typename T>
+static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
+                            size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
+                            const T* source, T* target) {
   size_t blocksize = num_elts_in_block * sizeof(float);
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
@@ -57,10 +58,9 @@ void DoTranspose(int64_t num_axes, const std::vector<int64_t>& target_dims,
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims,
-                        size_t num_blocks,
-                        const std::vector<size_t>& stride,
-                        float* target, const float* source) {
+template <typename T>
+static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                               const std::vector<size_t>& stride, const T* source, T* target) {
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
   for (size_t i = 0; i < num_blocks; ++i) {
@@ -78,11 +78,75 @@ void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dim
 
 // DoTransposeSingleBlock: specialization of DoTranspose for the num_blocks=1 case.
 // copies source tensor to target, transposing elements.
-// The stride vector indicates the transposition.
-void DoTransposeSingleBlock(size_t num_elts_in_block, float* target, const float* source) {
-  size_t blocksize = num_elts_in_block * sizeof(float);
+template <typename T>
+static void DoTransposeSingleBlock(size_t num_elts_in_block, const T* source, T* target) {
+  size_t blocksize = num_elts_in_block * sizeof(T);
   // copy
   memcpy(target, source, blocksize);
+}
+
+template <typename T>
+static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+  const auto& input_shape = input.Shape();
+  const auto& input_dims = input_shape.GetDims();
+  auto rank = input_shape.NumDimensions();
+
+  std::vector<size_t> stride(rank);
+  for (int i = 0; i < rank; i++) {
+    size_t inpdim = permutations[i];
+    if (inpdim + 1 < rank)
+      stride[i] = input_shape.SizeFromDimension(inpdim + 1);
+    else
+      stride[i] = 1;
+  }
+
+  // Partition the permutation into a prefix and the largest suffix such that
+  // every axis i in the suffix is mapped to i.
+  int64_t num_axes_in_prefix = 0;  // number of axes in prefix
+  size_t suffix_blocksize = 1;     // product of dimensions in the suffix
+  size_t prefix_blocksize = 1;     // product of dimensions in the prefix
+  bool is_suffix = true;
+
+  for (int64_t i = rank - 1; i >= 0; --i) {
+    int64_t input_axis = permutations[i];
+    if (is_suffix && (input_axis == i)) {
+      suffix_blocksize *= input_dims[input_axis];
+    } else {
+      is_suffix = false;
+      prefix_blocksize *= input_dims[input_axis];
+      ++num_axes_in_prefix;
+    }
+  }
+
+  const T* input_data = input.Data<T>();
+  T* output_data = output.MutableData<T>();
+
+  if (1 == prefix_blocksize)
+    DoTransposeSingleBlock<T>(suffix_blocksize, input_data, output_data);
+  else if (1 == suffix_blocksize)
+    DoTransposeEltWise<T>(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                          input_data, output_data);
+  else
+    DoTransposeImpl<T>(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
+                       input_data, output_data);
+
+  return Status::OK();
+}
+
+Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+  Status status = Status::OK();
+
+  auto input_type = input.DataType();
+  auto output_type = output.DataType();
+
+  if (input_type != output_type) {
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
+                             input_type, " != ", output_type);
+  } else {
+    DispatchOnTensorTypeWithReturn(input_type, status, DoTypedTranspose, permutations, input, output);
+  }
+
+  return status;
 }
 
 template <>
@@ -100,43 +164,10 @@ Status Transpose<float>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> default_perm(rank);
   ComputeOutputShape(X, output_dims, default_perm, p_perm);
 
-  std::vector<size_t> stride(rank);
-  for (int i = 0; i < rank; i++) {
-    size_t inpdim = (*p_perm)[i];
-    if (inpdim + 1 < rank)
-      stride[i] = input_shape.SizeFromDimension(inpdim + 1);
-    else
-      stride[i] = 1;
-  }
-
   TensorShape output_shape{output_dims};
-  Tensor* Y = ctx->Output(0, output_shape);
-  const float* Xdata = X.template Data<float>();
-  float* Ydata = Y->template MutableData<float>();
+  Tensor& Y = *ctx->Output(0, output_shape);
 
-  // Partition the permutation into a prefix and the largest suffix such that
-  // every axis i in the suffix is mapped to i.
-  int64_t num_axes_in_prefix = 0;  // number of axes in prefix
-  size_t suffix_blocksize = 1;     // product of dimensions in the suffix
-  size_t prefix_blocksize = 1;     // product of dimensions in the prefix
-  bool is_suffix = true;
-  for (int64_t i = rank - 1; i >= 0; --i) {
-    int64_t inpaxis = (*p_perm)[i];
-    if (is_suffix && (inpaxis == i)) {
-      suffix_blocksize *= input_dims[inpaxis];
-    } else {
-      is_suffix = false;
-      prefix_blocksize *= input_dims[inpaxis];
-      ++num_axes_in_prefix;
-    }
-  }
-
-  if (1 == prefix_blocksize)
-    DoTransposeSingleBlock(suffix_blocksize, Ydata, Xdata);
-  else if (1 == suffix_blocksize)
-    DoTransposeEltWise(num_axes_in_prefix, output_dims, prefix_blocksize, stride, Ydata, Xdata);
-  else
-    DoTranspose(num_axes_in_prefix, output_dims, prefix_blocksize, suffix_blocksize, stride, Ydata, Xdata);
+  DoTypedTranspose<float>(*p_perm, X, Y);
 
   return Status::OK();
 }

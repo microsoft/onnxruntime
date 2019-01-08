@@ -2,7 +2,7 @@ include (ExternalProject)
 
 set(MKLDNN_URL https://github.com/intel/mkl-dnn.git)
 # If MKLDNN_TAG is updated, check if MKLML_VERSION and platform.cmake.patch need to be updated.
-set(MKLDNN_TAG v0.17.1)
+set(MKLDNN_TAG v0.17.2)
 set(MKLML_VERSION 2019.0.1.20180928)
 
 if(WIN32)
@@ -45,15 +45,7 @@ if (onnxruntime_USE_MKLML)
   set(MKML_DIR ${CMAKE_CURRENT_BINARY_DIR}/mklml/src/project_mklml)
   set(MKLML_INCLUDE_DIR "${MKML_DIR}/include")
   set(MKLML_LIB_DIR "${MKML_DIR}/lib")
-  if(WIN32)
-    add_library(mklml STATIC IMPORTED)
-    set_property(TARGET mklml PROPERTY IMPORTED_LOCATION ${MKLML_LIB_DIR}/${MKLML_IMPORT_LIB})
-  else()
-    add_library(mklml SHARED IMPORTED)
-    set_property(TARGET mklml PROPERTY IMPORTED_LOCATION ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB})
-  endif()
-  add_dependencies(mklml project_mklml)
-  include_directories(${MKLML_INCLUDE_DIR})
+  link_directories(${MKLML_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_MKLDNN)
@@ -61,11 +53,11 @@ if (onnxruntime_USE_MKLDNN)
   set(MKLDNN_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/mkl-dnn/install)
   set(MKLDNN_LIB_DIR ${MKLDNN_INSTALL}/lib)
   set(MKLDNN_INCLUDE_DIR ${MKLDNN_INSTALL}/include)
-
-  set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/platform.cmake.patch)
-  # discard prior changes due to patching in mkldnn source to unblock incremental builds.
-  set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
-
+  if(NOT onnxruntime_BUILD_FOR_NATIVE_MACHINE)
+    set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/platform.cmake.patch)
+    # discard prior changes due to patching in mkldnn source to unblock incremental builds.
+    set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
+  endif()
   ExternalProject_Add(project_mkldnn
     PREFIX mkl-dnn
     GIT_REPOSITORY ${MKLDNN_URL}
@@ -74,17 +66,8 @@ if (onnxruntime_USE_MKLDNN)
     SOURCE_DIR ${MKLDNN_SOURCE}
     CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${MKLDNN_INSTALL} -DMKLROOT=${MKML_DIR}
   )
+  link_directories(${MKLDNN_LIB_DIR})
   if (onnxruntime_USE_MKLML)
     add_dependencies(project_mkldnn project_mklml)
   endif()
-
-  if(WIN32)
-    add_library(mkldnn STATIC IMPORTED)
-    set_property(TARGET mkldnn PROPERTY IMPORTED_LOCATION ${MKLDNN_LIB_DIR}/${MKLDNN_IMPORT_LIB})
-  else()
-    add_library(mkldnn SHARED IMPORTED)
-    set_property(TARGET mkldnn PROPERTY IMPORTED_LOCATION ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB})
-  endif()
-  add_dependencies(mkldnn project_mkldnn)
-  include_directories(${MKLDNN_INCLUDE_DIR})
 endif()
