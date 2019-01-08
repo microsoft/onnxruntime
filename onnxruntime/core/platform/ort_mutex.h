@@ -5,7 +5,7 @@
 #ifdef _WIN32
 #include <mutex>
 namespace onnxruntime {
-  using OrtMutex = mutex;
+  using OrtMutex = std::mutex;
 }
 #else
 #ifdef USE_NSYNC
