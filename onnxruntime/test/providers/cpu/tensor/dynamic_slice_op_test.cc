@@ -22,12 +22,14 @@ TEST(DynamicSliceTest, dynamic_slice_varied_types) {
   test2.AddOutput <int64_t> ("output", {2,2}, {5LL,6LL,8LL,9LL});
   test2.Run();
 
+#ifndef USE_CUDA
   OpTester test3("DynamicSlice", 1);
   test3.AddInput  <std::string> ("data",   {3,3}, {"a","b","c","d","e","f","g","h","i"});
   test3.AddInput  <int64_t>     ("starts", {2},   {1,1});
   test3.AddInput  <int64_t>     ("ends",   {2},   {3,3});
   test3.AddOutput <std::string> ("output", {2,2}, {"e","f","h","i"});
   test3.Run();
+#endif
 
   OpTester test4("DynamicSlice", 1);
   test4.AddInput  <float>    ("data",   {3,3}, {1.1f,2.2f,3.3f,4.4f,5.5f,6.6f,7.7f,8.8f,9.9f});
