@@ -277,8 +277,8 @@ if (onnxruntime_USE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler)
-
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
+  set(onnxruntime_tvm_dependencies tvm nnvm_compiler)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ${onnxruntime_tvm_dependencies})
 endif()
 
 # ONNX
