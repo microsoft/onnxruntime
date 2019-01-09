@@ -54,7 +54,6 @@ ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
+ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
   delete static_cast<OrtAllocatorImpl*>(allocator);
-  return nullptr;
 }

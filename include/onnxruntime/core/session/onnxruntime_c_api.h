@@ -441,7 +441,7 @@ ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API(const OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr);
 
 ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
-ORT_API_STATUS(OrtReleaseAllocator, _In_ OrtAllocator* allocator);
+ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator);
 
 /**
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
