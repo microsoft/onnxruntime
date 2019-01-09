@@ -39,21 +39,23 @@ void Slice<Tind, dynamic>::FillVectorsFromInput(const OpKernelContext* context,
   ORT_ENFORCE(ends_tensor_ptr->Shape().NumDimensions()   == 1, "ends input must be a 1-D array");
   ORT_ENFORCE(starts_tensor_ptr->Shape().Size() == ends_tensor_ptr->Shape().Size(), "Found mismatch between starts and ends input");
   auto size = starts_tensor_ptr->Shape().Size();
-  Tind* buffer = new Tind[size];
+  std::unique_ptr<Tind> bufferPtr(new Tind[size]);
+  auto buffer = bufferPtr.get();
+  input_starts.resize(size);
+  input_ends.resize(size);
 
   cudaMemcpy(buffer, starts_tensor_ptr->DataRaw(), size*sizeof(Tind), cudaMemcpyDeviceToHost);
-  for (auto i = 0; i < size; ++i) input_starts.push_back(buffer[i]);
+  std::copy(buffer, buffer + size, input_starts.begin());
   cudaMemcpy(buffer, ends_tensor_ptr->DataRaw(),   size*sizeof(Tind), cudaMemcpyDeviceToHost);
-  for (auto i = 0; i < ends_tensor_ptr->Shape().Size(); ++i) input_ends.push_back(buffer[i]);
+  std::copy(buffer, buffer + size, input_ends.begin());
 
   if (context->Input<Tensor>(3) != nullptr) {
+    input_axes.resize(size);
     auto axes_tensor_ptr = context->Input<Tensor>(3);
     ORT_ENFORCE(size == axes_tensor_ptr->Shape().Size(), "Found mismatch between starts and axes input");
     cudaMemcpy(buffer, axes_tensor_ptr->DataRaw(), size*sizeof(Tind), cudaMemcpyDeviceToHost);
-    for (auto i = 0; i < size; ++i) input_axes.push_back(buffer[i]);
+    std::copy(buffer, buffer + size, input_axes.begin());
   }
-
-  delete[] buffer;
 }
 
 template<typename Tind, bool dynamic>
