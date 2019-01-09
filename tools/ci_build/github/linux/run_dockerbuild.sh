@@ -33,10 +33,10 @@ if [ $BUILD_DEVICE = "gpu" ]; then
     if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
     DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
     fi
-    docker build -t "onnxruntime-$IMAGE" --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     IMAGE="ubuntu16.04"
-    docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
 fi
 
 set +e
@@ -48,7 +48,7 @@ if [ $BUILD_DEVICE = "cpu" ]; then
         --name "onnxruntime-$BUILD_DEVICE" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
-        --volume "$HOME/.cache/onnxruntime:/root/.cache/onnxruntime" \
+        --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
@@ -59,7 +59,7 @@ else
         --name "onnxruntime-$BUILD_DEVICE" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
-        --volume "$HOME/.cache/onnxruntime:/root/.cache/onnxruntime" \
+        --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
