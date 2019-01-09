@@ -99,7 +99,7 @@ void TestInference(OrtEnv* env, T model_uri,
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
-  std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
+  std::unique_ptr<OrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   // Now run
   RunSession(default_allocator.get(), inference_session.get(), dims_x, values_x, expected_dims_y, expected_values_y);
 }
