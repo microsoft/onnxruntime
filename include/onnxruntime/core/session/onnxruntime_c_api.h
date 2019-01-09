@@ -163,9 +163,9 @@ typedef struct OrtObject {
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
 typedef struct OrtAllocator {
-  void*(ORT_API_CALL* Alloc)(OrtAllocator* this_, size_t size);
-  void(ORT_API_CALL* Free)(OrtAllocator* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const OrtAllocator* this_);
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
+  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
 // Inherented from OrtObject
