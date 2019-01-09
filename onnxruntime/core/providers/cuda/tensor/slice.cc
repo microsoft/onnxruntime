@@ -15,7 +15,10 @@ namespace cuda {
       1,                                                                                  \
       TIND,                                                                               \
       kCudaExecutionProvider,                                                             \
-      KernelDefBuilder().TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
+                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
       Slice<TIND,DYNAMIC>);
 
@@ -39,21 +42,13 @@ void Slice<Tind, dynamic>::FillVectorsFromInput(const OpKernelContext* context,
   ORT_ENFORCE (nullptr == axes_tensor || stat_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
 
   auto size = stat_tensor->Shape().Size();
-  std::unique_ptr<Tind> bufferPtr(new Tind[size]);
-  auto buffer = bufferPtr.get();
-
   input_starts.resize(size);
-  cudaMemcpy(buffer, stat_tensor->DataRaw(), size*sizeof(Tind), cudaMemcpyDeviceToHost);
-  std::copy(buffer, buffer + size, input_starts.begin());
-
+  std::copy(stat_tensor->Data<Tind>(), stat_tensor->Data<Tind>() + size, input_starts.begin());
   input_ends.resize(size);
-  cudaMemcpy(buffer, ends_tensor->DataRaw(), size*sizeof(Tind), cudaMemcpyDeviceToHost);
-  std::copy(buffer, buffer + size, input_ends.begin());
-
+  std::copy(ends_tensor->Data<Tind>(), ends_tensor->Data<Tind>() + size, input_ends.begin());
   if (nullptr != axes_tensor) {
     input_axes.resize(size);
-    cudaMemcpy(buffer, axes_tensor->DataRaw(), size*sizeof(Tind), cudaMemcpyDeviceToHost);
-    std::copy(buffer, buffer + size, input_axes.begin());
+    std::copy(axes_tensor->Data<Tind>(), axes_tensor->Data<Tind>() + size, input_axes.begin());
   }
 }
 

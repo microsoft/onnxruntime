@@ -121,6 +121,5 @@ TEST(DynamicSliceTest, dynamic_slice_full_axes) {
   test2.AddOutput <int32_t> ("output", {1,2,1}, {5,8});
   test2.Run();
 }
-
 }  // namespace Test
 }  // namespace onnxruntime
