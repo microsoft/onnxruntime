@@ -1141,7 +1141,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     auto& node = *graph_proto.mutable_node(i_node);
     if (node.op_type() == "Scan") {
       // only works in forward, and do not allow bidirection
-      auto attr_directions = find_attr(node, "directions");
+      auto attr_directions = find_attr(node, "scan_input_directions");
       if (attr_directions != nullptr) {
         ASSERT_TRUE(attr_directions->ints_size() == 1);
 
@@ -1155,9 +1155,9 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
       auto attr_num_scan_inputs = find_attr(node, "num_scan_inputs");
       ASSERT_TRUE(attr_num_scan_inputs != nullptr);
       int num_scan_inputs = gsl::narrow_cast<int>(attr_num_scan_inputs->i());
-      ASSERT_TRUE(node.input_size() - 1 - num_scan_inputs < node.output_size());
-      for (int i = 1; i < node.input_size() - num_scan_inputs; ++i) {
-        init_state_map.insert(std::make_pair(node.output(i - 1), node.input(i)));
+      ASSERT_TRUE(node.input_size() - num_scan_inputs < node.output_size());
+      for (int i = 0; i < node.input_size() - num_scan_inputs; ++i) {
+        init_state_map.insert(std::make_pair(node.output(i), node.input(i)));
       }
     }
   }
@@ -1187,8 +1187,9 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
 
   MLValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &ml_value);
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair(graph_proto.input(0).name(), ml_value));
+
+  std::string input_name = "Input13165";
+  NameMLValMap feeds = {{input_name, ml_value}};
 
   // prepare outputs for whole sequence
   std::string final_output_name = "";
@@ -1233,8 +1234,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     MLValue truncated_ml_value;
     std::vector<float> truncated_input(X.begin() + seq_start * seq_stride, X.begin() + (seq_start + truncated_len) * seq_stride);
     CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
-    NameMLValMap truncated_feeds;
-    truncated_feeds.insert(std::make_pair(graph_proto.input(0).name(), truncated_ml_value));
+    NameMLValMap truncated_feeds = {{input_name, truncated_ml_value}};
     if (seq_start > 0) {
       // continue from truncated sequence
       ASSERT_TRUE(fetches.size() == output_names.size());
