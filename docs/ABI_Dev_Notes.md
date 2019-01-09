@@ -3,7 +3,7 @@ Global variables may get constructed or destructed inside "DllMain". There are s
 
 ## Thread Local variables
 Thread Local variables must be function local, that on Windows they will be initialized as the first time of use. Otherwise, it may not work.
-Also, you must destroy these thread Local variables before onnxruntime.dll is unloaded, if the variable has a non-trivial destructor. That means, only onnxruntime internal threads can access these variables. It is, the thread must be created by onnxruntime and destroyed by onnxruntime.  
+Also, you must destroy these thread Local variables before onnxruntime.dll is unloaded, if the variable has a non-trivial destructor. That means, only onnxruntime internal threads can access these variables. It is, the thread must be created by onnxruntime and destroyed by onnxruntime. 
 
 ## No undefined symbols
 On Windows, you can't build a DLL with undefined symbols. Every symbol must be get resolved at link time. On Linux, you can.
@@ -19,7 +19,21 @@ For controling the visibility, we use linkder version scripts on Linux and def f
 3. Don't export any C++ class/struct, or global variable.
 
 Also, on Linux and Mac operating systems, all the code must be compiled with "-fPIC". 
+On Windows, we don't use dllexport but we still need dllimport.
 
+Therefore, our DLLEXPORT macro is like:
+```
+#ifdef _WIN32
+// Define ORT_DLL_IMPORT if your program is dynamically linked to Ort.
+#ifdef ORT_DLL_IMPORT
+#define ORT_EXPORT __declspec(dllimport)
+#else
+#define ORT_EXPORT
+#endif
+#else
+#define ORT_EXPORT
+#endif
+```
 
 ## RTLD_LOCAL vs RTLD_GLOBAL
 RTLD_LOCAL and RTLD_GLOBAL are two flags of [dlopen(3)](http://pubs.opengroup.org/onlinepubs/9699919799/functions/dlopen.html) function on POSIX systems. By default, it's RTLD_LOCAL. And basically you can say, there no corresponding things like RTLD_GLOBAL on Windows.
