@@ -156,7 +156,7 @@ TEST_F(CApiTest, create_session_without_session_option) {
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   size_t expected_len = 2;
-  std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
+  std::unique_ptr<OrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   {
     std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
         OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), OrtReleaseValue);
