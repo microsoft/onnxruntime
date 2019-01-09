@@ -6,6 +6,6 @@ parameters:
 
 steps:
 - script: |
-    echo \##vso[task.setvariable variable=TestData.Url;]${{parameters.TestDataUrl}}'
-    echo \##vso[task.setvariable variable=TestData.Checksum;]${{parameters.TestDataChecksum}}'
+    echo \##vso[task.setvariable variable=TestDataUrl;]${{parameters.TestDataUrl}}
+    echo \##vso[task.setvariable variable=TestDataChecksum;]${{parameters.TestDataChecksum}}
   displayName: 'Set TestDataUrl and TestDataChecksum variables'
