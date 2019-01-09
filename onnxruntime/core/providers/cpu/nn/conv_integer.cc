@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#pragma warning(disable : 4267)
+#endif
+
 #include "core/providers/cpu/nn/conv_integer.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -81,8 +86,6 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const uint8_t* Xdata = X->template Data<uint8_t>();
   int32_t* Ydata = Y->template MutableData<int32_t>();
 
-  const size_t kernel_rank = kernel_shape.size();
-
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
@@ -122,11 +125,11 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       static const gemmlowp::MapOrder LhsOrder = gemmlowp::MapOrder::RowMajor;
       static const gemmlowp::MapOrder RhsOrder = gemmlowp::MapOrder::RowMajor;
       gemmlowp::MatrixMap<const std::uint8_t, LhsOrder> lhs(
-          col_buffer_data, M / group_, kernel_dim);
+          col_buffer_data, static_cast<int>(M / group_), static_cast<int>(kernel_dim));
       gemmlowp::MatrixMap<const std::uint8_t, RhsOrder> rhs(
-          filter_data_as_uint8, kernel_dim, output_image_size);
+          filter_data_as_uint8, static_cast<int>(kernel_dim), static_cast<int>(output_image_size));
       gemmlowp::MatrixMap<std::int32_t, ResultOrder> result(
-          Ydata, M / group_, output_image_size);
+          Ydata, static_cast<int>(M / group_), static_cast<int>(output_image_size));
       const std::tuple<> empty_pipeline = {};
 
       gemmlowp::GemmContext gemm_context;
