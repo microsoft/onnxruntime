@@ -17,11 +17,9 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(1);
-  const Tensor* X_Zero_Point = nullptr;
-  const Tensor* W_Zero_Point = nullptr;
   int32_t input_offset = 0, filter_offset = 0;
   if (num_inputs >= 3) {
-    X_Zero_Point = context->Input<Tensor>(2);
+    const Tensor* X_Zero_Point = context->Input<Tensor>(2);
     if (X_Zero_Point->Shape().NumDimensions() == 0 ||
         (X_Zero_Point->Shape().NumDimensions() == 1 && X_Zero_Point->Shape().GetDims().size() == 1)) {
       input_offset = static_cast<int32_t>(*(X_Zero_Point->Data<uint8_t>()));
@@ -30,7 +28,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     }
   }
   if (num_inputs >= 4) {
-    W_Zero_Point = context->Input<Tensor>(3);
+    const Tensor* W_Zero_Point = context->Input<Tensor>(3);
     if (W_Zero_Point->Shape().NumDimensions() == 0 ||
         (W_Zero_Point->Shape().NumDimensions() == 1 && W_Zero_Point->Shape().GetDims().size() == 1)) {
       filter_offset = static_cast<int32_t>(*(W_Zero_Point->Data<uint8_t>()));
