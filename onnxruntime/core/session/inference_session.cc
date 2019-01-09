@@ -40,6 +40,9 @@
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
 
+#pragma warning(disable : 4267)
+#include <unsupported/Eigen/CXX11/ThreadPool>
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -63,7 +66,7 @@ class InferenceSession::Impl {
       int pool_size = session_options_.session_thread_pool_size == 0
                           ? std::thread::hardware_concurrency() / 2
                           : session_options_.session_thread_pool_size;
-      thread_pool_ = std::make_unique<TaskThreadPool>(pool_size);
+      thread_pool_ = std::make_unique<Eigen::NonBlockingThreadPool>(pool_size);
     }
 
     session_state_.SetThreadPool(thread_pool_.get());
@@ -1130,14 +1133,14 @@ class InferenceSession::Impl {
 
   // Threadpool for this session
   //thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
-  std::unique_ptr<TaskThreadPool> thread_pool_;
+  std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;      // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;            // GUARDED_BY(session_mutex_)
+  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   InsertCastTransformer insert_cast_transformer_;

@@ -238,9 +238,10 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     std::unique_lock<std::mutex> lock(complete_mutex_);
     out_standings_++;
   }
-  //std::cout << "Enqueue async node: " << p_node_index << ", out_standings: " << out_standings_ << std::endl;
-  std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
-  session_state.GetThreadPool()->RunTask(std::move(task));
+
+  session_state.GetThreadPool()->Schedule([this, p_node_index, &session_state, &logger]() {
+    ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
+  });
 }
 
 Status ParallelExecutor::FetchOutput(const MLValueNameIdxMap& name_idx_map,
