@@ -5,7 +5,14 @@ parameters:
   TestDataChecksum: a966def7447f4ff04f5665bca235b3f3
 
 steps:
-- script: |
-    echo \##vso[task.setvariable variable=TestDataUrl;]${{parameters.TestDataUrl}}
-    echo \##vso[task.setvariable variable=TestDataChecksum;]${{parameters.TestDataChecksum}}
-  displayName: 'Set TestDataUrl and TestDataChecksum variables'
+- task: CmdLine@1
+  displayName: 'Set TestDataUrl variable'
+  inputs:
+    filename: echo
+    arguments: '##vso[task.setvariable variable=TestDataUrl;]${{parameters.TestDataUrl}}'
+
+- task: CmdLine@1
+  displayName: 'Set TestDataChecksum variable'
+  inputs:
+    filename: echo
+    arguments: '##vso[task.setvariable variable=TestDataChecksum;]${{parameters.TestDataChecksum}}'
