@@ -22,7 +22,38 @@ namespace cuda {
 REGISTER_TYPED_SLICE(Slice,        int32_t, false) 
 REGISTER_TYPED_SLICE(Slice,        int64_t, false) 
 REGISTER_TYPED_SLICE(DynamicSlice, int32_t, true ) 
-REGISTER_TYPED_SLICE(DynamicSlice, int64_t, true ) 
+REGISTER_TYPED_SLICE(DynamicSlice, int64_t, true )
+
+template <typename Tind, bool dynamic>
+void Slice<Tind, dynamic>::FillVectorsFromInput(const OpKernelContext* context,
+                                                std::vector<int64_t>&  input_starts,
+                                                std::vector<int64_t>&  input_ends,
+                                                std::vector<int64_t>&  input_axes) const {
+  ORT_ENFORCE(context->Input<Tensor>(1) != nullptr, "Required starts input is missing");
+  ORT_ENFORCE(context->Input<Tensor>(2) != nullptr, "Required ends input is missing");
+
+  auto starts_tensor_ptr = context->Input<Tensor>(1);
+  ORT_ENFORCE(starts_tensor_ptr->Shape().NumDimensions() == 1, "Starts input must be a 1-D array");
+  input_starts = std::vector<int64_t> (reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(starts_tensor_ptr->Data<Tind>()),
+                                       reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(starts_tensor_ptr->Data<Tind>()) +
+                                       starts_tensor_ptr->Shape().Size());
+
+  auto ends_tensor_ptr = context->Input<Tensor>(2);
+  ORT_ENFORCE(ends_tensor_ptr->Shape().NumDimensions() == 1, "ends input must be a 1-D array");
+  input_ends = std::vector<int64_t> (reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(ends_tensor_ptr->Data<Tind>()),
+                                     reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(ends_tensor_ptr->Data<Tind>()) +
+                                     ends_tensor_ptr->Shape().Size());
+
+  ORT_ENFORCE(input_starts.size() == input_ends.size(), "Found mismatch between starts and ends input");
+
+  if (context->Input<Tensor>(3) != nullptr) {
+    auto axes_tensor_ptr = context->Input<Tensor>(3);
+    input_axes = std::vector<int64_t> (reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(axes_tensor_ptr->Data<Tind>()),
+                                       reinterpret_cast<const typename ToCudaType<Tind>::MappedType*>(axes_tensor_ptr->Data<Tind>()) +
+                                       axes_tensor_ptr->Shape().Size());
+    ORT_ENFORCE(input_axes.size() == input_starts.size(), "Axes input is invalid");
+  }
+}
 
 template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
@@ -37,7 +68,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
+    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                         dimension_count, input_dimensions, starts, output_dims));
 
