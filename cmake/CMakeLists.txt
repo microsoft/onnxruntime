@@ -43,6 +43,7 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" OFF)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
@@ -79,6 +80,7 @@ if(onnxruntime_USE_OPENMP)
     add_definitions(-DUSE_OPENMP)
   endif()
 endif()
+
 #must after OpenMP settings
 find_package(Threads)
 
@@ -159,6 +161,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
@@ -501,6 +504,9 @@ include(onnxruntime_mlas.cmake)
 if(WIN32)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
 else()
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
+  endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Threads::Threads)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
