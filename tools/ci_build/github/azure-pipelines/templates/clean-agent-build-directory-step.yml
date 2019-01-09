@@ -1,0 +1,11 @@
+# cleans $(Agent.BuildDirectory) unconditionally on multiple platforms
+
+steps:
+- ${{if eq(variables['Agent.OS'], 'Windows_NT')}}:
+  - script: rd /S /Q $(Agent.BuildDirectory)
+    displayName: Clean build files
+    condition: always()
+- ${{if not(eq(variables['Agent.OS'], 'Windows_NT'))}}:
+  - script: sudo rm -rf $(Agent.BuildDirectory)
+    displayName: Clean build files
+    condition: always()

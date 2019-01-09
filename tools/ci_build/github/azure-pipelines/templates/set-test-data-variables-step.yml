@@ -1,0 +1,11 @@
+# sets variables $(TestDataUrl) and $(TestDataChecksum)
+
+parameters:
+  TestDataUrl: https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
+  TestDataChecksum: a966def7447f4ff04f5665bca235b3f3
+
+steps:
+- script: |
+    echo \##vso[task.setvariable variable=TestData.Url;]${{parameters.TestDataUrl}}'
+    echo \##vso[task.setvariable variable=TestData.Checksum;]${{parameters.TestDataChecksum}}'
+  displayName: 'Set TestDataUrl and TestDataChecksum variables'
