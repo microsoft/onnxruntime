@@ -113,34 +113,28 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   return Status::OK();
 }
 
-template <typename T, typename Tind, bool dynamic>
-void Slice<T, Tind, dynamic>::FillVectorsFromInput(const OpKernelContext* context,
-                                                   std::vector<int64_t>&  input_starts,
-                                                   std::vector<int64_t>&  input_ends,
-                                                   std::vector<int64_t>&  input_axes) const {
-  ORT_ENFORCE(context->Input<Tensor>(1) != nullptr, "Required starts input is missing");
-  ORT_ENFORCE(context->Input<Tensor>(2) != nullptr, "Required ends input is missing");
+template <typename Tind>
+void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
+                                     std::vector<int64_t>&  input_starts,
+                                     std::vector<int64_t>&  input_ends,
+                                     std::vector<int64_t>&  input_axes) const {
+  auto stat_tensor = context->Input<Tensor>(1);
+  auto ends_tensor = context->Input<Tensor>(2);
+  auto axes_tensor = context->Input<Tensor>(3);
 
-  auto starts_tensor_ptr = context->Input<Tensor>(1);
-  ORT_ENFORCE(starts_tensor_ptr->Shape().NumDimensions() == 1, "Starts input must be a 1-D array");
-  input_starts = std::vector<int64_t> (starts_tensor_ptr->Data<Tind>(),
-                                       starts_tensor_ptr->Data<Tind>() +
-                                       starts_tensor_ptr->Shape().Size());
+  ORT_ENFORCE (nullptr != stat_tensor && stat_tensor->Shape().NumDimensions() == 1,    "Starts must be a 1-D array"    );
+  ORT_ENFORCE (nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1,    "ends must be a 1-D array"      );
+  ORT_ENFORCE (stat_tensor->Shape() == ends_tensor->Shape(),                           "Starts and ends shape mismatch");
+  ORT_ENFORCE (nullptr == axes_tensor || stat_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
 
-  auto ends_tensor_ptr = context->Input<Tensor>(2);
-  ORT_ENFORCE(ends_tensor_ptr->Shape().NumDimensions() == 1, "ends input must be a 1-D array");
-  input_ends = std::vector<int64_t> (ends_tensor_ptr->Data<Tind>(),
-                                     ends_tensor_ptr->Data<Tind>() +
-                                     ends_tensor_ptr->Shape().Size());
-
-  ORT_ENFORCE(input_starts.size() == input_ends.size(), "Found mismatch between starts and ends input");
-
-  if (context->Input<Tensor>(3) != nullptr) {
-    auto axes_tensor_ptr = context->Input<Tensor>(3);
-    input_axes = std::vector<int64_t> (axes_tensor_ptr->Data<Tind>(),
-                                       axes_tensor_ptr->Data<Tind>() +
-                                       axes_tensor_ptr->Shape().Size());
-    ORT_ENFORCE(input_axes.size() == input_starts.size(), "Axes input is invalid");
+  auto size = stat_tensor->Shape().Size();
+  input_starts.resize(size);
+  std::copy(stat_tensor->Data<Tind>(), stat_tensor->Data<Tind>() + size, input_starts.begin());
+  input_ends.resize(size);
+  std::copy(ends_tensor->Data<Tind>(), ends_tensor->Data<Tind>() + size, input_ends.begin());
+  if (nullptr != axes_tensor) {
+    input_axes.resize(size);
+    std::copy(axes_tensor->Data<Tind>(), axes_tensor->Data<Tind>() + size, input_axes.begin());
   }
 }
 
@@ -158,7 +152,7 @@ Status Slice<T, Tind, dynamic>::Compute(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes);
+    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                         dimension_count, input_dimensions, starts, output_dims));
   } else {

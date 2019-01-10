@@ -27,31 +27,6 @@ REGISTER_TYPED_SLICE(Slice,        int64_t, false)
 REGISTER_TYPED_SLICE(DynamicSlice, int32_t, true ) 
 REGISTER_TYPED_SLICE(DynamicSlice, int64_t, true )
 
-template <typename Tind, bool dynamic>
-void Slice<Tind, dynamic>::FillVectorsFromInput(const OpKernelContext* context,
-                                                std::vector<int64_t>&  input_starts,
-                                                std::vector<int64_t>&  input_ends,
-                                                std::vector<int64_t>&  input_axes) const {
-  auto stat_tensor = context->Input<Tensor>(1);
-  auto ends_tensor = context->Input<Tensor>(2);
-  auto axes_tensor = context->Input<Tensor>(3);
-
-  ORT_ENFORCE (nullptr != stat_tensor && stat_tensor->Shape().NumDimensions() == 1,    "Starts must be a 1-D array"    );
-  ORT_ENFORCE (nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1,    "ends must be a 1-D array"      );
-  ORT_ENFORCE (stat_tensor->Shape() == ends_tensor->Shape(),                           "Starts and ends shape mismatch");
-  ORT_ENFORCE (nullptr == axes_tensor || stat_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
-
-  auto size = stat_tensor->Shape().Size();
-  input_starts.resize(size);
-  std::copy(stat_tensor->Data<Tind>(), stat_tensor->Data<Tind>() + size, input_starts.begin());
-  input_ends.resize(size);
-  std::copy(ends_tensor->Data<Tind>(), ends_tensor->Data<Tind>() + size, input_ends.begin());
-  if (nullptr != axes_tensor) {
-    input_axes.resize(size);
-    std::copy(axes_tensor->Data<Tind>(), axes_tensor->Data<Tind>() + size, input_axes.begin());
-  }
-}
-
 template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_tensor = ctx->Input<Tensor>(0);
@@ -65,7 +40,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes);
+    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                         dimension_count, input_dimensions, starts, output_dims));
 

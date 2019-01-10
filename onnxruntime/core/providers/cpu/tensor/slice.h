@@ -28,6 +28,11 @@ class SliceBase {
                            const std::vector<int64_t>& input_dimensions,
                            std::vector<int64_t>&       starts,
                            std::vector<int64_t>&       output_dims) const;
+  template<typename Tind>
+  void FillVectorsFromInput(const OpKernelContext* context,
+                            std::vector<int64_t>&  raw_starts,
+                            std::vector<int64_t>&  raw_ends,
+                            std::vector<int64_t>&  raw_axes) const;
 
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
 };
@@ -36,12 +41,6 @@ template <typename T, typename Tind, bool dynamic>
 struct Slice final : public OpKernel, public SliceBase {
   Slice(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, dynamic) {}
   Status Compute(OpKernelContext* context) const override;
-private:
-  void FillVectorsFromInput(const OpKernelContext* context,
-                            std::vector<int64_t>&  raw_starts,
-                            std::vector<int64_t>&  raw_ends,
-                            std::vector<int64_t>&  raw_axes) const;
-
 };  // namespace onnxruntime
 
 }  // namespace onnxruntime
