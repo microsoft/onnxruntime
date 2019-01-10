@@ -142,7 +142,7 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
   if (entry != subgraph_session_states_.cend()) {
     const auto& existing_entries = entry->second;
     ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(),
-                        "Entry exists in node ", index, " for attribute ", attribute_name);
+                "Entry exists in node ", index, " for attribute ", attribute_name);
   }
 
   subgraph_session_states_[index].insert({attribute_name, gsl::not_null<const SessionState*>(&session_state)});
