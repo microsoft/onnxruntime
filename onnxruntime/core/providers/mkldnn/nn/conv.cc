@@ -415,12 +415,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       if (filter_dst_mem == nullptr) {
         if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
           auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
-            filter_dims_mkl, MklDnnType<T>(), filter_format),
-            cpu_engine);
+                                                       filter_dims_mkl, MklDnnType<T>(), filter_format),
+                                                   cpu_engine);
           mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
           IAllocatorUniquePtr<void> filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
           filter_dst_mem.reset(
-            new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
+              new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
 
           MemoryReorderParams params(src, *filter_dst_mem);
           DoReorder<T>(params);
@@ -429,8 +429,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
           filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
           provider_->SetWeightsMemoryBuffer(weight_name, filter_dst_mem);
         }
-      }
-      else {
+      } else {
         filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
       }
     }
