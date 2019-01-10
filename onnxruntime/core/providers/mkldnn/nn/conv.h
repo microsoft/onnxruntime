@@ -4,7 +4,7 @@
 #pragma once
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv.h"
-#include "../mkldnn_execution_provider.h"
+#include "core/providers/mkldnn/mkldnn_execution_provider.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {

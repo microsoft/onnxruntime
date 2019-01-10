@@ -410,7 +410,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       // lock to make sure reordering is done only once
       std::lock_guard<std::mutex> lock(provider_->GetMutex());
       auto weight_name = OpKernel::Node().InputDefs()[1]->Name();
-      std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemory(weight_name);
+      std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(weight_name);
 
       if (filter_dst_mem == nullptr) {
         if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
@@ -427,7 +427,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
           provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
 
           filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-          provider_->SetWeightsMemory(weight_name, filter_dst_mem);
+          provider_->SetWeightsMemoryBuffer(weight_name, filter_dst_mem);
         }
       }
       else {
