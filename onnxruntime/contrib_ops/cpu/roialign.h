@@ -43,7 +43,7 @@ class ROIAlign final : public OpKernel {
 
     // spatial_scale
     float spatial_scale_tmp;
-    if (info.GetAttr<float>("spatial_scale", &spatial_scale_tmp)) {
+    if (info.GetAttr<float>("spatial_scale", &spatial_scale_tmp).IsOK()) {
       spatial_scale_ = spatial_scale_tmp;
     }
   }
