@@ -132,6 +132,7 @@ typedef enum OrtErrorCode {
   ORT_API(void, OrtRelease##X, _Frees_ptr_opt_ Ort##X* input);
 
 // The actual types defined have an Ort prefix
+ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(Provider);
 ORT_RUNTIME_CLASS(AllocatorInfo);
@@ -147,8 +148,6 @@ struct OrtRunOptions;
 typedef struct OrtRunOptions OrtRunOptions;
 struct OrtSessionOptions;
 typedef struct OrtSessionOptions OrtSessionOptions;
-struct OrtEnv;
-typedef struct OrtEnv OrtEnv;
 
 /**
  * Every type inherented from OrtObject should be deleted by OrtReleaseObject(...).
@@ -161,17 +160,15 @@ typedef struct OrtObject {
 
 } OrtObject;
 
-//inherented from OrtObject
-typedef struct OrtAllocatorInterface {
-  struct OrtObject parent;
-  void*(ORT_API_CALL* Alloc)(void* this_, size_t size);
-  void(ORT_API_CALL* Free)(void* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const void* this_);
-} OrtAllocatorInterface;
+// When passing in an allocator to any ORT function, be sure that the allocator object
+// is not destroyed until the last allocated object using it is freed.
+typedef struct OrtAllocator {
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
+  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
+} OrtAllocator;
 
-typedef OrtAllocatorInterface* OrtAllocator;
-
-//Inherented from OrtObject
+// Inherented from OrtObject
 typedef struct OrtProviderFactoryInterface {
   OrtObject parent;
   OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
@@ -183,7 +180,7 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
 
 /**
  * OrtEnv is process-wide. For each process, only one OrtEnv can be created.
- * \param out Should be freed by `OrtReleaseObject` after use
+ * \param out Should be freed by `OrtReleaseEnv` after use
  */
 ORT_API_STATUS(OrtInitialize, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Out_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
@@ -216,7 +213,7 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
  */
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions);
 
-/// create a copy of an existing OrtSessionOptions
+// create a copy of an existing OrtSessionOptions
 ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions*);
 ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
@@ -238,13 +235,13 @@ ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtEnableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtDisableCpuMemArena, _In_ OrtSessionOptions* options);
 
-///< logger id to use for session output
+// < logger id to use for session output
 ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
 
-///< applies to session load, initialization, etc
+// < applies to session load, initialization, etc
 ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
 
-///How many threads in the session thread pool.
+// How many threads in the session thread pool.
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
@@ -269,6 +266,9 @@ ORT_API_STATUS(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t i
  */
 ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
+/**
+ * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
+ */
 ORT_API_STATUS(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
                _Inout_ OrtAllocator* allocator, _Out_ char** value);
 ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
@@ -291,8 +291,7 @@ ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
 
 /**
  * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
- * \param out will keep a reference to the allocator, without reference counting(will be fixed). Should be freed by
- *            calling OrtReleaseValue
+ * \param out Should be freed by calling OrtReleaseValue
  * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
  */
 ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
@@ -441,8 +440,8 @@ ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size);
 ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API(const OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr);
 
-// Call OrtReleaseObject to release the returned value
 ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
+ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator);
 
 /**
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
@@ -454,15 +453,10 @@ ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
 /**
  * \param status must not be NULL
- * \return The error message inside the `status`. Don't free the returned value.
+ * \return The error message inside the `status`. Do not free the returned value.
  */
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
-
-/**
- * Deprecated. Please use OrtReleaseObject
- */
-ORT_API(void, OrtReleaseEnv, OrtEnv* env);
 
 #ifdef __cplusplus
 }
