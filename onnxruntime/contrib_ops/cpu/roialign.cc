@@ -303,7 +303,7 @@ Status ROIAlign<T>::Compute(OpKernelContext* context) const {
       sampling_ratio_,
       rois_ptr->Data<T>(),
       rois_dims[1],
-      Y.MutableData<T>(),
+      Y.template MutableData<T>(),
       mode_);
 
   return Status::OK();
