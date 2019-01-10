@@ -1,9 +1,0 @@
-digraph "onnxruntime/onnxruntime/core/mlas/lib/arm" {
-  compound=true
-  node [ fontsize="10", fontname="Helvetica"];
-  edge [ labelfontsize="10", labelfontname="Helvetica"];
-  subgraph clusterdir_484f0a02b39637dc17590a50246ccad2 {
-    graph [ bgcolor="#ddddee", pencolor="black", label="lib" fontname="Helvetica", fontsize="10", URL="dir_484f0a02b39637dc17590a50246ccad2.html"]
-  dir_6efd9db977864857248387e381b2a95e [shape=box, label="arm", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_6efd9db977864857248387e381b2a95e.html"];
-  }
-}
