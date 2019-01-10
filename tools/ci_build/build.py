@@ -220,13 +220,22 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         log.info("Downloading test data")
         if azure_sas_key:
             src_url += azure_sas_key
+        # try to avoid logging azure_sas_key
         if shutil.which('aria2c'):
-            run_subprocess(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+            result = subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+            if result.returncode != 0:
+                raise BuildError("aria2c exited with code {}.".format(result.returncode))
         elif shutil.which('curl'):
-            run_subprocess(['curl', '-s', src_url, '-o', local_zip_file])
+            result = subprocess.run(['curl', '-s', src_url, '-o', local_zip_file])
+            if result.returncode != 0:
+                raise BuildError("curl exited with code {}.".format(result.returncode))
         else:
             import urllib.request
-            urllib.request.urlretrieve(src_url, local_zip_file)
+            import urllib.error
+            try:
+                urllib.request.urlretrieve(src_url, local_zip_file)
+            except urllib.error.URLError:
+                raise BuildError("urllib.request.urlretrieve() failed.")
     models_dir = os.path.join(build_dir,'models')
     if os.path.exists(models_dir):
         log.info('deleting %s' % models_dir)
