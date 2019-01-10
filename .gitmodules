@@ -19,3 +19,6 @@
 [submodule "cmake/external/gemmlowp"]
 	path = cmake/external/gemmlowp
 	url = https://github.com/google/gemmlowp.git
+[submodule "cmake/external/nsync"]
+	path = cmake/external/nsync
+	url = https://github.com/google/nsync
