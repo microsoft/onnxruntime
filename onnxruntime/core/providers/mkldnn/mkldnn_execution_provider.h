@@ -5,7 +5,9 @@
 
 #include <memory>
 #include <map>
+#include <list>
 #include <memory.h>
+
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_transformer.h"
@@ -54,17 +56,24 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   void SetWeightsMemory(const std::string& weight_key,
                         const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
     std::lock_guard<std::mutex> lock(mutex_);
-    weights_mem_map_[weight_key] = filter_dst_mem;
+    weights_mem_map_.insert(std::make_pair(weight_key, filter_dst_mem));
   }
 
   std::mutex& GetMutex() {
     return conv_mutex_;
   }
 
+  void SaveAllocatedMemory(IAllocatorUniquePtr<void> buffer) {
+    // keep reordered memory buffers in scope.
+    reordered_buffers_.push_back(std::move(buffer));
+  }
+
  private:
   // mkldnn weights(filer data) memory blocks from first iteration
   // saved by weights name
   std::map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map_;
+  // Save reordered memory buffers in list so that memory is not freed.
+  std::list<IAllocatorUniquePtr<void>> reordered_buffers_;
   mutable std::mutex mutex_;
   std::mutex conv_mutex_;
 };
