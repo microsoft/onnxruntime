@@ -41,7 +41,7 @@ function(AddTest)
     if (onnxruntime_USE_CUDA)
       # disable a warning from the CUDA headers about unreferenced local functions
       if (MSVC)
-        target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>"
+        target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4505>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4505>")
       endif()
     endif()
