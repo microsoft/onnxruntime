@@ -498,6 +498,9 @@ def main():
 
     if args.build_wheel:
         args.enable_pybind = True
+    
+    if args.build_csharp:
+        args.build_shared_lib = True
 
     configs = set(args.config)
 
