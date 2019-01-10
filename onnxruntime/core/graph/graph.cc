@@ -1305,6 +1305,9 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   output_types.clear();
 
+  // we ignore the 'optional' inputs that have initializers. if someone needs to override
+  // an initializer they can move it up to the main graph and consume it implicitly in the subgraph,
+  // or create a subgraph without the initializer for the input.
   auto& subgraph_inputs = subgraph.GetInputs();
   auto num_subgraph_inputs = subgraph_inputs.size();
 

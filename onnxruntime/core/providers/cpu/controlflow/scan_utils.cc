@@ -96,7 +96,7 @@ Status IterateSequence(OpKernelContextInternal& context,
                        std::vector<std::string>& subgraph_output_names,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators) {
   Status status = Status::OK();
-  auto& graph_inputs = subgraph.GetInputsIncludingInitializers();
+  auto& graph_inputs = subgraph.GetInputs();
   NameMLValMap feeds;
   std::vector<MLValue> fetches;
 
