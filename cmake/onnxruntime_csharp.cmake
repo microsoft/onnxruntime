@@ -9,4 +9,5 @@ include(CSharpUtilities)
 include_external_msproject(${CSHARP_MASTER_TARGET}
                            ${CSHARP_MASTER_PROJECT}
                            onnxruntime   # make it depend on the native onnxruntime project
+                           ${onnxruntime_EXTERNAL_DEPENDENCIES}
                            )
