@@ -6,7 +6,6 @@
 #include <limits>
 
 #include "core/framework/op_kernel.h"
-#include "core/common/task_thread_pool.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
@@ -82,7 +81,7 @@ class DeepCpuLstmOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
-  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
+  mutable Eigen::NonBlockingThreadPool ttp_{std::thread::hardware_concurrency()};
 };
 
 }  // namespace onnxruntime

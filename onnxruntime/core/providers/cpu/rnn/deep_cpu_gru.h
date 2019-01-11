@@ -5,7 +5,6 @@
 
 #include <limits>
 
-#include "core/common/task_thread_pool.h"
 #include "core/framework/allocator.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
@@ -71,7 +70,7 @@ class DeepCpuGruOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
-  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
+  mutable Eigen::NonBlockingThreadPool ttp_{std::thread::hardware_concurrency()};
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;

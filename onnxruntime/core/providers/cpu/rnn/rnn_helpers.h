@@ -13,11 +13,13 @@
 #include "gsl/gsl_algorithm"
 
 #include "core/common/common.h"
-#include "core/common/task_thread_pool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+
+#pragma warning(disable : 4267)
+#include <unsupported/Eigen/CXX11/ThreadPool>
 
 namespace onnxruntime {
 class Tensor;
@@ -209,7 +211,7 @@ T* SafeRawPointer(typename gsl::span<T> span, size_t offset, size_t size) {
 
 template <typename TLambda>
 void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, int step,
-                             TaskThreadPool& ttp, const ::onnxruntime::logging::Logger& logger) {
+                             Eigen::NonBlockingThreadPool& ttp, const ::onnxruntime::logging::Logger& logger) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
 #ifdef NOTHREADS
@@ -221,19 +223,25 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     std::bind(lambda, i)();
   }
 #else
-  std::vector<std::future<void> > task_results{};
-  task_results.reserve(static_cast<size_t>(std::ceil(max / step)));
 
+  std::condition_variable cv;
+  std::mutex lock;
+  std::atomic<int> done = 0;
+
+  int totalTasks = (int)max / (step > 0 ? step : 1);
   for (int i = 0; i < max; i += step) {
-    std::packaged_task<void()> task{std::bind(lambda, i)};
-    task_results.emplace_back(task.get_future());
-    ttp.RunTask(std::move(task));
+    ttp.Schedule([lambda, i, &cv, &lock, max, &done, totalTasks]() {
+      lambda(i);
+      auto ul = std::unique_lock<std::mutex>(lock);
+      if (++done == totalTasks) {
+        cv.notify_one();
+      }
+    });
   }
 
   try {
-    // wait for all and propagate any exceptions
-    for (auto& future : task_results)
-      future.get();
+    auto ul = std::unique_lock<std::mutex>(lock);
+    cv.wait(ul);
   } catch (const std::exception& ex) {
     LOGS(logger, ERROR) << name << " - exception running tasks: " << ex.what();
     throw;
