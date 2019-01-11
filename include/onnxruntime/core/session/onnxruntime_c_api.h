@@ -168,11 +168,9 @@ typedef struct OrtAllocator {
   const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
-// Inherented from OrtObject
-typedef struct OrtProviderFactoryInterface {
-  OrtObject parent;
-  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
-} OrtProviderFactoryInterface;
+typedef struct OrtProviderFactory {
+  OrtStatus*(ORT_API_CALL* CreateProvider)(struct OrtProviderFactory* this_, OrtProvider** out);
+} OrtProviderFactory;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
@@ -249,7 +247,7 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
   * on your most preferred execution provider first followed by the less preferred ones.
   * Calling this API is optional in which case Ort will use its internal CPU execution provider.
   */
-ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
+ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactory* f);
 
 ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 
@@ -441,7 +439,9 @@ ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
 ORT_API(const OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr);
 
 ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
-ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator);
+ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* ptr);
+
+ORT_API(void, OrtReleaseProviderFactory, _In_ OrtProviderFactory* ptr);
 
 /**
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus

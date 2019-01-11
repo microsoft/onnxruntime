@@ -13,7 +13,7 @@
 struct OrtSessionOptions : public onnxruntime::ObjectBase<OrtSessionOptions> {
   onnxruntime::SessionOptions value;
   std::vector<std::string> custom_op_paths;
-  std::vector<OrtProviderFactoryInterface**> provider_factories;
+  std::vector<OrtProviderFactory*> provider_factories;
   OrtSessionOptions() = default;
   ~OrtSessionOptions();
   OrtSessionOptions(const OrtSessionOptions& other);

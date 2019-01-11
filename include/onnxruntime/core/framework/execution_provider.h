@@ -36,6 +36,10 @@ struct NodeComputeInfo {
   DestroyFunctionStateFunc release_state_func;
 };
 
+struct OrtProviderFactoryImpl : OrtProviderFactory {
+  virtual ~OrtProviderFactoryImpl() {}
+};
+
 class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;

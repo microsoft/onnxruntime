@@ -367,9 +367,9 @@ static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
       return ToOrtStatus(status);
   }
   if (options != nullptr)
-    for (OrtProviderFactoryInterface** p : options->provider_factories) {
+    for (OrtProviderFactory* p : options->provider_factories) {
       OrtProvider* provider;
-      OrtStatus* error_code = (*p)->CreateProvider(p, &provider);
+      OrtStatus* error_code = p->CreateProvider(p, &provider);
       if (error_code)
         return error_code;
       sess->RegisterExecutionProvider(std::unique_ptr<onnxruntime::IExecutionProvider>(

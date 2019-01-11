@@ -27,16 +27,17 @@
 namespace std {
 template <>
 struct default_delete<OrtAllocator> {
-  void operator()(OrtAllocator* ptr) {
-    OrtReleaseAllocator(ptr);
-  }
+  void operator()(OrtAllocator* ptr) { OrtReleaseAllocator(ptr); }
 };
 
 template <>
 struct default_delete<OrtEnv> {
-  void operator()(OrtEnv* ptr) {
-    OrtReleaseEnv(ptr);
-  }
+  void operator()(OrtEnv* ptr) { OrtReleaseEnv(ptr); }
+};
+
+template <>
+struct default_delete<OrtProviderFactory> {
+  void operator()(OrtProviderFactory* ptr) { OrtReleaseProviderFactory(ptr); }
 };
 }  // namespace std
 
@@ -54,7 +55,6 @@ DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TypeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryInterface*);
 
 #undef DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT
 
@@ -94,7 +94,7 @@ class SessionOptionsWrapper {
   * on your most preferred execution provider first followed by the less preferred ones.
   * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
   */
-  void AppendExecutionProvider(_In_ OrtProviderFactoryInterface** f) {
+  void AppendExecutionProvider(_In_ OrtProviderFactory* f) {
     OrtSessionOptionsAppendExecutionProvider(value.get(), f);
   }
 
