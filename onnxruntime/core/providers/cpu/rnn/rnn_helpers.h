@@ -224,28 +224,27 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
   }
 #else
 
-  std::condition_variable cv;
-  std::mutex lock;
+  //std::condition_variable cv;
+  //std::mutex lock;
   std::atomic<int> done = 0;
 
-  int totalTasks = (int)max / (step > 0 ? step : 1);
   for (int i = 0; i < max; i += step) {
-    ttp.Schedule([lambda, i, &cv, &lock, max, &done, totalTasks]() {
+    ttp.Schedule([lambda, i, &done]() {
       lambda(i);
-      auto ul = std::unique_lock<std::mutex>(lock);
-      if (++done == totalTasks) {
-        cv.notify_one();
-      }
+      ++done;
     });
   }
 
-  try {
-    auto ul = std::unique_lock<std::mutex>(lock);
-    cv.wait(ul);
+  int totalTasks = (int)max / (step > 0 ? step : 1);
+  while (done != totalTasks) {
+  }
+
+  /* try {
+     
   } catch (const std::exception& ex) {
     LOGS(logger, ERROR) << name << " - exception running tasks: " << ex.what();
     throw;
-  }
+  }*/
 #endif
 }
 
