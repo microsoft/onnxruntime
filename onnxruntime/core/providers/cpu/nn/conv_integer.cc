@@ -125,9 +125,9 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       static const gemmlowp::MapOrder LhsOrder = gemmlowp::MapOrder::RowMajor;
       static const gemmlowp::MapOrder RhsOrder = gemmlowp::MapOrder::RowMajor;
       gemmlowp::MatrixMap<const std::uint8_t, LhsOrder> lhs(
-          col_buffer_data, static_cast<int>(M / group_), static_cast<int>(kernel_dim));
+          filter_data_as_uint8, static_cast<int>(M / group_), static_cast<int>(kernel_dim));
       gemmlowp::MatrixMap<const std::uint8_t, RhsOrder> rhs(
-          filter_data_as_uint8, static_cast<int>(kernel_dim), static_cast<int>(output_image_size));
+          col_buffer_data, static_cast<int>(kernel_dim), static_cast<int>(output_image_size));
       gemmlowp::MatrixMap<std::int32_t, ResultOrder> result(
           Ydata, static_cast<int>(M / group_), static_cast<int>(output_image_size));
       const std::tuple<> empty_pipeline = {};
@@ -136,7 +136,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       // TODO: worker thread pool needs to be handled.
       gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
                                        gemmlowp::DefaultL8R8BitDepthParams>(
-          &gemm_context, lhs, rhs, &result, -input_offset, -filter_offset,
+          &gemm_context, lhs, rhs, &result, -filter_offset, -input_offset,
           empty_pipeline);
     }
 
