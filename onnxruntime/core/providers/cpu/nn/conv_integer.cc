@@ -24,7 +24,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         (X_Zero_Point->Shape().NumDimensions() == 1 && X_Zero_Point->Shape().GetDims().size() == 1)) {
       input_offset = static_cast<int32_t>(*(X_Zero_Point->Data<uint8_t>()));
     } else {
-      //TODO: NOT supported.
+      //TODO: Add support for per-channel quantization.
+      return Status(common::ONNXRUNTIME, common::FAIL, "Non per-tensor quantization is not supported now.");
     }
   }
   if (num_inputs >= 4) {
@@ -33,7 +34,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         (W_Zero_Point->Shape().NumDimensions() == 1 && W_Zero_Point->Shape().GetDims().size() == 1)) {
       filter_offset = static_cast<int32_t>(*(W_Zero_Point->Data<uint8_t>()));
     } else {
-      //TODO: NOT supported.
+      //TODO: Add support for per-channel quantization.
+      return Status(common::ONNXRUNTIME, common::FAIL, "Non per-tensor quantization is not supported now.");
     }
   }
 
@@ -145,10 +147,11 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     ConvInteger,
+	kMSDomain,
     1,
-    uint8_t,
+	kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()).TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
 }  // namespace onnxruntime
