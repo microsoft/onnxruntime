@@ -58,7 +58,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   }
 
   std::mutex& GetMutex() {
-    return conv_mutex_;
+    return mutex_;
   }
 
   void SaveAllocatedMemory(IAllocatorUniquePtr<void> buffer) {
@@ -72,7 +72,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map_;
   // Save reordered memory buffers in list so that memory is not freed.
   std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
-  std::mutex conv_mutex_;
+  std::mutex mutex_;
 };
 
 }  // namespace onnxruntime
