@@ -414,7 +414,7 @@ message TensorProto {
   }
 
   // If value not set, data is stored in raw_data (if set) otherwise in type-specified field.
-  DataLocation data_location = 14;
+  optional DataLocation data_location = 14;
 
   // For double
   // Complex128 tensors are encoded as a single array of doubles,
