@@ -1,9 +1,0 @@
-digraph "onnxruntime/onnxruntime/core/providers/cuda/shared_inc" {
-  compound=true
-  node [ fontsize="10", fontname="Helvetica"];
-  edge [ labelfontsize="10", labelfontname="Helvetica"];
-  subgraph clusterdir_893aee19ddfc3e61cc87531e2d88f525 {
-    graph [ bgcolor="#ddddee", pencolor="black", label="cuda" fontname="Helvetica", fontsize="10", URL="dir_893aee19ddfc3e61cc87531e2d88f525.html"]
-  dir_85057dc90962d9550271a840d611b40a [shape=box, label="shared_inc", style="filled", fillcolor="#eeeeff", pencolor="black", URL="dir_85057dc90962d9550271a840d611b40a.html"];
-  }
-}
