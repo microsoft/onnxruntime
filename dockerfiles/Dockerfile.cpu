@@ -1,6 +1,13 @@
 FROM ubuntu:16.04
+MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
-RUN apt-get update && apt-get install -y sudo build-essential curl libcurl4-openssl-dev libssl-dev wget python3 python3-pip python3-dev git 
+RUN apt-get update && \
+	apt-get install -y sudo \
+	build-essential curl \
+	libcurl4-openssl-dev \
+	libssl-dev wget \
+	python 3.6 python3-pip \
+	python3-dev git 
 RUN pip3 install numpy onnx
 
 # Build the latest cmake 
@@ -13,5 +20,5 @@ RUN ./configure --system-curl
 RUN make 
 RUN sudo make install
 
-RUN pip3 install onnxruntime jupyter
+RUN pip3 install onnxruntime
 WORKDIR /code
