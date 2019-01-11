@@ -12,7 +12,7 @@
 #include "public/gemmlowp.h"
 
 namespace onnxruntime {
-
+namespace contrib {
 Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
@@ -152,6 +152,10 @@ ONNX_OPERATOR_KERNEL_EX(
 	kMSDomain,
     1,
 	kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()).TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()).TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    KernelDefBuilder()
+	.TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+	.TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+	.TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
+}
 }  // namespace onnxruntime

@@ -205,7 +205,7 @@ TEST(ConvIntegerTest, ConvIntegerTest) {
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
   test.AddAttribute<std::vector<int64_t>>("pads", {1, 1, 1, 1});
   std::vector<int64_t> y_dims{1, 1, 5, 5};
-  test.AddOutput<uint8_t>("y", y_dims,
+  test.AddOutput<int32_t>("y", y_dims,
                           {15, 21, 26, 31, 27,
                            29, 47, 54, 61, 60,
                            54, 82, 89, 96, 75,
