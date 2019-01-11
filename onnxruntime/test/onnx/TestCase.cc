@@ -545,7 +545,7 @@ Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx
         ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, allocator, &temp_name));
       }
       var_names[i] = temp_name;
-      (*allocator)->Free(allocator, temp_name);
+      allocator->Free(allocator, temp_name);
     }
   }
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
