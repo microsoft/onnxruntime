@@ -3,10 +3,13 @@
 
 #include "sync_api.h"
 #include <mutex>
+
+#if defined(_MSC_VER)
+#pragma warning(disable : 4267)
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <core/common/common.h>
 #include <core/common/logging/logging.h>
-#include "simple_thread_pool.h"
 #include "onnxruntime_event.h"
 
 using onnxruntime::common::Status;
@@ -52,14 +55,14 @@ Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data,
   return Status::OK();
 }
 
-using DefaultThreadPoolType = onnxruntime::SimpleThreadPoolTempl<onnxruntime::Env>;
+using DefaultThreadPoolType = Eigen::NonBlockingThreadPool;
 static std::unique_ptr<DefaultThreadPoolType> default_pool;
 static std::once_flag default_pool_init;
 
 PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num, env));
+    default_pool.reset(new DefaultThreadPoolType(core_num));
   });
   return default_pool.get();
 }

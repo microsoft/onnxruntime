@@ -245,7 +245,11 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
 
 #ifdef USE_EIGEN_THREADPOOL
   session_state.GetThreadPool()->Schedule([this, p_node_index, &session_state, &logger]() {
-    ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
+    try {
+      ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
+    } catch (...) {
+      // catch node processing failure exceptions here to prevent app crash.
+    }
   });
 #else
   std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
