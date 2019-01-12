@@ -229,13 +229,13 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
   std::atomic<int> done = 0;
 
   for (int i = 0; i < max; i += step) {
-    ttp.Schedule([lambda, i, &done]() {
-      lambda(i);
+    ttp.Schedule([innerLambda = std::move(lambda), i, &done]() {
+      innerLambda(i);
       ++done;
     });
   }
 
-  int totalTasks = (int)max / (step > 0 ? step : 1);
+  int totalTasks = (int)max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
   while (done != totalTasks) {
   }
 
