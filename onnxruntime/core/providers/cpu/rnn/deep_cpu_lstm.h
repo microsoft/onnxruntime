@@ -8,6 +8,10 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
+#ifndef USE_EIGEN_THREADPOOL
+#include "core/common/task_thread_pool.h"
+#endif
+
 namespace onnxruntime {
 
 /// The class represents DeepCPU implementation of a long short term memory (LSTM) operator.
@@ -81,7 +85,12 @@ class DeepCpuLstmOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
+
+#ifdef USE_EIGEN_THREADPOOL
   mutable Eigen::NonBlockingThreadPool ttp_{std::thread::hardware_concurrency()};
+#else
+  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
+#endif
 };
 
 }  // namespace onnxruntime

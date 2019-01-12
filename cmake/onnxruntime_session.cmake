@@ -16,4 +16,6 @@ target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${eig
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
 
-
+if(onnxruntime_USE_EIGEN_THREADPOOL)
+    target_compile_definitions(onnxruntime_session PUBLIC USE_EIGEN_THREADPOOL)
+endif()

@@ -13,9 +13,6 @@
 
 #include <gsl/span>
 
-#pragma warning(disable : 4267)
-#include <unsupported/Eigen/CXX11/ThreadPool>
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -54,7 +51,11 @@ class UniDirectionalAttnLstm {
                          const ActivationFuncs::Entry& activation_func_g,
                          const ActivationFuncs::Entry& activation_func_h,
                          const float clip,
+#ifdef USE_EIGEN_THREADPOOL
                          Eigen::NonBlockingThreadPool& ttp);
+#else
+                         TaskThreadPool& ttp);
+#endif
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -154,7 +155,11 @@ class UniDirectionalAttnLstm {
 
   AttentionWrapper<T>& attention_wrapper_;
 
+#ifdef USE_EIGEN_THREADPOOL
   Eigen::NonBlockingThreadPool& ttp_;
+#else
+  TaskThreadPool& ttp_;
+#endif
 };
 
 }  // namespace detail

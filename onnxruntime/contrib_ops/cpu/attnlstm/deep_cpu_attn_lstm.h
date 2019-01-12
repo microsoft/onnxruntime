@@ -92,11 +92,15 @@ class DeepCpuAttnLstmOp final : public OpKernel {
 
   ActivationFuncs activation_funcs_;
 
-  // Threadpool for operator. If concurrent Compute calls are possible, it will be shared
-  // across them. mutable due to this.
-  // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
-  // cost on every call.
+// Threadpool for operator. If concurrent Compute calls are possible, it will be shared
+// across them. mutable due to this.
+// The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
+// cost on every call.
+#ifdef USE_EIGEN_THREADPOOL
   mutable Eigen::NonBlockingThreadPool ttp_{std::thread::hardware_concurrency()};
+#else
+  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
+#endif
 };
 
 }  // namespace contrib

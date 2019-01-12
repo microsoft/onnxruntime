@@ -23,3 +23,7 @@ if (WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
     set_target_properties(onnxruntime_framework PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
 endif()
+
+if(onnxruntime_USE_EIGEN_THREADPOOL)
+    target_compile_definitions(onnxruntime_framework PUBLIC USE_EIGEN_THREADPOOL)
+endif()

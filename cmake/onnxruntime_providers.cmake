@@ -97,3 +97,7 @@ endif()
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_providers_internal.cmake)
 endif()
+
+if(onnxruntime_USE_EIGEN_THREADPOOL)
+    target_compile_definitions(onnxruntime_providers PUBLIC USE_EIGEN_THREADPOOL)
+endif()
