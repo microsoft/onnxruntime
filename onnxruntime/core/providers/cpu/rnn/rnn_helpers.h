@@ -18,8 +18,10 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
-#ifdef USE_EIGEN_THREADPOOL
+#if defined(USE_EIGEN_THREADPOOL)
+#if defined(_MSC_VER)
 #pragma warning(disable : 4267)
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #else
 #include "core/common/task_thread_pool.h"
