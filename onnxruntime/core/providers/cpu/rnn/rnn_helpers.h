@@ -236,10 +236,10 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
 #else
 
 #ifdef USE_EIGEN_THREADPOOL
-  std::atomic<int> done = 0;
+  std::atomic<int> done(0);
   for (int i = 0; i < max; i += step) {
-    ttp.Schedule([innerLambda = std::move(lambda), i, &done]() {
-      innerLambda(i);
+    ttp.Schedule([lambda, i, &done]() {
+      lambda(i);
       ++done;
     });
   }
