@@ -236,6 +236,9 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
 #else
 
 #ifdef USE_EIGEN_THREADPOOL
+  ORT_UNUSED_PARAMETER(name);
+  ORT_UNUSED_PARAMETER(logger);
+
   std::atomic<int> done(0);
   for (int i = 0; i < max; i += step) {
     ttp.Schedule([lambda, i, &done]() {
