@@ -74,7 +74,11 @@ inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& s
     if (std::is_floating_point<SrcType>::value && std::isnan(in->Data<SrcType>()[i])) {
       out->MutableData<std::string>()[i] = "NaN";
     } else if (std::is_floating_point<SrcType>::value && std::isinf(in->Data<SrcType>()[i])) {
-      out->MutableData<std::string>()[i] = "INF";
+      if (in->Data<SrcType>()[i] < std::numeric_limits<SrcType>::lowest()) {
+        out->MutableData<std::string>()[i] = "-INF";
+      } else {
+		out->MutableData<std::string>()[i] = "INF";
+	  }
     } else {
 	  std::ostringstream convert;
 	  convert << in->Data<SrcType>()[i];
