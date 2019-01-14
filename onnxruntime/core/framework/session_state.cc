@@ -135,7 +135,7 @@ const SessionState::NameNodeInfoMapType& SessionState::GetOutputNodeInfoMap() co
 
 void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
                                            const std::string& attribute_name,
-                                           const SessionState& session_state) {
+                                           SessionState& session_state) {
   auto entry = subgraph_session_states_.find(index);
 
   // make sure this is new. internal logic error if it is not so using ORT_ENFORCE.
@@ -145,12 +145,12 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
                 "Entry exists in node ", index, " for attribute ", attribute_name);
   }
 
-  subgraph_session_states_[index].insert({attribute_name, gsl::not_null<const SessionState*>(&session_state)});
+  subgraph_session_states_[index].insert({attribute_name, gsl::not_null<SessionState*>(&session_state)});
 }
 
-const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex index,
-                                                          const std::string& attribute_name) const {
-  const SessionState* session_state = nullptr;
+SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeIndex index,
+                                                           const std::string& attribute_name) {
+  SessionState* session_state = nullptr;
 
   auto node_entry = subgraph_session_states_.find(index);
   if (node_entry != subgraph_session_states_.cend()) {
@@ -165,4 +165,8 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
   return session_state;
 }
 
+const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex index,
+                                                          const std::string& attribute_name) const {
+  return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
+}
 }  // namespace onnxruntime

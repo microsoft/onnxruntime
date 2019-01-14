@@ -269,7 +269,9 @@ class Node {
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance. 
            nullptr if the Node has no subgraphs.
   */
-  const std::unordered_map<std::string, Graph*>* GetMutableSubgraphs();
+  const std::unordered_map<std::string, gsl::not_null<Graph*>>& GetAttributeNameToMutableSubgraphMap() {
+    return attr_to_subgraph_map_;
+  }
 
   /** Gets the execution ProviderType that this node will be executed by. */
   ProviderType GetExecutionProviderType() const noexcept;
@@ -426,7 +428,7 @@ class Node {
   Graph* graph_;
 
   // Map of attribute name to the Graph instance created from the GraphProto attribute
-  std::unordered_map<std::string, Graph*> attr_to_subgraph_map_;
+  std::unordered_map<std::string, gsl::not_null<Graph*>> attr_to_subgraph_map_;
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;

@@ -401,7 +401,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   if (attr != attributes_.cend() && attr->second.has_g()) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph{new Graph(*graph_, mutable_graph)};
-    attr_to_subgraph_map_[attr_name] = subgraph.get();
+    attr_to_subgraph_map_.insert(std::make_pair<std::string, gsl::not_null<Graph*>>(std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}));
     subgraphs_.push_back(std::move(subgraph));
   }
 }
@@ -548,13 +548,6 @@ Graph* Node::GetMutableGraphAttribute(const std::string& attr_name) {
 
 const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
-}
-
-const std::unordered_map<std::string, Graph*>* Node::GetMutableSubgraphs() {
-  if (!attr_to_subgraph_map_.empty())
-    return &attr_to_subgraph_map_;
-  else
-    return nullptr;
 }
 
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const {

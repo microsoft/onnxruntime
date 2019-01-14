@@ -40,12 +40,9 @@ class GraphTransformer {
 
   // call Apply on any subgraphs in the Node
   common::Status Recurse(Node& node, bool& modified) const {
-    const auto* subgraphs = node.GetMutableSubgraphs();
-    if (subgraphs) {
-      for (auto entry : *subgraphs) {
-        auto* subgraph = entry.second;
-        ORT_RETURN_IF_ERROR(Apply(*subgraph, modified));
-      }
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      auto& subgraph = *entry.second;
+      ORT_RETURN_IF_ERROR(Apply(subgraph, modified));
     }
 
     return Status::OK();

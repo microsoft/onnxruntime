@@ -141,17 +141,21 @@ class SessionState {
   /// @param attribute_name Name of attribute containing the subgraph GraphProto
   /// @param session_state SessionState for subgraph execution
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
-                               const SessionState& session_state);
+                               SessionState& session_state);
 
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
+
+  SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
   TaskThreadPool* GetThreadPool() const { return thread_pool_; }
   void SetThreadPool(TaskThreadPool* p_pool) { thread_pool_ = p_pool; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
-  const FuncManager* GetFuncMgr() const { return &fused_funcs_mgr_; }
+
+  const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
+  FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -184,8 +188,7 @@ class SessionState {
   // subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
   // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
   using SubgraphSessionStateMap =
-      std::unordered_map<onnxruntime::NodeIndex,
-                         std::unordered_map<std::string, gsl::not_null<const SessionState*>>>;
+      std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, gsl::not_null<SessionState*>>>;
   SubgraphSessionStateMap subgraph_session_states_;
   TaskThreadPool* thread_pool_ = nullptr;
 
