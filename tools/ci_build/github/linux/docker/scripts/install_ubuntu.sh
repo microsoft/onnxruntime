@@ -1,11 +1,15 @@
 #!/bin/bash
 set -e
-while getopts p: parameter_Option
+
+while getopts p:o: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
+o) OS_VER=${OPTARG};;
 esac
 done
+
+echo "bp=$PYTHON_VER bo=$OS_VER"
 
 DEBIAN_FRONTEND=noninteractive
 
@@ -44,10 +48,11 @@ locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 mkdir -p /tmp/dotnet
-aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/16.04/packages-microsoft-prod.deb
+aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
 dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
 apt-get update && apt-get install -y apt-transport-https \
         dotnet-sdk-2.2
+rm -rf /tmp/dotnet || true
 
 if [ $PYTHON_VER != "3.5" ]; then
     apt-get install -y --no-install-recommends \
