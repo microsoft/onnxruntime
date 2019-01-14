@@ -1,8 +1,10 @@
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
-| Windows CPU | Windows GPU | Linux CPU | Linux GPU | MacOS CPU |
-|-------------|-------------|-------------|-------------|-------------|
-|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20GPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=10)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20CPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=11)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)|[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)| 
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20GPU%20CI%20Pipeline?label=Windows+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=10)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20CPU%20CI%20Pipeline?label=Linux+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=11)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
+[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
 **ONNX Runtime** is an open-source scoring engine for Open Neural Network Exchange (ONNX) models. 
 
@@ -60,7 +62,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
 | [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime/)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](https://pypi.org/project/onnxruntime/)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
-| [C#](docs/CSharp_API.md) | [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Linux - Coming Soon<br>Mac - Coming Soon| Coming Soon |
+| [C#](docs/CSharp_API.md) | [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Linux - Coming Soon<br>Mac - Coming Soon| [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Linux - Coming Soon<br>Mac - Coming Soon|
 | [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
 | [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
 

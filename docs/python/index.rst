@@ -10,26 +10,14 @@ community, it supports traditional ML models as well
 as Deep Learning algorithms in the
 `ONNX-ML format <https://github.com/onnx/onnx/blob/master/docs/IR.md>`_.
 
-.. only:: html
+.. toctree::
+    :maxdepth: 1
 
-    .. toctree::
-        :maxdepth: 1
+    tutorial
+    api_summary
+    auto_examples/index
 
-        tutorial
-        api_summary
-        auto_examples/index
-
-    :ref:`genindex`
-
-.. only:: md
-
-    .. toctree::
-        :maxdepth: 1
-        :caption: Contents:
-
-        tutorial
-        api_summary
-        examples_md
+:ref:`genindex`
 
 The core library is implemented in C++.
 *ONNX Runtime* is available on

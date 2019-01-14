@@ -44,6 +44,7 @@ OrtGetValueType
 OrtInitialize
 OrtInitializeWithCustomLogger
 OrtIsTensor
+OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseEnv
 OrtReleaseObject

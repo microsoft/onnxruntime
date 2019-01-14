@@ -12,8 +12,8 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 add_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 
 #TODO: remove ${eigen_INCLUDE_DIRS} from here
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
-onnxruntime_add_include_to_target(onnxruntime_framework onnx protobuf::libprotobuf)
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
