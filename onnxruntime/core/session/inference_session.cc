@@ -41,7 +41,7 @@
 #include "core/session/IOBinding.h"
 
 #ifdef USE_EIGEN_THREADPOOL
-#ifndef __GNUC__
+#ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
