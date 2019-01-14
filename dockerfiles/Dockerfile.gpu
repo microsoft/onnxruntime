@@ -1,5 +1,7 @@
-FROM nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
+# Official user quickstart docker container for ONNX Runtime GPU
+# Ubuntu 16.04, GPU version, CuDNN 7, CUDA 9.1, Python 3.
 
+FROM nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 RUN apt-get update && \
@@ -21,5 +23,5 @@ RUN ./configure --system-curl
 RUN make 
 RUN sudo make install
 
-RUN pip3 install onnxruntime
+RUN pip3 install onnxruntime-gpu
 WORKDIR /code

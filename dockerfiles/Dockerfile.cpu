@@ -1,3 +1,6 @@
+# Official user quickstart docker container for ONNX Runtime
+# Ubuntu 16.04, CPU version, Python 3.
+
 FROM ubuntu:16.04
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
