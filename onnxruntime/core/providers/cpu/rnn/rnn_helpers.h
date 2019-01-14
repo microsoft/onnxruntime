@@ -3,6 +3,10 @@
 
 #pragma once
 
+#ifdef _WIN32
+#pragma warning(disable : 4267)
+#endif
+
 #include <algorithm>
 #include <functional>
 #include <future>
@@ -19,9 +23,6 @@
 #include "core/util/math_cpuonly.h"
 
 #ifdef USE_EIGEN_THREADPOOL
-#ifdef _WIN32
-#pragma warning(disable : 4267)
-#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #else
 #include "core/common/task_thread_pool.h"

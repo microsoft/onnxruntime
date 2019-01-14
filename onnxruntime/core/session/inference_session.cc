@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#pragma warning(disable : 4267)
+#endif
+
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -41,10 +45,6 @@
 #include "core/session/IOBinding.h"
 
 #ifdef USE_EIGEN_THREADPOOL
-#ifdef _WIN32
-#error this code should be compiled by windows gpu compiler
-#pragma warning(disable : 4267)
-#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #endif
 
