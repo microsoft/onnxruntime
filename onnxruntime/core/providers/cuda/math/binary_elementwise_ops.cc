@@ -24,7 +24,7 @@ static Status ComputeOutputShape(const std::string& node_name, const TensorShape
   size_t out_rank = std::max(lhs_rank, rhs_rank);
 
   std::vector<int64_t> output_dims(out_rank, 0);
-  for (int i = 0; i < out_rank; ++i) {
+  for (size_t i = 0; i < out_rank; ++i) {
     int64_t lhs_dim = 1;
     if (i < lhs_rank)
       lhs_dim = lhs_shape[lhs_rank - 1 - i];

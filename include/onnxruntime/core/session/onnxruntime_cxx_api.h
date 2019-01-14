@@ -11,10 +11,10 @@
 //TODO: encode error code in the message?
 #define ORT_THROW_ON_ERROR(expr)                                       \
   do {                                                                 \
-    OrtStatus* onnx_status = (expr);                                  \
+    OrtStatus* onnx_status = (expr);                                   \
     if (onnx_status != nullptr) {                                      \
       std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
-      OrtReleaseStatus(onnx_status);                                  \
+      OrtReleaseStatus(onnx_status);                                   \
       throw std::runtime_error(ort_error_message);                     \
     }                                                                  \
   } while (0);
@@ -24,19 +24,33 @@
     return Ort##NAME(value.get());              \
   }
 
-#define DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME)  \
-  namespace std {                                           \
-  template <>                                               \
-  struct default_delete<Ort##TYPE_NAME> {                   \
-    void operator()(Ort##TYPE_NAME* ptr) {                  \
+namespace std {
+template <>
+struct default_delete<OrtAllocator> {
+  void operator()(OrtAllocator* ptr) {
+    OrtReleaseAllocator(ptr);
+  }
+};
+
+template <>
+struct default_delete<OrtEnv> {
+  void operator()(OrtEnv* ptr) {
+    OrtReleaseEnv(ptr);
+  }
+};
+}  // namespace std
+
+#define DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME) \
+  namespace std {                                          \
+  template <>                                              \
+  struct default_delete<Ort##TYPE_NAME> {                  \
+    void operator()(Ort##TYPE_NAME* ptr) {                 \
       (*reinterpret_cast<OrtObject**>(ptr))->Release(ptr); \
-    }                                                       \
-  };                                                        \
+    }                                                      \
+  };                                                       \
   }
 
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Env);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TypeInfo);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Allocator);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
@@ -89,20 +103,20 @@ class SessionOptionsWrapper {
     return SessionOptionsWrapper(env_, p);
   }
 #ifdef _WIN32
-  OrtSession* OrtCreateInferenceSession(_In_ const wchar_t* model_path) {
+  OrtSession* OrtCreateSession(_In_ const wchar_t* model_path) {
     OrtSession* ret;
-    ORT_THROW_ON_ERROR(::OrtCreateInferenceSession(env_, model_path, value.get(), &ret));
+    ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #else
-  OrtSession* OrtCreateInferenceSession(_In_ const char* model_path) {
+  OrtSession* OrtCreateSession(_In_ const char* model_path) {
     OrtSession* ret;
-    ORT_THROW_ON_ERROR(::OrtCreateInferenceSession(env_, model_path, value.get(), &ret));
+    ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #endif
-  void AddCustomOp(_In_ const char* custom_op_path) {
-    OrtAddCustomOp(value.get(), custom_op_path);
+  void AppendCustomOpLibPath(_In_ const char* lib_path) {
+    OrtAppendCustomOpLibPath(value.get(), lib_path);
   }
 };
 inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {

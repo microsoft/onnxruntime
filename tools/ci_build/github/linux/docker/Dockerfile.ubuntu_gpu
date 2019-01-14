@@ -39,5 +39,8 @@ RUN cd /tmp && \
 ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ARG BUILD_USER=onnxruntimedev
+ARG BUILD_UID=1000
 WORKDIR /home/$BUILD_USER
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+USER $BUILD_USER
 

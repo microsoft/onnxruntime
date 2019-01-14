@@ -8,11 +8,11 @@
 
 #define ORT_ABORT_ON_ERROR(expr)                         \
   do {                                                   \
-    OrtStatus* onnx_status = (expr);                    \
+    OrtStatus* onnx_status = (expr);                     \
     if (onnx_status != NULL) {                           \
       const char* msg = OrtGetErrorMessage(onnx_status); \
       fprintf(stderr, "%s\n", msg);                      \
-      OrtReleaseStatus(onnx_status);                    \
+      OrtReleaseStatus(onnx_status);                     \
       abort();                                           \
     }                                                    \
   } while (0);
@@ -154,14 +154,14 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
   OrtValue* input_tensor = NULL;
   ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
-  assert(OrtIsTensor(input_tensor) != 0);
+  assert(OrtIsTensor(input_tensor));
   OrtReleaseAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
   OrtValue* output_tensor = NULL;
-  ORT_ABORT_ON_ERROR(OrtRunInference(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
+  ORT_ABORT_ON_ERROR(OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
-  assert(OrtIsTensor(output_tensor) != 0);
+  assert(OrtIsTensor(output_tensor));
   int ret = 0;
   if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
     ret = -1;
@@ -174,9 +174,9 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
 
 void verify_input_output_count(OrtSession* session) {
   size_t count;
-  ORT_ABORT_ON_ERROR(OrtInferenceSessionGetInputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetInputCount(session, &count));
   assert(count == 1);
-  ORT_ABORT_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &count));
+  ORT_ABORT_ON_ERROR(OrtSessionGetOutputCount(session, &count));
   assert(count == 1);
 }
 
@@ -198,13 +198,13 @@ int main(int argc, char* argv[]) {
   char* input_file = argv[2];
   char* output_file = argv[3];
   OrtEnv* env;
-  ORT_ABORT_ON_ERROR(OrtInitialize(ORT_LOGGING_LEVEL_kWARNING, "test", &env));
+  ORT_ABORT_ON_ERROR(OrtInitialize(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_option = OrtCreateSessionOptions();
 #ifdef USE_CUDA
   enable_cuda(session_option);
 #endif
   OrtSession* session;
-  ORT_ABORT_ON_ERROR(OrtCreateInferenceSession(env, model_path, session_option, &session));
+  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
   OrtReleaseObject(session_option);

@@ -10,11 +10,13 @@ jobs:
       Python37:
         python.version: '3.7'
   steps:
+    - template: templates/set-test-data-variables-step.yml
+
     - task: ShellScript@2
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
+        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -28,9 +30,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
+    - template: templates/clean-agent-build-directory-step.yml
 
 - job: Ubuntu1604_py_GPU_Wheels
   pool: Linux-GPU
@@ -43,11 +43,13 @@ jobs:
       Python37:
         python.version: '3.7'
   steps:
+    - template: templates/set-test-data-variables-step.yml
+
     - task: ShellScript@2
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
+        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -61,9 +63,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
+    - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_py_Wheels
   pool: Win-CPU
@@ -73,6 +73,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
+      Python37:
+        python.version: '3.7'
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
   steps:
@@ -103,19 +105,13 @@ jobs:
         ArtifactName: onnxruntime
 
     - task: CmdLine@1
-      displayName: 'Clean build folders/files'
-      inputs:
-        filename: rd
-        arguments: '/s /q $(Agent.BuildDirectory)'
-      continueOnError: true
-      condition: always()
-
-    - task: CmdLine@1
       displayName: 'Deactivating Conda Environment'
       inputs:
         filename: deactivate
       continueOnError: true
       condition: always()
+
+    - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
   pool: Win-GPU
@@ -128,6 +124,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
+      Python37:
+        python.version: '3.7'
   steps:
     - task: CondaEnvironment@1
       inputs:
@@ -169,19 +167,13 @@ jobs:
         ArtifactName: onnxruntime_gpu
 
     - task: CmdLine@1
-      displayName: 'Clean build folders/files'
-      inputs:
-        filename: rd
-        arguments: '/s /q $(Agent.BuildDirectory)'
-      continueOnError: true
-      condition: always()
-
-    - task: CmdLine@1
       displayName: 'Deactivating Conda Environment'
       inputs:
         filename: deactivate
       continueOnError: true
       condition: always()
+
+    - template: templates/clean-agent-build-directory-step.yml
 
 - job: MacOS_py_Wheels
   pool:
@@ -192,7 +184,8 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
-
+      Python37:
+        python.version: '3.7'
   steps:
     - task: CondaEnvironment@1
       inputs:
@@ -219,13 +212,4 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
-
-    - task: CmdLine@1
-      displayName: 'Deactivating Conda Environment'
-      inputs:
-        filename: deactivate
-      continueOnError: true
-      condition: always()
+    - template: templates/clean-agent-build-directory-step.yml

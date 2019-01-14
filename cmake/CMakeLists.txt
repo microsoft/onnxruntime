@@ -43,6 +43,7 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" OFF)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
@@ -56,6 +57,7 @@ option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
+option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
@@ -64,11 +66,25 @@ option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+#nsync tests failed on Mac Build
+set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" VERSION_NUMBER)
+
+if(onnxruntime_USE_OPENMP)
+  find_package(OpenMP)
+  if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    add_definitions(-DUSE_OPENMP)
+  endif()
+endif()
+
+#must after OpenMP settings
+find_package(Threads)
 
 if (MSVC)
   if (onnxruntime_MSVC_STATIC_RUNTIME)
@@ -102,12 +118,11 @@ if (MSVC)
   #Disable 4100 globally. Too many this kind errors in protobuf
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100")
 else()
-  # Enable OpenMP for Non-Windows only. WinML team disallows use of OpenMP.
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-      set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-      add_definitions(-DUSE_OPENMP)
+  if(onnxruntime_BUILD_FOR_NATIVE_MACHINE)
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -march=native -mtune=native")
+    string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
+    string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
+    string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
   endif()
 endif()
 
@@ -136,6 +151,8 @@ if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   endif()
 endif()
 
+#target begins from here
+
 if(onnxruntime_BUILD_BENCHMARKS)
   if(NOT TARGET benchmark)
     # We will not need to test benchmark lib itself.
@@ -146,6 +163,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
@@ -217,8 +235,6 @@ add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_library(date ALIAS tz)
 add_library(gsl ALIAS GSL)
 
-set(date_INCLUDE_DIR $<TARGET_PROPERTY:tz,INTERFACE_INCLUDE_DIRECTORIES>)
-
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGSL_THROW_ON_CONTRACT_VIOLATION")
@@ -227,14 +243,10 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DGSL_UNENFORCED_ON_CONT
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION")
 
 include(eigen)
-set(onnxruntime_EXTERNAL_LIBRARIES protobuf::libprotobuf)
-
-# gtest and gmock
-add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
-set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
-set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
-set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
-set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
+#onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
+# mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+# pthread is always at the last
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -242,6 +254,8 @@ function(onnxruntime_add_include_to_target dst_target)
         target_compile_definitions(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_COMPILE_DEFINITIONS>)
     endforeach()
 endfunction()
+
+set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto)
 
 # TVM
 if (onnxruntime_USE_TVM)
@@ -266,28 +280,20 @@ if (onnxruntime_USE_TVM)
     $<TARGET_PROPERTY:nnvm_compiler,INTERFACE_INCLUDE_DIRECTORIES>)
   add_definitions(-DUSE_TVM)
 
-  set(onnxruntime_tvm_libs
-    onnxruntime_codegen_tvm
-    tvm
-    nnvm_compiler)
+  set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler)
 
-  set(onnxruntime_tvm_dependencies
-    tvm
-    nnvm_compiler
-    onnxruntime_codegen_tvm)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
 # ONNX
 add_subdirectory(onnx)
-set_target_properties(onnx PROPERTIES FOLDER "External/ONNX")
-set_target_properties(onnx_proto PROPERTIES FOLDER "External/ONNX")
+
 #set_target_properties(gen_onnx_proto PROPERTIES FOLDER "External/ONNX")
 # fix a warning in onnx code we can't do anything about
 if (MSVC)
-    target_compile_options(onnx_proto PRIVATE /wd4146) # unary minus operator applied to unsigned type
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DEIGEN_HAS_C99_MATH") # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
 endif()
-set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto)
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS)
@@ -322,7 +328,7 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    #only treat warning as error on x64 platform. For x86, right no there are too many warnings to fix
+    # treat warning as error only on x64 platform. For x86, there are too many warnings to fix.
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
@@ -330,28 +336,34 @@ if (WIN32)
         set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /WX")
       endforeach()
     endif()
+
+    # set linker flags to minimize the binary size.
+    if (MSVC)
+      foreach(type EXE SHARED)    
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF")
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+      endforeach()
+    endif()      
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning in Linux
   string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
   string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
   if(onnxruntime_DEV_MODE)
-    string(APPEND CMAKE_CXX_FLAGS " -Werror")
-    string(APPEND CMAKE_C_FLAGS " -Werror")
+    if(NOT onnxruntime_USE_TVM)
+      string(APPEND CMAKE_CXX_FLAGS " -Werror")
+      string(APPEND CMAKE_C_FLAGS " -Werror")
+     endif()
   endif()
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
-  check_cxx_compiler_flag(-Wnull-dereference HAS_NULL_DEREFERENCE)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
   check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
   check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
-  if(HAS_NULL_DEREFERENCE)
-    string(APPEND CMAKE_CXX_FLAGS " -Wnull-dereference")
-    string(APPEND CMAKE_C_FLAGS " -Wnull-dereference")
-  endif()
+  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-tautological-pointer-compare")
@@ -362,15 +374,9 @@ else()
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-nonnull-compare")
     string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-nonnull-compare")
   endif()
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=sign-compare -Wno-error=comment")
-  if(onnxruntime_USE_CUDA)
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=reorder")
-  endif()
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=sign-compare")
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
-  endif()
-  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=invalid-partial-specialization -Wno-error=missing-braces -Wno-error=inconsistent-missing-override")
   endif()
 endif()
 
@@ -384,10 +390,7 @@ if (onnxruntime_USE_JEMALLOC)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
 endif()
 
-include_directories(
-  ${ONNXRUNTIME_INCLUDE_DIR}
-  $<TARGET_PROPERTY:GSL,INTERFACE_INCLUDE_DIRECTORIES>
-)
+include_directories(${ONNXRUNTIME_INCLUDE_DIR})
 
 if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
@@ -428,21 +431,26 @@ configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_c
 
 if (onnxruntime_USE_CUDA)
   add_definitions(-DUSE_CUDA=1)
+  #The following 6 lines are copied from https://gitlab.kitware.com/cmake/cmake/issues/17559
+  set( CMAKE_CUDA_FLAGS "" CACHE STRING "" )
+  if ( CMAKE_CUDA_FLAGS )
+    list(REMOVE_ITEM CMAKE_CUDA_FLAGS "-cudart static")
+  endif()
+  string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   enable_language(CUDA)
   set(CMAKE_CUDA_STANDARD 14)
-  if (DEFINED onnxruntime_CUDA_HOME)
-    file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDA_TOOLKIT_ROOT_DIR)
-  endif ()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-  find_package(CUDA 9.0 REQUIRED)
-  set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
+  set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
+  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn)
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn cublas)
-	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_100.dll /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
+    string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\1" onnxruntime_CUDA_VERSION_MAJOR ${CMAKE_CUDA_COMPILER_VERSION})
+    string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\2" onnxruntime_CUDA_VERSION_MINOR ${CMAKE_CUDA_COMPILER_VERSION})
+
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_${onnxruntime_CUDA_VERSION_MAJOR}${onnxruntime_CUDA_VERSION_MINOR}.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
-    set(ONNXRUNTIME_CUDA_LIBRARIES cudnn_static cublas_static culibos)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
@@ -467,7 +475,7 @@ if (onnxruntime_USE_TVM)
     # wd4456: declaration of X hides previous local declaration
     set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
   else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=extra" "-Wno-error=ignored-qualifiers")
+    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers")
     if(HAS_UNUSED_PARAMETER)
       list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
     endif()
@@ -490,20 +498,32 @@ include(onnxruntime_common.cmake)
 include(onnxruntime_graph.cmake)
 include(onnxruntime_framework.cmake)
 include(onnxruntime_util.cmake)
+#The next file will define 'onnxruntime_libs' cmake var
 include(onnxruntime_providers.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
+if(WIN32)
+  set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
+else()
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES Threads::Threads)
+  set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
+endif()
+
+#The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
 if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
 endif()
 
 if (onnxruntime_ENABLE_PYTHON)
-if(UNIX)
-  set(CMAKE_SKIP_BUILD_RPATH ON)
-endif()
-include(onnxruntime_python.cmake)
+  if(UNIX)
+    set(CMAKE_SKIP_BUILD_RPATH ON)
+  endif()
+  include(onnxruntime_python.cmake)
 endif()
 
 if (onnxruntime_BUILD_CSHARP)
@@ -518,5 +538,11 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   # we need to make sure this is turned off since it
   # turned ON by the previous step when building a shared lib
   set(CMAKE_SKIP_BUILD_RPATH OFF)
+  # gtest and gmock
+  add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
+  set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
+  set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
+  set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
+  set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
   include(onnxruntime_unittests.cmake)
 endif()

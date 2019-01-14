@@ -2,16 +2,18 @@ jobs:
 - job: Windows_CI_Dev
   pool: Win-CPU
   steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: CmdLine@1
+      displayName: 'Download cmake'
+      inputs:
+        filename: python
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+
     - task: BatchScript@1
       inputs:
         filename: build.bat
-        arguments: ' --config Debug Release --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
-        workingFolder: "$(Build.SourcesDirectory)"
+        arguments: ' --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --config Debug Release --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+        workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: CmdLine@1
-      displayName: 'Clean build folders/files'
-      inputs:
-        filename: rd
-        arguments: '/s /q $(Agent.BuildDirectory)'
-      continueOnError: true
-      condition: always()
+    - template: templates/clean-agent-build-directory-step.yml

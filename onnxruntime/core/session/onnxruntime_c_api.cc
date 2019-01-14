@@ -26,6 +26,7 @@
 #include "abi_session_options_impl.h"
 
 using namespace onnxruntime::logging;
+using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::Environment;
 using onnxruntime::IAllocator;
@@ -44,20 +45,18 @@ using onnxruntime::common::Status;
     if (_status) return _status;      \
   } while (0)
 
-struct OrtEnv : public onnxruntime::ObjectBase<OrtEnv> {
+struct OrtEnv {
  public:
   Environment* value;
   LoggingManager* loggingManager;
   friend class onnxruntime::ObjectBase<OrtEnv>;
 
   OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
-    ORT_CHECK_C_OBJECT_LAYOUT;
   }
   /**
   * This function will call ::google::protobuf::ShutdownProtobufLibrary
   */
   ~OrtEnv() {
-    assert(ref_count == 0);
     delete loggingManager;
     delete value;
   }
@@ -165,7 +164,7 @@ ORT_API_STATUS_IMPL(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* 
 }
 
 template <typename T>
-OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocatorInterface** allocator,
+OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -178,13 +177,13 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocatorI
   if (!IAllocator::CalcMemSizeForArray(sizeof(T), elem_count, &size_to_allocate)) {
     return OrtCreateStatus(ORT_FAIL, "not enough memory");
   }
-  void* p_data = (*allocator)->Alloc(allocator, size_to_allocate);
+  void* p_data = allocator->Alloc(allocator, size_to_allocate);
   if (p_data == nullptr)
     return OrtCreateStatus(ORT_FAIL, "size overflow");
   *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                   onnxruntime::TensorShape(shapes),
                                   static_cast<void*>(p_data),
-                                  *(*allocator)->Info(allocator),
+                                  *allocator->Info(allocator),
                                   std::make_shared<onnxruntime::AllocatorWrapper>(allocator));
   return nullptr;
 }
@@ -259,6 +258,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorIn
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<BFloat16>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
@@ -322,6 +324,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<MLFloat16>(shape, shape_len, allocator, &tensor));
       break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<BFloat16>(shape, shape_len, allocator, &tensor));
+      break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<double>(shape, shape_len, allocator, &tensor));
       break;
@@ -333,7 +338,6 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
     default: {
       std::ostringstream oss;
       oss << "type " << type << " is not supported in this function";
@@ -351,9 +355,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
 }
 
 template <typename T>
-static OrtStatus* CreateInferenceSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
-                                             _In_ const OrtSessionOptions* options,
-                                             _Out_ OrtSession** out) {
+static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
+                                    _In_ const OrtSessionOptions* options,
+                                    _Out_ OrtSession** out) {
   API_IMPL_BEGIN
   auto sess = std::make_unique<::onnxruntime::InferenceSession>(options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
@@ -383,22 +387,22 @@ static OrtStatus* CreateInferenceSessionImpl(_In_ OrtEnv* env, _In_ T model_path
 }
 
 #ifdef _WIN32
-ORT_API_STATUS_IMPL(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const wchar_t* model_path,
+ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const wchar_t* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  return CreateInferenceSessionImpl(env, model_path, options, out);
+  return CreateSessionImpl(env, model_path, options, out);
   API_IMPL_END
 }
 #else
-ORT_API_STATUS_IMPL(OrtCreateInferenceSession, _In_ OrtEnv* env, _In_ const char* model_path,
+ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const char* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  return CreateInferenceSessionImpl(env, model_path, options, out);
+  return CreateSessionImpl(env, model_path, options, out);
   API_IMPL_END
 }
 #endif
 
-ORT_API_STATUS_IMPL(OrtRunInference, _In_ OrtSession* sess,
+ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
                     _In_ OrtRunOptions* run_options,
                     _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                     _In_ const char* const* output_names1, size_t output_names_len, _Out_ OrtValue** output) {
@@ -520,7 +524,7 @@ ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
     delete[] reinterpret_cast<REAL_TYPE*>(value);                           \
   }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelInputs();
@@ -531,7 +535,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputCount, _In_ const OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
@@ -542,7 +546,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputCount, _In_ const OrtSession* se
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelInputs();
@@ -554,7 +558,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputTypeInfo, _In_ const OrtSession* 
   return OrtTypeInfo::FromDataTypeImpl(type_proto, out);
   API_IMPL_END
 }
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   std::pair<Status, const InputDefList*> p = session->GetModelOutputs();
@@ -568,7 +572,7 @@ ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputTypeInfo, _In_ const OrtSession*
 }
 
 static char* StrDup(const std::string& str, OrtAllocator* allocator) {
-  char* output_string = reinterpret_cast<char*>((*allocator)->Alloc(allocator, str.size() + 1));
+  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
   memcpy(output_string, str.c_str(), str.size());
   output_string[str.size()] = '\0';
   return output_string;
@@ -597,7 +601,7 @@ ORT_API(int, OrtIsTensor, _In_ const OrtValue* value) {
 
 ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
   try {
-    return (*ptr)->Alloc(ptr, size);
+    return ptr->Alloc(ptr, size);
   } catch (std::exception&) {
     return nullptr;
   }
@@ -605,37 +609,34 @@ ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
 
 ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p) {
   try {
-    (*ptr)->Free(ptr, p);
+    ptr->Free(ptr, p);
   } catch (std::exception&) {
   }
 }
 
 ORT_API(const struct OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr) {
   try {
-    return (*ptr)->Info(ptr);
+    return ptr->Info(ptr);
   } catch (std::exception&) {
     return nullptr;
   }
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetInputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Out_ char** output) {
   API_IMPL_BEGIN
   return GetInputOutputNameImpl(sess, index, allocator, true, output);
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInferenceSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
+ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Out_ char** output) {
   API_IMPL_BEGIN
   return GetInputOutputNameImpl(sess, index, allocator, false, output);
   API_IMPL_END
 }
 
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, MLValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION_FOR_ARRAY(Status, char)
-
-ORT_API(void, OrtReleaseEnv, OrtEnv* env) {
-  OrtReleaseObject(env);
-}

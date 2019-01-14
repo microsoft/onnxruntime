@@ -7,39 +7,37 @@
 #include <cassert>
 using onnxruntime::common::Status;
 
+struct OrtStatus {
+  OrtErrorCode code;
+  char msg[1];  // a null-terminated string
+};
+
 ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, const char* msg) {
   assert(!(code == 0 && msg != nullptr));
   size_t clen = strlen(msg);
-  size_t len = clen + 1 + sizeof(int);
-  char* p = new char[len];
-  char* ret = p;
-  *reinterpret_cast<int*>(p) = static_cast<int>(code);
-  p += sizeof(int);
-  memcpy(p, msg, clen);
-  p += clen;
-  *p = '\0';
-  return ret;
+  OrtStatus* p = reinterpret_cast<OrtStatus*>(new char[sizeof(OrtStatus) + clen]);
+  p->code = code;
+  memcpy(p->msg, msg, clen);
+  p->msg[clen] = '\0';
+  return p;
 }
+
 namespace onnxruntime {
 OrtStatus* ToOrtStatus(const Status& st) {
   if (st.IsOK())
     return nullptr;
   size_t clen = st.ErrorMessage().length();
-  size_t len = clen + 1 + sizeof(int);
-  char* p = new char[len];
-  char* ret = p;
-  *reinterpret_cast<int*>(p) = static_cast<int>(st.Code());
-  p += sizeof(int);
-  memcpy(p, st.ErrorMessage().c_str(), clen);
-  p += clen;
-  *p = '\0';
-  return ret;
+  OrtStatus* p = reinterpret_cast<OrtStatus*>(new char[sizeof(OrtStatus) + clen]);
+  p->code = static_cast<OrtErrorCode>(st.Code());
+  memcpy(p->msg, st.ErrorMessage().c_str(), clen);
+  p->msg[clen] = '\0';
+  return p;
 }
 }  // namespace onnxruntime
 ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status) {
-  return *reinterpret_cast<OrtErrorCode*>(const_cast<OrtStatus*>(status));
+  return status->code;
 }
 
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status) {
-  return reinterpret_cast<const char*>(status) + sizeof(int);
+  return status->msg;
 }

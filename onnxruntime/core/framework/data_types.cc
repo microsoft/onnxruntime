@@ -85,6 +85,10 @@ template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
 };
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+};
 
 template <typename T>
 struct TensorContainedTypeSetter<T> {
@@ -123,6 +127,8 @@ template struct
     TensorContainedTypeSetter<uint32_t>;
 template struct
     TensorContainedTypeSetter<uint64_t>;
+template struct
+    TensorContainedTypeSetter<BFloat16>;
 
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto& value_proto,
                          ONNX_NAMESPACE::TypeProto& map_proto) {
@@ -435,6 +441,7 @@ ORT_REGISTER_TENSOR_TYPE(double);
 ORT_REGISTER_TENSOR_TYPE(uint32_t);
 ORT_REGISTER_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_TENSOR_TYPE(MLFloat16);
+ORT_REGISTER_TENSOR_TYPE(BFloat16);
 
 ORT_REGISTER_MAP(MapStringToString);
 ORT_REGISTER_MAP(MapStringToInt64);
@@ -482,6 +489,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(uint32_t, reg_fn);
   REGISTER_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_TENSOR_PROTO(MLFloat16, reg_fn);
+  REGISTER_TENSOR_PROTO(BFloat16, reg_fn);
 
   REGISTER_ONNX_PROTO(MapStringToString, reg_fn);
   REGISTER_ONNX_PROTO(MapStringToInt64, reg_fn);
@@ -540,6 +548,8 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
           return DataTypeImpl::GetTensorType<uint64_t>();
         case TensorProto_DataType_FLOAT16:
           return DataTypeImpl::GetTensorType<MLFloat16>();
+        case TensorProto_DataType_BFLOAT16:
+          return DataTypeImpl::GetTensorType<BFloat16>();
         default:
           ORT_NOT_IMPLEMENTED("tensor type ", tensor_type.elem_type(), " is not supported");
       }
@@ -685,6 +695,7 @@ ORT_REGISTER_NON_ONNX_TYPE(double);
 ORT_REGISTER_NON_ONNX_TYPE(uint32_t);
 ORT_REGISTER_NON_ONNX_TYPE(uint64_t);
 ORT_REGISTER_NON_ONNX_TYPE(MLFloat16);
+ORT_REGISTER_NON_ONNX_TYPE(BFloat16);
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
   static std::vector<MLDataType> all_fixed_size_tensor_types =
@@ -699,6 +710,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
        DataTypeImpl::GetTensorType<int8_t>(),
        DataTypeImpl::GetTensorType<uint8_t>(),
        DataTypeImpl::GetTensorType<MLFloat16>(),
+       DataTypeImpl::GetTensorType<BFloat16>(),
        DataTypeImpl::GetTensorType<bool>()};
 
   return all_fixed_size_tensor_types;
@@ -717,6 +729,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
        DataTypeImpl::GetTensorType<int8_t>(),
        DataTypeImpl::GetTensorType<uint8_t>(),
        DataTypeImpl::GetTensorType<MLFloat16>(),
+       DataTypeImpl::GetTensorType<BFloat16>(),
        DataTypeImpl::GetTensorType<bool>(),
        DataTypeImpl::GetTensorType<std::string>()};
 

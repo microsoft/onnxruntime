@@ -22,9 +22,13 @@ OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.session_state_) {}
 
 const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType mem_type) const {
-  AllocatorPtr alloc = execution_provider_->GetAllocator(device_id, mem_type);
+  AllocatorPtr alloc = GetAllocator(device_id, mem_type);
   if (alloc == nullptr) ORT_THROW("cannot find allocator");
   return alloc->Info();
+}
+
+const AllocatorPtr OpKernelInfo::GetAllocator(int device_id, OrtMemType mem_type) const {
+  return execution_provider_->GetAllocator(device_id, mem_type);
 }
 
 const KernelDef& OpKernelInfo::GetKernelDef() const {
@@ -60,5 +64,10 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
   }
   *constant_input_value = &iter->second.Get<Tensor>();
   return true;
+}
+
+common::Status OpKernelInfo::GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const {
+  auto* funcs_mgr = session_state_.GetFuncMgr();
+  return funcs_mgr->GetFuncs(node_.Name(), compute, create, release);
 }
 }  // namespace onnxruntime
