@@ -1,15 +1,11 @@
 #!/bin/bash
 set -e
-
-while getopts p:o: parameter_Option
+while getopts p: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
-o) OS_VER=${OPTARG};;
 esac
 done
-
-echo "bp=$PYTHON_VER bo=$OS_VER"
 
 DEBIAN_FRONTEND=noninteractive
 
@@ -47,6 +43,7 @@ apt-get update && apt-get install -y --no-install-recommends \
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
+OS_VER=`lsb_release -r -s`
 mkdir -p /tmp/dotnet
 aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
 dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
