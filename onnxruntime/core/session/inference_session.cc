@@ -40,8 +40,8 @@
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
 
-#if defined(USE_EIGEN_THREADPOOL)
-#if defined(_MSC_VER)
+#ifdef USE_EIGEN_THREADPOOL
+#ifndef __GNUC__
 #pragma warning(disable : 4267)
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
