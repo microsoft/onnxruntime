@@ -8,7 +8,11 @@ esac
 done
 
 DEBIAN_FRONTEND=noninteractive
-apt-get update && apt-get install -y software-properties-common
+mkdir -p /tmp/dotnet
+aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/16.04/packages-microsoft-prod.deb
+dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
+apt-get update && apt-get install -y software-properties-common \
+        apt-transport-https
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
         autotools-dev \
@@ -37,7 +41,8 @@ apt-get update && apt-get install -y --no-install-recommends \
         unzip \
         zip \
         rsync libunwind8 libpng16-dev \
-        python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest
+        python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
+        dotnet-sdk-2.2
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
