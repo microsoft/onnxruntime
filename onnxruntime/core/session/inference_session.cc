@@ -42,6 +42,7 @@
 
 #ifdef USE_EIGEN_THREADPOOL
 #ifdef _WIN32
+#error this code should be compiled by windows gpu compiler
 #pragma warning(disable : 4267)
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
