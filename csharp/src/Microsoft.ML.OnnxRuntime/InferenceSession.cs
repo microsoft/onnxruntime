@@ -44,8 +44,11 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
-            
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionW(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
+                else
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
+
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();

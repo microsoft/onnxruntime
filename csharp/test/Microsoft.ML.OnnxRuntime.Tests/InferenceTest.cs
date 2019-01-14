@@ -214,10 +214,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var modelRoot = new DirectoryInfo(opset);
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
-                    // TODO: dims contains 'None'. Session throws error.
-                    if (modelDir.Name== "test_tiny_yolov2")
-                        continue;
-
                     String onnxModelFileName = null;
                     try
                     {
@@ -240,6 +236,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
                         var innodedims = innodepair.Value.Dimensions;
+                        for (int i=0; i < innodedims.Length; i++)
+                        {
+                            if (innodedims[i] < 0)
+                                innodedims[i] = -1 * innodedims[i];
+                        }
                         var dataIn = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\input_0.pb");
                         var dataOut = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\output_0.pb");
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
@@ -263,7 +264,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputFloat()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_FLOAT.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
@@ -279,7 +280,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputBOOL()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_BOOL.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
@@ -295,7 +296,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT32.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT32.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<int>(new int[] { 1, -2, -3, int.MinValue, int.MaxValue }, new int[] { 1, 5 });
@@ -311,7 +312,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputDOUBLE()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_DOUBLE.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_DOUBLE.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<double>(new double[] { 1.0, 2.0, -3.0, 5, 5 }, new int[] { 1, 5 });
@@ -327,7 +328,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputSTRING()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_STRING.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.onnx");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<string>(new string[] { "a", "c", "d", "z", "f" }, new int[] { 1, 5 });
@@ -343,7 +344,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputINT8()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT8.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT8.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<sbyte>(new sbyte[] { 1, 2, -3, sbyte.MinValue, sbyte.MaxValue }, new int[] { 1, 5 });
@@ -359,7 +360,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputUINT8()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT8.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT8.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<byte>(new byte[] { 1, 2, 3, byte.MinValue, byte.MaxValue }, new int[] { 1, 5 });
@@ -375,7 +376,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputUINT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT16.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT16.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<UInt16>(new UInt16[] { 1, 2, 3, UInt16.MinValue, UInt16.MaxValue }, new int[] { 1, 5 });
@@ -391,7 +392,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputINT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT16.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT16.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<Int16>(new Int16[] { 1, 2, 3, Int16.MinValue, Int16.MaxValue }, new int[] { 1, 5 });
@@ -407,7 +408,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputINT64()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT64.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT64.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<Int64>(new Int64[] { 1, 2, -3, Int64.MinValue, Int64.MaxValue }, new int[] { 1, 5 });
@@ -423,7 +424,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputUINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT32.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT32.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<UInt32>(new UInt32[] { 1, 2, 3, UInt32.MinValue, UInt32.MaxValue }, new int[] { 1, 5 });
@@ -438,7 +439,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputUINT64()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT64.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT64.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<UInt64>(new UInt64[] { 1, 2, 3, UInt64.MinValue, UInt64.MaxValue }, new int[] { 1, 5 });
@@ -454,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputFLOAT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_FLOAT16.pb";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT16.pb");
             var session = new InferenceSession(modelPath);
             var container = new List<NamedOnnxValue>();
             var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
@@ -498,7 +499,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet()
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             var session = new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");

@@ -43,11 +43,17 @@ namespace Microsoft.ML.OnnxRuntime
         #region InferenceSession API
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* OrtStatus* */OrtCreateSession(
+        public static extern IntPtr /* OrtStatus* */OrtCreateSessionW(
                                                         IntPtr /* (OrtEnv*) */ environment,
                                                         [MarshalAs(UnmanagedType.LPWStr)]string modelPath, //the model path is consumed as a wchar* in the C-api
                                                         IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                         out IntPtr /**/ session);
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /* OrtStatus* */OrtCreateSession(
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                [MarshalAs(UnmanagedType.LPStr)]string modelPath, //the model path is consumed as a wchar* in the C-api
+                                                IntPtr /* (OrtSessionOptions*) */sessopnOptions,
+                                                out IntPtr /**/ session);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(ONNStatus*)*/ OrtRun(
