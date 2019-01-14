@@ -48,16 +48,16 @@ print(confusion_matrix(y_test, pred))
 # +++++++++++++++++++++++++
 #
 # We use module 
-# `onnxmltools <https://github.com/onnx/onnxmltools>`_
+# `sklearn-onnx <https://github.com/onnx/sklearn-onnx>`_
 # to convert the model into ONNX format.
 
-from onnxmltools import convert_sklearn
-from onnxmltools.utils import save_model
-from onnxmltools.convert.common.data_types import FloatTensorType
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
 
 initial_type = [('float_input', FloatTensorType([1, 4]))]
 onx = convert_sklearn(clr, initial_types=initial_type)
-save_model(onx, "logreg_iris.onnx")
+with open("logreg_iris.onnx", "wb") as f:
+    f.write(onx.SerializeToString())
 
 ##################################
 # We load the model with ONNX Runtime and look at
@@ -172,7 +172,8 @@ rf.fit(X_train, y_train)
 
 initial_type = [('float_input', FloatTensorType([1, 4]))]
 onx = convert_sklearn(rf, initial_types=initial_type)
-save_model(onx, "rf_iris.onnx")
+with open("rf_iris.onnx", "wb") as f:
+    f.write(onx.SerializeToString())
 
 ###################################
 # We compare.
@@ -199,7 +200,8 @@ for n_trees in range(5, 51, 5):
     rf.fit(X_train, y_train)
     initial_type = [('float_input', FloatTensorType([1, 4]))]
     onx = convert_sklearn(rf, initial_types=initial_type)
-    save_model(onx, "rf_iris_%d.onnx" % n_trees)
+    with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
+        f.write(onx.SerializeToString())
     sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees)
     def sess_predict_proba_loop(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]

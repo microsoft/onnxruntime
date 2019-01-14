@@ -66,6 +66,8 @@ option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+#nsync tests failed on Mac Build
+set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
@@ -161,7 +163,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
-add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync)
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
