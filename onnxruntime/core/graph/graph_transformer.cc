@@ -7,6 +7,20 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
+Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
+  // the ApplyImpl call will recurse into subgraphs, and we only need to call Graph::Resolve once at most so do
+  // that at this level and not from inside ApplyImpl
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  auto status = ApplyImpl(graph, modified);
+  ORT_RETURN_IF_ERROR(status);
+
+  if (modified)
+    status = graph.Resolve();
+
+  return status;
+}
+
 Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule) {
   if (HasRules(op_type)) {
     op_to_rules_[op_type] = std::vector<std::unique_ptr<RewriteRule>>();
@@ -16,16 +30,17 @@ Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::uniq
   return Status::OK();
 }
 
-Status TopDownRuleBasedTransformer::Apply(Graph& graph, bool& modified) const {
-  ORT_RETURN_IF_ERROR(graph.Resolve());
+Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
   for (NodeIndex i : order) {
-    auto node = graph.GetNode(i);
+    auto* node = graph.GetNode(i);
     if (!node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
+
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified));
 
     // Get the rules that should be fired for this node.
     const std::vector<std::unique_ptr<RewriteRule>>* rules = GetRewriteRules(node->OpType());
@@ -35,11 +50,6 @@ Status TopDownRuleBasedTransformer::Apply(Graph& graph, bool& modified) const {
     for (const auto& rule : *rules) {
       ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, *node, modified));
     }
-  }
-
-  // Resolve the graph at the end of all passes.
-  if (modified) {
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
 
   return Status::OK();

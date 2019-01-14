@@ -6,8 +6,23 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/graph/graph_transformer.h"
 
 namespace onnxruntime {
+
+class MemcpyTransformer : public GraphTransformer {
+ public:
+  MemcpyTransformer(const ExecutionProviders& providers, const KernelRegistryManager& registry_manager)
+      : GraphTransformer("MemcpyTransformer", "Insert nodes to copy memory between devices when needed"),
+        providers_{providers},
+        registry_manager_{registry_manager} {}
+
+ private:
+  common::Status ApplyImpl(Graph& graph, bool& modified) const override;
+
+  const ExecutionProviders& providers_;
+  const KernelRegistryManager& registry_manager_;
+};
 
 // implements MemCpy node insertion in graph transform
 // note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTranformer

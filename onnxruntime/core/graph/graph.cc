@@ -550,6 +550,13 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
+const std::unordered_map<std::string, Graph*>* Node::GetMutableSubgraphs() {
+  if (!attr_to_subgraph_map_.empty())
+    return &attr_to_subgraph_map_;
+  else
+    return nullptr;
+}
+
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const {
   for (const auto* arg : InputDefs()) {
     if (arg->Exists())

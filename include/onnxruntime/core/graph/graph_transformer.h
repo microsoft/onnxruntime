@@ -36,10 +36,25 @@ class GraphTransformer {
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  virtual common::Status Apply(Graph& graph, bool& modified) const = 0;
+  common::Status Apply(Graph& graph, bool& modified) const;
+
+  // call Apply on any subgraphs in the Node
+  common::Status Recurse(Node& node, bool& modified) const {
+    const auto* subgraphs = node.GetMutableSubgraphs();
+    if (subgraphs) {
+      for (auto entry : *subgraphs) {
+        auto* subgraph = entry.second;
+        ORT_RETURN_IF_ERROR(Apply(*subgraph, modified));
+      }
+    }
+
+    return Status::OK();
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
+
+  virtual common::Status ApplyImpl(Graph& graph, bool& modified) const = 0;
 
   const std::string name_;
   const std::string desc_;
@@ -64,7 +79,8 @@ each with different trade offs. At the moment, we define one that performs top-d
 */
 class RuleBasedGraphTransformer : public GraphTransformer {
  public:
-  RuleBasedGraphTransformer(const std::string& name, const std::string& desc) : GraphTransformer(name, desc) {}
+  RuleBasedGraphTransformer(const std::string& name, const std::string& desc)
+      : GraphTransformer(name, desc) {}
 
   /**
   Register a rewriting rule.
@@ -111,8 +127,9 @@ class TopDownRuleBasedTransformer : public RuleBasedGraphTransformer {
   TopDownRuleBasedTransformer(const std::string& name, const std::string& desc)
       : RuleBasedGraphTransformer(name, desc) {}
 
+ private:
   // Performs a single top-down traversal of the graph and applies all registered rules.
-  common::Status Apply(Graph& graph, bool& modified) const override;
+  common::Status ApplyImpl(Graph& graph, bool& modified) const override;
 };
 
 }  // namespace onnxruntime

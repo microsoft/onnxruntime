@@ -8,9 +8,11 @@
 namespace onnxruntime {
 
 class ConvAddFusion : public onnxruntime::GraphTransformer {
-public:
+ public:
   ConvAddFusion() noexcept : onnxruntime::GraphTransformer("ConvAddFusion", "Fusing Add into Conv") {}
-  Status Apply(onnxruntime::Graph& graph, bool& modified) const override;
+
+ private:
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified) const override;
 };
 
 }  // namespace onnxruntime

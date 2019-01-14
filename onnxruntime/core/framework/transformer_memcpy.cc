@@ -3,9 +3,33 @@
 
 #include "transformer_memcpy.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/execution_providers.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+
+common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified) const {
+  for (auto& provider : providers_) {
+    if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
+        provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
+        provider->Type() != onnxruntime::kNupharExecutionProvider) {
+      TransformerMemcpyImpl copy_impl(graph, provider->Type());
+      modified = copy_impl.ModifyGraph(registry_manager_);
+    }
+  }
+
+  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximise efficiency.
+  // e.g. data on GPU prior to an 'If' node. The 'If' must run on CPU, but if the subgraph is GPU based it could
+  // consume the data from GPU and we shouldn't insert a memcpy from GPU to CPU prior to the If node, and one from
+  // CPU back to GPU when beginning execution of the subgraph.
+
+  // handle any subgraphs in nodes
+  for (auto& node : graph.Nodes()) {
+    ORT_RETURN_IF_ERROR(Recurse(node, modified));
+  }
+
+  return Status::OK();
+}
 
 /*
 

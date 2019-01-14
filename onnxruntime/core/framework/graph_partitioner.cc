@@ -64,8 +64,9 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
-  //fused_kernel_registry is prepareing the kernels created on the fly for fused sub graph.
-  //It is only visiable for current session.
+
+  // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
+  // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
   // Partitioning <graph> based on provider preference and their capabilities.
   auto kernel_registries = kernel_registry_mgr_.GetAllKernelRegistries();
@@ -94,6 +95,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
       }
+
       if (nullptr == capability->sub_graph->GetMetaDef()) {
         // The <provider> can run a single node in the <graph> if not using meta-defs.
         // A fused kernel is not supported in this case.
@@ -136,6 +138,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
         }
       }
     }
+
     if (nodes_need_compile.size() > 0) {
       if (export_dll) {
         std::string dll_path;
@@ -178,6 +181,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
       break;
     }
   }
+
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());

@@ -89,8 +89,7 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   return graph.Resolve();
 }
 
-Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) const {
-  ORT_RETURN_IF_ERROR(graph.Resolve());
+Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified) const {
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
 
@@ -160,6 +159,8 @@ Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) c
 
     node->ReplaceDefs(replacement_defs);
     modified = modified || casted;
+
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified));
   }
 
   //Resolve it to build the edges.

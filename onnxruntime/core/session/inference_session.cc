@@ -278,18 +278,22 @@ class InferenceSession::Impl {
     GraphPartitioner partitioner(kernel_registry_manager, providers);
     ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), const_cast<FuncManager*>(session_state.GetFuncMgr())));
 
+    bool modified = false;
+
     // Insert copy nodes.
-    for (auto& provider : providers) {
-      if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
-          provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
-          provider->Type() != onnxruntime::kNupharExecutionProvider) {
-        TransformerMemcpyImpl copy_impl(graph, provider->Type());
-        copy_impl.ModifyGraph(kernel_registry_manager);
-      }
-    }
+    MemcpyTransformer copy_transformer{providers, kernel_registry_manager};
+    ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified));
+
+    //for (auto& provider : providers) {
+    //  if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
+    //      provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
+    //      provider->Type() != onnxruntime::kNupharExecutionProvider) {
+    //    TransformerMemcpyImpl copy_impl(graph, provider->Type());
+    //    copy_impl.ModifyGraph(kernel_registry_manager);
+    //  }
+    //}
 
     // Insert cast node/s.
-    bool modified = false;
     ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
     return common::Status::OK();
@@ -399,12 +403,12 @@ class InferenceSession::Impl {
                                          insert_cast_transformer_,
                                          session_state_));
 
-      ORT_RETURN_IF_ERROR(utils::ForAllMutableSubgraphs(graph, [this](Graph& subgraph) {
-        return TransformGraph(subgraph, graph_transformation_mgr_,
-                              execution_providers_, kernel_registry_manager_,
-                              insert_cast_transformer_,
-                              session_state_);
-      }));
+      //ORT_RETURN_IF_ERROR(utils::ForAllMutableSubgraphs(graph, [this](Graph& subgraph) {
+      //  return TransformGraph(subgraph, graph_transformation_mgr_,
+      //                        execution_providers_, kernel_registry_manager_,
+      //                        insert_cast_transformer_,
+      //                        session_state_);
+      //}));
 
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR(graph.Resolve());
@@ -1136,8 +1140,8 @@ class InferenceSession::Impl {
   std::atomic<int> current_num_runs_;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;      // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;            // GUARDED_BY(session_mutex_)
+  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   InsertCastTransformer insert_cast_transformer_;

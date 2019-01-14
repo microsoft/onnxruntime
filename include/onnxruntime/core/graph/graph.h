@@ -55,7 +55,7 @@ class Node {
     @param node The source node if this is an input edge to the current node, 
     or the destination node if this is an output edge from the current node.
     @param src_arg_index The node arg index of source node of the edge.
-	@param dst_arg_index The node arg index of destination node of the edge.
+    @param dst_arg_index The node arg index of destination node of the edge.
     */
     EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept;
 
@@ -68,11 +68,11 @@ class Node {
     const Node& GetNode() const noexcept;
 
     /** Gets the source arg index.
-	@returns the source arg index of <*this> edge.*/
+    @returns the source arg index of <*this> edge.*/
     int GetSrcArgIndex() const;
 
     /** Gets the destination arg index.
-	@returns the destination arg index of <*this> edge.*/
+    @returns the destination arg index of <*this> edge.*/
     int GetDstArgIndex() const;
 
    private:
@@ -264,6 +264,12 @@ class Node {
   @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
+
+  /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
+  @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance. 
+           nullptr if the Node has no subgraphs.
+  */
+  const std::unordered_map<std::string, Graph*>* GetMutableSubgraphs();
 
   /** Gets the execution ProviderType that this node will be executed by. */
   ProviderType GetExecutionProviderType() const noexcept;

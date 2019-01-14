@@ -34,13 +34,16 @@ void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
 
 }  // namespace
 
-Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
+Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto node = graph.GetNode(index);
+
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified));
+
     if (!utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
       continue;
     }
@@ -99,8 +102,8 @@ Status ConvActivationFusion::Apply(Graph& graph, bool& modified) const {
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
+
   return Status::OK();
 }
 }  // namespace onnxruntime
