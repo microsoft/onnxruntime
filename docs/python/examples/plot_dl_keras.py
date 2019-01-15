@@ -14,6 +14,7 @@ of a pretrained deep learning model obtained from
 with *onnxruntime*. The conversion requires
 `keras <https://keras.io/>`_,
 `tensorflow <https://www.tensorflow.org/>`_,
+`sklearn-onnx <https://github.com/onnx/sklearn-onnx/>`_,
 `onnxmltools <https://pypi.org/project/onnxmltools/>`_
 but then only *onnxruntime* is required
 to compute the predictions.
@@ -24,10 +25,9 @@ if not os.path.exists('dense121.onnx'):
     model = DenseNet121(include_top=True, weights='imagenet')
 
     from onnxmltools import convert_keras
-    onx = convert_keras(model, 'dense121.onnx')
-    
-    from onnxmltools.utils import save_model
-    save_model(onx, "dense121.onnx")
+    onx = convert_keras(model, 'dense121.onnx')    
+    with open("dense121.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
 
 ##################################
 # Let's load an image (source: wikipedia).

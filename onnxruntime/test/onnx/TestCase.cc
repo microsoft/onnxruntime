@@ -23,6 +23,7 @@
 #pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
 #pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
 #pragma warning(disable : 4100)
+#pragma warning(disable : 4505)
 #pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
 #pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
 #pragma warning(disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
@@ -545,7 +546,7 @@ Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx
         ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, allocator, &temp_name));
       }
       var_names[i] = temp_name;
-      (*allocator)->Free(allocator, temp_name);
+      allocator->Free(allocator, temp_name);
     }
   }
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
