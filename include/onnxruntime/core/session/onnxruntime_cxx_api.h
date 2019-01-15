@@ -54,7 +54,6 @@ DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TypeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryInterface*);
 
 #undef DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT
 
@@ -94,9 +93,9 @@ class SessionOptionsWrapper {
   * on your most preferred execution provider first followed by the less preferred ones.
   * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
   */
-  void AppendExecutionProvider(_In_ OrtProviderFactoryInterface** f) {
-    OrtSessionOptionsAppendExecutionProvider(value.get(), f);
-  }
+  //  void AppendExecutionProvider(_In_ OrtProviderFactoryInterface** f) {
+  //    OrtSessionOptionsAppendExecutionProvider(value.get(), f);
+  //  }
 
   SessionOptionsWrapper clone() const {
     OrtSessionOptions* p = OrtCloneSessionOptions(value.get());

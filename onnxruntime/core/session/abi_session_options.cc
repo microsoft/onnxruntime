@@ -9,9 +9,6 @@
 
 OrtSessionOptions::~OrtSessionOptions() {
   assert(ref_count == 0);
-  for (OrtProviderFactoryInterface** p : provider_factories) {
-    OrtReleaseObject(p);
-  }
 }
 
 OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
@@ -19,9 +16,6 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
-  for (OrtProviderFactoryInterface** p : other.provider_factories) {
-    OrtAddRefToObject(p);
-  }
 }
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
   std::unique_ptr<OrtSessionOptions> options = std::make_unique<OrtSessionOptions>();
@@ -36,10 +30,12 @@ ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions* input) {
   }
 }
 
+#if 0
 ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f) {
   OrtAddRefToObject(f);
   options->provider_factories.push_back(f);
 }
+#endif
 
 ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options) {
   options->value.enable_sequential_execution = true;

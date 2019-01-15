@@ -169,10 +169,10 @@ typedef struct OrtAllocator {
 } OrtAllocator;
 
 // Inherented from OrtObject
-typedef struct OrtProviderFactoryInterface {
-  OrtObject parent;
-  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
-} OrtProviderFactoryInterface;
+//typedef struct OrtProviderFactoryInterface {
+//  OrtObject parent;
+//  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
+//} OrtProviderFactoryInterface;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
@@ -249,7 +249,7 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
   * on your most preferred execution provider first followed by the less preferred ones.
   * Calling this API is optional in which case Ort will use its internal CPU execution provider.
   */
-ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
+//ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
 
 ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 

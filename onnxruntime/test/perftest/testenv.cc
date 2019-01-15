@@ -16,17 +16,14 @@
 using namespace std::experimental::filesystem::v1;
 using onnxruntime::Status;
 
-inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, OrtProviderFactoryInterface** f) {
-  OrtProvider* p;
-  (*f)->CreateProvider(f, &p);
-  std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
-  auto status = sess->RegisterExecutionProvider(std::move(q));
+#if 0
+inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, onnxruntime::IExecutionProviderFactory* f) {
+  auto status = sess->RegisterExecutionProvider(f->CreateProvider(f));
   if (!status.IsOK()) {
     throw std::runtime_error(status.ErrorMessage().c_str());
   }
 }
-#define FACTORY_PTR_HOLDER \
-  std::unique_ptr<OrtProviderFactoryInterface*, decltype(&OrtReleaseObject)> ptr_holder_(f, OrtReleaseObject);
+#endif
 
 Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& sess, const path& model_url, const std::string& logid) const {
   ::onnxruntime::SessionOptions so;
