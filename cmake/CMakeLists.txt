@@ -163,7 +163,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
-add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync)
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
@@ -448,7 +448,7 @@ if (onnxruntime_USE_CUDA)
     string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\2" onnxruntime_CUDA_VERSION_MINOR ${CMAKE_CUDA_COMPILER_VERSION})
 
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_${onnxruntime_CUDA_VERSION_MAJOR}${onnxruntime_CUDA_VERSION_MINOR}.dll")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
   endif()

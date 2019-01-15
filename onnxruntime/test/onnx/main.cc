@@ -304,7 +304,6 @@ int real_main(int argc, char* argv[]) {
       {"operator_rnn_single_layer", "disable reason"},
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
-      {"upsample_nearest", "opset 9 not supported yet"},
       {"sinh_example", "opset 9 not supported yet"},
       {"cosh_example", "opset 9 not supported yet"},
       {"asinh_example", "opset 9 not supported yet"},
