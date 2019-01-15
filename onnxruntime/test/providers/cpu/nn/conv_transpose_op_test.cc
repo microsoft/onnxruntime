@@ -253,7 +253,7 @@ TEST(ConvTransposeTest, ConvTranspose_Invalid_Kernel_Shape) {
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectFailure,
-                      "kernel width does not match filter width. kernel_width: 1 filter_width: 5");
+                      "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,1,5}");
 }
 
 TEST(ConvTransposeTest, ConvTranspose_onnx) {

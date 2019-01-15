@@ -174,6 +174,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void ReleasePerThreadStuffs() const;
 
   bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
+  bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) const;
 };
 
 }  // namespace onnxruntime
