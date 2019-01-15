@@ -66,7 +66,7 @@ void QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, i
   *right_shift = shift;
 }
 
-void ScaleAndZeropointPairValidationHelper(const Tensor* scale, const Tensor* zeropoint, int broadcastDim) {
+void ScaleAndZeropointPairValidationHelper(const Tensor* scale, const Tensor* zeropoint) {
   ORT_ENFORCE(scale->Shape().NumDimensions() == 0 || 
       (scale->Shape().NumDimensions() == 1 && scale->Shape().GetDims().size() == 1), 
       "scale must be a scalar");
@@ -88,16 +88,13 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
   // validate scale and zero points
   auto a_scale = ctx->Input<Tensor>(1);
   auto a_zero_point = ctx->Input<Tensor>(2);
-  ScaleAndZeropointPairValidationHelper(a_scale, a_zero_point,
-                                        static_cast<int>(helper.M()));
+  ScaleAndZeropointPairValidationHelper(a_scale, a_zero_point);
   auto b_scale = ctx->Input<Tensor>(4);
   auto b_zero_point = ctx->Input<Tensor>(5);
-  ScaleAndZeropointPairValidationHelper(b_scale, b_zero_point,
-                                        static_cast<int>(helper.K()));
+  ScaleAndZeropointPairValidationHelper(b_scale, b_zero_point);
   auto y_scale = ctx->Input<Tensor>(6);
   auto y_zero_point = ctx->Input<Tensor>(7);
-  ScaleAndZeropointPairValidationHelper(y_scale, y_zero_point,
-                                        static_cast<int>(helper.M()));
+  ScaleAndZeropointPairValidationHelper(y_scale, y_zero_point);
 
   auto a_scale_data = *(a_scale->template Data<float>());
   auto b_scale_data = *(b_scale->template Data<float>());
