@@ -106,6 +106,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
           static_cast<int>(kernel_shape.size()),
           col_buffer_data,
           &CPUMathUtil::Instance(),
+		  false,
 		  input_offset);
 
       const uint8_t* filter_data_as_uint8 = W->template Data<uint8_t>() + group_id * W_offset;
