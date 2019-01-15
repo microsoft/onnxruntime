@@ -6,6 +6,7 @@
 #include "core/graph/basic_types.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
+#include "core/framework/framework_common.h"
 
 namespace onnxruntime {
 class Node;
@@ -16,7 +17,10 @@ namespace onnxruntime {
 class ExecutionProviders;
 class KernelDef;
 class KernelRegistryManager;
+class IExecutionProvider;
+class MLValue;
 class SessionState;
+class Tensor;
 
 namespace logging {
 class Logger;
@@ -32,8 +36,38 @@ const KernelDef* GetKernelDef(const onnxruntime::Graph& graph,
 
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info);
 
-AllocatorPtr GetAllocator(const SessionState& session_state,
-                          const OrtAllocatorInfo& allocator_info);
+AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
+
+common::Status AllocateHelper(const IExecutionProvider& execution_provider,
+                              int device_id,
+                              const Tensor& fetched_tensor,
+                              MLValue& output_mlvalue);
+
+common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
+                                         const std::string& input_name,
+                                         const MLValue& orig_mlvalue,
+                                         MLValue& new_mlvalue);
+
+common::Status CopyInputsAcrossDevices(const SessionState& session_state,
+                                       const NameMLValMap& orig_feeds,
+                                       NameMLValMap& new_feeds);
+
+common::Status MatchOutputsWithProviders(const SessionState& session_state,
+                                         const std::vector<std::string>& output_names,
+                                         std::vector<MLValue>& fetches,
+                                         std::vector<MLValue>& new_fetches);
+
+common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
+                                        std::vector<MLValue>& fetches,
+                                        std::vector<MLValue>& user_fetches);
+
+common::Status ExecuteGraph(const SessionState& session_state,
+                            const NameMLValMap& feeds,
+                            const std::vector<std::string>& output_names,
+                            std::vector<MLValue>& fetches,
+                            bool sequential_execution,
+                            const bool& terminate_flag,
+                            const logging::Logger& logger);
 
 #define DispatchOnTensorType(tensor_type, function, ...)      \
   if (tensor_type == DataTypeImpl::GetType<float>())          \
