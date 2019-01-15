@@ -1,5 +1,10 @@
-# Official user quickstart docker container for ONNX Runtime GPU
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+# Official user quickstart nvidia-docker container for ONNX Runtime GPU
 # Ubuntu 16.04, GPU version, CuDNN 7, CUDA 9.1, Python 3.
+#--------------------------------------------------------------------------
 
 FROM nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
@@ -11,17 +16,8 @@ RUN apt-get update && \
 	libssl-dev wget \
 	python 3.6 python3-pip \
 	python3-dev git
+RUN pip3 install --upgrade pip
 RUN pip3 install numpy onnx
-
-# Build the latest cmake
-WORKDIR /code
-RUN wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
-RUN tar zxf cmake-3.12.3.tar.gz
-
-WORKDIR /code/cmake-3.12.3
-RUN ./configure --system-curl
-RUN make
-RUN sudo make install
 
 RUN pip3 install onnxruntime-gpu
 WORKDIR /code
