@@ -4,10 +4,17 @@
 #pragma once
 
 #include <memory>
+#include <map>
+#include <list>
+#include <memory.h>
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_transformer.h"
+
+namespace mkldnn {
+struct memory;
+};
 
 namespace onnxruntime {
 
@@ -37,6 +44,35 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  std::shared_ptr<mkldnn::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {
+    auto iter = weights_mem_map_.find(weight_key);
+    if (iter != weights_mem_map_.end())
+      return iter->second;
+    return nullptr;
+  }
+
+  void SetWeightsMemoryBuffer(const std::string& weight_key,
+                        const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
+    weights_mem_map_.insert(std::make_pair(weight_key, filter_dst_mem));
+  }
+
+  std::mutex& GetMutex() {
+    return mutex_;
+  }
+
+  void SaveAllocatedMemory(IAllocatorUniquePtr<void> buffer) {
+    // keep reordered memory buffers in scope.
+    reordered_buffers_.push_back(std::move(buffer));
+  }
+
+ private:
+  // mkldnn weights(filer data) memory blocks from first iteration
+  // saved by weights name
+  std::unordered_map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map_;
+  // Save reordered memory buffers in list so that memory is not freed.
+  std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
+  std::mutex mutex_;
 };
 
 }  // namespace onnxruntime

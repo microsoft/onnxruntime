@@ -43,6 +43,7 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" OFF)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
@@ -65,6 +66,8 @@ option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+#nsync tests failed on Mac Build
+set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
@@ -79,6 +82,7 @@ if(onnxruntime_USE_OPENMP)
     add_definitions(-DUSE_OPENMP)
   endif()
 endif()
+
 #must after OpenMP settings
 find_package(Threads)
 
@@ -159,6 +163,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
@@ -443,7 +448,7 @@ if (onnxruntime_USE_CUDA)
     string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\2" onnxruntime_CUDA_VERSION_MINOR ${CMAKE_CUDA_COMPILER_VERSION})
 
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cublas64_${onnxruntime_CUDA_VERSION_MAJOR}${onnxruntime_CUDA_VERSION_MINOR}.dll")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll /DELAYLOAD:mkldnn.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:cudnn64_7.dll")
   else()
     link_directories(${onnxruntime_CUDNN_HOME}/lib64)
   endif()
@@ -501,6 +506,9 @@ include(onnxruntime_mlas.cmake)
 if(WIN32)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
 else()
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
+  endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Threads::Threads)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
