@@ -320,8 +320,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_windows():
         cmake_args += cmake_extra_args
-        if args.use_cuda:
-            os.environ["PATH"] += os.pathsep + os.path.join(cudnn_home, 'bin')
 
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
@@ -398,8 +396,7 @@ def setup_cuda_vars(args):
 
             cuda_bin_path = os.path.join(cuda_home, 'bin')
             os.environ["CUDA_BIN_PATH"] = cuda_bin_path
-            os.environ["PATH"] += os.pathsep + cuda_bin_path
-
+            os.environ["PATH"] += os.pathsep + cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin')
             # Add version specific CUDA_PATH_Vx_y value as the Visual Studio build files require that
             version_file = os.path.join(cuda_home, 'version.txt')
             if not os.path.exists(version_file):
@@ -530,30 +527,21 @@ def main():
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
 
-    # directory from ONNX submodule with ONNX test data
-    onnx_test_data_dir = '/data/onnx'
-    if is_windows() or not os.path.exists(onnx_test_data_dir):
-        onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
-
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
-
-    cmake_extra_args = []
-    if(is_windows()):
-      if (args.x86):
-        cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
-      else:
-        toolset = 'host=x64'
-        if (args.msvc_toolset):
-            toolset += ',version=' + args.msvc_toolset
-
-        cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
-
-    #Add python to PATH. Please remove this after https://github.com/onnx/onnx/issues/1080 is fixed ()
-    os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
-
+    os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.dirname(sys.executable)
     if (args.update):
+        cmake_extra_args = []
+        if(is_windows()):
+          if (args.x86):
+            cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
+          else:
+            toolset = 'host=x64'
+            if (args.msvc_toolset):
+                toolset += ',version=' + args.msvc_toolset
+
+            cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
             install_ubuntu_deps(args)
             install_python_deps()
@@ -578,18 +566,22 @@ def main():
 
     if (args.test):
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm)
+        # run the onnx model tests if requested explicitly.
+        if (args.enable_onnx_tests):
+            # directory from ONNX submodule with ONNX test data
+            onnx_test_data_dir = '/data/onnx'
+            if is_windows() or not os.path.exists(onnx_test_data_dir):
+                onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
+            if args.use_cuda:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
+            else:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
+              if args.use_mkldnn:
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
 
-    # run the onnx model tests if requested explicitly.
-    if (args.enable_onnx_tests):
-        if args.use_cuda:
-          run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
-        else:
-          run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
-          if args.use_mkldnn:
-            run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
-
-    if args.build_wheel:
-        build_python_wheel(source_dir, build_dir, configs, args.use_cuda)
+    if args.build:
+        if args.build_wheel:
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda)
 
     log.info("Build complete")
 
