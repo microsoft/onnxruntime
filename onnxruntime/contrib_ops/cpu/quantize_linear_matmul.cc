@@ -67,16 +67,12 @@ void QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, i
 }
 
 void ScaleAndZeropointPairValidationHelper(const Tensor* scale, const Tensor* zeropoint, int broadcastDim) {
-  ORT_ENFORCE(scale->Shape().NumDimensions() == 0 || scale->Shape().NumDimensions() == 1, 
-      "scale must be a scalar or a 1D tensor");
-  ORT_ENFORCE(scale->Shape().NumDimensions() == zeropoint->Shape().NumDimensions(), 
-      "scale and zero point pair must have same dimension");
-  if (scale->Shape().NumDimensions() == 1) {
-    ORT_ENFORCE(scale->Shape().Size() == broadcastDim, 
-        "when scale is 1D tensor size should be equal to rows for lhs matrix and cols for rhs matrix ");
-    ORT_ENFORCE(zeropoint->Shape().Size() == broadcastDim, 
-        "when zero_point is 1D tensor size should be equal to rows for lhs matrix and cols for rhs matrix ");
-  }
+  ORT_ENFORCE(scale->Shape().NumDimensions() == 0 || 
+      (scale->Shape().NumDimensions() == 1 && scale->Shape().GetDims().size() == 1), 
+      "scale must be a scalar");
+  ORT_ENFORCE(zeropoint->Shape().NumDimensions() == 0 || 
+      (zeropoint->Shape().NumDimensions() == 1 && zeropoint->Shape().GetDims().size() == 1), 
+      "zeropoint must be a scalar");
 }
 
 template<>
