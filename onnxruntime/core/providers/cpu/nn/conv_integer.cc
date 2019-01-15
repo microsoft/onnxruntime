@@ -44,21 +44,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
-
-  if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                           " W: ", W->Shape().ToString().c_str());
-  }
-
-  for (size_t i = 0; i < kernel_shape.size(); ++i) {
-    if (kernel_shape[i] != W->Shape()[i + 2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
-    }
-  }
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
 
   std::vector<int64_t> pads(pads_);
   if (pads.empty()) {
@@ -95,7 +82,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t kernel_dim = C / group_ * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-  auto col_data = alloc->Alloc(sizeof(float) * col_buffer_size);
+  auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
   uint8_t* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
@@ -118,7 +105,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
           pads.data(),
           static_cast<int>(kernel_shape.size()),
           col_buffer_data,
-          &CPUMathUtil::Instance());
+          &CPUMathUtil::Instance(),
+		  input_offset);
 
       const uint8_t* filter_data_as_uint8 = W->template Data<uint8_t>() + group_id * W_offset;
       static const gemmlowp::MapOrder ResultOrder = gemmlowp::MapOrder::RowMajor;
