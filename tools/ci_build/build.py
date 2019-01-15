@@ -21,13 +21,19 @@ from os.path import expanduser
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("Build")
 
-test_data_url = 'https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip'
-test_data_checksum = 'a966def7447f4ff04f5665bca235b3f3'
+class BaseError(Exception):
+    """Base class for errors originating from build.py."""
+    pass
 
-class BuildError(Exception):
+class BuildError(BaseError):
     """Error from running build steps."""
     def __init__(self, *messages):
         super().__init__("\n".join(messages))
+
+class UsageError(BaseError):
+    """Usage related error."""
+    def __init__(self, message):
+        super().__init__(message)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
@@ -60,6 +66,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--pb_home", help="Path to protobuf installation")
     parser.add_argument("--download_test_data", action="store_true",
                         help='''Downloads test data without running the tests''')
+    parser.add_argument("--test_data_url", help="Test data URL.")
+    parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
     parser.add_argument("--cuda_home", help="Path to CUDA home."
@@ -127,7 +135,7 @@ def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
     log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
@@ -139,12 +147,8 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None):
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    if (capture):
-        result = subprocess.run(args, cwd=cwd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
-    else:
-        result = subprocess.run(args, cwd=cwd, check=True, env=my_env)
-
-    return result
+    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (None, None)
+    return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
@@ -216,13 +220,22 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         log.info("Downloading test data")
         if azure_sas_key:
             src_url += azure_sas_key
+        # try to avoid logging azure_sas_key
         if shutil.which('aria2c'):
-            subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir], check=True)
+            result = subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+            if result.returncode != 0:
+                raise BuildError("aria2c exited with code {}.".format(result.returncode))
         elif shutil.which('curl'):
-            subprocess.run(['curl', '-s', src_url, '-o', local_zip_file], check=True)
+            result = subprocess.run(['curl', '-s', src_url, '-o', local_zip_file])
+            if result.returncode != 0:
+                raise BuildError("curl exited with code {}.".format(result.returncode))
         else:
             import urllib.request
-            urllib.request.urlretrieve(src_url, local_zip_file)
+            import urllib.error
+            try:
+                urllib.request.urlretrieve(src_url, local_zip_file)
+            except urllib.error.URLError:
+                raise BuildError("urllib.request.urlretrieve() failed.")
     models_dir = os.path.join(build_dir,'models')
     if os.path.exists(models_dir):
         log.info('deleting %s' % models_dir)
@@ -237,12 +250,13 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         return False
     return True
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
-    has_test_data = False
-    if args.enable_onnx_tests or args.download_test_data:
-      has_test_data = download_test_data(build_dir, test_data_url, test_data_checksum, args.azure_sas_key)
-    #create a shortcut for test models if there is a 'models' folder in build_dir
-    if has_test_data and is_windows():
+def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
+    """Sets up the test data, downloading it if needed."""
+    if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
+        raise BuildError("Failed to set up test data.")
+
+    # create a shortcut for test models if there is a 'models' folder in build_dir
+    if is_windows():
         src_model_dir = os.path.join(build_dir, 'models')
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
@@ -250,13 +264,15 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             dest_model_dir = os.path.join(config_build_dir, 'models')
             if os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
-                subprocess.run(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True, check=True)
+                run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
+
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
-                 "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if has_test_data else "OFF"),
+                 "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=ON",
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
@@ -498,6 +514,9 @@ def main():
 
     if args.build_wheel:
         args.enable_pybind = True
+    
+    if args.build_csharp:
+        args.build_shared_lib = True
 
     configs = set(args.config)
 
@@ -543,6 +562,11 @@ def main():
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
 
+        if args.enable_onnx_tests or args.download_test_data:
+            if not args.test_data_url or not args.test_data_checksum:
+                raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
+
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
@@ -572,6 +596,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except BuildError as e:
+    except BaseError as e:
         log.error(str(e))
         sys.exit(1)

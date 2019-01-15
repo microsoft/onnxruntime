@@ -6,6 +6,5 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
  NVIDIA_REQUIRE_CUDA="cuda>=9.2" \
  PATH="/usr/lib64/ccache:/opt/cmake/bin:${PATH}"
 ADD scripts /tmp/scripts
-ARG AZURE_BLOB_KEY
 RUN cd /tmp/scripts && /tmp/scripts/install_fedora_gpu.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
 

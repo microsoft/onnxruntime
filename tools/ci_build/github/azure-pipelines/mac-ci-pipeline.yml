@@ -7,6 +7,5 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ./build.sh --skip_submodule_sync --parallel
       displayName: 'Command Line Script'
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
+
+    - template: templates/clean-agent-build-directory-step.yml
