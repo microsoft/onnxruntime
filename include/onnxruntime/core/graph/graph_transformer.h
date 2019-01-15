@@ -38,11 +38,13 @@ class GraphTransformer {
   */
   common::Status Apply(Graph& graph, bool& modified) const;
 
-  // call Apply on any subgraphs in the Node
-  common::Status Recurse(Node& node, bool& modified) const {
+ protected:
+  /** Helper method to call ApplyImpl on any subgraphs in the Node. */
+  common::Status Recurse(Node& node, bool& modified, int graph_level) const {
+    int subgraph_level = ++graph_level;
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& subgraph = *entry.second;
-      ORT_RETURN_IF_ERROR(Apply(subgraph, modified));
+      ORT_RETURN_IF_ERROR(ApplyImpl(subgraph, modified, subgraph_level));
     }
 
     return Status::OK();
@@ -51,7 +53,9 @@ class GraphTransformer {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
 
-  virtual common::Status ApplyImpl(Graph& graph, bool& modified) const = 0;
+  // Apply the transform to the graph.
+  // graph_level is 0 for the main graph, and is incremented when descending into the subgraph of a node.
+  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level = 0) const = 0;
 
   const std::string name_;
   const std::string desc_;
@@ -126,7 +130,7 @@ class TopDownRuleBasedTransformer : public RuleBasedGraphTransformer {
 
  private:
   // Performs a single top-down traversal of the graph and applies all registered rules.
-  common::Status ApplyImpl(Graph& graph, bool& modified) const override;
+  common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

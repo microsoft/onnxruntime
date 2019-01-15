@@ -27,7 +27,7 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   }
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified) const override;
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 
   bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const;
 

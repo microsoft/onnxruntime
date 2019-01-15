@@ -12,7 +12,7 @@ class ConvActivationFusion : public onnxruntime::GraphTransformer {
   ConvActivationFusion() noexcept : onnxruntime::GraphTransformer("ConvActivationFusion", "Fusing Activation into Conv") {}
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified) const override;
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

@@ -12,7 +12,7 @@ class UnsqueezeElimination : public onnxruntime::GraphTransformer {
   UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified) const override;
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

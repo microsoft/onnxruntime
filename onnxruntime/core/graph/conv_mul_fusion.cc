@@ -9,10 +9,10 @@ using namespace onnx;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvMulFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified) const {
+Status ConvMulFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    ORT_RETURN_IF_ERROR(Recurse(node, modified));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;

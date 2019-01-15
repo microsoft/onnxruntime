@@ -12,7 +12,10 @@ namespace onnxruntime {
 
 namespace {
 bool IsFusableActivation(const Node& node) {
-  return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
+  return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
+         utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
+         utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
+         utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
 }
 
 void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
@@ -34,7 +37,7 @@ void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
 
 }  // namespace
 
-Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified) const {
+Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -42,7 +45,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified) const {
   for (auto index : order) {
     auto node = graph.GetNode(index);
 
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified));
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
     if (!utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
       continue;

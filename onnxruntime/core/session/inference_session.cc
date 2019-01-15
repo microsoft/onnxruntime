@@ -302,8 +302,13 @@ class InferenceSession::Impl {
 
     bool modified = false;
 
+    std::vector<std::string> provider_types;
+    for (auto& provider_ptr : providers) {
+      provider_types.push_back(provider_ptr->Type());
+    }
+
     // Insert copy node/s.
-    MemcpyTransformer copy_transformer{providers, kernel_registry_manager};
+    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
     ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified));
 
     // Insert cast node/s.
