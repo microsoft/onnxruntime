@@ -8,6 +8,7 @@ esac
 done
 
 DEBIAN_FRONTEND=noninteractive
+
 apt-get update && apt-get install -y software-properties-common
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
@@ -41,6 +42,14 @@ apt-get update && apt-get install -y --no-install-recommends \
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
+
+OS_VER=`lsb_release -r -s`
+mkdir -p /tmp/dotnet
+aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
+dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
+apt-get update && apt-get install -y apt-transport-https \
+        dotnet-sdk-2.2
+rm -rf /tmp/dotnet || true
 
 if [ $PYTHON_VER != "3.5" ]; then
     apt-get install -y --no-install-recommends \

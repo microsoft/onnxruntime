@@ -24,6 +24,22 @@
     return Ort##NAME(value.get());              \
   }
 
+namespace std {
+template <>
+struct default_delete<OrtAllocator> {
+  void operator()(OrtAllocator* ptr) {
+    OrtReleaseAllocator(ptr);
+  }
+};
+
+template <>
+struct default_delete<OrtEnv> {
+  void operator()(OrtEnv* ptr) {
+    OrtReleaseEnv(ptr);
+  }
+};
+}  // namespace std
+
 #define DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME) \
   namespace std {                                          \
   template <>                                              \
@@ -34,9 +50,7 @@
   };                                                       \
   }
 
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Env);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TypeInfo);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(Allocator);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
 DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
