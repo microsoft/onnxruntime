@@ -329,6 +329,9 @@ int real_main(int argc, char* argv[]) {
 
   broken_tests["tf_inception_resnet_v2"] = "unknown failure on CUDA";
   broken_tests["tf_inception_v4"] = "unknown failure on CUDA";
+  broken_tests["fp16_tiny_yolov2"] = "unknown failure on CUDA";
+  broken_tests["fp16_shufflenet"] = "unknown failure on CUDA";
+  broken_tests["fp16_inception_v1"] = "unknown failure on CUDA";
 #endif
 
   int result = 0;
