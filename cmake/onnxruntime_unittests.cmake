@@ -351,7 +351,8 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCase.cc
   ${onnx_test_runner_src_dir}/TestCase.h
   ${onnx_test_runner_src_dir}/path_lib.h
-  ${onnx_test_runner_src_dir}/sync_api.h)
+  ${onnx_test_runner_src_dir}/sync_api.h
+  ${onnx_test_runner_src_dir}/sync_api.cc)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -363,11 +364,12 @@ if(WIN32)
   target_include_directories(win_getopt_mb INTERFACE ${mb_get_opt_src_dir}/include)
   set_target_properties(win_getopt_mb PROPERTIES FOLDER "ONNXRuntimeTest")
 
-  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/sync_api_win.cc)
+  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
+
   set(GETOPT_LIB_WIDE win_getopt_wide)
   set(GETOPT_LIB win_getopt_mb)
 else()
-  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h ${onnx_test_runner_src_dir}/sync_api_linux.cc)
+  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h)
   if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
     set(FS_STDLIB stdc++fs)
   endif()

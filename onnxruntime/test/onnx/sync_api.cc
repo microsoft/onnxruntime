@@ -3,10 +3,13 @@
 
 #include "sync_api.h"
 #include <mutex>
+
+#if defined(_MSC_VER)
+#pragma warning(disable : 4267)
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <core/common/common.h>
 #include <core/common/logging/logging.h>
-#include "simple_thread_pool.h"
 #include "onnxruntime_event.h"
 
 using onnxruntime::common::Status;
@@ -25,11 +28,12 @@ class OnnxRuntimeCallbackInstance {
 Status WaitAndCloseEvent(ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
-  pthread_mutex_lock(&finish_event->finish_event_mutex);
-  while (!finish_event->finished) {
-    pthread_cond_wait(&finish_event->finish_event_data, &finish_event->finish_event_mutex);
+  {
+    std::unique_lock<std::mutex> lock(finish_event->finish_event_mutex);
+    while (!finish_event->finished) {
+      finish_event->finish_event_data.wait(lock);
+    }
   }
-  pthread_mutex_unlock(&finish_event->finish_event_mutex);
   delete finish_event;
   return Status::OK();
 }
@@ -51,14 +55,14 @@ Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data,
   return Status::OK();
 }
 
-using DefaultThreadPoolType = onnxruntime::SimpleThreadPoolTempl<onnxruntime::Env>;
+using DefaultThreadPoolType = Eigen::NonBlockingThreadPool;
 static std::unique_ptr<DefaultThreadPoolType> default_pool;
 static std::once_flag default_pool_init;
 
 PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num, env));
+    default_pool.reset(new DefaultThreadPoolType(core_num));
   });
   return default_pool.get();
 }
@@ -68,16 +72,12 @@ Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVE
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
 
   if (pci == nullptr) {
-    if (pthread_mutex_lock(&finish_event->finish_event_mutex)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "lock failed");
+    {
+      std::unique_lock<std::mutex> lock(finish_event->finish_event_mutex);
+      finish_event->finished = true;
     }
-    finish_event->finished = true;
-    if (pthread_mutex_unlock(&finish_event->finish_event_mutex))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unlock failed");
-    if (!pthread_cond_broadcast(&finish_event->finish_event_data))
-      return Status::OK();
-    else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pthread_cond_broadcast failed");
+    finish_event->finish_event_data.notify_all();
+    return Status::OK();
   } else {
     pci->AddEvent(finish_event);
     return Status::OK();
@@ -90,14 +90,11 @@ void OnnxRuntimeCallbackInstance::AddEvent(ORT_EVENT event) {
 
 Status OnnxRuntimeCallbackInstance::SignalAllEvents() {
   for (ORT_EVENT finish_event : events_to_signal_) {
-    if (pthread_mutex_lock(&finish_event->finish_event_mutex)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "lock failed");
+    {
+      std::unique_lock<std::mutex> lock(finish_event->finish_event_mutex);
+      finish_event->finished = true;
     }
-    finish_event->finished = true;
-    if (pthread_mutex_unlock(&finish_event->finish_event_mutex))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unlock failed");
-    if (pthread_cond_broadcast(&finish_event->finish_event_data))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "pthread_cond_broadcast failed");
+    finish_event->finish_event_data.notify_all();
   }
   return Status::OK();
 }
