@@ -7,22 +7,24 @@ SourceRoot=$2
 BuildDir=$3
 
 echo "Downloading test data"
-python $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir
+python3 $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir
 if [ $? -ne 0 ]; then
     echo "Failed to download test data"
     exit 1
 fi
 
+OldDir=`pwd`
+cd $SourceRoot
 
 MajorVersion=$(cat $SourceRoot/VERSION_NUMBER)
 VersionSuffix=
 if [ "$IsReleaseBuild" != "true" ]; then
-    VersionSuffix = -dev-$(git rev-parse --short HEAD)
+    VersionSuffix=-dev-$(git rev-parse --short=8 HEAD)
 fi
 export CurrentOnnxRuntimeVersion=$MajorVersion$VersionSuffix
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
-dotnet restore $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo --configfile $SourceRoot/csharp/Nuget.CSharp.config
+dotnet restore $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json --configfile $SourceRoot/csharp/Nuget.CSharp.config
 if [ $? -ne 0 ]; then
     echo "Failed to restore nuget packages for the test project"
     exit 1
@@ -33,3 +35,5 @@ if [ $? -ne 0 ]; then
     echo "Failed to build or execute the end-to-end test"
     exit 1
 fi
+
+cd $OldDir
