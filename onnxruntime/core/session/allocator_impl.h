@@ -8,20 +8,15 @@
 namespace onnxruntime {
 class AllocatorWrapper : public IAllocator {
  public:
-  AllocatorWrapper(OrtAllocator* impl) : impl_(impl) {
-    (*impl)->parent.AddRef(impl);
-  }
-  ~AllocatorWrapper() {
-    (*impl_)->parent.Release(impl_);
-  }
+  AllocatorWrapper(OrtAllocator* impl) : impl_(impl) {}
   void* Alloc(size_t size) override {
-    return (*impl_)->Alloc(impl_, size);
+    return impl_->Alloc(impl_, size);
   }
   void Free(void* p) override {
-    return (*impl_)->Free(impl_, p);
+    return impl_->Free(impl_, p);
   }
   const OrtAllocatorInfo& Info() const override {
-    return *(OrtAllocatorInfo*)(*impl_)->Info(impl_);
+    return *impl_->Info(impl_);
   }
 
  private:
