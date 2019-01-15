@@ -104,14 +104,27 @@ class ConvBase {
   ~ConvBase() {}
 
  protected:
-  std::vector<int64_t> ComputeKernelShape(const TensorShape& weight_shape) const {
-    if (kernel_shape_specified_)
-      return kernel_shape_;
-    else {
+  Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {
+    if (kernel_shape_specified_) {
+      kernel_shape = kernel_shape_;
+      if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+                               " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                               " W: ", weight_shape.ToString().c_str());
+      }
+      for (size_t i = 0; i < kernel_shape.size(); ++i) {
+        if (kernel_shape[i] != weight_shape[i + 2]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+                                 " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                 " W: ", weight_shape.ToString().c_str());
+        }
+      }
+    } else {
       auto& weight_dims = weight_shape.GetDims();
-      std::vector<int64_t> result(weight_dims.begin() + 2, weight_dims.end());
-      return result;
+      kernel_shape = std::vector<int64_t>(weight_dims.begin() + 2, weight_dims.end());
     }
+
+    return Status::OK();
   }
 
   Status ValidateInputShape(const Tensor* X, const Tensor* W) const {
@@ -120,21 +133,21 @@ class ConvBase {
 
     if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                                     " X: ", X->Shape().ToString().c_str(),
-                                     " W: ", W->Shape().ToString().c_str());
+                             " X: ", X->Shape().ToString().c_str(),
+                             " W: ", W->Shape().ToString().c_str());
     }
 
     if (C != W->Shape()[1] * group_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
-                                     " C: ", C,
-                                     " kernel channels: ", W->Shape()[1],
-                                     " group: ", group_);
+                             " C: ", C,
+                             " kernel channels: ", W->Shape()[1],
+                             " group: ", group_);
     }
 
     if (M % group_ != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
-                                     " M: ", M,
-                                     " group: ", group_);
+                             " M: ", M,
+                             " group: ", group_);
     }
     return Status::OK();
   }
