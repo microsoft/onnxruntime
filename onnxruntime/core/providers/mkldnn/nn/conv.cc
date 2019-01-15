@@ -270,7 +270,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ComputeKernelShape(W->Shape(), kernel_shape));
   const size_t kernel_rank = kernel_shape.size();
 
   if (kernel_rank > 3) {
