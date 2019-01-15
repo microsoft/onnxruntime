@@ -29,7 +29,7 @@ class CApiTestImpl : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (env) OrtReleaseObject(env);
+    if (env) OrtReleaseEnv(env);
   }
 
   // Objects declared here can be used by all tests in the test case for Foo.

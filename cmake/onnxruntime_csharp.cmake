@@ -10,3 +10,9 @@ include_external_msproject(${CSHARP_MASTER_TARGET}
                            ${CSHARP_MASTER_PROJECT}
                            onnxruntime   # make it depend on the native onnxruntime project
                            )
+
+# generate Directory.Build.props
+set(DIRECTORY_BUILD_PROPS_COMMENT "WARNING: This is a generated file, please do not check it in!")
+configure_file(${CSHARP_ROOT}/Directory.Build.props.in
+               ${CSHARP_ROOT}/Directory.Build.props
+               @ONLY)
