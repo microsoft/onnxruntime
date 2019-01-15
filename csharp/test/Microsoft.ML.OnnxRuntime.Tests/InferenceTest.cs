@@ -16,7 +16,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory() , "squeezenet.onnx");
             using (var session = new InferenceSession(modelPath))
             {
                 Assert.NotNull(session);
@@ -49,7 +49,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void CanRunInferenceOnAModel()
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(),  "squeezenet.onnx");
 
             using (var session = new InferenceSession(modelPath))
             {
@@ -121,7 +121,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] Unexpected input data type. Actual: (class onnxruntime::NonOnnxType<int>) , expected: (class onnxruntime::NonOnnxType<float>)", ex.Message);
+            var msg = ex.ToString().Substring(0,101);
+            // TODO: message is diff in LInux. Use substring match
+            Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
             session.Dispose();
         }
 
@@ -212,6 +214,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             foreach (var opset in opsets)
             {
                 var modelRoot = new DirectoryInfo(opset);
+                var cwd = Directory.GetCurrentDirectory();
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
@@ -230,7 +233,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                         }
 
-                        onnxModelFileName = $"{opset}\\{modelDir.Name}\\{onnxModelNames[0].Name}";
+                        onnxModelFileName = Path.Combine(cwd, opset, modelDir.Name, onnxModelNames[0].Name);
                         var session = new InferenceSession(onnxModelFileName);
                         var inMeta = session.InputMetadata;
                         var innodepair = inMeta.First();
@@ -241,8 +244,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             if (innodedims[i] < 0)
                                 innodedims[i] = -1 * innodedims[i];
                         }
-                        var dataIn = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\input_0.pb");
-                        var dataOut = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\output_0.pb");
+                        var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, "test_data_set_0", "input_0.pb"));
+                        var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, "test_data_set_0", "output_0.pb"));
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
                         nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
