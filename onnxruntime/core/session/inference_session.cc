@@ -278,7 +278,11 @@ class InferenceSession::Impl {
     GraphPartitioner partitioner(kernel_registry_manager, providers);
     ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), const_cast<FuncManager*>(session_state.GetFuncMgr())));
 
-    // Insert copy nodes.
+    // Insert cast node/s.
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
+
+    // Insert copy nodes after all graph transformer.
     for (auto& provider : providers) {
       if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
           provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
@@ -287,10 +291,6 @@ class InferenceSession::Impl {
         copy_impl.ModifyGraph(kernel_registry_manager);
       }
     }
-
-    // Insert cast node/s.
-    bool modified = false;
-    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
     return common::Status::OK();
   }
