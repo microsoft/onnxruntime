@@ -9,7 +9,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/framework/allocator.h"
 
 #include <gsl/span>
@@ -22,7 +21,6 @@ namespace logging = ::onnxruntime::logging;
 
 using ::onnxruntime::AllocatorPtr;
 using ::onnxruntime::IAllocatorUniquePtr;
-using ::onnxruntime::TaskThreadPool;
 using ::onnxruntime::contrib::detail::ActivationInfo;
 using ::onnxruntime::rnn::detail::ActivationFuncs;
 using ::onnxruntime::rnn::detail::Direction;
@@ -53,7 +51,11 @@ class UniDirectionalAttnLstm {
                          const ActivationFuncs::Entry& activation_func_g,
                          const ActivationFuncs::Entry& activation_func_h,
                          const float clip,
+#ifdef USE_EIGEN_THREADPOOL
+                         Eigen::NonBlockingThreadPool& ttp);
+#else
                          TaskThreadPool& ttp);
+#endif
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -153,7 +155,11 @@ class UniDirectionalAttnLstm {
 
   AttentionWrapper<T>& attention_wrapper_;
 
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool& ttp_;
+#else
   TaskThreadPool& ttp_;
+#endif
 };
 
 }  // namespace detail

@@ -231,11 +231,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     else {
       // If we're on the command line (like on a build machine), output to the console and exit(-1)
       std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
-#if 0
-      // There is currently a memory leak due to a static thread_local variable not being destroyed on exit in mkldnn_common.h
-      // The bug is caused by sync_api.h using the windows thread pool functions instead of C++ std::async libraries.
       exit(-1);
-#endif
     }
 
   } else {

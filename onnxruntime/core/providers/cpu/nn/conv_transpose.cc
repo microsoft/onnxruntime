@@ -122,19 +122,8 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
                            " group: ", group_);
   }
 
-  std::vector<int64_t> kernel_shape = ComputeKernelShape(F->Shape());
-
-  if (kernel_shape[0] != F->Shape()[2]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel height does not match filter height.",
-                           " kernel_height: ", kernel_shape[0],
-                           " filter_height: ", F->Shape()[2]);
-  }
-
-  if (kernel_shape[1] != F->Shape()[3]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel width does not match filter width.",
-                           " kernel_width: ", kernel_shape[1],
-                           " filter_width: ", F->Shape()[3]);
-  }
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(F->Shape(), kernel_shape));
 
   std::vector<int64_t> output_padding(output_padding_);
   if (output_padding.empty()) {
