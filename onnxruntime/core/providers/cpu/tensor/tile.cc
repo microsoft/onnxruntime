@@ -46,18 +46,17 @@ Status Tile<float>::Compute(OpKernelContext* ctx) const {
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();
   std::vector<int64_t> output_dims = input_tensor.Shape().GetDims();
-  bool returnEmptyTensor = false;
   for (auto axis = 0; axis < input_tensor.Shape().NumDimensions(); axis++) {
     output_dims[axis] *= repeats[axis];
-    if (repeats[axis] == 0) {
-      returnEmptyTensor = true;
-    }
   }
 
   TensorShape outputShape(output_dims);
   auto& output_tensor = *ctx->Output(0, outputShape);
 
-  if (returnEmptyTensor) {
+  // Repeat tensor input can have 0 as a valid value
+  // check if the computed outputshape size is 0 and
+  // return an empty tensor if so.
+  if (outputShape.Size() == 0) {
     return Status::OK();
   }
 
