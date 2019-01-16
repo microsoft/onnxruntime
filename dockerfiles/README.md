@@ -1,18 +1,20 @@
 # Quick-start Docker containers for ONNX Runtime
 
-### CPU Version
+## CPU Version
 #### Linux 16.04, Python Bindings, Compatible with Docker-Windows
-1. Retrieve your docker image in one of the following ways.
-  a. Pull the official image from DockerHub.
-  ```
-  docker pull [ORG]/onnxruntime:gpu
-  ```
-  b. Build the docker image from the DockerFile in this repository.
-  ```
-  # If you have a Linux machine, preface this command with "sudo"
 
-  docker build -t onnxruntime-cpu -f Dockerfile.cpu .
-  ```
+1. Retrieve your docker image in one of the following ways.
+  - Pull the official image from DockerHub.
+    ```
+    docker pull [ORG]/onnxruntime:gpu
+    ```
+  
+  - Build the docker image from the DockerFile in this repository.
+    ```
+    # If you have a Linux machine, preface this command with "sudo"
+
+    docker build -t onnxruntime-cpu -f Dockerfile.cpu .
+    ```
 2. Run the docker image
   ```
   # If you have a Linux machine, preface this command with "sudo"
@@ -21,24 +23,25 @@
   docker run -it onnxruntime-cpu
   ```
 
-### GPU Version
+## GPU Version
 #### Linux 16.04, Python Bindings, CUDA 10, CuDNN7, Requires Nvidia-Docker v2
-1. Retrieve your docker image in one of the following ways.
-  a. Pull the official image from DockerHub.
-  ```
-  docker pull [ORG]/onnxruntime:gpu
-  ```
-  b. Build the docker image from the DockerFile in this repository.
-  ```
-  # If you have a Linux machine, preface this command with "sudo"
 
-  nvidia-docker build -t onnxruntime-gpu -f Dockerfile.gpu .
-  ```
-  Note that you can change the base CUDA distribution to 9.1 and use nvidia-docker v1
-  by building the docker image as shown above and replacing the first line with the base image below.
-  ```
-  FROM nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
-  ```
+1. Retrieve your docker image in one of the following ways.
+  - Pull the official image from DockerHub.
+    ```
+    docker pull [ORG]/onnxruntime:gpu
+    ```
+  - Build the docker image from the DockerFile in this repository.
+    ```
+    # If you have a Linux machine, preface this command with "sudo"
+
+    nvidia-docker build -t onnxruntime-gpu -f Dockerfile.gpu .
+    ```
+    Note that you can change the base CUDA distribution to 9.1 and use nvidia-docker v1
+    by building the docker image as shown above and replacing the first line with the base image below.
+    ```
+    FROM nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
+    ```
 2. Run the docker image
   ```
   # If you have a Linux machine, preface this command with "sudo"
