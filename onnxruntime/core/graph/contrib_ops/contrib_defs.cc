@@ -477,7 +477,7 @@ if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
           "Output data tensor that contains the result of the "
           "convolution. The output dimensions are functions "
           "of the kernel size, stride size, and pad lengths.",
-          "T1")
+          "T3")
       .TypeConstraint(
           "T1",
           {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},

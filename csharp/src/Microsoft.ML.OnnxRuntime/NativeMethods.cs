@@ -44,10 +44,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /* OrtStatus* */OrtCreateSession(
-                                                        IntPtr /* (OrtEnv*) */ environment,
-                                                        [MarshalAs(UnmanagedType.LPWStr)]string modelPath, //the model path is consumed as a wchar* in the C-api
-                                                        IntPtr /* (OrtSessionOptions*) */sessopnOptions,
-                                                        out IntPtr /**/ session);
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                //[MarshalAs(UnmanagedType.LPStr)]string modelPath
+                                                byte[] modelPath,
+                                                IntPtr /* (OrtSessionOptions*) */sessopnOptions,
+                                                out IntPtr /**/ session);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(ONNStatus*)*/ OrtRun(

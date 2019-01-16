@@ -59,7 +59,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-      std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
+      std::vector<int64_t> kernel_shape;
+      ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
       auto rank = kernel_shape.size();
       std::vector<int64_t> pads(pads_);
       if (pads.empty()) {

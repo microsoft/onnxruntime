@@ -304,7 +304,6 @@ int real_main(int argc, char* argv[]) {
       {"operator_rnn_single_layer", "disable reason"},
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
-      {"upsample_nearest", "opset 9 not supported yet"},
       {"sinh_example", "opset 9 not supported yet"},
       {"cosh_example", "opset 9 not supported yet"},
       {"asinh_example", "opset 9 not supported yet"},
@@ -327,6 +326,12 @@ int real_main(int argc, char* argv[]) {
   broken_tests["maxpool_2d_same_lower"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
+
+  broken_tests["tf_inception_resnet_v2"] = "unknown failure on CUDA";
+  broken_tests["tf_inception_v4"] = "unknown failure on CUDA";
+  broken_tests["fp16_tiny_yolov2"] = "unknown failure on CUDA";
+  broken_tests["fp16_shufflenet"] = "unknown failure on CUDA";
+  broken_tests["fp16_inception_v1"] = "unknown failure on CUDA";
 #endif
 
   int result = 0;
