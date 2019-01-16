@@ -5,6 +5,7 @@ namespace onnxruntime {
 class IExecutionProvider;
 
 struct IExecutionProviderFactory {
+  virtual ~IExecutionProviderFactory() {}
   virtual std::unique_ptr<IExecutionProvider> CreateProvider() = 0;
 };
 }  // namespace onnxruntime

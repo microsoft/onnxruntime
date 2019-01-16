@@ -17,6 +17,7 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
 }
+
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
   std::unique_ptr<OrtSessionOptions> options = std::make_unique<OrtSessionOptions>();
   return options.release();

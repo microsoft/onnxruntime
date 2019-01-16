@@ -4,21 +4,18 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include <atomic>
 #include "cpu_execution_provider.h"
-#include "core/providers/providers.h"
+#include "core/session/abi_session_options_impl.h"
 
 namespace onnxruntime {
 
 struct CpuProviderFactory : IExecutionProviderFactory {
-  CpuProviderFactory(bool create_arena);
-
+  CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {}
+  ~CpuProviderFactory() override {}
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   bool create_arena_;
 };
-
-CpuProviderFactory::CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {
-}
 
 std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider() {
   CPUExecutionProviderInfo info;
@@ -33,7 +30,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(in
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessionOptions* options, int use_arena) {
-  //  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CPU(use_arena));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CPU(use_arena));
   return nullptr;
 }
 
