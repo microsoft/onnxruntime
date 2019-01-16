@@ -96,10 +96,19 @@ Status IterateSequence(OpKernelContextInternal& context,
                        std::vector<std::string>& subgraph_output_names,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators) {
   Status status = Status::OK();
-  auto& graph_inputs = subgraph.GetInputsIncludingInitializers();
+
+  // prefer matching all inputs to the subgraph as per the Scan spec,
+  auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
+  if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
+    // fallback to just the required inputs.
+    graph_inputs = &subgraph.GetInputs();
+    ORT_ENFORCE(static_cast<size_t>(num_variadic_inputs) == graph_inputs->size(),
+                "Graph::InferAndVerifySubgraphTypes should have already validated that "
+                "num_variadic_inputs matched the subgraph inputs or required inputs.");
+  }
+
   NameMLValMap feeds;
   std::vector<MLValue> fetches;
-
   feeds.reserve(num_variadic_inputs + implicit_inputs.size());
   fetches.resize(num_variadic_outputs);
 
@@ -113,7 +122,7 @@ Status IterateSequence(OpKernelContextInternal& context,
   for (; seq_no < seq_length; ++seq_no) {
     for (int input = 0; input < num_variadic_inputs; ++input) {
       // the ordering of the Scan inputs should match the ordering of the subgraph inputs
-      auto name = graph_inputs[input]->Name();
+      auto name = (*graph_inputs)[input]->Name();
 
       if (input < num_loop_state_variables) {
         // add loop state variable input
