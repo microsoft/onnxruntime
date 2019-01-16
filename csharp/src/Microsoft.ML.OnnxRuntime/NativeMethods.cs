@@ -258,12 +258,6 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorMutableData(IntPtr /*(OrtValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
 
-        //[DllImport(nativeLib, CharSet = charSet)]
-        //public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorShapeDimCount(IntPtr /*(OrtValue*)*/ value, out ulong dimension); //size_t TODO: make it portable for x86, arm
-
-        //[DllImport(nativeLib, CharSet = charSet)]
-        //public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorShapeElementCount(IntPtr /*(OrtValue*)*/value, out ulong count);
-
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/
                                 OrtCastTypeInfoToTensorInfo(IntPtr /*(struct OrtTypeInfo*)*/ typeInfo);
