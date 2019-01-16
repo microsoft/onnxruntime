@@ -463,6 +463,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
               if (arg.Name().empty()) {
                 return Status::OK();
               }
+
               SessionState::NodeInfo node_info(index, &node, kci);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
@@ -488,9 +489,9 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
     // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
     const auto& node_implicit_inputs = node.ImplicitInputDefs();
     if (!node_implicit_inputs.empty()) {
-      // nested subgraph so for now map them to this node (which will be CPU based as all the control flow nodes
-      // are currently CPU based and they're the only ones that have implicit inputs) as they will be passed as a
-      // feed when executing this graph so need to be in the mapping.
+      // nested subgraph. for now map them to this node (which will be CPU based as all the control flow nodes
+      // are currently CPU based and they're the only ones that have implicit inputs) as the inputs will be passed as a
+      // feed when executing the subgraph and need to be in the mapping.
       // in the future we want to recurse and find where the implicit input is actually used to try and avoid a
       // copy to/from CPU to go through the control flow nodes where possible/applicable.
       // the processing for the subgraph where the implicit input is consumed will do the real check on whether any

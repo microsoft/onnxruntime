@@ -84,11 +84,14 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
 
   for (auto& node_info : node_info_vec) {
     if (node_info.p_node == nullptr) {
-      // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug,
-      // and use the input as is given we don't have any information on where it needs to be available.
-      LOGS(session_state.Logger(), WARNING) << "Graph input with name " << input_name
-                                            << " is not associated with a node. Using provided MLValue as-is for it.";
+      // dummy entry for an input that we didn't find a use of in the graph.
+      // use the input as is given we don't believe it's actually needed.
+      new_mlvalue = orig_mlvalue;
+      return Status::OK();
+    }
 
+    if (!orig_mlvalue.IsTensor()) {
+      // copying not supported for non-tensor types
       new_mlvalue = orig_mlvalue;
       return Status::OK();
     }
@@ -102,15 +105,10 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
     bool implicit_input = index == std::numeric_limits<size_t>::max();
 
     // node may declare input_mem_type to be on CPU explicitly
-    bool node_input_on_cpu = kci && !implicit_input && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index));
+    // skip implicit inputs as they don't have a valid 'index' value
+    bool node_input_on_cpu = !implicit_input && kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index));
     auto& required_provider_type = node_input_on_cpu ? onnxruntime::kCpuExecutionProvider
                                                      : node.GetExecutionProviderType();
-
-    if (!orig_mlvalue.IsTensor()) {
-      // copying not supported for non-tensor types
-      new_mlvalue = orig_mlvalue;
-      return Status::OK();
-    }
 
     auto& input_tensor = orig_mlvalue.Get<Tensor>();
     auto& input_tensor_loc = input_tensor.Location();
@@ -128,7 +126,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
       return Status::OK();
     }
 
-    //If node require input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
+    // If a node requires input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
     if (node_input_on_cpu && (input_tensor_loc.mem_type == OrtMemTypeCPU ||
                               input_tensor_loc.mem_type == OrtMemTypeCPUOutput)) {
       new_mlvalue = orig_mlvalue;
@@ -351,6 +349,10 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             bool sequential_execution,
                             const bool& terminate_flag,
                             const logging::Logger& logger) {
+  // TODO: Would be better to check upfront whether there was a need to copy inputs/outputs across devices,
+  // especially when a subgraph is repeatedly executed in a Scan or Loop node. If we checked once and no copy was
+  // needed we can skip everything here apart from the Execute call.
+
   NameMLValMap device_feeds;
   ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
 

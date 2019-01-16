@@ -203,10 +203,6 @@ Status IfImpl::Execute() {
                                context_.GetTerminateFlag(), context_.Logger());
   ORT_RETURN_IF_ERROR(status);
 
-  //SequentialExecutor executor{context_.GetTerminateFlag()};
-  //status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
-  //ORT_RETURN_IF_ERROR(status);
-
   for (int i = 0; i < num_outputs_; ++i) {
     // TODO: Task 1913: Improve handling of If outputs to avoid copy when the shape is not known
     //       at subgraph execution time.

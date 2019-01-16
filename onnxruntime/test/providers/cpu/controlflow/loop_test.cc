@@ -312,8 +312,8 @@ void RunTest(int64_t max_iterations,
   test.AddOutput<float>("loop_out_0_final", loop_out_0_final_shape, loop_out_0_final);
 
   if (options.mixed_execution_providers) {
-    // we want the CUDA provider to be first, and the CPU provider second. all the Identity nodes should run on
-    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the If node correctly.
+    // we want the CUDA provider to be first, and the CPU provider second. all except the Loop node should run on
+    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Loop node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());

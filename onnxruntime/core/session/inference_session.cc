@@ -639,25 +639,6 @@ class InferenceSession::Impl {
       ORT_CHECK_AND_SET_RETVAL(
           utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches,
                               session_options_.enable_sequential_execution, run_options.terminate, run_logger));
-      //NameMLValMap copied_feeds;
-      //ORT_CHECK_AND_SET_RETVAL(utils::CopyInputsAcrossDevices(session_state_, feeds, copied_feeds));
-
-      //std::vector<MLValue> new_fetches;
-      //ORT_CHECK_AND_SET_RETVAL(utils::MatchOutputsWithProviders(session_state_, output_names, *p_fetches, new_fetches));
-
-      //std::unique_ptr<IExecutor> p_exec;
-
-      //if (retval.IsOK()) {
-      //  if (session_options_.enable_sequential_execution) {
-      //    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(run_options.terminate));
-      //  } else {
-      //    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state_, run_options.terminate));
-      //  }
-      //}
-
-      //ORT_CHECK_AND_SET_RETVAL(p_exec->Execute(session_state_, copied_feeds, output_names, new_fetches, run_logger));
-      //ORT_CHECK_AND_SET_RETVAL(utils::CopyOutputsAcrossDevices(session_state_, new_fetches, *p_fetches));
-
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
     } catch (...) {

@@ -263,9 +263,9 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
 
 #ifdef USE_CUDA
 
-class IfCudaInputOpTester : public OpTester {
+class IfMixedExecProviderTester : public OpTester {
  public:
-  IfCudaInputOpTester() : OpTester("If") {
+  IfMixedExecProviderTester() : OpTester("If") {
   }
 
  protected:
@@ -334,7 +334,7 @@ class IfCudaInputOpTester : public OpTester {
 
 TEST(If, MixedExecutionProviders) {
   // Construct and run test
-  IfCudaInputOpTester test;
+  IfMixedExecProviderTester test;
 
   // graph input to specify which branch to take
   test.AddInput<bool>("if_cond", {1}, {true});
