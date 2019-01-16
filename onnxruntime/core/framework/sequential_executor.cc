@@ -78,14 +78,22 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
