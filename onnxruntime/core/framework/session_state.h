@@ -136,7 +136,7 @@ class SessionState {
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
-  void AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
+  common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
   common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 

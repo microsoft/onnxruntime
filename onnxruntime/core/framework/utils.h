@@ -7,19 +7,16 @@
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/framework_common.h"
-
-namespace onnxruntime {
-class Node;
-class Graph;
-}  // namespace onnxruntime
+#include "core/framework/session_state.h"
 
 namespace onnxruntime {
 class ExecutionProviders;
+class Graph;
 class KernelDef;
 class KernelRegistryManager;
 class IExecutionProvider;
 class MLValue;
-class SessionState;
+class Node;
 class Tensor;
 
 namespace logging {
@@ -30,10 +27,6 @@ namespace utils {
 const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
                               const onnxruntime::Node& node);
 
-const KernelDef* GetKernelDef(const onnxruntime::Graph& graph,
-                              const KernelRegistryManager& kernel_registry,
-                              const onnxruntime::NodeIndex node_id);
-
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info);
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
@@ -42,6 +35,8 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
                               int device_id,
                               const Tensor& fetched_tensor,
                               MLValue& output_mlvalue);
+
+const std::string& GetRequiredProvider(const SessionState::NodeInfo& info);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
                                          const std::string& input_name,

@@ -72,6 +72,21 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
   return Status::OK();
 }
 
+const std::string& GetRequiredProvider(const SessionState::NodeInfo& info) {
+  // the input index will be std::numeric_limits<size_t>::max() if it's an implicit input to a control flow node.
+  // the input will be processed fully when executing the subgraph that consumes the implicit input.
+  bool implicit_input = info.index == std::numeric_limits<size_t>::max();
+
+  // node may declare input_mem_type to be on CPU explicitly
+  // skip implicit inputs as they don't have a valid 'index' value
+  bool node_input_on_cpu = !implicit_input &&
+                           info.kci && MemTypeOnCpuExplicitly(info.kci->kernel_def->InputMemoryType(info.index));
+  auto& required_provider_type = node_input_on_cpu ? onnxruntime::kCpuExecutionProvider
+                                                   : info.p_node->GetExecutionProviderType();
+
+  return required_provider_type;
+}
+
 // TODO should we handle the case of one input name feeding 2 nodes placed on different devices?
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
                                          const std::string& input_name,
@@ -352,22 +367,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
   // TODO: Would be better to check upfront whether there was a need to copy inputs/outputs across devices,
   // especially when a subgraph is repeatedly executed in a Scan or Loop node. If we checked once and no copy was
   // needed we can skip everything here apart from the Execute call.
-
-  bool hack = feeds.find("split_out_0999") != feeds.cend();
-
-  if (hack) {
-    std::unique_ptr<IExecutor> p_exec;
-
-    if (sequential_execution) {
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
-    } else {
-      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
-    }
-
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, feeds, output_names, fetches, logger));
-
-    return Status::OK();
-  }
 
   NameMLValMap device_feeds;
   ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
