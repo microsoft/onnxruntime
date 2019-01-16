@@ -81,7 +81,11 @@ const std::string& GetRequiredProvider(const SessionState::NodeInfo& info) {
   // skip implicit inputs as they don't have a valid 'index' value
   bool node_input_on_cpu = !implicit_input &&
                            info.kci && MemTypeOnCpuExplicitly(info.kci->kernel_def->InputMemoryType(info.index));
-  auto& required_provider_type = node_input_on_cpu ? onnxruntime::kCpuExecutionProvider
+
+  // need a std::string that doesn't go away for kCpuExecutionProvider so we can return a reference.
+  static const std::string cpu_execution_provider{onnxruntime::kCpuExecutionProvider};
+
+  auto& required_provider_type = node_input_on_cpu ? cpu_execution_provider
                                                    : info.p_node->GetExecutionProviderType();
 
   return required_provider_type;
@@ -97,70 +101,64 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 
-  for (auto& node_info : node_info_vec) {
-    if (node_info.p_node == nullptr) {
-      // dummy entry for an input that we didn't find a use of in the graph.
-      // use the input as is given we don't believe it's actually needed.
-      new_mlvalue = orig_mlvalue;
-      return Status::OK();
-    }
+  auto& exec_providers = session_state.GetExecutionProviders();
 
-    if (!orig_mlvalue.IsTensor()) {
-      // copying not supported for non-tensor types
-      new_mlvalue = orig_mlvalue;
-      return Status::OK();
-    }
+  // currently we only support one device per input. see SessionState::AddInputNameToNodeInfoMapping for more
+  // info on the logic to create the node_info_vec.
+  // for (auto& node_info : node_info_vec) {
+  auto& node_info = node_info_vec.front();
 
-    size_t index = node_info.index;
-    auto& node = *node_info.p_node;
-    const KernelCreateInfo* kci = node_info.kci;
-
-    // the input index will be std::numeric_limits<size_t>::max() if it's an implicit input to a control flow node.
-    // the input will be processed fully when executing the subgraph that consumes the implicit input.
-    bool implicit_input = index == std::numeric_limits<size_t>::max();
-
-    // node may declare input_mem_type to be on CPU explicitly
-    // skip implicit inputs as they don't have a valid 'index' value
-    bool node_input_on_cpu = !implicit_input && kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index));
-    auto& required_provider_type = node_input_on_cpu ? onnxruntime::kCpuExecutionProvider
-                                                     : node.GetExecutionProviderType();
-
-    auto& input_tensor = orig_mlvalue.Get<Tensor>();
-    auto& input_tensor_loc = input_tensor.Location();
-    auto& exec_providers = session_state.GetExecutionProviders();
-
-    auto* p_input_provider = exec_providers.Get(input_tensor_loc);
-    if (!p_input_provider) {
-      p_input_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
-      ORT_ENFORCE(p_input_provider);
-    }
-
-    auto input_provider_type = p_input_provider->Type();
-    if (input_provider_type == required_provider_type && input_tensor_loc.mem_type == OrtMemTypeDefault) {
-      new_mlvalue = orig_mlvalue;
-      return Status::OK();
-    }
-
-    // If a node requires input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
-    if (node_input_on_cpu && (input_tensor_loc.mem_type == OrtMemTypeCPU ||
-                              input_tensor_loc.mem_type == OrtMemTypeCPUOutput)) {
-      new_mlvalue = orig_mlvalue;
-      return Status::OK();
-    }
-
-    auto* required_provider = exec_providers.Get(required_provider_type);
-    ORT_ENFORCE(required_provider);
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*required_provider, target_device_id, input_tensor, new_mlvalue));
-
-    auto* new_tensor = new_mlvalue.GetMutable<Tensor>();
-
-    // our CPU exec provider doesn't support copy from GPU->CPU
-    if (required_provider_type != onnxruntime::kCpuExecutionProvider) {
-      ORT_RETURN_IF_ERROR(required_provider->CopyTensor(input_tensor, *new_tensor));
-    } else {
-      ORT_RETURN_IF_ERROR(p_input_provider->CopyTensor(input_tensor, *new_tensor));
-    }
+  if (node_info.p_node == nullptr) {
+    // dummy entry for an input that we didn't find a use of in the graph.
+    // use the input as is given we don't believe it's actually needed.
+    new_mlvalue = orig_mlvalue;
+    return Status::OK();
   }
+
+  if (!orig_mlvalue.IsTensor()) {
+    // copying not supported for non-tensor types
+    new_mlvalue = orig_mlvalue;
+    return Status::OK();
+  }
+
+  auto& required_provider_type = GetRequiredProvider(node_info);
+  auto& input_tensor = orig_mlvalue.Get<Tensor>();
+  auto& input_tensor_loc = input_tensor.Location();
+
+  auto* p_input_provider = exec_providers.Get(input_tensor_loc);
+  if (!p_input_provider) {
+    p_input_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
+    ORT_ENFORCE(p_input_provider);
+  }
+
+  auto input_provider_type = p_input_provider->Type();
+  if (input_provider_type == required_provider_type && input_tensor_loc.mem_type == OrtMemTypeDefault) {
+    new_mlvalue = orig_mlvalue;
+    return Status::OK();
+  }
+
+  // If a node requires input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
+  if (required_provider_type == onnxruntime::kCpuExecutionProvider &&
+      (input_tensor_loc.mem_type == OrtMemTypeCPU ||
+       input_tensor_loc.mem_type == OrtMemTypeCPUOutput)) {
+    new_mlvalue = orig_mlvalue;
+    return Status::OK();
+  }
+
+  auto* required_provider = exec_providers.Get(required_provider_type);
+  ORT_ENFORCE(required_provider);
+  ORT_RETURN_IF_ERROR(utils::AllocateHelper(*required_provider, target_device_id, input_tensor, new_mlvalue));
+
+  auto* new_tensor = new_mlvalue.GetMutable<Tensor>();
+
+  // our CPU exec provider doesn't support copy from GPU->CPU
+  if (required_provider_type != onnxruntime::kCpuExecutionProvider) {
+    ORT_RETURN_IF_ERROR(required_provider->CopyTensor(input_tensor, *new_tensor));
+  } else {
+    ORT_RETURN_IF_ERROR(p_input_provider->CopyTensor(input_tensor, *new_tensor));
+  }
+
+  // } loop of node_info_vec
 
   return Status::OK();
 }
