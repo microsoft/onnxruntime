@@ -82,14 +82,27 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 
-  // TODO: Why do we bail early with a return instead of continue???
   for (auto& node_info : node_info_vec) {
+    if (node_info.p_node == nullptr) {
+      // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug,
+      // and use the input as is given we don't have any information on where it needs to be available.
+      LOGS(session_state.Logger(), WARNING) << "Graph input with name " << input_name
+                                            << " is not associated with a node. Using provided MLValue as-is for it.";
+
+      new_mlvalue = orig_mlvalue;
+      return Status::OK();
+    }
+
     size_t index = node_info.index;
     auto& node = *node_info.p_node;
     const KernelCreateInfo* kci = node_info.kci;
 
+    // the input index will be std::numeric_limits<size_t>::max() if it's an implicit input to a control flow node.
+    // the input will be processed fully when executing the subgraph that consumes the implicit input.
+    bool implicit_input = index == std::numeric_limits<size_t>::max();
+
     // node may declare input_mem_type to be on CPU explicitly
-    bool node_input_on_cpu = kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index));
+    bool node_input_on_cpu = kci && !implicit_input && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index));
     auto& required_provider_type = node_input_on_cpu ? onnxruntime::kCpuExecutionProvider
                                                      : node.GetExecutionProviderType();
 

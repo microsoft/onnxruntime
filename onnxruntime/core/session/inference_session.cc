@@ -320,16 +320,18 @@ class InferenceSession::Impl {
           // create SessionState for executing subgraph
           subgraph_info.session_state = std::make_unique<SessionState>(execution_providers_);
           subgraph_info.session_state->SetProfiler(session_profiler_);
+          subgraph_info.session_state->SetLogger(*session_logger_);
 
           // setup everything required to execute the subgraph and save it in subgraph_session_state
           SessionStateInitializer initializer{*subgraph, *subgraph_info.session_state,
-                                              execution_providers_, kernel_registry_manager_, *session_logger_};
+                                              execution_providers_, kernel_registry_manager_};
 
           ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
                                                      session_options_.enable_sequential_execution));
 
           ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                            subgraph_info.weights_buffers));
+                                                            subgraph_info.weights_buffers,
+                                                            &node.ImplicitInputDefs()));
 
           // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
           // by Compute() via OpKernelContextInternal.
@@ -391,7 +393,7 @@ class InferenceSession::Impl {
       insert_cast_transformer_.AddKernelRegistries(kernel_registry_manager_.GetAllKernelRegistries());
 
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
-                                                  kernel_registry_manager_, *session_logger_};
+                                                  kernel_registry_manager_};
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR(TransformGraph(graph, graph_transformation_mgr_,

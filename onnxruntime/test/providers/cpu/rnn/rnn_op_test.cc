@@ -26,7 +26,7 @@ void MemoryLayoutTransposeRNNInputCNTKToONNXRuntime(const T* X_data_cntk, T* X_d
 // onnxruntime takes output of shape [seq_length, num_directions, batch_size, hidden_size)
 template <typename T>
 void MemoryLayoutTransposeRNNOutputCNTKToONNXRuntime(const T* X_data_cntk, T* X_data_onnx,
-                                               int64_t seq_length, int64_t num_directions, int64_t batch_size, int64_t hidden_size) {
+                                                     int64_t seq_length, int64_t num_directions, int64_t batch_size, int64_t hidden_size) {
   for (int seq = 0; seq < seq_length; seq++) {
     for (int dir = 0; dir < num_directions; dir++) {
       for (int batch = 0; batch < batch_size; batch++) {
@@ -110,7 +110,7 @@ TEST(RNNTest, RNN_bidirectional_bias_initial_zigged_batch) {
                                        0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F});
   std::vector<float> Y_data(seq_length * num_directions * batch_size * hidden_size);
   MemoryLayoutTransposeRNNOutputCNTKToONNXRuntime(&Y_data_in_batchs[0], &Y_data[0],
-                                            seq_length, num_directions, batch_size, hidden_size);
+                                                  seq_length, num_directions, batch_size, hidden_size);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -187,7 +187,7 @@ TEST(RNNTest, RNN_bidirectional_zigged_batch) {
                                        0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F});
   std::vector<float> Y_data(seq_length * num_directions * batch_size * hidden_size);
   MemoryLayoutTransposeRNNOutputCNTKToONNXRuntime(&Y_data_in_batchs[0], &Y_data[0],
-                                            seq_length, num_directions, batch_size, hidden_size);
+                                                  seq_length, num_directions, batch_size, hidden_size);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -261,7 +261,7 @@ TEST(RNNTest, RNN_reverse_direction_zigged_batch) {
                                        0.0F, 0.0F, 0.0F});
   std::vector<float> Y_data(seq_length * num_directions * batch_size * hidden_size);
   MemoryLayoutTransposeRNNOutputCNTKToONNXRuntime(&Y_data_in_batchs[0], &Y_data[0],
-                                            seq_length, num_directions, batch_size, hidden_size);
+                                                  seq_length, num_directions, batch_size, hidden_size);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -335,7 +335,7 @@ TEST(RNNTest, RNN_forward_direction_zigged_batch) {
                                        0.0F, 0.0F, 0.0F});
   std::vector<float> Y_data(seq_length * num_directions * batch_size * hidden_size);
   MemoryLayoutTransposeRNNOutputCNTKToONNXRuntime(&Y_data_in_batchs[0], &Y_data[0],
-                                            seq_length, num_directions, batch_size, hidden_size);
+                                                  seq_length, num_directions, batch_size, hidden_size);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -682,7 +682,8 @@ TEST(RNNTest, RNN_invalid_sequence_lens) {
     std::vector<float> Y_h_data{0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg);
+    // the CUDA RNN version allows the invalid sequence lengths, so disable testing on CUDA
+    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg, {kCudaExecutionProvider});
   };
 
   // should batch batch_size to be valid

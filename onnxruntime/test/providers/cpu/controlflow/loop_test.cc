@@ -7,8 +7,10 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/session_state.h"
-#include "test/providers/provider_test_utils.h"
 #include "core/session/inference_session.h"
+
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -19,6 +21,7 @@ struct RunOptions {
   bool include_dim_values_in_main_graph = true;
   bool include_dim_values_in_subgraph = false;
   bool include_types_in_subgraph = false;
+  bool mixed_execution_providers = false;
 };
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
@@ -296,7 +299,17 @@ void RunTest(int64_t max_iterations,
   test.AddOutput<float>("loop_var_1_final", loop_var_1_final_shape, loop_var_1_final);
   test.AddOutput<float>("loop_out_0_final", loop_out_0_final_shape, loop_out_0_final);
 
-  test.Run(expect_result, failure_message);
+  if (options.mixed_execution_providers) {
+    // we want the CUDA provider to be first, and the CPU provider second. all the Identity nodes should run on
+    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the If node correctly.
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+
+    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+  } else {
+    test.Run(expect_result, failure_message);
+  }
 }
 
 // exit due to hitting condition that the sum is < kSumMax which is 8
@@ -461,6 +474,16 @@ TEST(Loop, InfiniteLoopTermination) {
   // done with the thread
   terminator_thread.join();
 }
+
+#ifdef USE_CUDA
+// test that when part of the subgraph run on CUDA it executes successfully
+TEST(Loop, MixedExecutionProviders) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+
+  ExitDueToCond(options);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
