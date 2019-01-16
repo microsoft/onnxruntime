@@ -58,14 +58,10 @@ def download_test_data(models_dir, src_url, expected_md5):
     if os.path.exists(models_dir):
         print('deleting %s' % models_dir)
         shutil.rmtree(models_dir)
-    if shutil.which('unzip'):
-        subprocess.run(['unzip','-qd', models_dir, local_zip_file], check=True)
-    elif shutil.which('7za'):
-        subprocess.run(['7za','x', local_zip_file, '-y', '-o' + models_dir], check=True)
+    if is_windows():
+        subprocess.run(['powershell', '-Command', 'Expand-Archive -LiteralPath "%s" -DestinationPath "%s" -Force' % (local_zip_file, models_dir)], check=True)
     else:
-        #TODO: use python for unzip
-        print("No unzip tool for use")
-        return False
+        subprocess.run(['unzip','-qd', models_dir, local_zip_file], check=True)
     return True
 
 
