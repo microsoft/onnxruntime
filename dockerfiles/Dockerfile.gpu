@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 # Official user quickstart nvidia-docker container for ONNX Runtime GPU
-# Ubuntu 16.04, GPU version, CuDNN 7, CUDA 9.1, Python 3.
+# Ubuntu 16.04, GPU version, CuDNN 7, CUDA 10, Python 3.
 #--------------------------------------------------------------------------
 
-FROM nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
 MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 RUN apt-get update && \
