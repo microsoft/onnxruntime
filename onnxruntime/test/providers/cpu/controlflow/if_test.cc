@@ -20,6 +20,7 @@ struct RunOptions {
   bool include_dim_values_in_main_graph = false;
   int symbolic_dim_value_in_main_graph = -1;
   bool include_dim_values_in_subgraph = true;
+  bool mixed_execution_providers = false;
 };
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
@@ -201,7 +202,17 @@ void RunTest(bool condition_value,
     test.AddOutput<float>("if_out_0", output_shape, {11.f});
   }
 
-  test.Run(expect_result, failure_message);
+  if (options.mixed_execution_providers) {
+    // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
+    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+
+    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+  } else {
+    test.Run(expect_result, failure_message);
+  }
 }
 
 TEST(If, ShapeInMainGraph_NoShapeInSubgraph_True) {
@@ -236,6 +247,14 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
   RunTest(false, options);
 }
 
+#ifdef USE_CUDA
+TEST(If, MixedExecutionProviders) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  RunTest(true, options);
+}
+#endif  // USE_CUDA
+
 /*
 These tests require subgraphs with nodes that support symbolic dimensions.
 'Add' does not.
@@ -260,99 +279,6 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   RunTest(false, options);
 }
 */
-
-#ifdef USE_CUDA
-
-class IfMixedExecProviderTester : public OpTester {
- public:
-  IfMixedExecProviderTester() : OpTester("If") {
-  }
-
- protected:
-  void AddNodes(onnxruntime::Graph& graph,
-                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
-                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
-                std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
-    // All the Identity nodes will be mapped to CUDA, so this will create a scenario where data needs to be
-    // copied to/from CUDA to execute the subgraph
-
-    // Graph inputs are 0:Cond for If, 1:if input0
-    ASSERT_EQ(graph_input_defs.size(), 2);
-    ASSERT_EQ(graph_output_defs.size(), 1);
-
-    NodeArg* if_cond_input = graph_input_defs[0];
-    NodeArg* if_input0 = graph_input_defs[1];
-
-    std::vector<NodeArg*> inputs;
-    std::vector<NodeArg*> outputs;
-
-    auto create_subgraph = [](const std::string& prefix) {
-      Model model(prefix + "_subgraph");
-      auto& graph = model.MainGraph();
-
-      TypeProto float_tensor;
-      float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-      float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-
-      auto& in_0 = graph.GetOrCreateNodeArg("if_in_0", &float_tensor);
-      auto& out_0 = graph.GetOrCreateNodeArg("if_out_0", &float_tensor);
-
-      graph.AddOuterScopeNodeArg("if_in_0");
-
-      graph.AddNode(prefix + "_node0", "Identity", "Copy in to out", {&in_0}, {&out_0});
-
-      auto status = graph.Resolve();
-      EXPECT_EQ(status, Status::OK()) << status.ErrorMessage();
-
-      auto& proto = graph.ToGraphProto();
-
-      return proto;
-    };
-
-    // add If node
-    {
-      inputs = {if_cond_input};
-      outputs = {graph_output_defs[0]};
-
-      auto& if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
-
-      if_node.AddAttribute("then_branch", {create_subgraph("then")});
-      if_node.AddAttribute("else_branch", {create_subgraph("else")});
-    }
-
-    // add Identity node so if_graph_input_0 comes from graph inputs
-    {
-      inputs = {if_input0};
-      outputs = {&graph.GetOrCreateNodeArg("if_in_0", if_input0->TypeAsProto())};
-      auto& input_node = graph.AddNode("identity", "Identity", "Pass if input through from graph inputs.", inputs, outputs);
-    }
-  }
-
- private:
-  RunOptions options_;
-};
-
-TEST(If, MixedExecutionProviders) {
-  // Construct and run test
-  IfMixedExecProviderTester test;
-
-  // graph input to specify which branch to take
-  test.AddInput<bool>("if_cond", {1}, {true});
-  test.AddInput<float>("if_graph_input_0", {1}, {1.f});
-
-  std::vector<int64_t> output_shape{1};
-  test.AddOutput<float>("if_out_0", output_shape, {1.f});
-
-  // we want the CUDA provider to be first, and the CPU provider second. all the Identity nodes should run on
-  // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the If node correctly.
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -424,16 +424,9 @@ common::Status SaveKernels(const ExecutionProviders& execution_providers,
   return Status::OK();
 }
 
+template <typename T>  // T is const NodeArg or NodeArg
 static bool IsArgNameInInputsOutputs(const std::string& name,
-                                     const std::vector<const onnxruntime::NodeArg*>& graph_args) {
-  auto it = std::find_if(std::begin(graph_args), std::end(graph_args), [&name](const onnxruntime::NodeArg* arg) {
-    return arg->Name() == name;
-  });
-  return it != graph_args.end();
-}
-
-static bool IsArgNameInInputsOutputs(const std::string& name,
-                                     const std::vector<onnxruntime::NodeArg*>& graph_args) {
+                                     const std::vector<T*>& graph_args) {
   auto it = std::find_if(std::begin(graph_args), std::end(graph_args), [&name](const onnxruntime::NodeArg* arg) {
     return arg->Name() == name;
   });

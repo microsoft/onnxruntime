@@ -353,6 +353,22 @@ common::Status ExecuteGraph(const SessionState& session_state,
   // especially when a subgraph is repeatedly executed in a Scan or Loop node. If we checked once and no copy was
   // needed we can skip everything here apart from the Execute call.
 
+  bool hack = feeds.find("split_out_0999") != feeds.cend();
+
+  if (hack) {
+    std::unique_ptr<IExecutor> p_exec;
+
+    if (sequential_execution) {
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+    } else {
+      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+    }
+
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, feeds, output_names, fetches, logger));
+
+    return Status::OK();
+  }
+
   NameMLValMap device_feeds;
   ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
 
