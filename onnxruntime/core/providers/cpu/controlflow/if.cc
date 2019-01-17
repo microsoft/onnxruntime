@@ -7,9 +7,9 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/session_state.h"
+#include "core/framework/utils.h"
 
 #include "core/framework/tensorprotoutils.h"
-// #include "core/providers/cpu/tensor/utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -120,7 +120,7 @@ Status IfImpl::Initialize() {
 
   if (num_subgraph_outputs != num_outputs_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
-                                   " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
+                           " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }
 
   subgraph_output_names_.reserve(num_subgraph_outputs);
@@ -145,7 +145,7 @@ Status IfImpl::AllocateOutputTensors() {
     auto* graph_output_shape = graph_output->Shape();
     if (!graph_output_shape) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                                     graph_output->Name(), " did not.");
+                             graph_output->Name(), " did not.");
     }
 
     TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
@@ -182,7 +182,7 @@ Status IfImpl::Execute() {
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                        entry.first, " did not.");
+                entry.first, " did not.");
 
     // prune to values that are in this subgraph as the implicit inputs cover both 'then' and 'else' subgraphs.
     // alternatively we could track implicit inputs on a per-attribute basis in the node, but that
@@ -192,7 +192,6 @@ Status IfImpl::Execute() {
       feeds[entry.first] = *entry.second;
     }
   }
-
   std::vector<MLValue> fetches;
   fetches.reserve(num_outputs_);
 
@@ -200,8 +199,8 @@ Status IfImpl::Execute() {
     fetches.push_back(outputs_[i].second);
   }
 
-  SequentialExecutor executor{context_.GetTerminateFlag()};
-  status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
+  status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, /*sequential_execution*/ true,
+                               context_.GetTerminateFlag(), context_.Logger());
   ORT_RETURN_IF_ERROR(status);
 
   for (int i = 0; i < num_outputs_; ++i) {

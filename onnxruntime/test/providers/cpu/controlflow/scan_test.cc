@@ -4,8 +4,10 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "core/framework/session_state.h"
-#include "test/providers/provider_test_utils.h"
 #include "core/session/inference_session.h"
+
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -20,6 +22,7 @@ struct RunOptions {
   bool include_outer_scope_add = false;
   bool scalar_loop_state_value = false;
   bool add_bad_shape = false;
+  bool mixed_execution_providers = false;
 };
 
 static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
@@ -368,7 +371,17 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   test.AddOutput<float>("scan_output_2", output_shape, output_2);
   test.AddOutput<float>("scan_output_3", output_shape, output_3);
 
-  test.Run(expect_result, failure_message);
+  if (options.mixed_execution_providers) {
+    // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
+    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+
+    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+  } else {
+    test.Run(expect_result, failure_message);
+  }
 }
 
 static void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, const std::string& expected_error = "") {
@@ -1017,6 +1030,16 @@ void UnknownDimInSubgraphOutput(bool is_v8) {
 }
 
 TEST_8_AND_9(UnknownDimInSubgraphOutput);
+
+#ifdef USE_CUDA
+TEST(Scan, MixedExecutionProviders) {
+  RunOptions options{};
+  options.is_v8 = false;
+  options.mixed_execution_providers = true;
+
+  ShortSequenceOneInBatchOneLoopStateVar(options);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
