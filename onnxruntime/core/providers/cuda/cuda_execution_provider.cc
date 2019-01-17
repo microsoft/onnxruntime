@@ -772,7 +772,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   static std::once_flag cuda_kernel_registry_flag;
-  std::call_once(mkldnn_kernel_registry_flag, onnxruntime::cuda::RegisterCudaKernels, *kernel_registry);
+  std::call_once(cuda_kernel_registry_flag, onnxruntime::cuda::RegisterCudaKernels, *kernel_registry);
   return kernel_registry;
 }
 
