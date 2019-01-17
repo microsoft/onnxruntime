@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Numerics.Tensors;
 using System.Threading.Tasks;
 using Xunit;
@@ -13,10 +14,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 {
     public class InferenceTest
     {
+        private const string module = "onnxruntime.dll";
+
         [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory() , "squeezenet.onnx");
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             using (var session = new InferenceSession(modelPath))
             {
                 Assert.NotNull(session);
@@ -49,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void CanRunInferenceOnAModel()
         {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(),  "squeezenet.onnx");
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             using (var session = new InferenceSession(modelPath))
             {
@@ -121,7 +124,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            var msg = ex.ToString().Substring(0,101);
+            var msg = ex.ToString().Substring(0, 101);
             // TODO: message is diff in LInux. Use substring match
             Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
             session.Dispose();
@@ -239,7 +242,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
                         var innodedims = innodepair.Value.Dimensions;
-                        for (int i=0; i < innodedims.Length; i++)
+                        for (int i = 0; i < innodedims.Length; i++)
                         {
                             if (innodedims[i] < 0)
                                 innodedims[i] = -1 * innodedims[i];
@@ -468,6 +471,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensorOut = res.First().AsTensor<float>();
             Assert.True(tensorOut.SequenceEqual(tensorIn));
             session.Dispose();
+        }
+
+        [DllImport("kernel32", SetLastError = true)]
+        static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32", CharSet = CharSet.Ansi)]
+        static extern UIntPtr GetProcAddress(IntPtr hModule, string procName);
+
+        [Fact]
+        private void VerifyNativeMethodsExist()
+        {
+            // Check for  external API changes
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return;
+            var entryPointNames = new[]{
+            "OrtInitialize","OrtReleaseEnv","OrtGetErrorCode","OrtGetErrorMessage",
+            "OrtReleaseStatus","OrtCreateSession","OrtRun","OrtSessionGetInputCount",
+            "OrtSessionGetOutputCount","OrtSessionGetInputName","OrtSessionGetOutputName","OrtSessionGetInputTypeInfo",
+            "OrtSessionGetOutputTypeInfo","OrtReleaseSession","OrtCreateSessionOptions","OrtCloneSessionOptions",
+            "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
+            "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSessionOptionsAppendExecutionProvider",
+            "OrtCreateCpuExecutionProviderFactory","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtCreateDefaultAllocator","OrtReleaseObject","OrtAllocatorFree","OrtAllocatorGetInfo",
+            "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
+            "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetNumOfDimensions",
+            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
+
+            var hModule = LoadLibrary(module);
+            foreach (var ep in entryPointNames)
+            {             
+                var x = GetProcAddress(hModule, ep);
+                Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
+            }
         }
 
         static float[] LoadTensorFromFile(string filename, bool skipheader = true)
