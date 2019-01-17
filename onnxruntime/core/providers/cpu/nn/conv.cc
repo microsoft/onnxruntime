@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/conv_impl.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 

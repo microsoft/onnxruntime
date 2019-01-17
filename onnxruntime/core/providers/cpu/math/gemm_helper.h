@@ -10,15 +10,15 @@ class GemmHelper {
  public:
   GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
     //dimension check
-    ORT_ENFORCE(left.NumDimensions() == 2);
+    ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
     ORT_ENFORCE(right.NumDimensions() == 2);
 
     if (trans_left) {
-      M_ = left[1];
-      K_ = left[0];
+      M_ = left.NumDimensions() == 2 ? left[1] : left[0];
+      K_ = left.NumDimensions() == 2 ? left[0] :1 ;
     } else {
-      M_ = left[0];
-      K_ = left[1];
+      M_ = left.NumDimensions() == 2 ? left[0] : 1;
+      K_ = left.NumDimensions() == 2 ? left[1] : left[0];
     }
 
     int k_dim;
