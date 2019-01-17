@@ -8,7 +8,6 @@
 #include "abi_session_options_impl.h"
 
 OrtSessionOptions::~OrtSessionOptions() {
-  assert(ref_count == 0);
 }
 
 OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
@@ -23,6 +22,10 @@ ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
   return options.release();
 }
 
+ORT_API(void, OrtReleaseSessionOptions, OrtSessionOptions* ptr) {
+  delete ptr;
+}
+
 ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions* input) {
   try {
     return new OrtSessionOptions(*input);
@@ -30,13 +33,6 @@ ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions* input) {
     return nullptr;
   }
 }
-
-#if 0
-ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f) {
-  OrtAddRefToObject(f);
-  options->provider_factories.push_back(f);
-}
-#endif
 
 ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options) {
   options->value.enable_sequential_execution = true;

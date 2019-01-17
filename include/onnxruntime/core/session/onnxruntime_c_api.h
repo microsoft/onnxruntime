@@ -139,26 +139,10 @@ ORT_RUNTIME_CLASS(AllocatorInfo);
 ORT_RUNTIME_CLASS(Session);
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(ValueList);
-
-struct OrtTypeInfo;
-typedef struct OrtTypeInfo OrtTypeInfo;
-struct OrtTensorTypeAndShapeInfo;
-typedef struct OrtTensorTypeAndShapeInfo OrtTensorTypeAndShapeInfo;
-struct OrtRunOptions;
-typedef struct OrtRunOptions OrtRunOptions;
-struct OrtSessionOptions;
-typedef struct OrtSessionOptions OrtSessionOptions;
-
-/**
- * Every type inherented from OrtObject should be deleted by OrtReleaseObject(...).
- */
-typedef struct OrtObject {
-  // Returns the new reference count.
-  uint32_t(ORT_API_CALL* AddRef)(void* this_);
-  // Returns the new reference count.
-  uint32_t(ORT_API_CALL* Release)(void* this_);
-
-} OrtObject;
+ORT_RUNTIME_CLASS(RunOptions);
+ORT_RUNTIME_CLASS(TypeInfo);
+ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
+ORT_RUNTIME_CLASS(SessionOptions);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -167,12 +151,6 @@ typedef struct OrtAllocator {
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
   const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
-
-// Inherented from OrtObject
-//typedef struct OrtProviderFactoryInterface {
-//  OrtObject parent;
-//  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
-//} OrtProviderFactoryInterface;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
@@ -245,11 +223,15 @@ ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, u
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
-  * The order of invocation indicates the preference order as well. In other words call this method
+  * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
+  * functions to enable them in the session:
+  *   OrtSessionOptionsAppendExecutionProvider_CPU
+  *   OrtSessionOptionsAppendExecutionProvider_CUDA
+  *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
+  * The order they care called indicates the preference order as well. In other words call this method
   * on your most preferred execution provider first followed by the less preferred ones.
-  * Calling this API is optional in which case Ort will use its internal CPU execution provider.
+  * If none are called Ort will use its internal CPU execution provider.
   */
-//ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
 
 ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 
@@ -386,23 +368,6 @@ ORT_API_STATUS(OrtGetTensorShapeAndType, _In_ const OrtValue* value, _Out_ OrtTe
 ORT_API_STATUS(OrtGetTypeInfo, _In_ const OrtValue* value, OrtTypeInfo** out);
 
 ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value);
-
-/**
- * This function is a wrapper to "(*(OrtObject**)ptr)->AddRef(ptr)"
- * WARNING: There is NO type checking in this function.
- * Before calling this function, caller should make sure current ref count > 0
- * \return the new reference count
- */
-ORT_API(uint32_t, OrtAddRefToObject, _In_ void* ptr);
-
-/**
- *
- * A wrapper to "(*(OrtObject**)ptr)->Release(ptr)"
- * WARNING: There is NO type checking in this function.
- * \param ptr Can be NULL. If it's NULL, this function will return zero.
- * \return the new reference count.
- */
-ORT_API(uint32_t, OrtReleaseObject, _Inout_opt_ void* ptr);
 
 typedef enum OrtAllocatorType {
   OrtDeviceAllocator = 0,

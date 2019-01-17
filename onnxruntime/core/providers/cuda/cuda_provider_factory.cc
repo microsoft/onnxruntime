@@ -31,6 +31,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(i
 }  // namespace
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
-  //  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id));
   return nullptr;
 }

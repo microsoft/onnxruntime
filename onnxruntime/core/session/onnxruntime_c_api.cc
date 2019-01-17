@@ -20,7 +20,6 @@
 #include "core/framework/environment.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
-#include "core/framework/onnx_object_cxx.h"
 #include "core/session/inference_session.h"
 
 #include "abi_session_options_impl.h"
@@ -49,7 +48,6 @@ struct OrtEnv {
  public:
   Environment* value;
   LoggingManager* loggingManager;
-  friend class onnxruntime::ObjectBase<OrtEnv>;
 
   OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
   }
