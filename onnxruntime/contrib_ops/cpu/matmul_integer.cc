@@ -8,7 +8,7 @@
 
 #include "contrib_ops/cpu/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "public/gemmlowp.h"
+#include "core/util/gemmlowp_common_wrapper.h"
 
 namespace onnxruntime {
 namespace contrib {

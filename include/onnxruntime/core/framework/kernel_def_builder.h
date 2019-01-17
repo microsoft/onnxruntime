@@ -26,7 +26,7 @@ inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
 
 class KernelDef {
  public:
-  explicit KernelDef() : default_inputs_mem_type_(OrtMemTypeDefault), default_outputs_mem_type_(OrtMemTypeDefault) {
+  explicit KernelDef() {
   }
 
   const std::string& OpName() const {
@@ -62,16 +62,14 @@ class KernelDef {
     auto it = input_memory_type_args_.find(input_index);
     if (it == input_memory_type_args_.end())
       return default_inputs_mem_type_;
-    else
-      return it->second;
+    return it->second;
   }
 
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
       return default_outputs_mem_type_;
-    else
-      return it->second;
+    return it->second;
   }
 
   int ExecQueueId() const {
@@ -117,9 +115,9 @@ class KernelDef {
   // execution command queue id, 0 for default queue in execution provider
   int exec_queue_id_ = 0;
   // Default memory type for all inputs
-  OrtMemType default_inputs_mem_type_;
+  OrtMemType default_inputs_mem_type_{OrtMemTypeDefault};
   // Default memory type for all outputs
-  OrtMemType default_outputs_mem_type_;
+  OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
 };
 
 class KernelDefBuilder {

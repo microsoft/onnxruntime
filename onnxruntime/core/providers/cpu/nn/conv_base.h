@@ -61,7 +61,7 @@ Status ComputePadAndOutputShape(
 // base class used by Conv and ConvTranspose
 class ConvBase {
  protected:
-  ConvBase(const OpKernelInfo& info) {
+  explicit ConvBase(const OpKernelInfo& info) {
     std::string auto_pad;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad);
     auto_pad_ = status.IsOK() ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET;
@@ -101,7 +101,7 @@ class ConvBase {
 #endif
   }
 
-  ~ConvBase() {}
+  ~ConvBase() = default;
 
  protected:
   Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {

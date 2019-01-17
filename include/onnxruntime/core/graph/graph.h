@@ -62,7 +62,7 @@ class Node {
     /** Construct a control edge.
     @param node The node the edge joins to the current node.
     */
-    EdgeEnd(const Node& node) noexcept;
+    explicit EdgeEnd(const Node& node) noexcept;
 
     /** Gets the Node that this EdgeEnd refers to. */
     const Node& GetNode() const noexcept;
@@ -77,8 +77,8 @@ class Node {
 
    private:
     const Node* node_;
-    int src_arg_index_;
-    int dst_arg_index_;
+    const int src_arg_index_;
+    const int dst_arg_index_;
   };
 
   /** Gets the Node's NodeIndex. */
@@ -522,7 +522,7 @@ class Graph {
   const GraphNodes& Nodes() const noexcept { return iterable_nodes_; }
 
   /** Gets the maximum NodeIndex value used in the Graph. */
-  int MaxNodeIndex() const { return gsl::narrow<int>(nodes_.size()); }
+  int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph. 
   @remarks This may be smaller than MaxNodeIndex(), as Nodes may be removed during optimization.

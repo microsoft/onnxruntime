@@ -126,8 +126,8 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
 
   session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer));
   session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer));
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  Status st = session_object.Initialize();
+  ASSERT_TRUE(st.IsOK()) << st;
 }
 
 TEST(GraphTransformationTests, FuseConvAddNoBias) {
@@ -147,7 +147,8 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer));
   session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer));
 
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  Status st = session_object.Initialize();
+  ASSERT_TRUE(st.IsOK()) << st;
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
@@ -171,7 +172,8 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
   session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer));
   session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer));
 
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  Status st = session_object.Initialize();
+  ASSERT_TRUE(st.IsOK()) << st;
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
@@ -191,7 +193,8 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer));
   session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer));
 
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  Status st = session_object.Initialize();
+  ASSERT_TRUE(st.IsOK()) << st;
 }
 
 }  // namespace test
