@@ -12,13 +12,15 @@ namespace onnxruntime {
 
 namespace profiling {
 
-/*
-Main class for profiling. It continues to accumulate events and produce
-a corresponding "complete event (X)" in "chrome tracing" format.
-*/
+/**
+ * Main class for profiling. It continues to accumulate events and produce
+ * a corresponding "complete event (X)" in "chrome tracing" format.
+ */
 class Profiler {
  public:
-  Profiler() noexcept {};  // turned off by default.
+  /// turned off by default.
+  /// Even this function is marked as noexcept, the code inside it may throw exceptions
+  Profiler() noexcept {};  //NOLINT
 
   /*
   Initializes Profiler with the session logger to log framework specific messages

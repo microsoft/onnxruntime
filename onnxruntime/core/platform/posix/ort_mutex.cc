@@ -47,4 +47,4 @@ int ec = pthread_mutex_unlock(&data_);
 assert(ec== 0);
 #endif
 }
-}
+}  // namespace onnxruntime

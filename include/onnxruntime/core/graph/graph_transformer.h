@@ -91,8 +91,8 @@ class RuleBasedGraphTransformer : public GraphTransformer {
     auto entry = op_to_rules_.find(op_type);
     if (entry != op_to_rules_.cend())
       return &entry->second;
-    else
-      return nullptr;
+
+    return nullptr;
   }
 
  private:

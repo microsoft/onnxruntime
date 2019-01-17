@@ -19,7 +19,7 @@ Class representing a Function.
 */
 class Function {
  public:
-  virtual ~Function() {}
+  virtual ~Function() = default;
 
   /** Gets the OpSchema for the Function. */
   virtual const ONNX_NAMESPACE::OpSchema& OpSchema() const = 0;

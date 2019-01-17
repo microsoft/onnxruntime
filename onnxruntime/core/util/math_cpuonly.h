@@ -73,7 +73,7 @@ class CPUMathUtil {
   }
   //todo: the random generate interface.
  private:
-  CPUMathUtil() {}
+  CPUMathUtil() = default;
 };
 
 }  // namespace onnxruntime
