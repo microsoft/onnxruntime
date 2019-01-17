@@ -149,11 +149,10 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {
-  KernelCreateInfo create_info(kernel_builder.Build(), kernel_creator);
-  return Register(create_info);
+  return Register(KernelCreateInfo(kernel_builder.Build(), kernel_creator));
 }
 
-Status KernelRegistry::Register(KernelCreateInfo& create_info) {
+Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   auto& op_name = create_info.kernel_def->OpName();
 
   // Check op version conflicts.

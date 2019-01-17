@@ -9,7 +9,7 @@ namespace onnxruntime {
 class KernelRegistry {
  public:
   KernelRegistry() = default;
-
+/*
   KernelRegistry(std::function<void(std::function<void(KernelCreateInfo&&)>)> kernel_reg_fn) {
     kernel_reg_fn([&](KernelCreateInfo&& info) {
       std::string name = info.kernel_def->OpName();
@@ -18,13 +18,13 @@ class KernelRegistry {
       if (!st.IsOK())
         ORT_THROW("Register Kernel ", name, " in ", provider, " failed:", st.ErrorMessage());
     });
-  }
+  }*/
 
   // Register a kernel with kernel definition and function to create the kernel.
   Status Register(KernelDefBuilder& kernel_def_builder,
                   const KernelCreateFn& kernel_creator);
 
-  Status Register(KernelCreateInfo& create_info);
+  Status Register(KernelCreateInfo&& create_info);
 
   // Mainly for provide debug info
   std::vector<std::string> GetAllRegisteredOpNames() const;

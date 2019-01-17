@@ -197,18 +197,18 @@ struct KernelCreateInfo {
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
 
-// Forward declarations for the non-specialized BuildKernel method.
+// Forward declarations for the non-specialized BuildKernelCreateInfo method.
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 
 namespace ml {
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace ml
 
 namespace contrib {
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
 // Naming convention for operator kernel classes
@@ -225,7 +225,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                 \
   template <>                                                                         \
   KernelCreateInfo                                                                    \
-  BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {       \
+  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {       \
     return KernelCreateInfo(                                                          \
         builder.SetName(#name)                                                        \
             .SetDomain(domain)                                                        \
@@ -248,7 +248,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);           \
   template <>                                                                                          \
   KernelCreateInfo                                                                                     \
-  BuildKernel<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() { \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() { \
     return KernelCreateInfo(                                                                           \
         builder.SetName(#name)                                                                         \
             .SetDomain(domain)                                                                         \
@@ -274,7 +274,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name);           \
   template <>                                                                               \
   KernelCreateInfo                                                                          \
-  BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() { \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() { \
     return KernelCreateInfo(                                                                \
         builder.SetName(#name)                                                              \
             .SetDomain(domain)                                                              \
@@ -300,7 +300,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);           \
   template <>                                                                                                      \
   KernelCreateInfo                                                                                                 \
-  BuildKernel<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name)>() { \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name)>() { \
     return KernelCreateInfo(                                                                                       \
         builder.SetName(#name)                                                                                     \
             .SetDomain(domain)                                                                                     \
