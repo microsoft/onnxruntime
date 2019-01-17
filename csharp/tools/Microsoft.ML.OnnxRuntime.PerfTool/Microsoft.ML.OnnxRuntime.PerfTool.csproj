@@ -4,8 +4,8 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp2.0</TargetFramework>
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
-    <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
-    <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     <SignAssembly>false</SignAssembly>
   </PropertyGroup>
 
@@ -18,7 +18,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\mkldnn.dll">
+    <None Include="$(NativeBuildOutputDir)\mkldnn.dll" Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

@@ -47,20 +47,18 @@ using onnxruntime::common::Status;
     if (_status) return _status;      \
   } while (0)
 
-struct OrtEnv : public onnxruntime::ObjectBase<OrtEnv> {
+struct OrtEnv {
  public:
   Environment* value;
   LoggingManager* loggingManager;
   friend class onnxruntime::ObjectBase<OrtEnv>;
 
   OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
-    ORT_CHECK_C_OBJECT_LAYOUT;
   }
   /**
   * This function will call ::google::protobuf::ShutdownProtobufLibrary
   */
   ~OrtEnv() {
-    assert(ref_count == 0);
     delete loggingManager;
     delete value;
   }
@@ -168,7 +166,7 @@ ORT_API_STATUS_IMPL(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* 
 }
 
 template <typename T>
-OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocatorInterface** allocator,
+OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -181,13 +179,13 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocatorI
   if (!IAllocator::CalcMemSizeForArray(sizeof(T), elem_count, &size_to_allocate)) {
     return OrtCreateStatus(ORT_FAIL, "not enough memory");
   }
-  void* p_data = (*allocator)->Alloc(allocator, size_to_allocate);
+  void* p_data = allocator->Alloc(allocator, size_to_allocate);
   if (p_data == nullptr)
     return OrtCreateStatus(ORT_FAIL, "size overflow");
   *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                   onnxruntime::TensorShape(shapes),
                                   static_cast<void*>(p_data),
-                                  *(*allocator)->Info(allocator),
+                                  *allocator->Info(allocator),
                                   std::make_shared<onnxruntime::AllocatorWrapper>(allocator));
   return nullptr;
 }
@@ -582,7 +580,7 @@ ORT_API_STATUS_IMPL(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, si
 }
 
 static char* StrDup(const std::string& str, OrtAllocator* allocator) {
-  char* output_string = reinterpret_cast<char*>((*allocator)->Alloc(allocator, str.size() + 1));
+  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
   memcpy(output_string, str.c_str(), str.size());
   output_string[str.size()] = '\0';
   return output_string;
@@ -611,7 +609,7 @@ ORT_API(int, OrtIsTensor, _In_ const OrtValue* value) {
 
 ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
   try {
-    return (*ptr)->Alloc(ptr, size);
+    return ptr->Alloc(ptr, size);
   } catch (std::exception&) {
     return nullptr;
   }
@@ -619,14 +617,14 @@ ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
 
 ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p) {
   try {
-    (*ptr)->Free(ptr, p);
+    ptr->Free(ptr, p);
   } catch (std::exception&) {
   }
 }
 
 ORT_API(const struct OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr) {
   try {
-    return (*ptr)->Info(ptr);
+    return ptr->Info(ptr);
   } catch (std::exception&) {
     return nullptr;
   }
@@ -646,10 +644,7 @@ ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t
   API_IMPL_END
 }
 
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, MLValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION_FOR_ARRAY(Status, char)
-
-ORT_API(void, OrtReleaseEnv, OrtEnv* env) {
-  OrtReleaseObject(env);
-}

@@ -6,10 +6,10 @@
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
     <Platform>AnyCPU</Platform>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
-    <ProtocDirectory>$(buildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx\onnx</ProtoSrc>
-    <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,8 +29,8 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    
-    <None Include="$(buildDirectory)\models\**\*">
+
+    <None Include="$(OnnxRuntimeBuildDirectory)\models\**\*">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         <Visible>false</Visible>
     </None>

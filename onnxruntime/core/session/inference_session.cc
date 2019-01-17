@@ -1,10 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#pragma warning(disable : 4267)
+#endif
+
 #include "core/session/inference_session.h"
 
 #include <memory>
-#include <mutex>
+#include "core/platform/ort_mutex.h"
 #include <sstream>
 #include <unordered_set>
 #include <list>
@@ -40,6 +44,10 @@
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
 
+#ifdef USE_EIGEN_THREADPOOL
+#include <unsupported/Eigen/CXX11/ThreadPool>
+#endif
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -63,7 +71,12 @@ class InferenceSession::Impl {
       int pool_size = session_options_.session_thread_pool_size == 0
                           ? std::thread::hardware_concurrency() / 2
                           : session_options_.session_thread_pool_size;
+
+#ifdef USE_EIGEN_THREADPOOL
+      thread_pool_ = std::make_unique<Eigen::NonBlockingThreadPool>(pool_size);
+#else
       thread_pool_ = std::make_unique<TaskThreadPool>(pool_size);
+#endif
     }
 
     session_state_.SetThreadPool(thread_pool_.get());
@@ -124,7 +137,7 @@ class InferenceSession::Impl {
   common::Status Load(const T& model_uri) {
     auto tp = session_profiler_.StartTime();
     try {
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (is_model_loaded_) {  // already loaded
         LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
         return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -155,7 +168,7 @@ class InferenceSession::Impl {
     auto tp = session_profiler_.StartTime();
     try {
       LOGS(*session_logger_, INFO) << "Loading model using model_proto";
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (is_model_loaded_) {  // already loaded
         LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
         return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -188,7 +201,7 @@ class InferenceSession::Impl {
     auto tp = session_profiler_.StartTime();
     try {
       LOGS(*session_logger_, INFO) << "Loading model using model_proto";
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (is_model_loaded_) {  // already loaded
         LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
         return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -221,7 +234,7 @@ class InferenceSession::Impl {
     auto tp = session_profiler_.StartTime();
     try {
       LOGS(*session_logger_, INFO) << "Loading model using istream";
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (is_model_loaded_) {  // already loaded
         LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
         return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -278,7 +291,11 @@ class InferenceSession::Impl {
     GraphPartitioner partitioner(kernel_registry_manager, providers);
     ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), const_cast<FuncManager*>(session_state.GetFuncMgr())));
 
-    // Insert copy nodes.
+    // Insert cast node/s.
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
+
+    // Insert copy nodes after all graph transformer.
     for (auto& provider : providers) {
       if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
           provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
@@ -287,10 +304,6 @@ class InferenceSession::Impl {
         copy_impl.ModifyGraph(kernel_registry_manager);
       }
     }
-
-    // Insert cast node/s.
-    bool modified = false;
-    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
     return common::Status::OK();
   }
@@ -357,7 +370,7 @@ class InferenceSession::Impl {
 
     try {
       LOGS(*session_logger_, INFO) << "Initializing session.";
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
         return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
@@ -794,7 +807,7 @@ class InferenceSession::Impl {
 
     try {
       {
-        std::lock_guard<std::mutex> l(session_mutex_);
+        std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
         if (!is_inited_) {
           LOGS(*session_logger_, ERROR) << "Session was not initialized";
           retval = Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
@@ -862,7 +875,7 @@ class InferenceSession::Impl {
 
   std::pair<common::Status, const ModelMetadata*> GetModelMetadata() const {
     {
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
         return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
@@ -875,7 +888,7 @@ class InferenceSession::Impl {
 
   std::pair<common::Status, const InputDefList*> GetModelInputs() const {
     {
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
         return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
@@ -888,7 +901,7 @@ class InferenceSession::Impl {
 
   std::pair<common::Status, const OutputDefList*> GetModelOutputs() const {
     {
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
         return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
@@ -901,7 +914,7 @@ class InferenceSession::Impl {
 
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
     {
-      std::lock_guard<std::mutex> l(session_mutex_);
+      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (!is_inited_) {
         LOGS(*session_logger_, ERROR) << "Session was not initialized";
         return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
@@ -1130,14 +1143,19 @@ class InferenceSession::Impl {
 
   // Threadpool for this session
   //thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
+#ifdef USE_EIGEN_THREADPOOL
+  std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
+#else
   std::unique_ptr<TaskThreadPool> thread_pool_;
+#endif
 
   // Number of concurrently running executors
-  std::atomic<int> current_num_runs_;
+  std::atomic<int>
+      current_num_runs_;
 
-  mutable std::mutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;      // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;            // GUARDED_BY(session_mutex_)
+  mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
+  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   InsertCastTransformer insert_cast_transformer_;

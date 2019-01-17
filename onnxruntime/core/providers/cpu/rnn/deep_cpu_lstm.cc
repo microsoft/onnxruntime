@@ -13,7 +13,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/framework/allocator.h"
 
 #ifdef _MSC_VER
@@ -204,7 +203,11 @@ class UniDirectionalLstm {
                      const ActivationFuncs::Entry& activation_func_g,
                      const ActivationFuncs::Entry& activation_func_h,
                      const float clip,
+#ifdef USE_EIGEN_THREADPOOL
+                     Eigen::NonBlockingThreadPool& ttp);
+#else
                      TaskThreadPool& ttp);
+#endif
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -296,7 +299,11 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::ActivationFuncPtr> activation_g_;
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool& ttp_;
+#else
   TaskThreadPool& ttp_;
+#endif
 };
 
 }  // namespace detail
@@ -518,7 +525,7 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         initial_c_shape[2] != hidden_size_)
 
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
-                                     num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
+                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -529,7 +536,7 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         p_shape[1] != 3 * hidden_size_)
 
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
-                                     num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
+                             num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();
@@ -559,7 +566,11 @@ UniDirectionalLstm<T>::UniDirectionalLstm(AllocatorPtr allocator,
                                           const ActivationFuncs::Entry& activation_func_g,
                                           const ActivationFuncs::Entry& activation_func_h,
                                           const float clip,
+#ifdef USE_EIGEN_THREADPOOL
+                                          Eigen::NonBlockingThreadPool& ttp)
+#else
                                           TaskThreadPool& ttp)
+#endif
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),
@@ -882,8 +893,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     };
 
-    ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows,
-                            ttp_, logger_);
+    ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows, ttp_, logger_);
 
   } else {
     span_T_iter c_prev = batched_internal_state_prev_one_step.begin();
