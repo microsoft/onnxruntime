@@ -119,7 +119,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
+  common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     char* error_str = dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_LOCAL);
     error_str = dlerror();
@@ -130,7 +130,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  virtual common::Status UnloadDynamicLibrary(void* handle) const override {
+  common::Status UnloadDynamicLibrary(void* handle) const override {
     if (!handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
     }
@@ -144,7 +144,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  virtual common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
+  common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
     char* error_str = dlerror();  // clear any old error str
     *symbol = dlsym(handle, symbol_name.c_str());
     error_str = dlerror();
@@ -156,7 +156,7 @@ class PosixEnv : public Env {
     return common::Status::OK();
   }
 
-  virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
+  std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
     std::string filename;
     if (version.empty()) {
       filename = "lib" + name + ".so";

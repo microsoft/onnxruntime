@@ -81,12 +81,12 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
                 });
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-
+  GraphViewer viewer(graph_);
   if (enable_sequential_execution) {
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -94,7 +94,7 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
