@@ -15,7 +15,7 @@ template <typename T_X,
           typename T_W,
           typename T_B,
           typename T_Y>
-class Gemm final : public OpKernel {
+class Gemm : public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : OpKernel(info) {
     int64_t temp;
