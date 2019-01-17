@@ -36,7 +36,7 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
                               const Tensor& fetched_tensor,
                               MLValue& output_mlvalue);
 
-const std::string& GetRequiredProvider(const SessionState::NodeInfo& info);
+const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
                                          const std::string& input_name,

@@ -137,8 +137,8 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       // if the providers match we can add the new entry for completeness (it will be ignored in
       // utils::CopyOneInputAcrossDevices though).
       // if they don't, we are broken.
-      const auto& current_provider = utils::GetRequiredProvider(entries[0]);
-      const auto& new_provider = utils::GetRequiredProvider(node_info);
+      const auto& current_provider = utils::GetNodeInputProviderType(entries[0]);
+      const auto& new_provider = utils::GetNodeInputProviderType(node_info);
 
       if (current_provider == new_provider) {
         entries.push_back(node_info);

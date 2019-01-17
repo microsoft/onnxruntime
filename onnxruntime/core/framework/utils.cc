@@ -72,7 +72,7 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
   return Status::OK();
 }
 
-const std::string& GetRequiredProvider(const SessionState::NodeInfo& info) {
+const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) {
   // the input index will be std::numeric_limits<size_t>::max() if it's an implicit input to a control flow node.
   // the input will be processed fully when executing the subgraph that consumes the implicit input.
   bool implicit_input = info.index == std::numeric_limits<size_t>::max();
@@ -121,7 +121,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
     return Status::OK();
   }
 
-  auto& required_provider_type = GetRequiredProvider(node_info);
+  auto& required_provider_type = GetNodeInputProviderType(node_info);
   auto& input_tensor = orig_mlvalue.Get<Tensor>();
   auto& input_tensor_loc = input_tensor.Location();
 
