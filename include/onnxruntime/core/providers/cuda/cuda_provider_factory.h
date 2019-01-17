@@ -6,6 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 /**
  * \param device_id cuda device id, starts from zero.
  */
