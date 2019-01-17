@@ -196,7 +196,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   const struct OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(type_info);
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1, OrtGetNumOfDimensions(tensor_info));
-  OrtReleaseObject(type_info);
+  OrtReleaseTypeInfo(type_info);
 }
 
 int main(int argc, char** argv) {

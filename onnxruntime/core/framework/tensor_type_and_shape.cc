@@ -163,7 +163,7 @@ ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value) {
 /**
  * Get the type information of an OrtValue
  * \param value
- * \return The returned value should be freed by OrtReleaseObject after use
+ * \return The returned value should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* value, struct OrtTypeInfo** out) {
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);

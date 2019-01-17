@@ -165,7 +165,7 @@ ORT_ALL_ARGS_NONNULL;
 
 /**
  * OrtEnv is process-wise. For each process, only one OrtEnv can be created. Don't do it multiple times
- * \param out Should be freed by `OrtReleaseObject` after use
+ * \param out Should be freed by `OrtReleaseEnv` after use
  */
 ORT_API_STATUS(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_function,
                _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
@@ -187,7 +187,7 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
                _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
 
 /**
- * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
+ * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
  */
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions);
 
@@ -239,12 +239,12 @@ ORT_API_STATUS(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_
 ORT_API_STATUS(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
 /**
- * \param out  should be freed by OrtReleaseObject after use
+ * \param out  should be freed by OrtReleaseSession after use
  */
 ORT_API_STATUS(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
 /**
- * \param out  should be freed by OrtReleaseObject after use
+ * \param out  should be freed by OrtReleaseSession after use
  */
 ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
@@ -257,7 +257,7 @@ ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t inde
                _Inout_ OrtAllocator* allocator, _Out_ char** value);
 
 /**
- * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseObject after use
+ * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
  */
 ORT_API(OrtRunOptions*, OrtCreateRunOptions);
 
@@ -327,7 +327,7 @@ ORT_API_STATUS(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
 ORT_API(const OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ OrtTypeInfo*);
 
 /**
- * The retured value should be released by calling OrtReleaseObject
+ * The retured value should be released by calling OrtReleaseTensorTypeAndShapeInfo
  */
 ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo);
 
@@ -356,14 +356,14 @@ ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out
 ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info);
 
 /**
- * \param out Should be freed by OrtReleaseObject after use
+ * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
  */
 ORT_API_STATUS(OrtGetTensorShapeAndType, _In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
 /**
  * Get the type information of an OrtValue
  * \param value
- * \param out The returned value should be freed by OrtReleaseObject after use
+ * \param out The returned value should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtGetTypeInfo, _In_ const OrtValue* value, OrtTypeInfo** out);
 

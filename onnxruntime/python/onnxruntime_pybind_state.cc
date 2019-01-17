@@ -182,35 +182,23 @@ inline void RegisterExecutionProvider(InferenceSession* sess, OrtProviderFactory
   }
 }
 
-#define FACTORY_PTR_HOLDER \
-  std::unique_ptr<OrtProviderFactoryInterface*, decltype(&OrtReleaseObject)> ptr_holder_(f, OrtReleaseObject);
-
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
 #ifdef USE_CUDA
   {
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sess, 0));
   }
 #endif
 
 #ifdef USE_MKLDNN
   {
     const bool enable_cpu_mem_arena = true;
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
   }
 #endif
 #if 0  //USE_NUPHAR
   {
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(0, ""));
   }
 #endif
 
