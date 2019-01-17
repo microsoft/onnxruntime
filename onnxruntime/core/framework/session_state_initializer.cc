@@ -4,6 +4,7 @@
 #include "core/framework/session_state_initializer.h"
 
 #include <functional>
+#include <limits>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -48,18 +49,18 @@ static common::Status SaveKernels(const ExecutionProviders& execution_providers,
 
 static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
                                                         const KernelRegistryManager& custom_registry_manager,
-                                                        SessionState& session_state);
+                                                        SessionState& session_state,
+                                                        const std::vector<NodeArg*>* implicit_inputs);
 
 SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
                                                  SessionState& session_state,
                                                  const ExecutionProviders& providers,
-                                                 KernelRegistryManager& kernel_registry_manager,
-                                                 const logging::Logger& logger)
+                                                 KernelRegistryManager& kernel_registry_manager)
     : graph_{graph},
       session_state_{session_state},
       execution_providers_{providers},
       kernel_registry_manager_{kernel_registry_manager},
-      logger_{logger} {
+      logger_{session_state.Logger()} {
 }
 
 common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
@@ -81,12 +82,12 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
                 });
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-
+  GraphViewer viewer(graph_);
   if (enable_sequential_execution) {
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -94,7 +95,7 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -104,7 +105,8 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
 }
 
 common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pattern,
-                                                          std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers) {
+                                                          std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                                          const std::vector<NodeArg*>* implicit_inputs) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
@@ -123,7 +125,8 @@ common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pat
   graph_.CleanAllInitializedTensors();  // remove weights from the graph now to save memory
 
   ORT_RETURN_IF_ERROR(SaveKernels(execution_providers_, session_state_, kernel_registry_manager_, logger_));
-  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_));
+  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_,
+                                                        implicit_inputs));
 
   return Status::OK();
 }
@@ -421,8 +424,9 @@ common::Status SaveKernels(const ExecutionProviders& execution_providers,
   return Status::OK();
 }
 
+template <typename T>  // T is const NodeArg or NodeArg
 static bool IsArgNameInInputsOutputs(const std::string& name,
-                                     const std::vector<const onnxruntime::NodeArg*>& graph_args) {
+                                     const std::vector<T*>& graph_args) {
   auto it = std::find_if(std::begin(graph_args), std::end(graph_args), [&name](const onnxruntime::NodeArg* arg) {
     return arg->Name() == name;
   });
@@ -431,11 +435,20 @@ static bool IsArgNameInInputsOutputs(const std::string& name,
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
                                                  const KernelRegistryManager& custom_registry_manager,
-                                                 SessionState& session_state) {
+                                                 SessionState& session_state,
+                                                 const std::vector<NodeArg*>* implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 
+  if (implicit_inputs && implicit_inputs->empty()) {
+    implicit_inputs = nullptr;
+  }
+
   for (auto& node : graph.Nodes()) {
+    // note that KernelCreateInfo may not exist for custom kernel
+    const KernelCreateInfo* kci = nullptr;
+    custom_registry_manager.SearchKernelRegistry(node, &kci);
+
     ORT_RETURN_IF_ERROR(
         onnxruntime::Node::ForEachWithIndex(
             node.InputDefs(),
@@ -444,15 +457,18 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
                 return Status::OK();
               }
 
-              // note that KernelCreateInfo may not exist for custom kernel
-              const KernelCreateInfo* kci = nullptr;
-              custom_registry_manager.SearchKernelRegistry(node, &kci);
-
               SessionState::NodeInfo node_info(index, &node, kci);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
                 return Status::OK();
+              }
+
+              if (implicit_inputs) {
+                if (IsArgNameInInputsOutputs(arg.Name(), *implicit_inputs)) {
+                  session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
+                  return Status::OK();
+                }
               }
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
@@ -462,6 +478,43 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
 
               return Status::OK();
             }));
+
+    // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
+    const auto& node_implicit_inputs = node.ImplicitInputDefs();
+    if (!node_implicit_inputs.empty()) {
+      // nested subgraph. for now map them to this node (which will be CPU based as all the control flow nodes
+      // are currently CPU based and they're the only ones that have implicit inputs) as the inputs will be passed as a
+      // feed when executing the subgraph and need to be in the mapping.
+      // in the future we want to recurse and find where the implicit input is actually used to try and avoid a
+      // copy to/from CPU to go through the control flow nodes where possible/applicable.
+      // the processing for the subgraph where the implicit input is consumed will do the real check on whether any
+      // copy to a different device is required
+      SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci);
+      for (const auto& input_def : node_implicit_inputs) {
+        session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info);
+      }
+    }
+  }
+
+  // It's possible (although assumably rare) for a graph to have inputs that aren't used. one reasonable occurrence
+  // is in the Loop subgraph where the value of the condition used to decide whether to continue looping is passed in.
+  // The condition evaluated to 'true' given the subgraph is being executed, so it's of dubious value as an input.
+  // Similar is the current iteration number which may or may not be needed by the Loop subgraph.
+  // In order to handle those, create a dummy entry in the input name to node info mapping so that
+  // utils::CopyOneInputAcrossDevices is happy.
+
+  auto& input_map = session_state.GetInputNodeInfoMap();
+  auto end_map = input_map.cend();
+  SessionState::NodeInfo empty_node_info(std::numeric_limits<size_t>::max(), nullptr, nullptr);
+
+  for (const auto& graph_input : graph_inputs) {
+    const auto& name = graph_input->Name();
+    if (input_map.find(name) == end_map) {
+      // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug.
+      // utils::CopyOneInputAcrossDevices will use the input MLValue as is given we don't believe it's used anywhere.
+      LOGS(session_state.Logger(), WARNING) << "Graph input with name " << name << " is not associated with a node. ";
+      session_state.AddInputNameToNodeInfoMapping(name, empty_node_info);
+    }
   }
 
   return Status::OK();

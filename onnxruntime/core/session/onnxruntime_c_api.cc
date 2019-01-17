@@ -22,8 +22,6 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/onnx_object_cxx.h"
 #include "core/session/inference_session.h"
-#include "core/graph/matmul_add_fusion.h"
-#include "core/graph/gemm_activation_fusion.h"
 
 #include "abi_session_options_impl.h"
 
@@ -380,12 +378,6 @@ static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
   status = sess->Load(model_path);
   if (!status.IsOK())
     return ToOrtStatus(status);
-
-  std::unique_ptr<onnxruntime::MatMulAddFusion> MatMulAddFusion_transformer = std::make_unique<onnxruntime::MatMulAddFusion>();
-  sess->RegisterGraphTransformer(std::move(MatMulAddFusion_transformer));
-  std::unique_ptr<onnxruntime::GemmActivationFusion> GemmActFusion_transformer = std::make_unique<onnxruntime::GemmActivationFusion>();
-  sess->RegisterGraphTransformer(std::move(GemmActFusion_transformer));
-
   status = sess->Initialize();
   if (!status.IsOK())
     return ToOrtStatus(status);

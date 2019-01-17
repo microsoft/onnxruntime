@@ -401,7 +401,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   if (attr != attributes_.cend() && attr->second.has_g()) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph{new Graph(*graph_, mutable_graph)};
-    attr_to_subgraph_map_[attr_name] = subgraph.get();
+    attr_to_subgraph_map_.insert({std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}});
     subgraphs_.push_back(std::move(subgraph));
   }
 }
@@ -2424,6 +2424,7 @@ Status Graph::SetGraphInputsOutputs() {
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
+  ORT_ENFORCE(nodes_.size() < std::numeric_limits<int>::max());
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
   Node* node{new_node.get()};
 
