@@ -20,13 +20,13 @@ struct MkldnnProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> MkldnnProviderFactory::CreateProvider() {
-  MkldnnExecutionProviderInfo info;
+  MKLDNNExecutionProviderInfo info;
   info.create_arena = create_arena_;
-  return std::make_unique<MkldnnExecutionProvider>(info);
+  return std::make_unique<MKLDNNExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id) {
-  return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id) {
+  return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
 }
 
 }  // namespace
