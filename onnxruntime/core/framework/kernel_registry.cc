@@ -1,47 +1,51 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_map>
+
 #include "core/framework/kernel_registry.h"
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-// Find the type that name is bound to in the given node.
-// "name" can represent either a type parameter or an input/output parameter.
-// Returns null if a match is not found.
-const ::ONNX_NAMESPACE::TypeProto* FindTypeBinding(const onnxruntime::Node& node, const std::string& name) {
+// map from input/output name or type string to TypeProto pointer
+using TypeBindingMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TypeProto*>;
+
+// Builds a map from name to bound type for the specified node.
+// The name can represent either a type parameter or an input/output parameter.
+TypeBindingMap CreateTypeBindingMap(const onnxruntime::Node& node) {
+  TypeBindingMap result{};
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
-  // search inputs:
+
+  // process inputs:
   const size_t len = node.InputArgCount().size();
   ORT_ENFORCE(len <= op_schema.inputs().size());
   int actual_index = 0;
   for (size_t formal_index = 0; formal_index != len; ++formal_index) {
     auto& param = op_schema.inputs()[formal_index];
-    if ((param.GetTypeStr() == name) || (param.GetName() == name)) {
-      // return type of any corresponding actual parameter, if present
-      for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
-        const onnxruntime::NodeArg* arg = node.InputDefs()[actual_index + i];
-        if (!arg->Exists()) continue;  // a missing optional argument
-        return arg->TypeAsProto();
-      }
+    // return type of any corresponding actual parameter, if present
+    for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
+      const onnxruntime::NodeArg* arg = node.InputDefs()[actual_index + i];
+      if (!arg->Exists()) continue;  // a missing optional argument
+      result.emplace(param.GetTypeStr(), arg->TypeAsProto());
+      result.emplace(param.GetName(), arg->TypeAsProto());
     }
     actual_index += node.InputArgCount()[formal_index];
   }
-  // search outputs:
+
+  // process outputs:
   auto& actual_outputs = node.OutputDefs();
-  auto num_actual_outputs = actual_outputs.size();
-  auto last_formal = op_schema.outputs().size() - 1;
+  const auto num_actual_outputs = actual_outputs.size();
+  const auto last_formal = op_schema.outputs().size() - 1;
   for (size_t i = 0; i != num_actual_outputs; ++i) {
     const onnxruntime::NodeArg* arg = actual_outputs[i];
     if (!arg->Exists()) continue;
     auto& formal = op_schema.outputs()[std::min(i, last_formal)];
-    const auto& formal_typestr = formal.GetTypeStr();  // for easier debugging
-    const auto& formal_name = formal.GetName();        // for easier debugging
-    if ((formal_typestr == name) || (formal_name == name)) {
-      return arg->TypeAsProto();
-    }
+    result.emplace(formal.GetTypeStr(), arg->TypeAsProto());
+    result.emplace(formal.GetName(), arg->TypeAsProto());
   }
-  return nullptr;
+
+  return result;
 }
 
 std::vector<std::string> KernelRegistry::GetAllRegisteredOpNames() const {
@@ -86,7 +90,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
     ostr << "Op: " << node.OpType()
          << " Execution provider mismatch."
          << " Expected: " << expected_provider
-         << " Acutal: " << kernel_def.Provider();
+         << " Actual: " << kernel_def.Provider();
     error_str = ostr.str();
     return false;
   }
@@ -122,10 +126,14 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
 
   // check if type matches
   auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  const auto& type_binding_map = CreateTypeBindingMap(node);
+
   for (auto& constraint : kernel_type_constraints) {
     const std::string& name = constraint.first;
     const std::vector<MLDataType>& allowed_types = constraint.second;
-    const ::ONNX_NAMESPACE::TypeProto* actual_type = FindTypeBinding(node, name);
+
+    auto type_binding_map_it = type_binding_map.find(name);
+    const ONNX_NAMESPACE::TypeProto* actual_type = type_binding_map_it != type_binding_map.end() ? type_binding_map_it->second : nullptr;
 
     // If actual_type is null, this represents a type-constraint on a
     // missing optional parameter, which can be skipped.
@@ -203,23 +211,23 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
 
 const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                                       onnxruntime::ProviderType exec_provider) const {
-      auto range = kernel_creator_fn_map_.equal_range(node.OpType());
-      std::vector<std::string> error_strs;
-      for (auto i = range.first; i != range.second; ++i) {
-        if (!i->second.status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << "Failed to create kernel for op: " << node.OpType()
-                              << " since it was ill-formed during registration";
-          continue;
-        }
-        std::string error_str;
-        if (VerifyKernelDef(node, *i->second.kernel_def, error_str, exec_provider)) {
-          return &i->second;
-        }
-        error_strs.push_back(error_str);
-      }
-      LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << exec_provider
-                         << " Encountered following errors: " << ToString(error_strs);
-      return nullptr;
+  auto range = kernel_creator_fn_map_.equal_range(node.OpType());
+  std::vector<std::string> error_strs;
+  for (auto i = range.first; i != range.second; ++i) {
+    if (!i->second.status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Failed to create kernel for op: " << node.OpType()
+                          << " since it was ill-formed during registration";
+      continue;
     }
+    std::string error_str;
+    if (VerifyKernelDef(node, *i->second.kernel_def, error_str, exec_provider)) {
+      return &i->second;
+    }
+    error_strs.push_back(error_str);
+  }
+  LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << exec_provider
+                     << " Encountered following errors: " << ToString(error_strs);
+  return nullptr;
+}
 
 }  // namespace onnxruntime
