@@ -8,7 +8,7 @@
 
 using namespace onnxruntime;
 
-namespace {
+namespace onnxruntime {
 struct MkldnnProviderFactory : IExecutionProviderFactory {
   MkldnnProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~MkldnnProviderFactory() override {}
@@ -29,7 +29,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn
   return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
 }
 
-}  // namespace
+}  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Mkldnn(use_arena));

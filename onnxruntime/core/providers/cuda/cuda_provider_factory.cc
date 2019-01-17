@@ -8,6 +8,8 @@
 
 using namespace onnxruntime;
 
+namespace onnxruntime {
+
 struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(int device_id) : device_id_(device_id) {}
   ~CUDAProviderFactory() override {}
@@ -28,7 +30,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(i
   return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id);
 }
 
-}  // namespace
+}  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id));
