@@ -16,7 +16,7 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
-
+#include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 #include "gsl/gsl_algorithm"
@@ -187,8 +187,8 @@ Status LoopImpl::Initialize() {
   // validate that the subgraph has that many inputs.
   if (num_subgraph_inputs_ != subgraph_inputs.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Graph in 'body' attribute of Loop should have ",
-                                   num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
+                           "Graph in 'body' attribute of Loop should have ",
+                           num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
   }
 
   auto& subgraph_outputs = subgraph_.GetOutputs();
@@ -197,8 +197,8 @@ Status LoopImpl::Initialize() {
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
   if (num_subgraph_outputs - 1 != num_outputs_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' node has ", num_outputs_,
-                                   " outputs so the subgraph requires ", num_outputs_ + 1,
-                                   " but has ", num_subgraph_outputs);
+                           " outputs so the subgraph requires ", num_outputs_ + 1,
+                           " but has ", num_subgraph_outputs);
   }
 
   AllocatorPtr allocator;
@@ -242,7 +242,7 @@ NameMLValMap LoopImpl::CreateInitialFeeds() {
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                        entry.first, " did not.");
+                entry.first, " did not.");
     feeds[entry.first] = *entry.second;
   }
 
@@ -290,7 +290,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
     // sanity check
     if (bytes_per_iteration != iteration_data.Size()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output ", output_index,
-                                     " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
+                             " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
     auto num_bytes = iteration_data.Size();
@@ -316,8 +316,8 @@ Status LoopImpl::Execute() {
       fetches.clear();
     }
 
-    SequentialExecutor executor{context_.GetTerminateFlag()};
-    status = executor.Execute(session_state_, feeds, subgraph_output_names_, fetches, context_.Logger());
+    status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, /*sequential_execution*/ true,
+                                 context_.GetTerminateFlag(), context_.Logger());
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
