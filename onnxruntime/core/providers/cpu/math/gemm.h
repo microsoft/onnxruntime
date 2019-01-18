@@ -42,6 +42,9 @@ class Gemm final : public OpKernel {
     int64_t N = helper.N();
     int64_t K = helper.K();
     auto Y = context->Output(0, TensorShape({M, N}));
+    // if input is emtpy tensor, return directly as nothing need to be calculated.
+    if (M == 0 || N == 0)
+      return Status::OK();
 
     //bias
     // Todo: we might should move this part into math::gemm to let eigen
