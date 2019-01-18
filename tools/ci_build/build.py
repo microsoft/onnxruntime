@@ -103,6 +103,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
+    parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
     parser.add_argument("--use_tvm", action="store_true", help="Build with tvm")
@@ -278,7 +279,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_DEV_MODE=ON",
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
-                 "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() else "ON"),
+                 "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
