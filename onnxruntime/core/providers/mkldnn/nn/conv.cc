@@ -4,9 +4,11 @@
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
+#include <thread>
+#include <mutex>
 
-#include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/nn/conv.h"
+#include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 
 namespace onnxruntime {
@@ -267,7 +269,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape = onnxruntime::ConvBase::ComputeKernelShape(W->Shape());
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(onnxruntime::ConvBase::ComputeKernelShape(W->Shape(), kernel_shape));
   const size_t kernel_rank = kernel_shape.size();
 
   if (kernel_rank > 3) {
@@ -277,15 +280,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   if (kernel_rank + 2 != W->Shape().NumDimensions()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                   " W: ", W->Shape().ToString().c_str());
+                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                           " W: ", W->Shape().ToString().c_str());
   }
 
   for (size_t i = 0; i < kernel_rank; ++i) {
     if (kernel_shape[i] != W->Shape()[i + 2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                     " W: ", W->Shape().ToString().c_str());
+                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                             " W: ", W->Shape().ToString().c_str());
     }
   }
 
@@ -336,7 +339,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   IAllocatorUniquePtr<void> src_reorder_buffer;
-  IAllocatorUniquePtr<void> filter_reorder_buffer;
   IAllocatorUniquePtr<void> dst_reorder_buffer;
 
   const T* src_data = X->template Data<T>();
@@ -402,22 +404,36 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       src_data = static_cast<T*>(dst.get_data_handle());
     }
 
-    // Reorder filter memory layout if necessary.
-    if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
-      auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(filter_dims_mkl,
-                                                                    MklDnnType<T>(),
-                                                                    filter_format),
-                                               cpu_engine);
-      mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
-      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
-      // mkldnn using padding to allow use of blocked format.
-      filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
-      mkldnn::memory dst = mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get());
-      MemoryReorderParams params(src, dst);
-      DoReorder<T>(params);
-      filter_data = static_cast<T*>(dst.get_data_handle());
-    }
+    // Reorder filter memory layout if necessary
+    // Avoid data reordering. Save filter memory in mkldnn format from first iteration
+    // in execution provider mapped by weight name.
+    {
+      // lock to make sure reordering is done only once
+      std::lock_guard<std::mutex> lock(provider_->GetMutex());
+      auto weight_name = OpKernel::Node().InputDefs()[1]->Name();
+      std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(weight_name);
 
+      if (filter_dst_mem == nullptr) {
+        if (filter_format != conv_primitive->GetFilterMemoryFormat()) {
+          auto pd = mkldnn::memory::primitive_desc(mkldnn::memory::desc(
+                                                       filter_dims_mkl, MklDnnType<T>(), filter_format),
+                                                   cpu_engine);
+          mkldnn::memory src = mkldnn::memory(pd, (void*)filter_data);
+          IAllocatorUniquePtr<void> filter_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, conv_primitive->GetFilterSize());
+          filter_dst_mem.reset(
+              new mkldnn::memory(conv_fwd_pd->weights_primitive_desc(), filter_reorder_buffer.get()));
+
+          MemoryReorderParams params(src, *filter_dst_mem);
+          DoReorder<T>(params);
+          provider_->SaveAllocatedMemory(std::move(filter_reorder_buffer));
+
+          filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+          provider_->SetWeightsMemoryBuffer(weight_name, filter_dst_mem);
+        }
+      } else {
+        filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+      }
+    }
     // Allocate dst buffer if reorder is necessary
     if (dst_md.data.format != conv_primitive->GetDstMemoryFormat()) {
       // allocate the size queried from memory primitive desc. it may not match tensor logical size due to

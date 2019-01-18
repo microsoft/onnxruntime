@@ -82,7 +82,7 @@ int real_main(int argc, char* argv[]) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_kWARNING;
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
     while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
@@ -91,7 +91,7 @@ int real_main(int argc, char* argv[]) {
           enable_cpu_mem_arena = false;
           break;
         case 'v':
-          logging_level = ORT_LOGGING_LEVEL_kINFO;
+          logging_level = ORT_LOGGING_LEVEL_INFO;
           break;
         case 'c':
           concurrent_session_runs = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
@@ -304,7 +304,6 @@ int real_main(int argc, char* argv[]) {
       {"operator_rnn_single_layer", "disable reason"},
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
-      {"upsample_nearest", "opset 9 not supported yet"},
       {"sinh_example", "opset 9 not supported yet"},
       {"cosh_example", "opset 9 not supported yet"},
       {"asinh_example", "opset 9 not supported yet"},
@@ -314,7 +313,15 @@ int real_main(int argc, char* argv[]) {
       {"sign", "opset 9 not supported yet"},
       {"scatter_with_axis", "opset 9 not supported yet"},
       {"scatter_without_axis", "opset 9 not supported yet"},
-      {"scan_sum", "opset 9 not supported yet"}};
+      {"scan_sum", "opset 9 not supported yet"},
+      {"shrink", "opset 9 not supported yet"},
+      {"constantofshape_int_zeros", "opset 9 not supported yet"},
+      {"shrink_hard", "opset 9 not supported yet"},
+      {"shrink_soft", "opset 9 not supported yet"},
+      {"where_example", "opset 9 not supported yet"},
+      {"constantofshape_float_ones", "opset 9 not supported yet"},
+      {"batchnorm_example", "opset 9 not supported yet"},
+      {"batchnorm_epsilon", "opset 9 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
@@ -327,6 +334,10 @@ int real_main(int argc, char* argv[]) {
   broken_tests["maxpool_2d_same_lower"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
+
+  broken_tests["fp16_tiny_yolov2"] = "unknown failure on CUDA";
+  broken_tests["fp16_shufflenet"] = "unknown failure on CUDA";
+  broken_tests["fp16_inception_v1"] = "unknown failure on CUDA";
 #endif
 
   int result = 0;

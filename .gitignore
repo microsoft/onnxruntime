@@ -33,3 +33,4 @@ onnxruntime_profile*.json
 /csharp/**/bin/
 docs/python/*.onnx
 *.onnx
+onnxprofile_profile_test_*.json

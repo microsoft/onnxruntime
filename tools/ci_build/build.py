@@ -21,13 +21,19 @@ from os.path import expanduser
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("Build")
 
-test_data_url = 'https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip'
-test_data_checksum = 'a966def7447f4ff04f5665bca235b3f3'
+class BaseError(Exception):
+    """Base class for errors originating from build.py."""
+    pass
 
-class BuildError(Exception):
+class BuildError(BaseError):
     """Error from running build steps."""
     def __init__(self, *messages):
         super().__init__("\n".join(messages))
+
+class UsageError(BaseError):
+    """Usage related error."""
+    def __init__(self, message):
+        super().__init__(message)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
@@ -58,8 +64,10 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--pb_home", help="Path to protobuf installation")
-    parser.add_argument("--download_test_data", action="store_true", 
+    parser.add_argument("--download_test_data", action="store_true",
                         help='''Downloads test data without running the tests''')
+    parser.add_argument("--test_data_url", help="Test data URL.")
+    parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
     parser.add_argument("--cuda_home", help="Path to CUDA home."
@@ -100,6 +108,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_tvm", action="store_true", help="Build with tvm")
     parser.add_argument("--use_openmp", action='store_true', help="Build with OpenMP.")
     parser.add_argument("--use_llvm", action="store_true", help="Build tvm with llvm")
+    parser.add_argument("--use_eigenthreadpool", action="store_true", help="Build with eigenthreadpool")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument("--azure_sas_key", help="Azure storage sas key, starts with '?'")
@@ -127,24 +136,20 @@ def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
     log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
-            my_env["PATH"] += os.pathsep + dll_path
+            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
         else:
             if "LD_LIBRARY_PATH" in my_env:
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    if (capture):
-        result = subprocess.run(args, cwd=cwd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
-    else:
-        result = subprocess.run(args, cwd=cwd, check=True, env=my_env)
-
-    return result
+    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (None, None)
+    return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
@@ -216,13 +221,22 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         log.info("Downloading test data")
         if azure_sas_key:
             src_url += azure_sas_key
+        # try to avoid logging azure_sas_key
         if shutil.which('aria2c'):
-            subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir], check=True)
+            result = subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
+            if result.returncode != 0:
+                raise BuildError("aria2c exited with code {}.".format(result.returncode))
         elif shutil.which('curl'):
-            subprocess.run(['curl', '-s', src_url, '-o', local_zip_file], check=True)
+            result = subprocess.run(['curl', '-s', src_url, '-o', local_zip_file])
+            if result.returncode != 0:
+                raise BuildError("curl exited with code {}.".format(result.returncode))
         else:
             import urllib.request
-            urllib.request.urlretrieve(src_url, local_zip_file)
+            import urllib.error
+            try:
+                urllib.request.urlretrieve(src_url, local_zip_file)
+            except urllib.error.URLError:
+                raise BuildError("urllib.request.urlretrieve() failed.")
     models_dir = os.path.join(build_dir,'models')
     if os.path.exists(models_dir):
         log.info('deleting %s' % models_dir)
@@ -237,12 +251,13 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         return False
     return True
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
-    has_test_data = False
-    if args.enable_onnx_tests or args.download_test_data:
-      has_test_data = download_test_data(build_dir, test_data_url, test_data_checksum, args.azure_sas_key)
-    #create a shortcut for test models if there is a 'models' folder in build_dir
-    if has_test_data and is_windows():
+def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
+    """Sets up the test data, downloading it if needed."""
+    if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
+        raise BuildError("Failed to set up test data.")
+
+    # create a shortcut for test models if there is a 'models' folder in build_dir
+    if is_windows():
         src_model_dir = os.path.join(build_dir, 'models')
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
@@ -250,18 +265,20 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             dest_model_dir = os.path.join(config_build_dir, 'models')
             if os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
-                subprocess.run(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True, check=True)
+                run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
+
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
-                 "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if has_test_data else "OFF"),
+                 "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=ON",
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
-                 "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
+                 "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
@@ -277,6 +294,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
                  "-Donnxruntime_USE_BRAINSLICE=" + ("ON" if args.use_brainslice else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
+                 "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -304,15 +322,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_windows():
         cmake_args += cmake_extra_args
-        if args.use_cuda:
-            os.environ["PATH"] += os.pathsep + os.path.join(cudnn_home, 'bin')
 
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
 
         if args.use_tvm:
-            os.environ["PATH"] += os.pathsep + os.path.join(config_build_dir, "external", "tvm", config)
+            os.environ["PATH"] = os.path.join(config_build_dir, "external", "tvm", config) + os.pathsep + os.environ["PATH"]
 
         run_subprocess(cmake_args  + ["-DCMAKE_BUILD_TYPE={}".format(config)], cwd=config_build_dir)
 
@@ -382,8 +398,7 @@ def setup_cuda_vars(args):
 
             cuda_bin_path = os.path.join(cuda_home, 'bin')
             os.environ["CUDA_BIN_PATH"] = cuda_bin_path
-            os.environ["PATH"] += os.pathsep + cuda_bin_path
-
+            os.environ["PATH"] += os.pathsep + cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin')
             # Add version specific CUDA_PATH_Vx_y value as the Visual Studio build files require that
             version_file = os.path.join(cuda_home, 'version.txt')
             if not os.path.exists(version_file):
@@ -464,6 +479,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         cmd = []
         if provider:
           cmd += ["-e", provider]
+          if provider == 'cuda':
+            cmd += ["-j", "2"]
         if config != 'Debug' and os.path.exists(model_dir):
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
@@ -498,6 +515,9 @@ def main():
 
     if args.build_wheel:
         args.enable_pybind = True
+    
+    if args.build_csharp:
+        args.build_shared_lib = True
 
     configs = set(args.config)
 
@@ -511,30 +531,21 @@ def main():
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
 
-    # directory from ONNX submodule with ONNX test data
-    onnx_test_data_dir = '/data/onnx'
-    if is_windows() or not os.path.exists(onnx_test_data_dir):
-        onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
-
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
-
-    cmake_extra_args = []
-    if(is_windows()):
-      if (args.x86):
-        cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
-      else:
-        toolset = 'host=x64'
-        if (args.msvc_toolset):
-            toolset += ',version=' + args.msvc_toolset
-
-        cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
-
-    #Add python to PATH. Please remove this after https://github.com/onnx/onnx/issues/1080 is fixed ()
-    os.environ["PATH"] = os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
-
+    os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.dirname(sys.executable)
     if (args.update):
+        cmake_extra_args = []
+        if(is_windows()):
+          if (args.x86):
+            cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
+          else:
+            toolset = 'host=x64'
+            if (args.msvc_toolset):
+                toolset += ',version=' + args.msvc_toolset
+
+            cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
             install_ubuntu_deps(args)
             install_python_deps()
@@ -542,6 +553,11 @@ def main():
             install_python_deps()
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
+
+        if args.enable_onnx_tests or args.download_test_data:
+            if not args.test_data_url or not args.test_data_checksum:
+                raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, configs, cmake_extra_defines,
                             args, cmake_extra_args)
@@ -554,24 +570,28 @@ def main():
 
     if (args.test):
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm)
+        # run the onnx model tests if requested explicitly.
+        if (args.enable_onnx_tests):
+            # directory from ONNX submodule with ONNX test data
+            onnx_test_data_dir = '/data/onnx'
+            if is_windows() or not os.path.exists(onnx_test_data_dir):
+                onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
+            if args.use_cuda:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
+            else:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
+              if args.use_mkldnn:
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
 
-    # run the onnx model tests if requested explicitly.
-    if (args.enable_onnx_tests):
-        if args.use_cuda:
-          run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
-        else:
-          run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
-          if args.use_mkldnn:
-            run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
-
-    if args.build_wheel:
-        build_python_wheel(source_dir, build_dir, configs, args.use_cuda)
+    if args.build:
+        if args.build_wheel:
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda)
 
     log.info("Build complete")
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except BuildError as e:
+    except BaseError as e:
         log.error(str(e))
         sys.exit(1)

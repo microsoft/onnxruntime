@@ -25,8 +25,7 @@ class SessionStateInitializer {
   SessionStateInitializer(onnxruntime::Graph& graph,
                           SessionState& session_state,
                           const ExecutionProviders& providers,
-                          KernelRegistryManager& kernel_registry_manager,
-                          const logging::Logger& logger);
+                          KernelRegistryManager& kernel_registry_manager);
 
   // First perform any transformations and create the execution plan
   common::Status CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
@@ -35,7 +34,8 @@ class SessionStateInitializer {
   // initialize tensors, and save. save kernels and input/output node mappings
   // @param enable_memory_pattern
   common::Status InitializeAndSave(bool enable_memory_pattern,
-                                   std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers);
+                                   std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                   const std::vector<NodeArg*>* implicit_inputs = nullptr);
 
  private:
   onnxruntime::Graph& graph_;

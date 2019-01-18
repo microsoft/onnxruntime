@@ -49,6 +49,13 @@ ONNXTensorElementDataType CApiElementTypeFromProto(int type) {
   }
 }
 
+template <typename T>
+bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
+  if (diff > tol) return false;
+  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) && !(std::isinf(outvalue) && std::isinf(expected_value))) return false;
+  return true;
+}
+
 template <typename FLOAT_TYPE>
 std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue, const Tensor& expected_value,
                                                           double per_sample_tolerance,
@@ -65,7 +72,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
                                               : real_output[di];
     const double diff = fabs(expected_output[di] - real_value);
     const double tol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_output[di]);
-    if (diff > tol || (std::isnan(diff) && !std::isnan(expected_output[di]))) {
+    if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
       res.first = COMPARE_RESULT::RESULT_DIFFERS;
       // update error message if this is a larger diff
       if (diff > max_diff || (std::isnan(diff) && !std::isnan(max_diff))) {
@@ -121,7 +128,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
     const double diff = fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
-    if (diff > rtol || (std::isnan(diff) && !std::isnan(expected))) {
+    if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
       std::ostringstream oss;
       oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
 
@@ -144,7 +151,7 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
     const double diff = fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
-    if (diff > rtol || (std::isnan(diff) && !std::isnan(expected))) {
+    if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
       std::ostringstream oss;
       oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
 
@@ -229,7 +236,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
                               : real_output_key_value_pair.second;
       const double diff = fabs(expected_key_value_pair->second - real);
       const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_key_value_pair->second);
-      if (diff > rtol || (std::isnan(diff) && !std::isnan(expected_key_value_pair->second))) {
+      if (!IsResultCloselyMatch<double>(real, expected_key_value_pair->second, diff, rtol)) {
         std::ostringstream oss;
         oss << "expected " << expected_key_value_pair->second << ", got " << real
             << ", diff: " << diff << ", tol=" << rtol;

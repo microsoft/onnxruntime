@@ -53,21 +53,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
-
-  if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                                   " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                   " W: ", W->Shape().ToString().c_str());
-  }
-
-  for (size_t i = 0; i < kernel_shape.size(); ++i) {
-    if (kernel_shape[i] != W->Shape()[i + 2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                     " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                     " W: ", W->Shape().ToString().c_str());
-    }
-  }
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
 
   bool Is2DKernel = kernel_shape.size() == 2;
   std::vector<int64_t> pads(pads_);
@@ -135,7 +122,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             &CPUMathUtil::Instance());
       } else {
-        math::Im2colNd<T, CPUMathUtil, StorageOrder::NCHW>(
+        math::Im2colNd<T, CPUMathUtil, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
             col_buffer_shape.data(),

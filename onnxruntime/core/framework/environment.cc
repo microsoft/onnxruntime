@@ -6,6 +6,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/op.h"
+#include "onnx/defs/operator_sets.h"
+#include "onnx/defs/operator_sets-ml.h"
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -28,8 +30,14 @@ Status Environment::Initialize() {
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+      // Register contributed schemas.
+      // The corresponding kernels are registered inside the appropriate execution provider.
+      contrib::RegisterContribSchemas();
+      RegisterOnnxOperatorSetSchema();
+      RegisterOnnxMLOperatorSetSchema();
+      RegisterOnnxFunctionBuilder();
     });
-
+    //TODO:put all of the following things into call_once
     // Register MVN operator for backward compatibility.
     // Experimental operator does not have history kept in ONNX. Unfortunately, RS5 takes bunch of experimental operators
     // in onnx as production ops. MVN is one of them. Now (9/26/2018) MVN is a production function in ONNX. The experimental
@@ -86,10 +94,6 @@ Internal copy node
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
-
-    // Register contributed schemas.
-    // The corresponding kernels are registered inside the appropriate execution provider.
-    contrib::RegisterContribSchemas();
 
     is_initialized_ = true;
   } catch (std::exception& ex) {

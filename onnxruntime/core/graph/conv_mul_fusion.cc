@@ -64,10 +64,12 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
     std::unique_ptr<Initializer> conv_B = nullptr;
-    if (conv_inputs.size() == 3) {
+    const bool is_3d = conv_inputs.size() == 3;
+    if (is_3d) {
       if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto))
         continue;
-
+      if (conv_B_tensor_proto == nullptr)
+        return Status(ONNXRUNTIME, FAIL, "Internal error in ConvMulFusion. conv_B_tensor_proto is NULL");
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
           conv_B_tensor_proto->dims_size() != 1 || (mul_B_tensor_proto->dims_size() != 0 &&
@@ -96,15 +98,8 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
     graph.RemoveInitializedTensor(conv_inputs[1]->Name());
     graph.AddInitializedTensor(new_conv_W_tensor_proto);
 
-    if (conv_inputs.size() == 3) {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6011)  // Not deferencing null pointer. conv_B_tensor_proto is set on line 55
-#endif
+    if (is_3d) {
       ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
       conv_B->ToProto(&new_conv_B_tensor_proto);
       graph.RemoveInitializedTensor(conv_inputs[2]->Name());
       graph.AddInitializedTensor(new_conv_B_tensor_proto);

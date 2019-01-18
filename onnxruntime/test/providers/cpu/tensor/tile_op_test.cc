@@ -7,6 +7,26 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(TensorOpTest, Tile1DWithZeroRepeats) {
+  OpTester test("Tile");
+
+  test.AddInput<float>("input", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("repeats", {1}, {0});
+  test.AddOutput<float>("output", {0}, {});
+  test.Run();
+}
+
+TEST(TensorOpTest, Tile2DWithZeroRepeats) {
+  OpTester test("Tile");
+
+  test.AddInput<float>("input", {2, 2},
+                       {11.0f, 12.0f,
+                        21.0f, 22.0f});
+  test.AddInput<int64_t>("repeats", {2}, {2, 0});
+  test.AddOutput<float>("output", {4, 0}, {});
+  test.Run();
+}
+
 TEST(TensorOpTest, Tile1D) {
   OpTester test("Tile");
 
