@@ -15,20 +15,20 @@ bool IsFusableActivation(const Node& node) {
   return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
 }
 
-void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
+void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_gemm) {
   Node::EdgeSet output_edges;
   for (auto it = act.OutputEdgesBegin(); it != act.OutputEdgesEnd(); ++it) {
     output_edges.insert(*it);
   }
 
   //remove output edge of activation
-  //connect fused_conv node and nodes after activation nodes
+  //connect fused_gemm node and nodes after activation nodes
   for (auto& output_edge : output_edges) {
     NodeIndex dst_node_index = output_edge.GetNode().Index();
     int src_arg_index = output_edge.GetSrcArgIndex();
     int dst_arg_index = output_edge.GetDstArgIndex();
     g.RemoveEdge(act.Index(), dst_node_index, src_arg_index, dst_arg_index);
-    g.AddEdge(fused_conv.Index(), dst_node_index, 0, dst_arg_index);
+    g.AddEdge(fused_gemm.Index(), dst_node_index, 0, dst_arg_index);
   }
 }
 
@@ -45,46 +45,48 @@ Status GemmActivationFusion::Apply(Graph& graph, bool& modified) const {
       continue;
     }
     const Node& next_node = *(node->OutputNodesBegin());
-    if (!IsFusableActivation(next_node) || graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    if (!IsFusableActivation(next_node)) {
       continue;
     }
 
     Node* gemm_node = node;
     const Node& act_node = next_node;
 
-    Node& fused_conv = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node->Name()), "FusedGemm",
+    Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node->Name()), "FusedGemm",
                                      "fused Gemm " + gemm_node->Name() + "with activation " + act_node.OpType(),
                                      gemm_node->MutableInputDefs(),
-                                     gemm_node->MutableOutputDefs(),
+                                     graph.IsNodeOutputsInGraphOutputs(next_node) ? const_cast<Node&>(act_node).MutableOutputDefs() : gemm_node->MutableOutputDefs(),
                                      &gemm_node->GetAttributes(),
                                      "com.microsoft");
 
     //Add a new attribute to specify the activation type
-    fused_conv.AddAttribute("activation", act_node.OpType());
+    fused_gemm.AddAttribute("activation", act_node.OpType());
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {
       const NodeAttributes attrs = act_node.GetAttributes();
       for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-        fused_conv.AddAttribute("leaky_relu_" + it->first, it->second);
+        fused_gemm.AddAttribute("leaky_relu_" + it->first, it->second);
       }
     }
 
-    HandleActivationNodeEdges(graph, act_node, fused_conv);
+    if (!graph.IsNodeOutputsInGraphOutputs(next_node)) {
+      HandleActivationNodeEdges(graph, act_node, fused_gemm);
 
-    // Replace the input of the node following activation node
-    const NodeArg* act_output_def = act_node.OutputDefs()[0];
-    NodeArg* fused_conv_output_def = fused_conv.MutableOutputDefs()[0];
-    for (auto it = act_node.OutputNodesBegin(); it != act_node.OutputNodesEnd(); ++it) {
-      auto output_node = graph.GetNode((*it).Index());
-      if (!output_node) {
-        return Status(ONNXRUNTIME, INVALID_ARGUMENT);
-      }
+      // Replace the input of the node following activation node
+      const NodeArg* act_output_def = act_node.OutputDefs()[0];
+      NodeArg* fused_gemm_output_def = fused_gemm.MutableOutputDefs()[0];
+      for (auto it = act_node.OutputNodesBegin(); it != act_node.OutputNodesEnd(); ++it) {
+        auto output_node = graph.GetNode((*it).Index());
+        if (!output_node) {
+          return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+        }
 
-      auto& input_defs = output_node->MutableInputDefs();
-      for (auto& def : input_defs) {
-        if (def == act_output_def) {
-          def = fused_conv_output_def;
+        auto& input_defs = output_node->MutableInputDefs();
+        for (auto& def : input_defs) {
+          if (def == act_output_def) {
+            def = fused_gemm_output_def;
+          }
         }
       }
     }
