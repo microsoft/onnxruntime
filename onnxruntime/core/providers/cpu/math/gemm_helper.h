@@ -41,7 +41,7 @@ class GemmHelper {
       status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
 	
 	// it is possible the input is empty tenosr, for example the output of roipool in fast rcnn.
-    ORT_ENFORCE(K_ > 0);
+    ORT_ENFORCE(M_ >= 0 && K_ > 0 && N_ >=0);
   }
 
   int64_t M() const { return M_; }
