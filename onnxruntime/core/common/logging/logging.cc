@@ -19,6 +19,7 @@
 #include <sys/syscall.h>
 #endif
 #endif
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -52,8 +53,8 @@ static std::atomic<void*>& DefaultLoggerManagerInstance() noexcept {
 #pragma warning(disable : 26426)
 #endif
 
-static std::mutex& DefaultLoggerMutex() noexcept {
-  static std::mutex mutex;
+static OrtMutex& DefaultLoggerMutex() noexcept {
+  static OrtMutex mutex;
   return mutex;
 }
 
@@ -94,7 +95,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
 
     // lock mutex to create instance, and enable logging
     // this matches the mutex usage in Shutdown
-    std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+    std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
 
     if (DefaultLoggerManagerInstance().load() != nullptr) {
       throw std::logic_error("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
@@ -114,7 +115,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
 LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
-    std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+    std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
 
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order::memory_order_release);
 

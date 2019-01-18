@@ -1,15 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//TODO: switch to nsync mutex and cv
-#include <mutex>
-#include <condition_variable>
 #include <core/common/common.h>
+#include <core/platform/ort_mutex.h>
 
 struct OnnxRuntimeEvent {
  public:
-  std::mutex finish_event_mutex;
-  std::condition_variable finish_event_data;
+  onnxruntime::OrtMutex finish_event_mutex;
+  onnxruntime::OrtCondVar finish_event_data;
   bool finished = false;
   OnnxRuntimeEvent() = default;
 
