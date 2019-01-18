@@ -113,9 +113,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasReluActivation>
 template<>
 struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 {
-#if defined(MLAS_SSE2_INTRINSICS)
     const MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
-#endif
 
     MLAS_FLOAT32X4 AlphaBroadcast;
 
@@ -129,7 +127,12 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
         MLAS_FLOAT32X4 ValueTimesAlpha = MlasMultiplyFloat32x4(Value, AlphaBroadcast);
 
 #if defined(MLAS_NEON_INTRINSICS)
-        return vbslq_f32(vclezq_f32(Value), ValueTimesAlpha, Value);
+#if defined(_WIN32)
+        return vbslq_f32(vcleq_z_f32_ex(Value), ValueTimesAlpha, Value);
+#else
+        // N.B. Standard NEON headers lack an intrinsic for the "vcle #0" form.
+        return vbslq_f32(vcleq_f32(Value, ZeroFloat32x4), ValueTimesAlpha, Value);
+#endif
 #elif defined(MLAS_AVX_INTRINSICS)
         return _mm_blendv_ps(ValueTimesAlpha, Value, _mm_cmple_ps(ZeroFloat32x4, Value));
 #elif defined(MLAS_SSE2_INTRINSICS)

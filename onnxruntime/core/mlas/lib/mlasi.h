@@ -327,15 +327,6 @@ MlasExecuteThreaded(
 #endif
 #endif
 
-#if defined(_M_ARM) || defined(_M_ARM64) || defined(_M_HYBRID_X86_ARM64)
-#ifndef vcgezq_f32
-#define vcgezq_f32(src) vcgeq_z_f32_ex(src)
-#endif
-#ifndef vclezq_f32
-#define vclezq_f32(src) vcleq_z_f32_ex(src)
-#endif
-#endif
-
 //
 // Cross-platform wrappers for vector intrinsics.
 //
