@@ -228,7 +228,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     String onnxModelFileName = null;
 
-                    if (skipModels.Contains(modelDir.ToString()))
+                    if (skipModels.Contains(modelDir.Name))
                         continue;
 
                     try
