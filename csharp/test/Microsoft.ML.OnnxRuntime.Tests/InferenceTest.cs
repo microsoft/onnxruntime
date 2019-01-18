@@ -258,7 +258,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                 innodedims[i] = -1 * innodedims[i];
                         }
 
-                        var testRoot = new DirectoryInfo(Path.Combine(opset,modelDir.ToString()));
+                        var testRoot = new DirectoryInfo(Path.Combine(cwd, opset, modelDir.Name));
                         var testData = testRoot.EnumerateDirectories("test_data*").First();
                         var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
                         var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
