@@ -67,6 +67,12 @@ void RegisterOperatorKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
 }
 
+std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterOperatorKernels(*kernel_registry);
+  return kernel_registry;
+}
+
 class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() {
@@ -98,9 +104,7 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 
   std::shared_ptr<::onnxruntime::KernelRegistry> GetKernelRegistry() const override {
-    static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-    static std::once_flag cpu_kernel_registry_flag;
-    std::call_once(cpu_kernel_registry_flag, RegisterOperatorKernels, *kernel_registry);
+    static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
   }
 
