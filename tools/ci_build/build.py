@@ -479,6 +479,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         cmd = []
         if provider:
           cmd += ["-e", provider]
+          if provider == 'cuda':
+            cmd += ["-j", "2"]
         if config != 'Debug' and os.path.exists(model_dir):
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
