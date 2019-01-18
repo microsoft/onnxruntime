@@ -6,6 +6,6 @@
 namespace onnxruntime {
 namespace mkl_dnn {
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 }
 }

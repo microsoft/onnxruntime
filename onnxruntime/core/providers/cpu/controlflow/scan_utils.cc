@@ -16,6 +16,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -165,8 +166,12 @@ Status IterateSequence(OpKernelContextInternal& context,
     // Many of the other pieces are constant across usages.
     // Not sure how best to handle the memory pattern side of things though.
     // For now just making it work. Optimization and refinement will follow.
-    SequentialExecutor executor{context.GetTerminateFlag()};
-    status = executor.Execute(session_state, feeds, subgraph_output_names, fetches, context.Logger());
+    //SequentialExecutor executor{context.GetTerminateFlag()};
+    //status = executor.Execute(session_state, feeds, subgraph_output_names, fetches, context.Logger());
+    //ORT_RETURN_IF_ERROR(status);
+
+    status = utils::ExecuteGraph(session_state, feeds, subgraph_output_names, fetches, /*sequential_execution*/ true,
+                                 context.GetTerminateFlag(), context.Logger());
     ORT_RETURN_IF_ERROR(status);
 
     // cycle the LoopStateVariable input/output in preparation for the next iteration
