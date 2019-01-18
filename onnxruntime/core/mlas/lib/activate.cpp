@@ -101,7 +101,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasReluActivation>
 
     MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
     {
-        return MlasMaximumFloat32x4(Value, ZeroFloat32x4);
+        return MlasMaximumFloat32x4(ZeroFloat32x4, Value);
     }
 
     float Activate(float Value)
@@ -163,6 +163,35 @@ MlasActivationKernel(
     size_t N,
     size_t ldc
     )
+/*++
+
+Routine Description:
+
+    This routine steps over the output matrix and invokes the templated bias
+    addition and activation functions.
+
+Arguments:
+
+    Activation - Supplies the parameters for the activation.
+
+    Input - Supplies the input matrix.
+
+    Bias - Supplies the optional bias vector.
+
+    M - Supplies the number of elements of the bias vector and the number of
+        rows in the output matrix.
+
+    Output - Supplies the output matrix.
+
+    N - Supplies the number of columns of the output matrix.
+
+    ldc - Supplies the number of elements per row of the output matrix.
+
+Return Value:
+
+    None.
+
+--*/
 {
     MLAS_ACTIVATION_FUNCTION<ActivationKind> ActivationFunction(Activation);
     MLAS_BIAS_ADDITION<AddBias> BiasAddition;
@@ -216,6 +245,35 @@ MlasActivationKernel<MlasIdentityActivation, false>(
     size_t N,
     size_t ldc
     )
+/*++
+
+Routine Description:
+
+    This routine is invoked for the special case of an identity operation with
+    no bias addition, which translates to a no-op.
+
+Arguments:
+
+    Activation - Supplies the parameters for the activation.
+
+    Input - Supplies the input matrix.
+
+    Bias - Supplies the optional bias vector.
+
+    M - Supplies the number of elements of the bias vector and the number of
+        rows in the output matrix.
+
+    Output - Supplies the output matrix.
+
+    N - Supplies the number of columns of the output matrix.
+
+    ldc - Supplies the number of elements per row of the output matrix.
+
+Return Value:
+
+    None.
+
+--*/
 {
     //
     // No operation.
@@ -242,6 +300,35 @@ MlasActivationKernel(
     size_t N,
     size_t ldc
     )
+/*++
+
+Routine Description:
+
+    This routine invokes the appropriate activation kernel based on the
+    optional bias vector.
+
+Arguments:
+
+    Activation - Supplies the parameters for the activation.
+
+    Input - Supplies the input matrix.
+
+    Bias - Supplies the optional bias vector.
+
+    M - Supplies the number of elements of the bias vector and the number of
+        rows in the output matrix.
+
+    Output - Supplies the output matrix.
+
+    N - Supplies the number of columns of the output matrix.
+
+    ldc - Supplies the number of elements per row of the output matrix.
+
+Return Value:
+
+    None.
+
+--*/
 {
     if (Bias != nullptr) {
         MlasActivationKernel<ActivationKind, true>(Activation, Input, Bias, M, Output, N, ldc);
