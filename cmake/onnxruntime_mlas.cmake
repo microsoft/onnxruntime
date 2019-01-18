@@ -7,7 +7,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib/bias.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
 )
