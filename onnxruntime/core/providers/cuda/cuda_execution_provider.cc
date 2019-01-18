@@ -73,7 +73,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
-  std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
+  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   auto it = deferred_release_cpu_ptr_.begin();
   while (it != deferred_release_cpu_ptr_.end()) {
     auto& e = it->first;
@@ -94,12 +94,12 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
 
 void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
   if (per_thread_default_allocator_) {
-    std::lock_guard<std::mutex> lock(default_allocator_pool_mutex_);
+    std::lock_guard<OrtMutex> lock(default_allocator_pool_mutex_);
     default_allocator_pool_.push_back(per_thread_default_allocator_);
     per_thread_default_allocator_.reset();
   }
   if (per_thread_context_) {
-    std::lock_guard<std::mutex> lock(context_pool_mutex_);
+    std::lock_guard<OrtMutex> lock(context_pool_mutex_);
     context_pool_.push_back(per_thread_context_);
     per_thread_context_.reset();
   }
@@ -111,7 +111,7 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
   // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
     if (!per_thread_default_allocator_) {
-      std::lock_guard<std::mutex> lock(default_allocator_pool_mutex_);
+      std::lock_guard<OrtMutex> lock(default_allocator_pool_mutex_);
       if (default_allocator_pool_.empty()) {
         DeviceAllocatorRegistrationInfo default_allocator_info(
             {OrtMemTypeDefault,
@@ -139,7 +139,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // as the actual memory will be cleaned in arena allocator dtor
   auto current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
   if (current_deferred_release_event) {
-    std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
     ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
     iter->second.cpu_ptrs.push_back(p);
@@ -150,7 +150,7 @@ Status CUDAExecutionProvider::OnRunStart() {
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
-  std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
+  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   auto it = deferred_release_cpu_ptr_.begin();
   while (it != deferred_release_cpu_ptr_.end()) {
     auto& e = it->first;
@@ -169,7 +169,7 @@ Status CUDAExecutionProvider::OnRunStart() {
   }
   // start a new per_thread context, store in TLS
   {
-    std::lock_guard<std::mutex> ctx_lock(context_pool_mutex_);
+    std::lock_guard<OrtMutex> ctx_lock(context_pool_mutex_);
     if (context_pool_.empty()) {
       per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
     } else {
@@ -189,7 +189,7 @@ Status CUDAExecutionProvider::OnRunEnd() {
   auto current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
   ReleasePerThreadStuffs();
-  std::lock_guard<std::mutex> lock(deferred_release_cpu_ptr_mutex_);
+  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
   return Status::OK();
 }
