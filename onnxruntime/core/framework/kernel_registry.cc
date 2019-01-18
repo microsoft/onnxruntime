@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
 #include <unordered_map>
 
 #include "core/framework/kernel_registry.h"
@@ -8,13 +9,13 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-// map from input/output name or type string to TypeProto pointer
-using TypeBindingMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TypeProto*>;
+namespace {
+// Function that is called for each formal parameter and its associated TypeProto.
+// Returns true if traversal should continue, false otherwise.
+using TraverseFn = std::function<bool(const ONNX_NAMESPACE::OpSchema::FormalParameter&,
+                                      const ONNX_NAMESPACE::TypeProto*)>;
 
-// Builds a map from name to bound type for the specified node.
-// The name can represent either a type parameter or an input/output parameter.
-TypeBindingMap CreateTypeBindingMap(const onnxruntime::Node& node) {
-  TypeBindingMap result{};
+void TraverseFormalParametersWithTypeProto(const onnxruntime::Node& node, const TraverseFn& traverse_fn) {
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
 
   // process inputs:
@@ -27,8 +28,7 @@ TypeBindingMap CreateTypeBindingMap(const onnxruntime::Node& node) {
     for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
       const onnxruntime::NodeArg* arg = node.InputDefs()[actual_index + i];
       if (!arg->Exists()) continue;  // a missing optional argument
-      result.emplace(param.GetTypeStr(), arg->TypeAsProto());
-      result.emplace(param.GetName(), arg->TypeAsProto());
+      if (!traverse_fn(param, arg->TypeAsProto())) return;
     }
     actual_index += node.InputArgCount()[formal_index];
   }
@@ -41,12 +41,72 @@ TypeBindingMap CreateTypeBindingMap(const onnxruntime::Node& node) {
     const onnxruntime::NodeArg* arg = actual_outputs[i];
     if (!arg->Exists()) continue;
     auto& formal = op_schema.outputs()[std::min(i, last_formal)];
-    result.emplace(formal.GetTypeStr(), arg->TypeAsProto());
-    result.emplace(formal.GetName(), arg->TypeAsProto());
+    if (!traverse_fn(formal, arg->TypeAsProto())) return;
+  }
+}
+
+class TypeBindingResolver {
+ public:
+  TypeBindingResolver(const Node& node) : node_{node} {}
+  virtual ~TypeBindingResolver() = default;
+  // Resolves a name to a TypeProto* for a given node.
+  // The name can represent either a type parameter or an input/output parameter.
+  // Returns the resolved TypeProto* or nullptr if unable to resolve.
+  virtual const ONNX_NAMESPACE::TypeProto* Resolve(const std::string& name_or_type_str) const = 0;
+
+ protected:
+  const Node& GetNode() const { return node_; }
+
+ private:
+  const Node& node_;
+};
+
+class MappingTypeBindingResolver : public TypeBindingResolver {
+ public:
+  MappingTypeBindingResolver(const Node& node) : TypeBindingResolver{node},
+                                                 type_binding_map_{} {
+    TraverseFormalParametersWithTypeProto(
+        GetNode(),
+        [this](const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
+               const ONNX_NAMESPACE::TypeProto* type) -> bool {
+          type_binding_map_.emplace(param.GetName(), type);
+          type_binding_map_.emplace(param.GetTypeStr(), type);
+          return true;
+        });
   }
 
-  return result;
-}
+  const ONNX_NAMESPACE::TypeProto* Resolve(const std::string& name_or_type_str) const override {
+    auto found_it = type_binding_map_.find(name_or_type_str);
+    if (found_it == type_binding_map_.end()) return nullptr;
+    return found_it->second;
+  }
+
+ private:
+  // map from input/output name or type string to TypeProto pointer
+  using TypeBindingMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TypeProto*>;
+  TypeBindingMap type_binding_map_;
+};
+
+class SimpleTypeBindingResolver : public TypeBindingResolver {
+ public:
+  SimpleTypeBindingResolver(const Node& node) : TypeBindingResolver{node} {}
+
+  const ONNX_NAMESPACE::TypeProto* Resolve(const std::string& name_or_type_str) const override {
+    const ONNX_NAMESPACE::TypeProto* result{};
+    TraverseFormalParametersWithTypeProto(
+        GetNode(),
+        [&name_or_type_str, &result](const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
+                                     const ONNX_NAMESPACE::TypeProto* type) -> bool {
+          if (param.GetName() == name_or_type_str || param.GetTypeStr() == name_or_type_str) {
+            result = type;
+            return false;
+          }
+          return true;
+        });
+    return result;
+  }
+};
+};  // namespace
 
 std::vector<std::string> KernelRegistry::GetAllRegisteredOpNames() const {
   std::vector<std::string> ret(kernel_creator_fn_map_.size());
@@ -126,14 +186,27 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
 
   // check if type matches
   auto& kernel_type_constraints = kernel_def.TypeConstraints();
-  const auto& type_binding_map = CreateTypeBindingMap(node);
+
+  // Note: The number of input/output nodes is N and the number of type
+  // constraints is M. We select between an O(N*M) and an O(N+M) approach.
+  // The O(N*M) approach has lower initial overhead.
+  // kTypeBindingResolverComplexityThreshold is an arbitrary value of N*M,
+  // above which we will use the O(N+M) approach.
+  constexpr int kTypeBindingResolverComplexityThreshold = 50 * 50;
+  // TODO could use std::variant (C++17) to avoid heap allocation
+  const auto type_binding_resolver = [&]() -> std::unique_ptr<TypeBindingResolver> {
+    if (kernel_type_constraints.size() * (node.Op()->inputs().size() + node.Op()->outputs().size()) <
+        kTypeBindingResolverComplexityThreshold) {
+      return std::make_unique<SimpleTypeBindingResolver>(node);
+    } else {
+      return std::make_unique<MappingTypeBindingResolver>(node);
+    }
+  }();
 
   for (auto& constraint : kernel_type_constraints) {
     const std::string& name = constraint.first;
     const std::vector<MLDataType>& allowed_types = constraint.second;
-
-    auto type_binding_map_it = type_binding_map.find(name);
-    const ONNX_NAMESPACE::TypeProto* actual_type = type_binding_map_it != type_binding_map.end() ? type_binding_map_it->second : nullptr;
+    const ONNX_NAMESPACE::TypeProto* actual_type = type_binding_resolver->Resolve(name);
 
     // If actual_type is null, this represents a type-constraint on a
     // missing optional parameter, which can be skipped.
