@@ -213,6 +213,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestPreTrainedModelsOpset7And8()
         {
+            // 16-bit float not supported type in C#.
+            var skipModels = new[] {
+                "fp16_inception_v1",
+                "fp16_shufflenet",
+                "fp16_tiny_yolov2" };
+
             var opsets = new[] { "opset7", "opset8" };
             foreach (var opset in opsets)
             {
@@ -221,6 +227,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
+
+                    if (skipModels.Contains(modelDir.ToString()))
+                        continue;
+
                     try
                     {
                         var onnxModelNames = modelDir.GetFiles("*.onnx");
@@ -247,8 +257,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             if (innodedims[i] < 0)
                                 innodedims[i] = -1 * innodedims[i];
                         }
-                        var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, "test_data_set_0", "input_0.pb"));
-                        var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, "test_data_set_0", "output_0.pb"));
+
+                        var testRoot = new DirectoryInfo(Path.Combine(opset,modelDir.ToString()));
+                        var testData = testRoot.EnumerateDirectories("test_data*").First();
+                        var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
+                        var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
                         nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
