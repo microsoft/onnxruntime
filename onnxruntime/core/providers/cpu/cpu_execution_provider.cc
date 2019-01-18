@@ -568,10 +568,14 @@ static void RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ::onnxruntime::contrib::RegisterContribKernels(kernel_registry);
 }
 
+std::shared_ptr<KernelRegistry> GetCpuKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterCPUKernels(*kernel_registry);
+  return kernel_registry;
+}
+
 std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  static std::once_flag cpu_kernel_registry_flag;
-  std::call_once(cpu_kernel_registry_flag, RegisterCPUKernels, *kernel_registry);
+  static std::shared_ptr<KernelRegistry> kernel_registry = GetCpuKernelRegistry();
   return kernel_registry;
 }
 

@@ -90,12 +90,18 @@ void RegisterMKLDNNKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, 8, float, GlobalMaxPool)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, float, LRN)>());
 }
+
+std::shared_ptr<KernelRegistry> GetMklDnnKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterMKLDNNKernels(*kernel_registry);
+  return kernel_registry;
+}
 }  // namespace mkl_dnn
 
+
+
 std::shared_ptr<KernelRegistry> MKLDNNExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  static std::once_flag mkldnn_kernel_registry_flag;
-  std::call_once(mkldnn_kernel_registry_flag, onnxruntime::mkl_dnn::RegisterMKLDNNKernels, *kernel_registry);
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::mkl_dnn::GetMklDnnKernelRegistry();
   return kernel_registry;
 }
 }  // namespace onnxruntime

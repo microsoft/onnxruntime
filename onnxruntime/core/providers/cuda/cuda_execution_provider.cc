@@ -767,12 +767,16 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, int32_t, Upsample)>());
 }
 
+std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterCudaKernels(*kernel_registry);
+  return kernel_registry;
+}
+
 }  // namespace cuda
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  static std::once_flag cuda_kernel_registry_flag;
-  std::call_once(cuda_kernel_registry_flag, onnxruntime::cuda::RegisterCudaKernels, *kernel_registry);
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::cuda::GetCudaKernelRegistry();
   return kernel_registry;
 }
 
