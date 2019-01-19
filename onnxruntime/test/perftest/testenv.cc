@@ -38,37 +38,25 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
   for (const std::string& provider : providers_) {
     if (provider == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
-      FACTORY_PTR_HOLDER;
-      RegisterExecutionProvider(sess.get(), f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sess.get(), 0);
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena_ ? 1 : 0, &f));
-      FACTORY_PTR_HOLDER;
-      RegisterExecutionProvider(sess.get(), f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sess.get(), enable_cpu_mem_arena_ ? 1 : 0);
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
-      RegisterExecutionProvider(sess.get(), f);
-      FACTORY_PTR_HOLDER;
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sess.get(), 0, "");
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
-      RegisterExecutionProvider(sess.get(), f);
-      FACTORY_PTR_HOLDER;
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Brainslice(sess.get(), 0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin");
 #else
       ORT_THROW("This executable was not built with BrainSlice");
 #endif

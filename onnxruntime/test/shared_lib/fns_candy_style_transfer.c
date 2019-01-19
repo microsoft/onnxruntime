@@ -182,10 +182,7 @@ void verify_input_output_count(OrtSession* session) {
 
 #ifdef USE_CUDA
 void enable_cuda(OrtSessionOptions* session_option) {
-  OrtProviderFactoryInterface** factory;
-  ORT_ABORT_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &factory));
-  OrtSessionOptionsAppendExecutionProvider(session_option, factory);
-  OrtReleaseObject(factory);
+  ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0);
 }
 #endif
 

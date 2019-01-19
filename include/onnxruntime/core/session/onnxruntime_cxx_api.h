@@ -76,6 +76,8 @@ class SessionOptionsWrapper {
   SessionOptionsWrapper(_In_ OrtEnv* env, OrtSessionOptions* p) : value(p), env_(env){};
 
  public:
+  operator OrtSessionOptions*() { return value.get(); }
+
   //TODO: for the input arg, should we call addref here?
   SessionOptionsWrapper(_In_ OrtEnv* env) : value(OrtCreateSessionOptions()), env_(env){};
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableSequentialExecution)
@@ -98,15 +100,6 @@ class SessionOptionsWrapper {
   void SetSessionThreadPoolSize(int session_thread_pool_size) {
     OrtSetSessionThreadPoolSize(value.get(), session_thread_pool_size);
   }
-
-  /**
-  * The order of invocation indicates the preference order as well. In other words call this method
-  * on your most preferred execution provider first followed by the less preferred ones.
-  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
-  */
-  //  void AppendExecutionProvider(_In_ OrtProviderFactoryInterface** f) {
-  //    OrtSessionOptionsAppendExecutionProvider(value.get(), f);
-  //  }
 
   SessionOptionsWrapper clone() const {
     OrtSessionOptions* p = OrtCloneSessionOptions(value.get());

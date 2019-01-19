@@ -172,7 +172,7 @@ class SessionObjectInitializer {
   }
 };
 
-inline void RegisterExecutionProvider(InferenceSession* sess, OrtProviderFactoryInterface** f) {
+inline void RegisterExecutionProvider_CPU(InferenceSession* sess) {
   OrtProvider* p;
   (*f)->CreateProvider(f, &p);
   std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
@@ -193,12 +193,12 @@ void InitializeSession(InferenceSession* sess) {
 #ifdef USE_MKLDNN
   {
     const bool enable_cpu_mem_arena = true;
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sess, enable_cpu_mem_arena ? 1 : 0));
   }
 #endif
 #if 0  //USE_NUPHAR
   {
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(0, ""));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sess, 0, ""));
   }
 #endif
 
