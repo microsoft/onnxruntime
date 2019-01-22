@@ -23,23 +23,6 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
-template <typename T>
-void fuse_activation(const std::string& activation, T* y_data, size_t size, float alpha) {
-  EigenVectorArrayMap<T> y_vec(y_data, size);
-  if (activation.empty()) {
-    return;
-  } else if (activation == "Relu") {
-    y_vec = y_vec.cwiseMax(0);
-  } else if (activation == "Sigmoid") {
-    y_vec = (y_vec >= 0).select(1 / (1. + (-y_vec.abs()).exp()), 1 - 1 / (1. + (-y_vec.abs()).exp()));
-  } else if (activation == "Tanh") {
-    y_vec = y_vec.tanh();
-  } else if (activation == "LeakyRelu") {
-    y_vec = (y_vec >= 0).select(y_vec, (T)alpha * y_vec);
-  } else {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
-  }
-}
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
@@ -155,7 +138,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       auto Bvec = ConstEigenVectorMap<T>(B->template Data<T>(), M);
       Ymatrix.rowwise() += Bvec.transpose();
     }
-    fuse_activation(activation_, Ydata, Y_offset * group_, alpha_);
+    FuseActivation(activation_, Ydata, Y_offset * group_, alpha_);
 
     Xdata += X_offset * group_;
     Ydata += Y_offset * group_;
