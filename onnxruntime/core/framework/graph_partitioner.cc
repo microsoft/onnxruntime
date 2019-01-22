@@ -56,13 +56,33 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
   return builder;
 }
 
-Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, FuncManager& func_mgr) const {
+Status GraphPartitioner::Partition(Graph& graph, SessionState& session_state) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
+  //    NOTE: A 'sub-graph' is a subset of nodes within the current Graph instance.
+  //          The control flow nodes have nested Graph instance/s which are also called subgraphs,
+  //        but are completely separate Graph instance and not a subset of nodes within a Graph instance.
   // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider preference.
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
+  }
+
+  bool export_dll = session_state.ExportDll();
+  FuncManager& func_mgr = session_state.GetMutableFuncMgr();
+
+  // recurse into nested graphs first so we partition bottom up.
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      auto& attr_name = entry.first;
+      Graph* subgraph = entry.second;
+
+      auto* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), attr_name);
+      ORT_ENFORCE(subgraph_session_state,
+                  "All subgraphs should have SessionState by now. Check CreateSubgraphSessionState logic.");
+
+      ORT_RETURN_IF_ERROR(Partition(*subgraph, *subgraph_session_state));
+    }
   }
 
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
@@ -185,7 +205,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    Partition(graph, export_dll, func_mgr);
+    Partition(graph, session_state);
   }
 
   //For some cases, like fp16 on cpu, right now we don't have any kernel support that.

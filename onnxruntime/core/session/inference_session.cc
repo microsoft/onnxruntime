@@ -269,34 +269,6 @@ class InferenceSession::Impl {
     return common::Status::OK();
   }
 
-  static common::Status PartitionGraph(onnxruntime::Graph& graph,
-                                       const ExecutionProviders& providers,
-                                       KernelRegistryManager& kernel_registry_manager,
-                                       SessionState& session_state) {
-    // Do partitioning based on execution providers' capability.
-    // We do the main graph first, and as we know the control flow nodes only execute on CPU currently we
-    // can iterate those later.
-    GraphPartitioner partitioner(kernel_registry_manager, providers);
-    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
-
-    // Recurse into all subgraphs
-    for (auto& node : graph.Nodes()) {
-      for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-        auto& attr_name = entry.first;
-        Graph* subgraph = entry.second;
-
-        auto* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), attr_name);
-        ORT_ENFORCE(subgraph_session_state,
-                    "All subgraphs should have SessionState by now. Check CreateSubgraphSessionState logic.");
-
-        ORT_RETURN_IF_ERROR(
-            PartitionGraph(*subgraph, providers, kernel_registry_manager, *subgraph_session_state));
-      }
-    }
-
-    return Status::OK();
-  }
-
   static common::Status TransformGraph(onnxruntime::Graph& graph,
                                        const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                        const ExecutionProviders& providers,
@@ -314,7 +286,8 @@ class InferenceSession::Impl {
     ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
 
     // Do partitioning based on execution providers' capability.
-    ORT_RETURN_IF_ERROR(PartitionGraph(graph, providers, kernel_registry_manager, session_state));
+    GraphPartitioner partitioner(kernel_registry_manager, providers);
+    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state));
 
     bool modified = false;
 
@@ -442,6 +415,7 @@ class InferenceSession::Impl {
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_};
 
+      // create SessionState for subgraphs as it's needed by the transformers 
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
 
       // apply any transformations to the main graph and any subgraphs
