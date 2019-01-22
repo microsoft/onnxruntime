@@ -409,7 +409,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     // in execution provider mapped by weight name.
     {
       // lock to make sure reordering is done only once
-      std::lock_guard<std::mutex> lock(provider_->GetMutex());
+      std::lock_guard<OrtMutex> lock(provider_->GetMutex());
       auto weight_name = OpKernel::Node().InputDefs()[1]->Name();
       std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(weight_name);
 
