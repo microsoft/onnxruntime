@@ -53,11 +53,13 @@ bool PrepareForReduce(OpKernelContext* ctx,
   const Tensor& input = *input_tensor_ptr;
 
   size_t ndim = input.Shape().GetDims().size();
-  for (int64_t axe : axes_) {
-    ORT_ENFORCE(axe >= 0 && axe < (int64_t)ndim, "Axis attribute out of range");
+  std::vector<int64_t> axes = axes_;
+  for (size_t i = 0; i < axes.size(); i++) {
+    if (axes[i] < 0)
+      axes[i] += ndim;
+    ORT_ENFORCE(axes[i] >= 0 && axes[i] < (int64_t)ndim, "Axis attribute out of range");
   }
 
-  std::vector<int64_t> axes = axes_;
   if (axes.empty()) {
     // This is the default case for non-arg kind reductions. Reduce on all dimensions.
     for (size_t i = 0; i < ndim; i++)
