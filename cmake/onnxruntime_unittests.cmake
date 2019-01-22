@@ -395,7 +395,7 @@ list(APPEND onnx_test_libs ${FS_STDLIB} debug ${onnxruntime_EXTERNAL_LIBRARIES_D
 
 
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
-target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} ${trt_link_libs})
 onnxruntime_add_include_to_target(onnx_test_runner gsl)
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -447,7 +447,7 @@ if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
     target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
-  target_link_libraries(onnxruntime_perf_test PRIVATE ${GETOPT_LIB} ${onnx_test_libs})
+  target_link_libraries(onnxruntime_perf_test PRIVATE ${GETOPT_LIB} ${onnx_test_libs} ${trt_link_libs})
   set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 endif()
 
