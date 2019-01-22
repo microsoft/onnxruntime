@@ -153,6 +153,10 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
                       return Status::OK();
                     })
                     .IsOK());
+
+    // we don't need to handle implicit input here as provider_ is never kCpuExecutionProvider, all control flow
+    // nodes are CPU based, and only control flow nodes have implicit inputs.
+
     auto& output_defs = node.MutableOutputDefs();
     for (size_t i = 0; i < output_defs.size(); ++i) {
       auto arg = output_defs[i];
@@ -166,7 +170,8 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     }
   } else {
     // TODO: copy between devices? i.e. multiple GPUs
-    if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider && !node.GetExecutionProviderType().empty()) {
+    if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider &&
+        !node.GetExecutionProviderType().empty()) {
       ORT_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
     }
 

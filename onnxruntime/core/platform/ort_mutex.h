@@ -31,8 +31,8 @@ class OrtMutex {
 #endif
 
  private:
-  OrtMutex(const OrtMutex&);             // = delete;
-  OrtMutex& operator=(const OrtMutex&);  // = delete;
+  OrtMutex(const OrtMutex&) = delete;             // = delete;
+  OrtMutex& operator=(const OrtMutex&) = delete;  // = delete;
 
  public:
   void lock();

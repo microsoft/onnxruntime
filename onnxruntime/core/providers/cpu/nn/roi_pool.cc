@@ -80,7 +80,7 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
 
           // Define an empty pooling region to be zero
           bool is_empty = (hend <= hstart) || (wend <= wstart);
-          Ydata[pool_index] = is_empty ? 0 : std::numeric_limits<float>::min();
+          Ydata[pool_index] = is_empty ? 0 : std::numeric_limits<float>::lowest();
 
           for (int h = hstart; h < hend; ++h) {
             for (int w = wstart; w < wend; ++w) {

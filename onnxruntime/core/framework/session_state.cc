@@ -7,6 +7,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/utils.h"
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -109,8 +110,48 @@ bool SessionState::GetEnableMemoryPattern() const {
   return enable_mem_pattern_;
 }
 
-void SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
-  input_names_to_nodeinfo_mapping_[input_name].push_back(node_info);
+common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
+  auto status = Status::OK();
+
+  // in the future we could support multiple nodes on difference devices using an input, however right now
+  // the logic in utils::CopyOneInputAcrossDevices only checks the first entry.
+  // Instead of failing silently and adding extra entries that will be ignored, check if the required provider
+  // is the same for any duplicate entries. If it differs we can't run the model.
+
+  auto& entries = input_names_to_nodeinfo_mapping_[input_name];
+
+  if (entries.empty()) {
+    entries.push_back(node_info);
+  } else {
+    const auto& existing_entry = entries.front();
+
+    // if index == max it's an entry for an implicit input to a subgraph or unused graph input.
+    // we want to prefer the entry for explicit usage in this graph, as the implicit usage in a
+    // subgraph will be handled by the subgraph's SessionState.
+    if (node_info.index == std::numeric_limits<size_t>::max()) {
+      // ignore and preserve existing value
+    } else if (existing_entry.index == std::numeric_limits<size_t>::max()) {
+      // replace existing entry that is for an implicit input with new entry for explicit usage in this graph
+      entries[0] = node_info;
+    } else {
+      // if the providers match we can add the new entry for completeness (it will be ignored in
+      // utils::CopyOneInputAcrossDevices though).
+      // if they don't, we are broken.
+      const auto& current_provider = utils::GetNodeInputProviderType(entries[0]);
+      const auto& new_provider = utils::GetNodeInputProviderType(node_info);
+
+      if (current_provider == new_provider) {
+        entries.push_back(node_info);
+      } else {
+        ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                        "Using an input in multiple nodes on different devices is not supported currently. Input:",
+                        input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
+                        ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
+      }
+    }
+  }
+
+  return status;
 }
 
 common::Status SessionState::GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const {

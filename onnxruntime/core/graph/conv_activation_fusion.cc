@@ -70,9 +70,9 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {
-      const NodeAttributes attrs = act_node.GetAttributes();
-      for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-        fused_conv.AddAttribute(it->first, it->second);
+      const NodeAttributes& attrs = act_node.GetAttributes();
+      for (const auto& attr : attrs) {
+        fused_conv.AddAttribute(attr.first, attr.second);
       }
     }
 

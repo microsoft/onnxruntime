@@ -22,7 +22,7 @@ class GraphViewer {
   /**
   Construct a GraphViewer from the provided Graph instance.
   */
-  GraphViewer(const Graph& graph);
+  explicit GraphViewer(const Graph& graph);
 
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;

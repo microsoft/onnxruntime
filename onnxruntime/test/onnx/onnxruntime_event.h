@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+//TODO: switch to nsync mutex and cv
 #include <mutex>
-#include <pthread.h>
+#include <condition_variable>
 #include <core/common/common.h>
 
 struct OnnxRuntimeEvent {
  public:
-  pthread_mutex_t finish_event_mutex = PTHREAD_MUTEX_INITIALIZER;
-  pthread_cond_t finish_event_data = PTHREAD_COND_INITIALIZER;
+  std::mutex finish_event_mutex;
+  std::condition_variable finish_event_data;
   bool finished = false;
   OnnxRuntimeEvent() = default;
 

@@ -21,14 +21,21 @@
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
 
+#ifdef USE_EIGEN_THREADPOOL
+#include <unsupported/Eigen/CXX11/ThreadPool>
+#endif
+
 namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelDef;
 class OpKernel;
-class TaskThreadPool;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+
+#ifndef USE_EIGEN_THREADPOOL
+class TaskThreadPool;
+#endif
 
 // SessionState should be modified by the inference session class only.
 // It is supposed to be passed by const-ref only to all the executors.
@@ -129,7 +136,7 @@ class SessionState {
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
-  void AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
+  common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
   common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
@@ -148,8 +155,13 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool* GetThreadPool() const { return thread_pool_; }
+  void SetThreadPool(Eigen::NonBlockingThreadPool* p_pool) { thread_pool_ = p_pool; }
+#else
   TaskThreadPool* GetThreadPool() const { return thread_pool_; }
   void SetThreadPool(TaskThreadPool* p_pool) { thread_pool_ = p_pool; }
+#endif
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -190,7 +202,12 @@ class SessionState {
   using SubgraphSessionStateMap =
       std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, gsl::not_null<SessionState*>>>;
   SubgraphSessionStateMap subgraph_session_states_;
+
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool* thread_pool_ = nullptr;
+#else
   TaskThreadPool* thread_pool_ = nullptr;
+#endif
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

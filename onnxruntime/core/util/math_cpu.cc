@@ -1230,42 +1230,6 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(
   }
 }
 
-template <>
-void CopyMatrix<CPUMathUtil>(
-    const size_t itemsize,
-    const int M,
-    const int N,
-    const void* A,
-    const int lda,
-    void* B,
-    const int ldb,
-    CPUMathUtil*,
-    TypedCopy copy) {
-  if (lda == N && ldb == N) {
-    // can coalese to a single memcpy of size M * N
-    if (copy) {
-      copy(static_cast<const char*>(A), static_cast<char*>(B), N * M);
-    } else {
-      memcpy(
-          static_cast<char*>(B), static_cast<const char*>(A), itemsize * N * M);
-    }
-    return;
-  }
-
-  for (int i = 0; i < M; ++i) {
-    if (copy) {
-      copy(
-          static_cast<const char*>(A) + lda * i * itemsize,
-          static_cast<char*>(B) + ldb * i * itemsize,
-          N);
-    } else {
-      memcpy(
-          static_cast<char*>(B) + ldb * i * itemsize,
-          static_cast<const char*>(A) + lda * i * itemsize,
-          itemsize * N);
-    }
-  }
-}
 
 #define SPECIALIZED_COPYVECTOR(T)                                    \
   template <>                                                        \

@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#pragma warning(disable : 4267)
+#endif
+
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -40,6 +44,10 @@
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
 
+#ifdef USE_EIGEN_THREADPOOL
+#include <unsupported/Eigen/CXX11/ThreadPool>
+#endif
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -63,7 +71,12 @@ class InferenceSession::Impl {
       int pool_size = session_options_.session_thread_pool_size == 0
                           ? std::thread::hardware_concurrency() / 2
                           : session_options_.session_thread_pool_size;
+
+#ifdef USE_EIGEN_THREADPOOL
+      thread_pool_ = std::make_unique<Eigen::NonBlockingThreadPool>(pool_size);
+#else
       thread_pool_ = std::make_unique<TaskThreadPool>(pool_size);
+#endif
     }
 
     session_state_.SetThreadPool(thread_pool_.get());
@@ -269,12 +282,15 @@ class InferenceSession::Impl {
     // Recurse into all subgraphs
     for (auto& node : graph.Nodes()) {
       for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-        auto* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), entry.first);
+        auto& attr_name = entry.first;
+        Graph* subgraph = entry.second;
+
+        auto* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), attr_name);
         ORT_ENFORCE(subgraph_session_state,
                     "All subgraphs should have SessionState by now. Check CreateSubgraphSessionState logic.");
 
         ORT_RETURN_IF_ERROR(
-            PartitionGraph(*entry.second, providers, kernel_registry_manager, *subgraph_session_state));
+            PartitionGraph(*subgraph, providers, kernel_registry_manager, *subgraph_session_state));
       }
     }
 
@@ -302,6 +318,9 @@ class InferenceSession::Impl {
 
     bool modified = false;
 
+    // Insert cast node/s.
+    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
+
     std::vector<std::string> provider_types;
     for (auto& provider_ptr : providers) {
       provider_types.push_back(provider_ptr->Type());
@@ -310,13 +329,6 @@ class InferenceSession::Impl {
     // Insert copy node/s.
     MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
     ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified));
-
-    // Insert cast node/s.
-    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
-
-    if (modified) {
-      ORT_RETURN_IF_ERROR(graph.Resolve());
-    }
 
     return common::Status::OK();
   }
@@ -332,6 +344,7 @@ class InferenceSession::Impl {
 
         auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
         subgraph_session_state->SetProfiler(session_profiler_);
+        subgraph_session_state->SetLogger(*session_logger_);
 
         // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
         // by Compute() via OpKernelContextInternal.
@@ -364,14 +377,15 @@ class InferenceSession::Impl {
 
         // setup everything required to execute the subgraph and save it in subgraph_session_state
         SessionStateInitializer initializer{subgraph, *subgraph_session_state,
-                                            execution_providers_, kernel_registry_manager_, *session_logger_};
+                                            execution_providers_, kernel_registry_manager_};
 
         ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
                                                    session_options_.enable_sequential_execution));
 
         auto weights_buffer = std::make_unique<std::map<OrtAllocatorInfo, BufferUniquePtr>>();
         ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                          *weights_buffer));
+                                                          *weights_buffer,
+                                                          &node.ImplicitInputDefs()));
 
         subgraph_weights_buffers_.push_back(std::move(weights_buffer));
 
@@ -426,7 +440,7 @@ class InferenceSession::Impl {
       insert_cast_transformer_.AddKernelRegistries(kernel_registry_manager_.GetAllKernelRegistries());
 
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
-                                                  kernel_registry_manager_, *session_logger_};
+                                                  kernel_registry_manager_};
 
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
 
@@ -611,210 +625,6 @@ class InferenceSession::Impl {
     return common::Status::OK();
   }
 
-  // copies inputs across devices only if required
-  common::Status CopyInputsAcrossDevices(const SessionState& session_state,
-                                         const NameMLValMap& orig_feeds,
-                                         NameMLValMap& new_feeds) {
-    for (auto& pair : orig_feeds) {
-      MLValue new_mlvalue;
-      auto& input_name = pair.first;
-      auto& orig_mlvalue = pair.second;
-      ORT_RETURN_IF_ERROR(IOBinding::CopyOneInputAcrossDevices(session_state,
-                                                               input_name,
-                                                               orig_mlvalue,
-                                                               new_mlvalue));
-      new_feeds[input_name] = new_mlvalue;
-    }
-    return Status::OK();
-  }
-
-  // ensures pre-allocated outputs match the node providers.
-  common::Status MatchOutputsWithProviders(const std::vector<std::string>& output_names,
-                                           std::vector<MLValue>& fetches,
-                                           std::vector<MLValue>& new_fetches) {
-    if (fetches.empty()) {
-      fetches.resize(output_names.size());
-    }
-    new_fetches.resize(output_names.size());
-
-    std::set<std::string> seen_outputs;
-    auto p_graph = session_state_.GetGraphViewer();
-    ORT_ENFORCE(p_graph);
-
-    std::pair<bool, size_t> found;
-    for (auto& node : p_graph->Nodes()) {  // TODO optimize this
-      if (seen_outputs.size() == fetches.size()) {
-        break;
-      }
-      for (auto* arg : node.OutputDefs()) {
-        if (!arg->Exists() ||
-            arg->Name().empty() ||
-            !(found = Contains(output_names, arg->Name())).first) {
-          continue;
-        }
-
-        seen_outputs.insert(arg->Name());
-        size_t idx = found.second;
-        MLValue orig_mlvalue = fetches[idx];
-        if (orig_mlvalue.IsAllocated()) {
-          if (!orig_mlvalue.IsTensor()) {
-            new_fetches[idx] = fetches[idx];
-            continue;
-          }
-
-          auto& node_provider_type = node.GetExecutionProviderType();
-          auto& orig_tensor = orig_mlvalue.Get<Tensor>();
-          auto& orig_tensor_loc = orig_tensor.Location();
-          auto* tensor_provider = execution_providers_.Get(orig_tensor_loc);
-          if (!tensor_provider) {
-            tensor_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-          }
-
-          auto tensor_provider_type = tensor_provider->Type();
-          if (node_provider_type == tensor_provider_type) {
-            new_fetches[idx] = fetches[idx];
-            continue;
-          }
-          // leave the new_fetches[idx] as it is since it'll get allocated on the appropriate
-          // provider by the op kernel context when requested.
-          continue;
-
-        } else {
-          new_fetches[idx] = fetches[idx];
-          continue;
-        }
-      }
-    }
-
-    // If we've already seen all the outputs requested just return.
-    if (seen_outputs.size() == output_names.size()) {
-      return Status::OK();
-    }
-
-    // Handle the case when a constant is an output but has been folded into a weight
-    // and hence it doesn't show up in any of the OutputDefs before.
-    // assume that the weight has already been placed in the appropriate device before
-    auto& defs = p_graph->GetOutputs();
-    auto& mlvalue_name_idx_map{session_state_.GetMLValueNameIdxMap()};
-    auto& weights = session_state_.GetInitializedTensors();
-
-    for (auto& one_def : defs) {
-      if (!one_def->Exists() ||
-          one_def->Name().empty() ||
-          seen_outputs.count(one_def->Name()) ||
-          !(found = Contains(output_names, one_def->Name())).first) {
-        continue;
-      }
-
-      auto& def_name = one_def->Name();
-      size_t idx = found.second;
-      int mlvalue_idx;
-      ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
-      if (!weights.count(mlvalue_idx)) {
-        LOGS(*session_logger_, INFO) << "Output with name " << def_name << " is not a weight.";
-        continue;
-      }
-      seen_outputs.insert(def_name);
-      const auto& weight = weights.at(mlvalue_idx);
-      new_fetches[idx] = weight;
-    }
-
-    if (seen_outputs.size() != output_names.size())  // make sure we've seen all outputs
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
-                             " got ", seen_outputs.size());
-
-    return Status::OK();
-  }
-
-  common::Status AllocateHelper(onnxruntime::ProviderType provider_type,
-                                int device_id,
-                                const Tensor& fetched_tensor,
-                                MLValue& output_mlvalue) {
-    auto* p_provider = execution_providers_.Get(provider_type);
-    if (!p_provider)
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "invalid provider_type");
-
-    auto allocator = p_provider->GetAllocator(device_id, OrtMemTypeDefault);
-    if (!allocator)
-      return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
-
-    void* buffer = nullptr;
-    if (fetched_tensor.Shape().Size() != 0) {
-      buffer = allocator->Alloc(fetched_tensor.DataType()->Size() * fetched_tensor.Shape().Size());
-      if (!buffer)
-        return Status(common::ONNXRUNTIME, common::FAIL, "invalid buffer");
-    }
-
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
-                                                                fetched_tensor.Shape(),
-                                                                buffer,
-                                                                allocator->Info(),
-                                                                allocator);
-    output_mlvalue.Init(p_tensor.release(),
-                        DataTypeImpl::GetType<Tensor>(),
-                        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
-    return Status::OK();
-  }
-
-  // copies outputs across devices only if required
-  common::Status CopyOutputsAcrossDevices(std::vector<MLValue>& fetches,
-                                          std::vector<MLValue>& user_fetches) {
-    for (size_t idx = 0, end = fetches.size(); idx < end; ++idx) {
-      auto& fetched_mlvalue = fetches[idx];
-      if (!fetched_mlvalue.IsTensor()) {
-        user_fetches[idx] = fetched_mlvalue;
-        continue;
-      }
-
-      auto& fetched_tensor = fetched_mlvalue.Get<Tensor>();
-      auto& fetched_tensor_location = fetched_tensor.Location();
-      auto* p_fetched_provider = execution_providers_.Get(fetched_tensor_location);
-      if (!p_fetched_provider) {
-        p_fetched_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-        ORT_ENFORCE(p_fetched_provider);
-      }
-
-      auto fetched_provider_type = p_fetched_provider->Type();
-
-      auto& output_mlvalue = user_fetches[idx];
-      if (!output_mlvalue.IsAllocated()) {
-        if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-          ORT_RETURN_IF_ERROR(AllocateHelper(onnxruntime::kCpuExecutionProvider, 0,
-                                             fetched_tensor,
-                                             output_mlvalue));
-        } else {
-          user_fetches[idx] = fetched_mlvalue;
-          continue;
-        }
-      }
-
-      Tensor* p_output_tensor = output_mlvalue.GetMutable<Tensor>();
-      auto& output_tensor_loc = p_output_tensor->Location();
-      auto* p_output_provider = execution_providers_.Get(output_tensor_loc);
-      if (!p_output_provider) {
-        p_output_provider = execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-        ORT_ENFORCE(p_output_provider);
-      }
-
-      auto output_provider_type = p_output_provider->Type();
-
-      if (output_provider_type == fetched_provider_type || fetched_tensor_location.mem_type == OrtMemTypeCPUOutput) {
-        user_fetches[idx] = fetched_mlvalue;
-        continue;
-      }
-
-      // our CPU exec provider doesn't support copy from GPU->CPU
-      if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-        ORT_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
-      } else {
-        ORT_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
-      }
-    }
-
-    return Status::OK();
-  }
-
   Status Run(const RunOptions& run_options,
              const NameMLValMap& feeds,
              const std::vector<std::string>& output_names,
@@ -851,28 +661,13 @@ class InferenceSession::Impl {
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
-      for (auto& xp : execution_providers_)
+      for (auto& xp : execution_providers_) {
         ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
-
-      NameMLValMap copied_feeds;
-      ORT_CHECK_AND_SET_RETVAL(CopyInputsAcrossDevices(session_state_, feeds, copied_feeds));
-
-      std::vector<MLValue> new_fetches;
-      ORT_CHECK_AND_SET_RETVAL(MatchOutputsWithProviders(output_names, *p_fetches, new_fetches));
-
-      std::unique_ptr<IExecutor> p_exec;
-
-      if (retval.IsOK()) {
-        if (session_options_.enable_sequential_execution) {
-          p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(run_options.terminate));
-        } else {
-          p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state_, run_options.terminate));
-        }
       }
 
-      ORT_CHECK_AND_SET_RETVAL(p_exec->Execute(session_state_, copied_feeds, output_names, new_fetches, run_logger));
-      ORT_CHECK_AND_SET_RETVAL(CopyOutputsAcrossDevices(new_fetches, *p_fetches));
-
+      ORT_CHECK_AND_SET_RETVAL(
+          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches,
+                              session_options_.enable_sequential_execution, run_options.terminate, run_logger));
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
     } catch (...) {
@@ -973,15 +768,6 @@ class InferenceSession::Impl {
   }
 
  private:
-  static std::pair<bool, size_t> Contains(const std::vector<std::string>& output_names,
-                                          const std::string& name) {
-    auto it = std::find(std::begin(output_names), std::end(output_names), name);
-    if (it == output_names.end()) {
-      return {false, 0};
-    }
-    return {true, it - output_names.begin()};
-  }
-
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
@@ -1160,10 +946,15 @@ class InferenceSession::Impl {
 
   // Threadpool for this session
   //thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
+#ifdef USE_EIGEN_THREADPOOL
+  std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
+#else
   std::unique_ptr<TaskThreadPool> thread_pool_;
+#endif
 
   // Number of concurrently running executors
-  std::atomic<int> current_num_runs_;
+  std::atomic<int>
+      current_num_runs_;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
