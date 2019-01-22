@@ -949,7 +949,7 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] scan_output_axes axis value of 4 is invalid for a tensor of rank 2");
+               "[ShapeInferenceError] scan_output_axes axis value 3 is invalid for a tensor of rank 2");
 
     output_axes = {0, 1, 2};
     RunTest_v9("InvalidNumEntriesInOutputAxes", sequence_len, input_size,

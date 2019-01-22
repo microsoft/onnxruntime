@@ -455,8 +455,6 @@ Status ScanImpl::Execute() {
 Status ScanImpl::TransposeOutput() {
   auto status = Status::OK();
 
-  auto& subgraph_outputs = subgraph_.GetOutputs();
-
   for (int i = 0; i < num_scan_outputs_; ++i) {
     auto axis = output_axes_from_attribute_[i];
 
