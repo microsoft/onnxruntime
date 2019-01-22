@@ -304,7 +304,15 @@ int real_main(int argc, char* argv[]) {
       {"sign", "opset 9 not supported yet"},
       {"scatter_with_axis", "opset 9 not supported yet"},
       {"scatter_without_axis", "opset 9 not supported yet"},
-      {"scan_sum", "opset 9 not supported yet"}};
+      {"scan_sum", "opset 9 not supported yet"},
+      {"shrink", "opset 9 not supported yet"},
+      {"constantofshape_int_zeros", "opset 9 not supported yet"},
+      {"shrink_hard", "opset 9 not supported yet"},
+      {"shrink_soft", "opset 9 not supported yet"},
+      {"where_example", "opset 9 not supported yet"},
+      {"constantofshape_float_ones", "opset 9 not supported yet"},
+      {"batchnorm_example", "opset 9 not supported yet"},
+      {"batchnorm_epsilon", "opset 9 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";

@@ -240,10 +240,100 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   return p_model;
 }
 
+void OpTester::ExecuteModel(Model& model,
+                            InferenceSession& session_object,
+                            ExpectResult expect_result,
+                            const std::string& expected_failure_string,
+                            const RunOptions* run_options,
+                            std::unordered_map<std::string, MLValue> feeds,
+                            std::vector<std::string> output_names,
+                            const std::string& provider_type) {
+  std::stringstream s1;
+  model.ToProto().SerializeToOstream(&s1);
+  auto status = session_object.Load(s1);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
+    return;
+  }
+
+  status = session_object.Initialize();
+  if (!status.IsOK()) {
+    if (expect_result == ExpectResult::kExpectFailure) {
+      EXPECT_TRUE(!status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+    } else {
+      LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
+  }
+
+  if (!status.IsOK()) {
+    return;
+  }
+
+  RunOptions default_run_options{};
+  default_run_options.run_tag = op_;
+  default_run_options.run_log_verbosity_level = 1;
+
+  std::vector<MLValue> fetches;
+  status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
+  if (status.IsOK()) {
+    EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess);
+    if (expect_result == ExpectResult::kExpectFailure) {
+      return;
+    }
+  } else {
+    if (expect_result == ExpectResult::kExpectFailure) {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+    } else {
+      LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
+    return;
+  }
+
+  // Verify the outputs
+  // Todo: support check output with map/sequence/....
+  size_t idx = 0;
+  for (auto& expected_data : output_data_) {
+    MLValue& mlvalue = fetches[idx];
+    if (mlvalue.Fence())
+      mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+
+    if (expected_data.def_.Exists()) {  // optional outputs won't exist
+      if (expected_data.data_.IsTensor()) {
+        // verify output shape inference when input defs have shape
+        if (add_shape_to_tensor_data_) {
+          auto out_shape_proto = expected_data.def_.Shape();
+          EXPECT_TRUE(out_shape_proto != nullptr);
+          auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+          const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
+          EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
+          for (int d = 0; d < inferred_dims.size(); ++d) {
+            // check equal unless the input involved a symbolic dimension
+            if (inferred_dims[d] != -1)
+              EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
+          }
+        }
+        Check(expected_data, mlvalue.Get<Tensor>(), provider_type);
+      } else {
+        Check(expected_data, mlvalue, provider_type);
+      }
+      ++idx;
+
+      // skip missing trailing optional outputs
+      if (idx == fetches.size())
+        break;
+    }
+  }
+}
+
 void OpTester::Run(ExpectResult expect_result,
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
-                   const RunOptions* run_options) {
+                   const RunOptions* run_options,
+                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -297,135 +387,74 @@ void OpTester::Run(ExpectResult expect_result,
 
     bool has_run = false;
 
-    for (const std::string& provider_type : all_provider_types) {
-      if (excluded_provider_types.count(provider_type) > 0)
-        continue;
-
+    if (execution_providers) {
       InferenceSession session_object{so};
 
-      for (auto& custom_session_registry : custom_session_registries_)
-        session_object.RegisterCustomRegistry(custom_session_registry);
+      ASSERT_TRUE(!execution_providers->empty()) << "Empty execution providers vector.";
+      std::string provider_types;
 
-      std::unique_ptr<IExecutionProvider> execution_provider;
-      if (provider_type == onnxruntime::kCpuExecutionProvider)
-        execution_provider = DefaultCpuExecutionProvider();
-      else if (provider_type == onnxruntime::kCudaExecutionProvider)
-        execution_provider = DefaultCudaExecutionProvider();
-      else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
-        execution_provider = DefaultMkldnnExecutionProvider();
-      else if (provider_type == onnxruntime::kNupharExecutionProvider)
-        execution_provider = DefaultNupharExecutionProvider();
-      else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
-        execution_provider = DefaultBrainSliceExecutionProvider();
-      // skip if execution provider is disabled
-      if (execution_provider == nullptr)
-        continue;
+      for (auto& entry : *execution_providers) {
+        provider_types += entry->Type() + ":";
+        EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
+      }
 
-      bool valid = true;
-
-      // set execution provider for all nodes in the graph
-      for (auto& node : graph.Nodes()) {
-        if (node.OpType() == kConstant)
+      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                   feeds, output_names, provider_types);
+    } else {
+      for (const std::string& provider_type : all_provider_types) {
+        if (excluded_provider_types.count(provider_type) > 0)
           continue;
 
-        //if node is not registered for the provider, skip
-        node.SetExecutionProviderType(provider_type);
-        auto reg = execution_provider->GetKernelRegistry();
-        const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
-        if (!kci) {
-          valid = false;
-          break;
-        }
-      }
+        InferenceSession session_object{so};
 
-      if (!valid)
-        continue;
+        for (auto& custom_session_registry : custom_session_registries_)
+          session_object.RegisterCustomRegistry(custom_session_registry);
 
-      has_run = true;
+        std::unique_ptr<IExecutionProvider> execution_provider;
+        if (provider_type == onnxruntime::kCpuExecutionProvider)
+          execution_provider = DefaultCpuExecutionProvider();
+        else if (provider_type == onnxruntime::kCudaExecutionProvider)
+          execution_provider = DefaultCudaExecutionProvider();
+        else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
+          execution_provider = DefaultMkldnnExecutionProvider();
+        else if (provider_type == onnxruntime::kNupharExecutionProvider)
+          execution_provider = DefaultNupharExecutionProvider();
+        else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
+          execution_provider = DefaultBrainSliceExecutionProvider();
+        // skip if execution provider is disabled
+        if (execution_provider == nullptr)
+          continue;
 
-      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+        bool valid = true;
 
-      std::stringstream s1;
-      p_model->ToProto().SerializeToOstream(&s1);
-      status = session_object.Load(s1);
-      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-        return;
-      }
+        // set execution provider for all nodes in the graph
+        for (auto& node : graph.Nodes()) {
+          if (node.OpType() == kConstant)
+            continue;
 
-      status = session_object.Initialize();
-      if (!status.IsOK()) {
-        if (expect_result == ExpectResult::kExpectFailure) {
-          EXPECT_TRUE(!status.IsOK());
-          EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
-        } else {
-          LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
-          EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-        }
-      }
-      if (!status.IsOK()) {
-        return;
-      }
-
-      RunOptions default_run_options{};
-      default_run_options.run_tag = op_;
-      default_run_options.run_log_verbosity_level = 1;
-
-      std::vector<MLValue> fetches;
-      status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
-      if (status.IsOK()) {
-        EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess);
-        if (expect_result == ExpectResult::kExpectFailure) {
-          return;
-        }
-      } else {
-        if (expect_result == ExpectResult::kExpectFailure) {
-          EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
-        } else {
-          LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
-          EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-        }
-        return;
-      }
-
-      // Verify the outputs
-      // Todo: support check output with map/sequence/....
-      size_t idx = 0;
-      for (auto& expected_data : output_data_) {
-        MLValue& mlvalue = fetches[idx];
-        if (mlvalue.Fence())
-          mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-
-        if (expected_data.def_.Exists()) {  // optional outputs won't exist
-          if (expected_data.data_.IsTensor()) {
-            // verify output shape inference when input defs have shape
-            if (add_shape_to_tensor_data_) {
-              auto out_shape_proto = expected_data.def_.Shape();
-              EXPECT_TRUE(out_shape_proto != nullptr);
-              auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
-              const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
-              EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
-              for (int d = 0; d < inferred_dims.size(); ++d) {
-                // check equal unless the input involved a symbolic dimension
-                if (inferred_dims[d] != -1)
-                  EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
-              }
-            }
-            Check(expected_data, mlvalue.Get<Tensor>(), provider_type);
-          } else {
-            Check(expected_data, mlvalue, provider_type);
-          }
-          ++idx;
-
-          // skip missing trailing optional outputs
-          if (idx == fetches.size())
+          //if node is not registered for the provider, skip
+          node.SetExecutionProviderType(provider_type);
+          auto reg = execution_provider->GetKernelRegistry();
+          const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
+          if (!kci) {
+            valid = false;
             break;
+          }
         }
-      }
-    }
 
-    EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
+        if (!valid)
+          continue;
+
+        has_run = true;
+
+        EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                     feeds, output_names, provider_type);
+      }
+
+      EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
+    }
   } catch (const std::exception& ex) {
     std::cerr << ex.what();
     // rethrow as some tests for error handling expect this

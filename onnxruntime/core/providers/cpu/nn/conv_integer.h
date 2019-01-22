@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 class ConvInteger : public OpKernel, public ConvBase {
  public:
-  ConvInteger(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

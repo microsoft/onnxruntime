@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <string>
 #include <atomic>
-#include <mutex>
+#include <core/platform/ort_mutex.h>
 
 class TestResultStat {
  public:
@@ -24,29 +24,29 @@ class TestResultStat {
   TestResultStat() : succeeded(0), not_implemented(0), load_model_failed(0), throwed_exception(0), result_differs(0), skipped(0), invalid_graph(0) {}
 
   void AddNotImplementedKernels(const std::string& s) {
-    std::lock_guard<std::mutex> l(m_);
+    std::lock_guard<onnxruntime::OrtMutex> l(m_);
     not_implemented_kernels.insert(s);
   }
 
   void AddFailedKernels(const std::string& s) {
-    std::lock_guard<std::mutex> l(m_);
+    std::lock_guard<onnxruntime::OrtMutex> l(m_);
     failed_kernels.insert(s);
   }
 
   void AddFailedTest(const std::string& s) {
-    std::lock_guard<std::mutex> l(m_);
+    std::lock_guard<onnxruntime::OrtMutex> l(m_);
     failed_test_cases.insert(s);
   }
 
   std::unordered_set<std::string> GetFailedTest() {
-    std::lock_guard<std::mutex> l(m_);
+    std::lock_guard<onnxruntime::OrtMutex> l(m_);
     return failed_test_cases;
   }
 
   std::string ToString();
 
  private:
-  std::mutex m_;
+  onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
   std::unordered_set<std::string> failed_test_cases;

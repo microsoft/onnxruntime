@@ -52,29 +52,29 @@ enum StorageOrder {
 namespace math {
 
 template <typename T, class Provider>
-void Exp(const int N, const T* x, T* y, Provider* provider);
+void Exp(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Log(const int N, const T* x, T* y, Provider* provider);
+void Log(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Cos(const int N, const T* x, T* y, Provider* provider);
+void Cos(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Sin(const int N, const T* x, T* y, Provider* provider);
+void Sin(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void SinCos(const int N, const T* x, T* ys, T* yc, Provider* provider);
+void SinCos(int N, const T* x, T* ys, T* yc, Provider* provider);
 template <typename T, class Provider>
-void Abs(const int N, const T* x, T* y, Provider* provider);
+void Abs(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Sqrt(const int N, const T* x, T* y, Provider* provider);
+void Sqrt(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void InvSqrt(const int N, const T* x, T* y, Provider* provider);
+void InvSqrt(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Sqr(const int N, const T* x, T* y, Provider* provider);
+void Sqr(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
-void Not(const int N, const T* x, T* y, Provider* provider);
+void Not(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
-void Powx(const int N, const T* a, const T b, T* y, Provider* provider);
+void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
 #define DECLARE_BINARY_OP_BINARY_RESULT(name)                                  \
   template <typename T, class Provider>                                        \
@@ -126,14 +126,14 @@ DECLARE_BINARY_OP(Div);
 
 template <typename T, class Provider>
 void ReduceMin(
-    const int N,
+    int N,
     const T* x,
     T* y,
     Tensor* scratch_ptr,
     Provider* provider);
 template <typename T, class Provider>
 void ReduceMax(
-    const int N,
+    int N,
     const T* x,
     T* y,
     Tensor* scratch_ptr,
@@ -143,34 +143,34 @@ void ReduceMax(
 // and N is the number of elements to add (size of Y).
 template <typename T, class Provider>
 void AddStripedBatch(
-    const int N,
+    int N,
     const T* first,
     T* y,
-    const int stripe,
-    const int batch,
+    int stripe,
+    int batch,
     Provider* provider);
 
 // Compute the row-wise max of a N*D matrix X, and write it to a N
 // dimensional vector y.
 template <typename T, class Provider>
-void RowwiseMax(const int N, const int D, const T* x, T* y,
+void RowwiseMax(int N, int D, const T* x, T* y,
                 Provider* provider);
 
 // Compute the column-wise max of a N*D matrix X, and write it to a D
 // dimensional vector y.
 template <typename T, class Provider>
-void ColwiseMax(const int N, const int D, const T* x, T* y,
+void ColwiseMax(int N, int D, const T* x, T* y,
                 Provider* provider);
 
 // Elemwise maximum of vector x and vector y. z[i] = max(x[i], y[i])
 template <typename T, class Provider>
-void ElemwiseMax(const int N, const T* x, const T* y, T* z, Provider* provider);
+void ElemwiseMax(int N, const T* x, const T* y, T* z, Provider* provider);
 
 // Elemwise maximum of vector x and scalar alpha. y[i] = max(x[i], alpha)
 template <typename T, class Provider>
 void Maximum(
-    const int N,
-    const float alpha,
+    int N,
+    float alpha,
     const T* x,
     T* y,
     Provider* provider);
@@ -179,15 +179,15 @@ void Maximum(
 // limitation that the data has to be contiguous in memory.
 template <typename T, class Provider>
 void Gemm(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    int64_t M,
+    int64_t N,
+    int64_t K,
+    float alpha,
     const T* A,
     const T* B,
-    const float beta,
+    float beta,
     T* C,
     Provider* provider,
     //Caffe2 use this type to control on GPU, what presicion do we want to do the calculation
@@ -198,37 +198,37 @@ void Gemm(
 // In most cases you probably want to use the function above, though.
 template <typename T, class Provider>
 void GemmEx(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int M,
-    const int N,
-    const int K,
-    const T alpha,
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    int M,
+    int N,
+    int K,
+    T alpha,
     const T* A,
-    const int lda,
+    int lda,
     const T* B,
-    const int ldb,
-    const T beta,
+    int ldb,
+    T beta,
     T* C,
-    const int ldc,
+    int ldc,
     Provider* provider);
 
 // GemmBatched provides a simple abstraction into library routines
 template <typename T, class Provider>
 void GemmBatched(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int A_size,
-    const int A_batches,
-    const int B_size,
-    const int B_batches,
-    const int M,
-    const int N,
-    const int K,
-    const float alpha,
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    int A_size,
+    int A_batches,
+    int B_size,
+    int B_batches,
+    int M,
+    int N,
+    int K,
+    float alpha,
     const T* A,
     const T* B,
-    const float beta,
+    float beta,
     T* C,
     Provider* provider,
     Tensor* scratch = nullptr,
@@ -240,54 +240,54 @@ void GemmBatched(
 // CblasTrans:   x is an M dim vector and y is an N dim vector.
 template <typename T, class Provider>
 void Gemv(
-    const CBLAS_TRANSPOSE TransA,
-    const int M,
-    const int N,
-    const float alpha,
+    CBLAS_TRANSPOSE TransA,
+    int M,
+    int N,
+    float alpha,
     const T* A,
     const T* x,
-    const float beta,
+    float beta,
     T* y,
     Provider* provider,
     MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
 template <typename T, class Provider>
-void Set(const int64_t N, const T alpha, T* X, Provider* provider);
+void Set(int64_t N, T alpha, T* X, Provider* provider);
 
 template <typename T, class Provider>
-void RandUniform(const int n, const T a, const T b, T* r,
+void RandUniform(int n, T a, T b, T* r,
                  Provider* provider);
 
 template <typename T, class Provider>
 void RandUniformUnique(
-    const size_t n,
-    const T a,
-    const T b,
+    size_t n,
+    T a,
+    T b,
     T* r,
-    const size_t m,
+    size_t m,
     const T* avoid,
     Provider* provider);
 
 template <typename T, class Provider>
 void RandGaussian(
-    const int n,
-    const T mean,
-    const T std,
+    int n,
+    T mean,
+    T std,
     T* r,
     Provider* provider);
 
 // Dot matrix of vector a and b, and writes the result to a single value y.
 template <typename T, class Provider>
-void Dot(const int N, const T* a, const T* b, T* y, Provider* provider);
+void Dot(int N, const T* a, const T* b, T* y, Provider* provider);
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
-void Sum(const int N, const T* x, T* y, Provider* provider,
+void Sum(int N, const T* x, T* y, Provider* provider,
          Tensor* scratch_ptr = nullptr);
 
 // Sum of squares of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
 void SumSqr(
-    const int N,
+    int N,
     const T* x,
     T* y,
     Provider* provider,
@@ -296,33 +296,33 @@ void SumSqr(
 // Select does index selection of the rows a N*D matrix x, and gives the N
 // dimensional vector y that contains the selected data.
 template <typename T, class Provider>
-void Select(const int N, const int D, const T* x, const int* idx, T* y,
+void Select(int N, int D, const T* x, const int* idx, T* y,
             Provider* provider);
 
 template <typename T, class Provider>
-void Scale(const int N, const float alpha, const T* x, T* y, Provider* provider);
+void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
 
 // Different from the Scale function above, if alpha is passed in
 // as a pointer, we will assume that it lives on the correct execution provider,
 // for example on GPU.
 template <typename T, class Provider>
-void Scale(const int N, const float* alpha, const T* x, T* y, Provider* provider);
+void Scale(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
-void Axpy(const int N, const float alpha, const T* x, T* y, Provider* provider);
+void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
 
 // Different from the Axpy function above, if alpha is passed in
 // as a pointer, we will assume that it lives on the correct execution provider,
 // for example on GPU.
 template <typename T, class Provider>
-void Axpy(const int N, const float* alpha, const T* x, T* y, Provider* provider);
+void Axpy(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Axpby(
-    const int N,
-    const float alpha,
+    int N,
+    float alpha,
     const T* x,
-    const T b,
+    T b,
     T* y,
     Provider* provider);
 
@@ -332,13 +332,13 @@ struct Im2colNd {
       const T* data_img,
       const int64_t* im_shape,
       const int64_t* col_shape,
-      const int64_t img_size,
-      const int64_t col_size,
+      int64_t img_size,
+      int64_t col_size,
       const int64_t* kernel_shape,
       const int64_t* stride,
       const int64_t* dilation,
       const int64_t* pad,
-      const int64_t N,
+      int64_t N,
       T* data_col,
       Provider* /*provider*/,
       bool accumulate_output = false,
@@ -427,71 +427,77 @@ void Col2imNd(
     const T* data_col,
     const int64_t* img_shape,
     const int64_t* col_shape,
-    const int64_t img_size,
-    const int64_t col_size,
+    int64_t img_size,
+    int64_t col_size,
     const int64_t* kernel_shape,
     const int64_t* stride,
     const int64_t* dilation,
     const int64_t* pad,
-    const int64_t N,
+    int64_t N,
     T* data_img,
     Provider* provider);
 
 template <typename T, class Provider, int order>
 void Im2col(
     const T* data_im,
-    const int64_t channels,
-    const int64_t height,
-    const int64_t width,
-    const int64_t kernel_h,
-    const int64_t kernel_w,
-    const int64_t dilation_h,
-    const int64_t dilation_w,
-    const int64_t pad_t,
-    const int64_t pad_l,
-    const int64_t pad_b,
-    const int64_t pad_r,
-    const int64_t stride_h,
-    const int64_t stride_w,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int64_t kernel_h,
+    int64_t kernel_w,
+    int64_t dilation_h,
+    int64_t dilation_w,
+    int64_t pad_t,
+    int64_t pad_l,
+    int64_t pad_b,
+    int64_t pad_r,
+    int64_t stride_h,
+    int64_t stride_w,
     T* data_col,
     Provider* provider);
 
 template <typename T, class Provider, int order>
 void Col2im(
     const T* data_col,
-    const int64_t channels,
-    const int64_t height,
-    const int64_t width,
-    const int64_t patch_h,
-    const int64_t patch_w,
-    const int64_t dilation_h,
-    const int64_t dilation_w,
-    const int64_t pad_t,
-    const int64_t pad_l,
-    const int64_t pad_b,
-    const int64_t pad_r,
-    const int64_t stride_h,
-    const int64_t stride_w,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int64_t patch_h,
+    int64_t patch_w,
+    int64_t dilation_h,
+    int64_t dilation_w,
+    int64_t pad_t,
+    int64_t pad_l,
+    int64_t pad_b,
+    int64_t pad_r,
+    int64_t stride_h,
+    int64_t stride_w,
     T* data_im,
     Provider* provider);
 
-// Todo: should we provide a better copy method signature?
-using TypedCopy = void (*)(const void*, void*, size_t);
-
-template <class Provider>
+template <typename T, typename TypedCopy>
 void CopyMatrix(
-    const size_t item_size,
-    const int M,
-    const int N,
-    const void* A,
-    const int lda,
-    void* B,
-    const int ldb,
-    Provider* provider,
-    TypedCopy copy = nullptr);
+    int M,
+    int N,
+    const T* A,
+    int lda,
+    T* B,
+    int ldb,
+    TypedCopy copy) {
+  {
+    if (lda == N && ldb == N) {
+      copy(A, B, static_cast<size_t>(N * M));
+      return;
+    }
+
+    for (int i = 0; i < M; ++i) {
+      copy(A + lda * i, B + ldb * i, static_cast<size_t>(N));
+    }
+  }
+}
 
 template <typename T, class Provider>
-void CopyVector(const int N, const T* A, T* B, Provider* provider);
+void CopyVector(int N, const T* A, T* B, Provider* provider);
 
 uint32_t randomNumberSeed();
 

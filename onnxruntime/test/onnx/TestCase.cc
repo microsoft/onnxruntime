@@ -12,8 +12,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "path_lib.h"
 //TODO: delete this
-#include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
+#include <core/platform/ort_mutex.h>
+#include <core/framework/data_types.h>
+#include <core/framework/ml_value.h>
+
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -276,7 +278,7 @@ class OnnxTestCase : public ITestCase {
   std::basic_string<PATH_CHAR_TYPE> model_url_;
   OrtAllocator* allocator;
   std::vector<std::string> debuginfo_strings;
-  std::mutex m_;
+  onnxruntime::OrtMutex m_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -284,7 +286,7 @@ class OnnxTestCase : public ITestCase {
   Status loadModelFile(const PATH_CHAR_TYPE* model_url, ONNX_NAMESPACE::ModelProto** model_pb);
 
   std::string GetDatasetDebugInfoString(size_t dataset_id) override {
-    std::lock_guard<std::mutex> l(m_);
+    std::lock_guard<OrtMutex> l(m_);
     if (dataset_id < debuginfo_strings.size()) {
       return debuginfo_strings[dataset_id];
     }
@@ -479,12 +481,12 @@ Status OnnxTestCase::LoadTestData(OrtSession* session, size_t id, std::unordered
   if (st.IsOK()) {  //has an all-in-one input file
     std::ostringstream oss;
     {
-      std::lock_guard<std::mutex> l(m_);
+      std::lock_guard<OrtMutex> l(m_);
       oss << debuginfo_strings[id];
     }
     st = LoopDataFile(test_data_pb_fd, allocator, is_input ? input_value_info_ : output_value_info_, name_data_map, oss);
     {
-      std::lock_guard<std::mutex> l(m_);
+      std::lock_guard<OrtMutex> l(m_);
       debuginfo_strings[id] = oss.str();
     }
     if (!st.IsOK())

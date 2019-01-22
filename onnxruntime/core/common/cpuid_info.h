@@ -23,4 +23,4 @@ private:
   bool has_f16c_{false};
 };
 
-}
+}  // namespace onnxruntime

@@ -8,6 +8,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-void RegisterContribKernels(std::function<void(KernelCreateInfo&&)> create_fn);
+void RegisterContribKernels(KernelRegistry& kernel_registry);
 } // namespace contrib
 }  // namespace onnxruntime

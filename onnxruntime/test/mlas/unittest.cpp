@@ -497,6 +497,9 @@ TrialConv2D(
     int64_t StrideShape[] = { int64_t(StrideHeight), int64_t(StrideWidth) };
     int64_t OutputShape[] = { OutputHeight64, OutputWidth64 };
 
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
+
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
 
@@ -512,6 +515,7 @@ TrialConv2D(
                     StrideShape,
                     OutputShape,
                     FilterCount,
+                    &Activation,
                     &WorkingBufferSize);
 
     size_t OutputHeight = size_t(OutputHeight64);
