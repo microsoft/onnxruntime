@@ -66,6 +66,9 @@ Class that co-ordinates writing to slices of the overall Scan output buffer retu
 If the subgraph has a symbolic dimension in an output it will use a temporary MLValue for the first execution
 in order to discover the output shape. Once the shape is known, it will switch to using the overall output buffer 
 to avoid copies.
+If 'temporary' is true it will use a temporary MLValue for the overall output as well. Set this to true if the output
+needs to be transposed before being returned by the Scan operator. The data_type also needs to be provided if 
+'temporary' is true to do the allocation.
 */
 class OutputIterator {
  public:
@@ -75,8 +78,11 @@ class OutputIterator {
                        bool is_v8,
                        TensorShape final_shape,
                        std::unique_ptr<OutputIterator>& iterator,
-                       ScanDirection direction = ScanDirection::kForward) {
-    iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, is_v8, final_shape, direction));
+                       ScanDirection direction = ScanDirection::kForward,
+                       bool temporary = false,
+                       MLDataType data_type = nullptr) {
+    iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, is_v8, final_shape,
+                                      direction, temporary, data_type));
     return iterator->Initialize();
   }
 
@@ -89,13 +95,20 @@ class OutputIterator {
     memset(tensor->MutableDataRaw(), 0, tensor->Size());
   }
 
+  const MLValue& GetOutput() const {
+    ORT_ENFORCE(final_output_mlvalue_, "Attempt to retrieve final output before it was set.");
+    return *final_output_mlvalue_;
+  }
+
  private:
   OutputIterator(OpKernelContextInternal& context,
                  int output_index,
                  bool is_loop_state_var,
                  bool is_v8,
                  TensorShape final_shape,
-                 ScanDirection direction);
+                 ScanDirection direction,
+                 bool temporary,
+                 MLDataType data_type);
 
   Status Initialize();
   Status AllocateFinalBuffer();
@@ -122,6 +135,13 @@ class OutputIterator {
   // we can allocate final_output_mlvalue_ and use the slicers.
   MLValue first_output_;
 
+  // if true allocate temporary_final_output_mlvalue_ with data_type_ using the temporary allocator
+  // and point final_output_value_ at that.
+  // if false, final_output_value_ is an output from the Scan operator and allocated using the context_.
+  bool temporary_;
+  MLDataType data_type_;
+  MLValue temporary_final_output_mlvalue_;
+
   MLValue* final_output_mlvalue_;
 };
 
@@ -131,7 +151,8 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
                       std::unique_ptr<OutputIterator>& output_iterator,
-                      ScanDirection direction = ScanDirection::kForward);
+                      ScanDirection direction = ScanDirection::kForward,
+                      bool temporary = false);
 
 Status IterateSequence(OpKernelContextInternal& context,
                        const SessionState& session_state,
@@ -147,6 +168,16 @@ Status IterateSequence(OpKernelContextInternal& context,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators);
 
 MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
+
+/**
+Calculate the transpose permutations and output shape by shifting the chosen axis to the first dimension.
+The other dimension indexes or values are pushed in order after the chosen axis.
+
+e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 2} and output shape will be {3, 2, 4}
+     if axis 2 is chosen the permutations will be {2, 0, 1} and the output shape will be {4, 2, 3}
+*/
+void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
+                              std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape);
 
 }  // namespace detail
 }  // namespace scan
