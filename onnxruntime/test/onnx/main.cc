@@ -321,7 +321,23 @@ int real_main(int argc, char* argv[]) {
       {"where_example", "opset 9 not supported yet"},
       {"constantofshape_float_ones", "opset 9 not supported yet"},
       {"batchnorm_example", "opset 9 not supported yet"},
-      {"batchnorm_epsilon", "opset 9 not supported yet"}};
+      {"batchnorm_epsilon", "opset 9 not supported yet"},
+      {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
+      {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
+      {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
+      {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
+      {"cast_FLOAT16_to_FLOAT", "Cast opset 9 not supported yet"},
+      {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
+      {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
+      {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
+      {"nonzero_example", "NonZero opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_uniandbigrams_skip5", "TfIdfVectorizer opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_batch_onlybigrams_skip0", "TfIdfVectorizer opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_onlybigrams_skip5", "TfIdfVectorizer opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_only_bigrams_skip0", "TfIdfVectorizer opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_onlybigrams_levelempty", "TfIdfVectorizer opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_batch_uniandbigrams_skip5", "TfIdfVectorizer opset 9 not supported yet"},
+      {"tfidfvectorizer_tf_batch_onlybigrams_skip5", "TfIdfVectorizer opset 9 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
