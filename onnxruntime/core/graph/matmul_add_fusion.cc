@@ -10,21 +10,23 @@ using namespace onnx;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
+Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
-    auto node = graph.GetNode(node_index);
-    if (nullptr == node ||
-        !(utils::IsSupportedOptypeVersionAndDomain(*node, "MatMul", 1) || utils::IsSupportedOptypeVersionAndDomain(*node, "MatMul", 9)) ||
-        node->GetOutputEdgesCount() != 1) {
+    auto& node = *graph.GetNode(node_index);
+    Recurse(node, modified, graph_level);
+
+    if (!(utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 1) ||
+          utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 9)) ||
+        node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
-    auto next_node_itr = node->OutputNodesBegin();
-    if (next_node_itr == node->OutputNodesEnd()) {
+    auto next_node_itr = node.OutputNodesBegin();
+    if (next_node_itr == node.OutputNodesEnd()) {
       continue;
     }
 
@@ -33,10 +35,10 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
       continue;
     }
 
-    Node* matmul_node = node;
+    Node& matmul_node = node;
     Node& add_node = const_cast<Node&>(next_node);
     std::vector<NodeArg> input_args, output_args;
-    auto matmul_input_defs = matmul_node->MutableInputDefs();
+    auto matmul_input_defs = matmul_node.MutableInputDefs();
     auto add_input_defs = add_node.MutableInputDefs();
 
     // Gemm only support float, so the inputs of MatMul
@@ -49,7 +51,7 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
     // Gemm only support Matrix, need to check the shape of MatMul and Add
     auto matmul_a_shape = matmul_input_defs[0]->Shape();
     auto matmul_b_shape = matmul_input_defs[1]->Shape();
-    if (nullptr == matmul_a_shape || nullptr == matmul_b_shape ) {
+    if (nullptr == matmul_a_shape || nullptr == matmul_b_shape) {
       continue;
     } else if (1 == matmul_a_shape->dim_size() && 2 == matmul_b_shape->dim_size()) {
       // MatMul has shape [K] * [K, N], reset it to [1, K] * [K, N], so that it can work for Gemm
@@ -58,12 +60,13 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
       auto dim_1 = (const_cast<onnx::TensorShapeProto*>(matmul_a_shape))->add_dim();
       (*dim_1) = (*dim_0);
       dim_0->set_dim_value(1);
-    } if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
+    }
+    if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
       // Gemm only support Matrix
       continue;
     }
 
-    auto matmul_output_name = matmul_node->OutputDefs()[0]->Name();
+    auto matmul_output_name = matmul_node.OutputDefs()[0]->Name();
     auto gemm_input_defs = matmul_input_defs;
     if (matmul_output_name == add_input_defs[0]->Name()) {
       // matmul output as Add_A, should use Add_B as input C for gemm
@@ -87,7 +90,7 @@ Status MatMulAddFusion::Apply(Graph& graph, bool& modified) const {
                   gemm_input_defs,
                   add_node.MutableOutputDefs());
 
-    removed_nodes.push_front(matmul_node->Index());
+    removed_nodes.push_front(matmul_node.Index());
     removed_nodes.push_front(add_node.Index());
   }
 

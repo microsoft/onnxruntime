@@ -9,8 +9,9 @@ namespace onnxruntime {
 
 class GemmActivationFusion : public onnxruntime::GraphTransformer {
  public:
-  GemmActivationFusion() noexcept : onnxruntime::GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm") {}
-  Status Apply(onnxruntime::Graph& graph, bool& modified) const override;
+  GemmActivationFusion() noexcept
+      : onnxruntime::GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm") {}
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime
