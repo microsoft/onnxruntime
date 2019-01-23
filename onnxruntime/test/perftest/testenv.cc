@@ -61,7 +61,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
     }
-    //TODO: add more
+    // TODO: add more
   }
 
   status = sess->Load(model_url.string());
