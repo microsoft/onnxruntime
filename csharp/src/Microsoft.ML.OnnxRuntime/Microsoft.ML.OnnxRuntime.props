@@ -18,7 +18,7 @@
     </None>
   </ItemGroup>
     <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)\..\..\runtimes\linux-x64\native\libmkldnn*"
+    <None Include="$(MSBuildThisFileDirectory)\..\..\runtimes\linux-x64\native\*"
           Condition="'$(OS)' == 'Unix'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
