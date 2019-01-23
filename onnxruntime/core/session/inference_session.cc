@@ -319,16 +319,12 @@ class InferenceSession::Impl {
         subgraph_session_state->SetProfiler(session_profiler_);
         subgraph_session_state->SetLogger(*session_logger_);
 
-        // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
-        // by Compute() via OpKernelContextInternal.
-        session_state.AddSubgraphSessionState(node.Index(), name, *subgraph_session_state);
-
         // recurse
         ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
 
-        // save subgraph_session_state as InferenceSession owns these and they need to remain valid
-        // for the entire InferenceSession.
-        subgraph_session_states_.push_back(std::move(subgraph_session_state));
+        // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
+        // by Compute() via OpKernelContextInternal.
+        session_state.AddSubgraphSessionState(node.Index(), name, std::move(subgraph_session_state));
       }
     }
 
@@ -355,12 +351,8 @@ class InferenceSession::Impl {
         ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
                                                    session_options_.enable_sequential_execution));
 
-        auto weights_buffer = std::make_unique<std::map<OrtAllocatorInfo, BufferUniquePtr>>();
         ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                          *weights_buffer,
                                                           &node.ImplicitInputDefs()));
-
-        subgraph_weights_buffers_.push_back(std::move(weights_buffer));
 
         // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
         //                                                   &*subgraph_info.session_state);
@@ -415,7 +407,7 @@ class InferenceSession::Impl {
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_};
 
-      // create SessionState for subgraphs as it's needed by the transformers 
+      // create SessionState for subgraphs as it's needed by the transformers
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
 
       // apply any transformations to the main graph and any subgraphs
@@ -428,8 +420,7 @@ class InferenceSession::Impl {
       ORT_RETURN_IF_ERROR(graph.Resolve());
 
       ORT_RETURN_IF_ERROR(session_initializer.CreatePlan({}, session_options_.enable_sequential_execution));
-      ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                                weights_buffers_));
+      ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern()));
 
       // handle any subgraphs
       ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
@@ -939,7 +930,6 @@ class InferenceSession::Impl {
 
   // memory allocations for any subgraphs
   std::vector<std::unique_ptr<SessionState>> subgraph_session_states_;
-  std::vector<std::unique_ptr<std::map<OrtAllocatorInfo, BufferUniquePtr>>> subgraph_weights_buffers_;
 };  // namespace onnxruntime
 
 //

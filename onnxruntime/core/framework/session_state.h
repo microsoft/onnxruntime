@@ -148,7 +148,7 @@ class SessionState {
   /// @param attribute_name Name of attribute containing the subgraph GraphProto
   /// @param session_state SessionState for subgraph execution
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
-                               SessionState& session_state);
+                               std::unique_ptr<SessionState> session_state);
 
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
@@ -169,6 +169,8 @@ class SessionState {
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
+  std::map<OrtAllocatorInfo, BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -182,6 +184,7 @@ class SessionState {
 
   // initialized tensorset
   std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
+  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_;
@@ -200,7 +203,7 @@ class SessionState {
   // subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
   // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
   using SubgraphSessionStateMap =
-      std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, gsl::not_null<SessionState*>>>;
+      std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
 #ifdef USE_EIGEN_THREADPOOL
