@@ -30,6 +30,7 @@ namespace perftest {
       "\t-e [cpu|cuda|mkldnn]: Specifies the provider 'cpu','cuda','mkldnn'. Default:'cpu'.\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
+      "\t-c [concurrent_run]: Specifies the number of concurrent run, 0 means disabling concurrent run. Default:0.\n"
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
@@ -39,7 +40,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, char* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, "m:e:r:t:p:xvhs")) != -1) {
+  while ((ch = getopt(argc, argv, "m:e:r:t:c:p:xvhs")) != -1) {
     switch (ch) {
       case 'm':
         if (!strcmp(optarg, "duration")) {
@@ -75,6 +76,12 @@ namespace perftest {
       case 't':
         test_config.run_config.duration_in_seconds = static_cast<int>(strtol(optarg, nullptr, 10));
         if (test_config.run_config.repeated_times <= 0) {
+          return false;
+        }
+        break;
+      case 'c':
+        test_config.run_config.concurrent_run = static_cast<int>(strtol(optarg, nullptr, 10));
+        if (test_config.run_config.concurrent_run <= 0) {
           return false;
         }
         break;

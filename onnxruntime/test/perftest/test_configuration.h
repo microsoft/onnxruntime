@@ -38,6 +38,7 @@ struct RunConfig {
   TestMode test_mode{TestMode::kFixDurationMode};
   size_t repeated_times{1000};
   size_t duration_in_seconds{600};
+  size_t concurrent_run{0};
   bool f_dump_statistics{false};
   bool f_verbose{false};
   bool enable_sequential_execution{true};

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <omp.h>
 
 // onnxruntime dependencies
 #include <core/common/common.h>
@@ -77,11 +78,11 @@ class PerformanceRunner {
   inline void SerializeResult() const { performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path, performance_test_config_.run_config.f_dump_statistics); }
 
  private:
-  bool Initialize();
+  bool Initialize(int count = 1);
 
   inline Status RunOneIteration(bool isWarmup = false) {
     auto start = std::chrono::high_resolution_clock::now();
-    ORT_RETURN_IF_ERROR(session_object_->Run(*io_binding_));
+    ORT_RETURN_IF_ERROR(session_object_->Run(*io_bindings_.front()));
     auto end = std::chrono::high_resolution_clock::now();
 
     if (!isWarmup) {
@@ -96,16 +97,51 @@ class PerformanceRunner {
     return Status::OK();
   }
 
+  inline Status RunMultipleIteration(bool isWarmup = false, int test_count = 100) {
+#pragma omp parallel for
+    for (int i = 0; i < static_cast<int>(performance_test_config_.run_config.concurrent_run); ++i) {
+      auto start = std::chrono::high_resolution_clock::now();
+      for (int j = 0; j < test_count; ++j) {
+        ORT_RETURN_IF_ERROR(session_object_->Run(*io_bindings_[i]));
+      }
+      auto end = std::chrono::high_resolution_clock::now();
+
+      if (!isWarmup && i == 0) {
+        std::chrono::duration<double> duration_seconds = end - start;
+        performance_result_.time_costs.emplace_back(duration_seconds.count() / test_count);
+        performance_result_.total_time_cost += duration_seconds.count() / test_count;
+        if (performance_test_config_.run_config.f_verbose) {
+          std::cout << "iteration:" << performance_result_.time_costs.size() << ","
+                    << "time_cost:" << performance_result_.time_costs.back() << std::endl;
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   inline Status RunFixDuration() {
-    while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
-      ORT_RETURN_IF_ERROR(RunOneIteration());
+    if (performance_test_config_.run_config.concurrent_run > 0) {
+      while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
+        ORT_RETURN_IF_ERROR(RunMultipleIteration());
+      }
+    } else {
+      while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
+        ORT_RETURN_IF_ERROR(RunOneIteration());
+      }
     }
     return Status::OK();
   }
 
   inline Status RunRepeatedTimes() {
-    for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
-      ORT_RETURN_IF_ERROR(RunOneIteration());
+    if (performance_test_config_.run_config.concurrent_run > 0) {
+      for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
+        ORT_RETURN_IF_ERROR(RunMultipleIteration());
+      }
+    } else {
+      for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
+        ORT_RETURN_IF_ERROR(RunOneIteration());
+      }
     }
     return Status::OK();
   }
@@ -113,9 +149,10 @@ class PerformanceRunner {
  private:
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
+  bool enable_concurrent_ = false;
 
   std::shared_ptr<::onnxruntime::InferenceSession> session_object_;
-  std::unique_ptr<IOBinding> io_binding_;
+  std::vector<std::unique_ptr<IOBinding>> io_bindings_;
 };
 }  // namespace perftest
 }  // namespace onnxruntime
