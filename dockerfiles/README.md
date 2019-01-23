@@ -1,14 +1,13 @@
 # Quick-start Docker containers for ONNX Runtime
 
 ## CPU Version
-#### Linux 16.04, Python Bindings, Compatible with Docker-Windows
+#### Linux 16.04, Python Bindings, Compatible with Docker for Windows
 
 1. Retrieve your docker image in one of the following ways.
   - Pull the official image from DockerHub.
     ```
-    docker pull [ORG]/onnxruntime:gpu
+    docker pull Microsoft/onnxruntime:cpu
     ```
-  
   - Build the docker image from the DockerFile in this repository.
     ```
     # If you have a Linux machine, preface this command with "sudo"
@@ -24,18 +23,20 @@
   ```
 
 ## GPU Version
-#### Linux 16.04, Python Bindings, CUDA 10, CuDNN7, Requires Nvidia-Docker v2
+#### Linux 16.04, Python Bindings, CUDA 10, CuDNN7, Requires Nvidia-Docker version 2.0
+
+0. Prerequisites: [Install Nvidia-Docker 2.0](https://github.com/nvidia/nvidia-docker/wiki/Installation-(version-2.0))
 
 1. Retrieve your docker image in one of the following ways.
   - Pull the official image from DockerHub.
     ```
-    docker pull [ORG]/onnxruntime:gpu
+    docker pull Microsoft/onnxruntime:gpu
     ```
   - Build the docker image from the DockerFile in this repository.
     ```
     # If you have a Linux machine, preface this command with "sudo"
 
-    nvidia-docker build -t onnxruntime-gpu -f Dockerfile.gpu .
+    docker build -t onnxruntime-gpu -f Dockerfile.gpu .
     ```
     Note that you can change the base CUDA distribution to 9.1 and use nvidia-docker v1
     by building the docker image as shown above and replacing the first line with the base image below.
@@ -47,22 +48,17 @@
   # If you have a Linux machine, preface this command with "sudo"
   # If you have a Windows machine, preface this command with "winpty"
 
-  nvidia-docker run -it onnxruntime-gpu
+  docker run -it --runtime=nvidia --rm nvidia/cuda onnxruntime-gpu
   ```
-### Other options
-- Launch an ONNX ML Tools Jupyter Notebook environment with starter code notebooks!
-    - convert your models from other frameworks (i.e. Caffe2, CoreML,
-      Tensorflow, PyTorch, etc.) to ONNX files and run them using ONNX Runtime
+### Other options to get started with ONNX Runtime
 
-- Deploy inference for pretrained ONNX models for handwritten digit recognition (MNIST)
-or facial expression recognition (FER+) using Azure Machine Learning.
+- Deploy [inference for pretrained ONNX models](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx) for handwritten digit recognition (MNIST)
+or facial expression recognition (FER+) using Azure Machine Learning
 
-- Build ONNX runtime from the source code by following [these instructions for developers](../BUILD.md).
+- Work with ONNX runtime in your local environment using the PyPi release ([CPU](https://pypi.org/project/onnxruntime/), [GPU](https://pypi.org/project/onnxruntime-gpu/))
+    - ``pip install onnxruntime`` or ``pip install onnxruntime-gpu``
 
-### Code of Conduct
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
-or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+- Build ONNX Runtime from the source code by following [these instructions for developers](../BUILD.md).
 
 ### License
 [MIT License](../LICENSE)
