@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 using namespace ::onnxruntime::common;
 

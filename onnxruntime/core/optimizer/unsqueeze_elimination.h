@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/graph/graph_transformer.h"
+
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
-class ConvMulFusion : public onnxruntime::GraphTransformer {
+class UnsqueezeElimination : public onnxruntime::GraphTransformer {
  public:
-  ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion", "Fusing Mul into Conv") {}
+  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
 
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;

@@ -513,6 +513,7 @@ include(onnxruntime_framework.cmake)
 include(onnxruntime_util.cmake)
 #The next file will define 'onnxruntime_libs' cmake var
 include(onnxruntime_providers.cmake)
+include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
