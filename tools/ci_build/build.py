@@ -70,6 +70,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
+    parser.add_argument("--cuda_version", help="The version of CUDA toolkit to use. Auto-detect if not specified. e.g. 9.0")
     parser.add_argument("--cuda_home", help="Path to CUDA home."
                                             "Read from CUDA_HOME environment variable if --use_cuda is true and --cuda_home is not specified.")
     parser.add_argument("--cudnn_home", help="Path to CUDNN home. "
@@ -545,6 +546,8 @@ def main():
             toolset = 'host=x64'
             if (args.msvc_toolset):
                 toolset += ',version=' + args.msvc_toolset
+            if (args.cuda_version):
+                toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
