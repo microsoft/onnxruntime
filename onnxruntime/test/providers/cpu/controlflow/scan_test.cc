@@ -5,7 +5,8 @@
 #include "gmock/gmock.h"
 #include "core/framework/session_state.h"
 #include "core/session/inference_session.h"
-
+#include "core/providers/common.h"
+#include "core/providers/cpu/controlflow/scan_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -314,8 +315,9 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
 
 static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
                        std::vector<int64_t>* input_directions,
-                       std::vector<int64_t>* axes,
                        std::vector<int64_t>* output_directions,
+                       std::vector<int64_t>* input_axes,
+                       std::vector<int64_t>* output_axes,
                        std::vector<float>& loop_state_in_0,
                        std::vector<float> input_0,
                        std::vector<float> input_1,
@@ -342,12 +344,16 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     test.AddAttribute<std::vector<int64_t>>("scan_input_directions", *input_directions);
   }
 
-  if (axes != nullptr) {
-    test.AddAttribute<std::vector<int64_t>>("axes", *axes);
-  }
-
   if (output_directions != nullptr) {
     test.AddAttribute<std::vector<int64_t>>("scan_output_directions", *output_directions);
+  }
+
+  if (input_axes != nullptr) {
+    test.AddAttribute<std::vector<int64_t>>("scan_input_axes", *input_axes);
+  }
+
+  if (output_axes != nullptr) {
+    test.AddAttribute<std::vector<int64_t>>("scan_output_axes", *output_axes);
   }
 
   test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
@@ -366,10 +372,29 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   test.AddOutput<float>("scan_loop_state_out_0", loop_state_shape, loop_state_out_0);
 
   std::vector<int64_t> output_shape{sequence_len, 1};
-  test.AddOutput<float>("scan_output_0", output_shape, output_0);
-  test.AddOutput<float>("scan_output_1", output_shape, output_1);
-  test.AddOutput<float>("scan_output_2", output_shape, output_2);
-  test.AddOutput<float>("scan_output_3", output_shape, output_3);
+
+  auto calculate_output_shape = [&](size_t output_index) {
+    if (output_axes && output_axes->size() > output_index) {
+      auto axis = output_axes->at(output_index);
+      auto rank = gsl::narrow_cast<int64_t>(output_shape.size());
+
+      // skip if this is an invalid input test and axis is out of the valid range
+      if (axis >= -rank && axis < rank) {
+        std::vector<int64_t> permutations;
+        std::vector<int64_t> new_shape;
+        scan::detail::CalculateTransposedShape(output_shape, HandleNegativeAxis(axis, output_shape.size()),
+                                               permutations, new_shape);
+        return new_shape;
+      }
+    }
+
+    return output_shape;
+  };
+
+  test.AddOutput<float>("scan_output_0", calculate_output_shape(0), output_0);
+  test.AddOutput<float>("scan_output_1", calculate_output_shape(1), output_1);
+  test.AddOutput<float>("scan_output_2", calculate_output_shape(2), output_2);
+  test.AddOutput<float>("scan_output_3", calculate_output_shape(3), output_3);
 
   if (options.mixed_execution_providers) {
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
@@ -418,7 +443,7 @@ static void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, co
                expected_error);
   } else {
     RunTest_v9("ShortSequenceOneInBatchOneLoopStateVar", input_size, sequence_len,
-               nullptr, nullptr, nullptr,
+               nullptr, nullptr, nullptr, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                options,
@@ -725,7 +750,7 @@ TEST(Scan9, ReversedInput) {
   std::vector<float> output_3{14.f, 12.f};
 
   RunTest_v9("ReversedInput", sequence_len, input_size,
-             &input_directions, nullptr, nullptr,
+             &input_directions, nullptr, nullptr, nullptr,
              iteration_count_in, input_0, input_1,
              iteration_count_out, output_0, output_1, output_2, output_3);
 }
@@ -754,7 +779,7 @@ TEST(Scan9, ReversedOutput) {
   std::vector<float> output_3{12.f, 14.f};
 
   RunTest_v9("ReversedOutput", sequence_len, input_size,
-             nullptr, nullptr, &output_directions,
+             nullptr, &output_directions, nullptr, nullptr,
              iteration_count_in, input_0, input_1,
              iteration_count_out, output_0, output_1, output_2, output_3);
 }
@@ -766,7 +791,7 @@ TEST(Scan9, TransposeInput) {
   std::vector<float> iteration_count_in{0.f};
 
   // transpose should also support negative axis
-  std::vector<int64_t> axes{1, -1};  // transpose both inputs on axis 1
+  std::vector<int64_t> input_axes{1, -1};  // transpose both inputs on axis 1
 
   // inputs are {input_size, sequence_len}, but will be transposed to {sequence_len, input_size} by the axes values
   std::vector<float> input_0{1.f, 3.f,
@@ -785,7 +810,36 @@ TEST(Scan9, TransposeInput) {
   std::vector<float> output_3{12.f, 14.f};
 
   RunTest_v9("TransposeInput", sequence_len, input_size,
-             nullptr, &axes, nullptr,
+             nullptr, nullptr, &input_axes, nullptr,
+             iteration_count_in, input_0, input_1,
+             iteration_count_out, output_0, output_1, output_2, output_3);
+}
+
+TEST(Scan9, TransposeOutput) {
+  const int64_t sequence_len = 2;
+  const int64_t input_size = 2;
+
+  std::vector<float> iteration_count_in{0.f};
+
+  // transpose also supports negative axis
+  std::vector<int64_t> output_axes{1, -1, 0, 0};  // transpose two outputs on axis 1, and leave 2 as is by using axis 0
+
+  std::vector<float> input_0{1.f, 2.f,
+                             3.f, 4.f};
+  std::vector<float> input_1{11.f, 12.f,
+                             13.f, 14.f};
+
+  std::vector<float> iteration_count_out{2.f};  // iteration_count_in + 1 for each item in sequence
+
+  // whilst we transpose that only changes the shape from 2, 1 to 1, 2 so the data is the same. the expected
+  // shape is validated by RunTest_v9.
+  std::vector<float> output_0{1.f, 3.f};
+  std::vector<float> output_1{2.f, 4.f};
+  std::vector<float> output_2{11.f, 13.f};
+  std::vector<float> output_3{12.f, 14.f};
+
+  RunTest_v9("TransposeOutput", sequence_len, input_size,
+             nullptr, nullptr, nullptr, &output_axes,
              iteration_count_in, input_0, input_1,
              iteration_count_out, output_0, output_1, output_2, output_3);
 }
@@ -822,7 +876,7 @@ static void InvalidInput(bool is_v8) {
                "Invalid values in 'directions'.");
   } else {
     RunTest_v9("InvalidInputDirectionsValue", sequence_len, input_size,
-               &directions, nullptr, nullptr,
+               &directions, nullptr, nullptr, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
@@ -832,7 +886,7 @@ static void InvalidInput(bool is_v8) {
     std::vector<int64_t> output_directions = {0, 2, 1, 0};
 
     RunTest_v9("InvalidOutputDirectionsValue", sequence_len, input_size,
-               nullptr, nullptr, &output_directions,
+               nullptr, &output_directions, nullptr, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
@@ -853,7 +907,7 @@ static void InvalidInput(bool is_v8) {
                "Number of entries in 'directions' was 3 but expected 2");
   } else {
     RunTest_v9("InvalidNumEntriesInInputDirections", sequence_len, input_size,
-               &directions, nullptr, nullptr,
+               &directions, nullptr, nullptr, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
@@ -861,7 +915,7 @@ static void InvalidInput(bool is_v8) {
                "Number of entries in 'scan_input_directions' was 3 but expected 2");
 
     RunTest_v9("InvalidNumEntriesInOutputDirections", sequence_len, input_size,
-               nullptr, nullptr, &directions,
+               nullptr, &directions, nullptr, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
@@ -870,23 +924,41 @@ static void InvalidInput(bool is_v8) {
   }
 
   if (!is_v8) {
-    std::vector<int64_t> axes = {2, -1};  // only 2 dims in input so 2 is invalid
-    RunTest_v9("InvalidEntryInAxes", sequence_len, input_size,
-               nullptr, &axes, nullptr,
+    std::vector<int64_t> input_axes = {2, -1};  // only 2 dims in input so 2 is invalid
+    RunTest_v9("InvalidEntryInInputAxes", sequence_len, input_size,
+               nullptr, nullptr, &input_axes, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "Invalid value in axes for input 0 of 2. Input tensor rank was 2");
+               "Invalid value in scan_input_axes for input 0 of 2. Input tensor rank was 2");
 
-    axes = {0, 1, 2};
-    RunTest_v9("InvalidNumEntriesInAxes", sequence_len, input_size,
-               nullptr, &axes, nullptr,
+    input_axes = {0, 1, 2};
+    RunTest_v9("InvalidNumEntriesInInputAxes", sequence_len, input_size,
+               nullptr, nullptr, &input_axes, nullptr,
                iteration_count_in, input_0, input_1,
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] Number of axes specified (3) is not equal to number of scan inputs (2).");
+               "[ShapeInferenceError] Number of scan input axes specified (3) is not equal to number of scan inputs (2).");
+
+    std::vector<int64_t> output_axes = {3, -1, 0, 0};  // 2 dims in output so 3 is invalid
+    RunTest_v9("InvalidEntryInOutputAxes", sequence_len, input_size,
+               nullptr, nullptr, nullptr, &output_axes,
+               iteration_count_in, input_0, input_1,
+               iteration_count_out, output_0, output_1, output_2, output_3,
+               {},
+               OpTester::ExpectResult::kExpectFailure,
+               "[ShapeInferenceError] scan_output_axes axis value 3 is invalid for a tensor of rank 2");
+
+    output_axes = {0, 1, 2};
+    RunTest_v9("InvalidNumEntriesInOutputAxes", sequence_len, input_size,
+               nullptr, nullptr, nullptr, &output_axes,
+               iteration_count_in, input_0, input_1,
+               iteration_count_out, output_0, output_1, output_2, output_3,
+               {},
+               OpTester::ExpectResult::kExpectFailure,
+               "[ShapeInferenceError] Number of scan output axes specified (3) is not equal to number of scan outputs (4).");
   }
 }
 
