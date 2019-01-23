@@ -38,25 +38,25 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
   for (const std::string& provider : providers_) {
     if (provider == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sess.get(), 0));
+      RegisterExecutionProvider(sess.get(), DefaultCudaExecutionProvider());
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sess.get(), enable_cpu_mem_arena_ ? 1 : 0));
+      RegisterExecutionProvider(sess.get(), DefaultMkldnnExecutionProvider(enable_cpu_mem_arena_ ? 1 : 0));
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sess.get(), 0, ""));
+      RegisterExecutionProvider(sess.get(), DefaultNupharExecutionProvider());
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Brainslice(sess.get(), 0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin"));
+      RegisterExecutionProvider(sess.get(), DefaultBrainsliceExecutionProvider());
 #else
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
