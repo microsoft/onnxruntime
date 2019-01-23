@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/initializer.h"
 #include "core/graph/graph_utils.h"
-#include "core/graph/conv_add_fusion.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/conv_add_fusion.h"
 
 using namespace onnx;
 using namespace ::onnxruntime::common;

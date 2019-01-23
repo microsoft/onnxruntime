@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
-class ConvAddFusion : public onnxruntime::GraphTransformer {
-public:
-  ConvAddFusion() noexcept : onnxruntime::GraphTransformer("ConvAddFusion", "Fusing Add into Conv") {}
+class UnsqueezeElimination : public onnxruntime::GraphTransformer {
+ public:
+  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsequeeze node") {}
   Status Apply(onnxruntime::Graph& graph, bool& modified) const override;
 };
 

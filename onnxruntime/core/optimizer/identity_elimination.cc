@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/rewrite_rule.h"
-#include "core/graph/identity_elimination.h"
+#include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
-#include "core/common/logging/logging.h"
+#include "core/optimizer/rewrite_rule.h"
+#include "core/optimizer/identity_elimination.h"
 
 namespace onnxruntime {
 

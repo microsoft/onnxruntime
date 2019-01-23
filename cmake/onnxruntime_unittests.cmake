@@ -140,6 +140,7 @@ set(onnxruntime_test_framework_libs
   onnxruntime_graph
   onnxruntime_common
   onnxruntime_mlas
+  onnxruntime_optimizer
   )
 
 
@@ -183,6 +184,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+	onnxruntime_optimizer
 )
 
 set(onnxruntime_test_providers_libs
