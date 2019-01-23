@@ -3,16 +3,15 @@
 
 #pragma once
 
+#include <core/platform/ort_mutex.h>
 #include "sync_api.h"
-
-#include <mutex>
 
 template <typename T>
 class FixedCountFinishCallbackImpl {
  private:
   //remain tasks
   int s_;
-  std::mutex m_;
+  onnxruntime::OrtMutex m_;
   ORT_EVENT finish_event_;
   bool failed = false;
   std::vector<std::shared_ptr<T>> results_;
@@ -35,7 +34,7 @@ class FixedCountFinishCallbackImpl {
 
   ::onnxruntime::common::Status fail(ORT_CALLBACK_INSTANCE pci) {
     {
-      std::lock_guard<std::mutex> g(m_);
+      std::lock_guard<onnxruntime::OrtMutex> g(m_);
       failed = true;
       s_ = 0;  //fail earlier
     }
@@ -45,7 +44,7 @@ class FixedCountFinishCallbackImpl {
   ::onnxruntime::common::Status onFinished(size_t task_index, std::shared_ptr<T> result, ORT_CALLBACK_INSTANCE pci) {
     int v;
     {
-      std::lock_guard<std::mutex> g(m_);
+      std::lock_guard<onnxruntime::OrtMutex> g(m_);
       v = --s_;
       results_.at(task_index) = result;
     }
@@ -56,14 +55,14 @@ class FixedCountFinishCallbackImpl {
   }
 
   bool shouldStop() {
-    std::lock_guard<std::mutex> g(m_);
+    std::lock_guard<onnxruntime::OrtMutex> g(m_);
     return failed;
   }
   //this function can only be invoked once
   bool wait() {
     ORT_ENFORCE(WaitAndCloseEvent(finish_event_).IsOK());
     {
-      std::lock_guard<std::mutex> g(m_);
+      std::lock_guard<onnxruntime::OrtMutex> g(m_);
       finish_event_ = nullptr;
       return !failed;
     }

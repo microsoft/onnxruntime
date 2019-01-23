@@ -54,7 +54,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
 
   // Wait for finish.
   {
-    std::unique_lock<std::mutex> lock(complete_mutex_);
+    std::unique_lock<OrtMutex> lock(complete_mutex_);
     while (out_standings_ > 0) complete_cv_.wait(lock);
   }
 
@@ -138,14 +138,22 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
@@ -217,7 +225,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       auto begin = p_op_kernel->Node().OutputEdgesBegin();
       auto end = p_op_kernel->Node().OutputEdgesEnd();
 
-      std::lock_guard<std::mutex> lock(ref_mutex_);
+      std::lock_guard<OrtMutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
         auto idx = (*it).GetNode().Index();
         if ((--node_refs_[idx]) == 0) {
@@ -239,7 +247,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
 
 void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger) {
   {
-    std::unique_lock<std::mutex> lock(complete_mutex_);
+    std::unique_lock<OrtMutex> lock(complete_mutex_);
     out_standings_++;
   }
 

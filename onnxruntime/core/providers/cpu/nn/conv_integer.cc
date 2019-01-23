@@ -9,7 +9,7 @@
 #include "core/providers/cpu/nn/conv_integer.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "public/gemmlowp.h"
+#include "core/util/gemmlowp_common_wrapper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -146,5 +146,5 @@ ONNX_OPERATOR_KERNEL_EX(
 	.TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
 	.TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
-}
+}  // namespace contrib
 }  // namespace onnxruntime

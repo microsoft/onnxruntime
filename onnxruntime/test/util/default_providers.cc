@@ -71,5 +71,18 @@ std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultTRTExecutionProvider() {
+#ifdef USE_TRT
+  OrtProviderFactoryInterface** f;
+  ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
+  FACTORY_PTR_HOLDER;
+  OrtProvider* out;
+  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
+  return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
+#else
+  return nullptr;
+#endif
+}
+
 }  // namespace test
 }  // namespace onnxruntime

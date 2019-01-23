@@ -4,11 +4,11 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 #include "gsl/gsl_util"
 
+#include "core/platform/ort_mutex.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
@@ -136,7 +136,7 @@ class SessionState {
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
-  void AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
+  common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
   common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
@@ -186,7 +186,7 @@ class SessionState {
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_ = true;
   // lock for the mem_patterns_
-  mutable std::mutex mem_patterns_lock_;
+  mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
 

@@ -63,8 +63,14 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
-void RegisterOperatorKernels(std::function<void(KernelCreateInfo&&)> fn) {
-  fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
+void RegisterOperatorKernels(KernelRegistry& kernel_registry) {
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
+}
+
+std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterOperatorKernels(*kernel_registry);
+  return kernel_registry;
 }
 
 class FuseExecutionProvider : public IExecutionProvider {
@@ -98,8 +104,7 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 
   std::shared_ptr<::onnxruntime::KernelRegistry> GetKernelRegistry() const override {
-    static std::shared_ptr<::onnxruntime::KernelRegistry>
-        kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
+    static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
   }
 

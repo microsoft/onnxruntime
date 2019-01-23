@@ -8,6 +8,7 @@
 #include <list>
 #include <memory.h>
 
+#include "core/platform/ort_mutex.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_transformer.h"
@@ -57,7 +58,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
     weights_mem_map_.insert(std::make_pair(weight_key, filter_dst_mem));
   }
 
-  std::mutex& GetMutex() {
+  OrtMutex& GetMutex() {
     return mutex_;
   }
 
@@ -72,7 +73,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::shared_ptr<mkldnn::memory>> weights_mem_map_;
   // Save reordered memory buffers in list so that memory is not freed.
   std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
-  std::mutex mutex_;
+  OrtMutex mutex_;
 };
 
 }  // namespace onnxruntime

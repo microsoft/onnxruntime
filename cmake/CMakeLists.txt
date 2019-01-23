@@ -64,6 +64,7 @@ option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
+option(onnxruntime_USE_TRT "Build with TensorRT support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -364,6 +365,8 @@ else()
   check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
   check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
+  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
+
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-tautological-pointer-compare")
