@@ -161,14 +161,14 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
     if (i->second.kernel_def &&
         i->second.status.IsOK() &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      create_info.status =
+      auto st = create_info.status =
           Status(ONNXRUNTIME, FAIL,
                  "Failed to add kernel for " + op_name +
                      ": Conflicting with a registered kernel with op versions.");
       // For invalid entries, we keep them in the map now. Must check for status
       // when using the entries from the map.
       kernel_creator_fn_map_.emplace(op_name, std::move(create_info));
-      return create_info.status;
+      return st;
     }
   }
 
