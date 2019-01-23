@@ -12,6 +12,7 @@
 #include <filesystem>
 #endif
 #include "providers.h"
+#include "default_providers.h"
 
 using namespace std::experimental::filesystem::v1;
 using onnxruntime::Status;
