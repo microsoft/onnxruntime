@@ -39,25 +39,25 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
   for (const std::string& provider : providers_) {
     if (provider == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      RegisterExecutionProvider(sess.get(), DefaultCudaExecutionProvider());
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultCudaExecutionProvider());
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-      RegisterExecutionProvider(sess.get(), DefaultMkldnnExecutionProvider(enable_cpu_mem_arena_ ? 1 : 0));
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultMkldnnExecutionProvider(enable_cpu_mem_arena_ ? 1 : 0));
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-      RegisterExecutionProvider(sess.get(), DefaultNupharExecutionProvider());
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultNupharExecutionProvider());
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      RegisterExecutionProvider(sess.get(), DefaultBrainsliceExecutionProvider());
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultBrainsliceExecutionProvider());
 #else
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
