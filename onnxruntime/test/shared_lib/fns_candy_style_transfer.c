@@ -182,7 +182,7 @@ void verify_input_output_count(OrtSession* session) {
 
 #ifdef USE_CUDA
 void enable_cuda(OrtSessionOptions* session_option) {
-  ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0);
+  ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
 }
 #endif
 
@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
   ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
-  OrtReleaseObject(session_option);
+  OrtReleaseSessionOptions(session_option);
   OrtReleaseSession(session);
   OrtReleaseEnv(env);
   if (ret != 0) {
