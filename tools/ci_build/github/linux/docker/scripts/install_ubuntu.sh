@@ -14,7 +14,7 @@ add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
         autotools-dev \
         build-essential \
-        git ca-certificates \
+        git apt-transport-https \
         ca-certificates \
         pkg-config \
         wget \
