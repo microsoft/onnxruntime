@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph_editor, Node& node, bool& modified) {
+Status EliminateIdentity::Apply(Graph& graph_editor, Node& node, bool& modified, bool& deleted) {
   std::map<const NodeArg*, NodeArg*> replacement_defs;
   auto id_input = node.InputDefs()[0];
   auto id_output = node.OutputDefs()[0];
@@ -24,6 +24,7 @@ Status EliminateIdentity::Apply(Graph& graph_editor, Node& node, bool& modified)
 
   // Remove the Identity node.
   graph_editor.RemoveNode(node.Index());
+  modified = deleted = true;
 
   // TODO: Make sure resolve is not required here.
   //ORT_RETURN_IF_ERROR(graph_editor->Resolve());

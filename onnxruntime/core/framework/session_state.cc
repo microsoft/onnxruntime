@@ -186,7 +186,7 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
                 "Entry exists in node ", index, " for attribute ", attribute_name);
   }
 
-  subgraph_session_states_[index].insert({attribute_name, std::move(session_state)});
+  subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
 }
 
 SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeIndex index,

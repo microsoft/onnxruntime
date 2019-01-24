@@ -101,7 +101,6 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
 
   return Status::OK();

@@ -98,8 +98,8 @@ Status UnsqueezeElimination::ApplyImpl(onnxruntime::Graph& graph, bool& modified
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
+
   return Status::OK();
 }
 }  // namespace onnxruntime

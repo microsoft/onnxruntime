@@ -41,13 +41,21 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int 
 
     // Get the rules that should be fired for this node.
     const std::vector<std::unique_ptr<RewriteRule>>* rules = GetRewriteRules(node->OpType());
+
+    bool deleted = false;
     if (rules) {
       for (const auto& rule : *rules) {
-        ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, *node, modified));
+        ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, *node, modified, deleted));
+        if (deleted) {
+          modified = true;  // should be set by rewriter but in case it wasn't...
+          break;
+        }
       }
     }
 
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+    if (!deleted) {
+      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+    }
   }
 
   return Status::OK();
