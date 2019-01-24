@@ -62,7 +62,7 @@ Status GraphPartitioner::Partition(Graph& graph, SessionState& session_state) co
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
   //    NOTE: A 'sub-graph' is a subset of nodes within the current Graph instance.
   //          The control flow nodes have nested Graph instance/s which are also called subgraphs,
-  //        but are completely separate Graph instance and not a subset of nodes within a Graph instance.
+  //          but are completely separate Graph instances and not a subset of nodes within a single Graph instance.
   // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider preference.
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
