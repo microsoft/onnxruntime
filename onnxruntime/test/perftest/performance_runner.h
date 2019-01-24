@@ -102,7 +102,7 @@ class PerformanceRunner {
     for (int i = 0; i < static_cast<int>(performance_test_config_.run_config.concurrent_run); ++i) {
       auto start = std::chrono::high_resolution_clock::now();
       for (int j = 0; j < test_count; ++j) {
-        ORT_RETURN_IF_ERROR(session_object_->Run(*io_bindings_[i]));
+        session_object_->Run(*io_bindings_[i]);
       }
       auto end = std::chrono::high_resolution_clock::now();
 
