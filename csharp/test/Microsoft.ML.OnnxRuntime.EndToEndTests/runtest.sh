@@ -30,7 +30,7 @@ fi
 export CurrentOnnxRuntimeVersion=$MajorVersion$VersionSuffix
 echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
-dotnet restore $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json --configfile $SourceRoot/csharp/Nuget.CSharp.config
+dotnet restore $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
 if [ $? -ne 0 ]; then
     echo "Failed to restore nuget packages for the test project"
     exit 1
