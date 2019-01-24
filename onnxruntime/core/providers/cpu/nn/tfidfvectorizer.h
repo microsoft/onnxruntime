@@ -9,13 +9,12 @@
 #include <vector>
 
 namespace onnxruntime {
-namespace contrib {
 
-class Ngram final : public OpKernel {
+class TfIdfVectorizer final : public OpKernel {
  public:
-  explicit Ngram(const OpKernelInfo& info);
-  ~Ngram();
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Ngram);
+  explicit TfIdfVectorizer(const OpKernelInfo& info);
+  ~TfIdfVectorizer();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TfIdfVectorizer);
 
   Status Compute(OpKernelContext* ctx) const override;
 
@@ -30,5 +29,4 @@ class Ngram final : public OpKernel {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace contrib
 }  // namespace onnxruntime
