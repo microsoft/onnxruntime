@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/platform/ort_mutex.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_base.h"
@@ -47,7 +48,7 @@ struct CudnnConvState {
   CudnnConvolutionDescriptor conv_desc;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
-  std::mutex mutex;
+  OrtMutex mutex;
 };
 
 enum : size_t {

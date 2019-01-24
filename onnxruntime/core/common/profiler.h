@@ -6,6 +6,7 @@
 #include <fstream>
 #include <tuple>
 #include <initializer_list>
+#include "core/platform/ort_mutex.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -66,7 +67,7 @@ class Profiler {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   // Mutex controlling access to profiler data
-  std::mutex mutex_;
+  OrtMutex mutex_;
   bool enabled_{false};
   std::ofstream profile_stream_;
   std::string profile_stream_file_;

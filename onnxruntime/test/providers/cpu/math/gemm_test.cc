@@ -164,8 +164,8 @@ TEST(MathOpTest, GemmFalseBroadcast) {
 TEST(MathOpTest, GemmEmptyTensor) {
   OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
