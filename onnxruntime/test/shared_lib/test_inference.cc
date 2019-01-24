@@ -64,21 +64,21 @@ void TestInference(OrtEnv* env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0);
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_MKLDNN
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, 1);
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, 1));
     std::cout << "Running simple inference with mkldnn provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, "");
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
