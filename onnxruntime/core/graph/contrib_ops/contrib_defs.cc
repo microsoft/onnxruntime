@@ -275,28 +275,28 @@ activation and leaky_relu_alpha.)DOC")
           "",
           AttributeProto::FLOAT,
           OPTIONAL)
-       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-         if (hasNInputShapes(ctx, 2)) {
-           auto transAAttr = ctx.getAttribute("transA");
-           bool transA =
-               transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
-           auto transBAttr = ctx.getAttribute("transB");
-           bool transB =
-               transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
-           auto& first_input_shape = getInputShape(ctx, 0);
-           auto& second_input_shape = getInputShape(ctx, 1);
-           if (first_input_shape.dim_size() != 2)
-             fail_shape_inference("First input does not have rank 2");
-           if (second_input_shape.dim_size() != 2)
-             fail_shape_inference("Second input does not have rank 2");
-           updateOutputShape(
-               ctx,
-               0,
-               {first_input_shape.dim(transA ? 1 : 0),
-                second_input_shape.dim(transB ? 0 : 1)});
-         }
-       });
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (hasNInputShapes(ctx, 2)) {
+          auto transAAttr = ctx.getAttribute("transA");
+          bool transA =
+              transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+          auto transBAttr = ctx.getAttribute("transB");
+          bool transB =
+              transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+          auto& first_input_shape = getInputShape(ctx, 0);
+          auto& second_input_shape = getInputShape(ctx, 1);
+          if (first_input_shape.dim_size() != 2)
+            fail_shape_inference("First input does not have rank 2");
+          if (second_input_shape.dim_size() != 2)
+            fail_shape_inference("Second input does not have rank 2");
+          updateOutputShape(
+              ctx,
+              0,
+              {first_input_shape.dim(transA ? 1 : 0),
+               second_input_shape.dim(transB ? 0 : 1)});
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ExpandDims)
       .SetDomain(kMSDomain)
@@ -373,139 +373,6 @@ activation and leaky_relu_alpha.)DOC")
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       })
       .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis. All input strings including attributes are UTF-8 encoded.)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Ngram)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "Input for n-gram extraction", "T")
-      .Output(0, "Y", "Ngram results", "T1")
-      .TypeConstraint(
-          "T",
-          {"tensor(string)", "tensor(int32)", "tensor(int64)"},
-          "Input is ether string UTF-8 or int32/int64")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float)"},
-          "1-D tensor of floats")
-      .Attr(
-          "max_gram_length",
-          "Maximum n-gram length. If this value is 3, 3-grams will be used to generate the output.",
-          AttributeProto::INT)
-      .Attr(
-          "min_gram_length",
-          "Minimum n-gram length. If this value is 2 and max_gram_length is 3, output may contain counts of 2-grams and 3-grams.",
-          AttributeProto::INT)
-      .Attr(
-          "max_skip_count",
-          "Maximum number of items (integers/strings) to be skipped when constructing an n-gram from X."
-          "If max_skip_count=1, min_gram_length=2, max_gram_length=3, this operator may generate 2-grams"
-          "with skip_count=0 and skip_count=1, and 3-grams with skip_count=0 and skip_count=1",
-          AttributeProto::INT)
-      .Attr(
-          "pool_strings",
-          "List of strings n-grams learned from the training set. Either this or pool_int64s attributes must be present but not both."
-          "It's an 1-D tensor starting with the collections of all 1-grams and ending with the collections of n-grams."
-          "The i-th element in pool stores the n-gram that should be mapped to index ngram_indexes[i] in the output vector.",
-          AttributeProto::STRINGS,
-          OPTIONAL)
-      .Attr(
-          "pool_int64s",
-          "List of int64 n-grams learned from the training set. Either this or pool_strings attributes must be present but not both."
-          "It's an 1-D tensor starting with the collections of all 1-grams and ending with the collections of n-grams."
-          "The i-th element in pool stores the n-gram that should be mapped to index ngram_indexes[i] in the output vector.",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "ngram_counts",
-          "The starting indexes of 1-grams, 2-grams, and so on in pool."
-          "It is useful when determining the boundary between two consecutive collections of n-grams."
-          "For example, if ngram_counts is [0, 17, 36], the first index (zero-based) of 1-gram/2-gram/3-gram"
-          "in pool are 0/17/36. This format is essentially identical to CSR (or CSC) sparse matrix format, "
-          "and we choose to keep this due to its popularity.",
-          AttributeProto::INTS)
-      .Attr(
-          "ngram_indexes",
-          "list of int64s (type: AttributeProto::INTS). This list is parallel to the specified 'pool_*' attribute."
-          "The i-th element in ngram_indexes indicate the coordinate of the i-th n-gram in the output tensor.",
-          AttributeProto::INTS)
-      .Attr(
-          "weights",
-          "list of floats. This attribute stores the weight of each n-gram in pool. The i-th element in weights"
-          "is the weight of the i-th n-gram in pool. Its length equals to the size of ngram_indexes."
-          "By default, weights is an all-one tensor.This attribute is used when mode is \"IDF\" or \"TFIDF\""
-          "to scale the associated word counts.",
-          AttributeProto::FLOATS,
-          OPTIONAL)
-      .Attr(
-          "mode",
-          "The weighting criteria. It can be one of \"TF\" (term frequency),"
-          "\"IDF\" (inverse document frequency), and \"TFIDF\" (the combination of TF and IDF)",
-          AttributeProto::STRING)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
-
-        if (hasInputShape(ctx, 0)) {
-          std::vector<int64_t> ngram_indexes;
-          ONNX_NAMESPACE::getRepeatedAttribute(ctx, "ngram_indexes", ngram_indexes);
-          if (ngram_indexes.empty() || !std::all_of(ngram_indexes.cbegin(), ngram_indexes.cend(),
-                                                    [](int64_t i) { return i >= 0; })) {
-            fail_shape_inference(
-                "ngram_indexes must be non-empty with no negative values");
-          }
-
-          auto greatest_hit = std::max_element(ngram_indexes.cbegin(), ngram_indexes.cend());
-          auto max_last_axis = *greatest_hit + 1;
-
-          ONNX_NAMESPACE::TensorShapeProto output_shape;
-          auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-          auto dim_size = input_shape.dim_size();
-          if (dim_size == 0 || dim_size == 1) {
-            output_shape.add_dim()->set_dim_value(max_last_axis);
-          } else if (dim_size == 2) {
-            auto& B_dim = input_shape.dim(0);
-            if (!B_dim.has_dim_value()) {
-              fail_shape_inference(
-                  "Input shape does not have first dimension value");
-            }
-            output_shape.add_dim()->set_dim_value(B_dim.dim_value());
-            output_shape.add_dim()->set_dim_value(max_last_axis);
-          } else {
-            fail_shape_inference(
-                "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
-          }
-          updateOutputShape(ctx, 0, output_shape);
-        }
-      })
-      .SetDoc(R"DOC(
-This transform extracts n-grams from the input sequence and save them as a vector. Input can
-be either a 1-D or 2-D tensor. For 1-D input, output is the n-gram representation of that input.
-For 2-D input, the output is also a  2-D tensor whose i-th row is the n-gram representation of the i-th input row.
-More specifically, if input shape is [C], the corresponding output shape would be [max(ngram_indexes) + 1].
-If input shape is [N, C], this operator produces a [N, max(ngram_indexes) + 1]-tensor.
-
-In contrast to standard n-gram extraction, here, the indexes of extracting an n-gram from the original
-sequence are not necessarily consecutive numbers. The discontinuity between indexes are controlled by the number of skips.
-If the number of skips is 2, we should skip two tokens when scanning through the original sequence.
-Let's consider an example. Assume that input sequence is [94, 17, 36, 12, 28] and the number of skips is 2.
-The associated 2-grams are [94, 12] and [17, 28] respectively indexed by [0, 3] and [1, 4].
-If the number of skips becomes 0, the 2-grams generated are [94, 17], [17, 36], [36, 12], [12, 28]
-indexed by [0, 1], [1, 2], [2, 3], [3, 4], respectively.
-
-The output vector stores the count of each n-gram;
-Y[i] indicates the times that the i-th n-gram is found. The attribute ngram_indexes is used to determine the mapping
-between index i and the corresponding n-gram. If pool_int64s is [94 , 17 ,17, 36], ngram_indexes is [1, 0],
-ngram_counts=[0, 0], then the Y[0] (first element in Y) and Y[1] (second element in Y) are the counts of [17, 36] and [94, 17],
-respectively. An n-gram which cannot be found in pool_strings/pool_int64s should be ignored and has no effect on the output.
-Note that we may consider all skips up to S when generating the n-grams.
-
-The examples used above are true if mode is "TF". If mode is "IDF", all the counts larger than 1 would be truncated to 1 and
-the i-th element in weights would be used to scale (by multiplication) the count of the i-th n-gram in pool. If mode is "TFIDF",
-this operator first computes the counts of all n-grams and then scale them by the associated values in the weights attribute.
-
-Only one of pool_strings and pool_int64s can be set. If pool_int64s is set, the input should be an integer tensor.
-If pool_strings is set, the input must be a string tensor.
-)DOC");
 
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
