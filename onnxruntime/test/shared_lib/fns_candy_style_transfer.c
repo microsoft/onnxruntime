@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
   int ret = run_inference(session, input_file, output_file);
   OrtReleaseObject(session_option);
   OrtReleaseSession(session);
-  OrtReleaseObject(env);
+  OrtReleaseEnv(env);
   if (ret != 0) {
     fprintf(stderr, "fail\n");
   }
