@@ -118,7 +118,7 @@ if (MSVC)
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   #Disable 4100 globally. Too many this kind errors in protobuf
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100")
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GL")
+  SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} /GL")
 else()
   if(onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     string(APPEND CMAKE_CXX_FLAGS_RELEASE " -march=native -mtune=native")
