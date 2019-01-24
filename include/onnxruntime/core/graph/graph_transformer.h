@@ -55,6 +55,11 @@ class GraphTransformer {
 
   // Apply the transform to the graph.
   // graph_level is 0 for the main graph, and is incremented when descending into the subgraph of a node.
+  // You MUST call Recurse for all valid Nodes in the graph to ensure any subgraphs in control flow nodes
+  // (Scan/If/Loop) are processed as well.
+  // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases
+  // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
+  // completes (if 'modified' is true) should suffice.
   virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level = 0) const = 0;
 
   const std::string name_;
