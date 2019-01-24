@@ -10,14 +10,23 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace {
-// Function that is called for each formal parameter and its associated TypeProto.
-// Returns true if traversal should continue, false otherwise.
-using TraverseFn = std::function<bool(const ONNX_NAMESPACE::OpSchema::FormalParameter&,
-                                      const ONNX_NAMESPACE::TypeProto*)>;
-
-// Traverses the node's formal parameters and calls the provided function with the formal parameter and its associated
-// TypeProto.
-void TraverseFormalParametersWithTypeProto(const onnxruntime::Node& node, const TraverseFn& traverse_fn) {
+// Traverses the node's formal parameters and calls TraverseFn with the formal
+// parameter and its associated TypeProto.
+//   node - the node to traverse
+//   param_filter_fn - called to determine whether to consider a given formal parameter:
+//     bool ParamFilterFn(const ONNX_NAMESPACE::OpSchema::FormalParameter& param)
+//       param - the formal parameter
+//       returns true if the formal parameter should be considered, false otherwise
+//   traverse_fn - called to process the formal parameter and its associated TypeProto:
+//     bool TraverseFn(const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
+//                     const ONNX_NAMESPACE::TypeProto* type)
+//       param - the formal paremeter
+//       type - the associated TypeProto
+//       returns true if traversal should continue, false otherwise
+template <typename ParamFilterFn, typename TraverseFn>
+void TraverseFormalParametersWithTypeProto(const Node& node,
+                                           ParamFilterFn param_filter_fn,
+                                           TraverseFn traverse_fn) {
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
 
   // process inputs:
@@ -25,12 +34,14 @@ void TraverseFormalParametersWithTypeProto(const onnxruntime::Node& node, const 
   ORT_ENFORCE(len <= op_schema.inputs().size());
   int actual_index = 0;
   for (size_t formal_index = 0; formal_index != len; ++formal_index) {
-    auto& param = op_schema.inputs()[formal_index];
-    // return type of any corresponding actual parameter, if present
-    for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
-      const onnxruntime::NodeArg* arg = node.InputDefs()[actual_index + i];
-      if (!arg->Exists()) continue;  // a missing optional argument
-      if (!traverse_fn(param, arg->TypeAsProto())) return;
+    const auto& param = op_schema.inputs()[formal_index];
+    if (param_filter_fn(param)) {
+      // get type of any corresponding actual parameter, if present
+      for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
+        const NodeArg* arg = node.InputDefs()[actual_index + i];
+        if (!arg->Exists()) continue;  // a missing optional argument
+        if (!traverse_fn(param, arg->TypeAsProto())) return;
+      }
     }
     actual_index += node.InputArgCount()[formal_index];
   }
@@ -40,9 +51,10 @@ void TraverseFormalParametersWithTypeProto(const onnxruntime::Node& node, const 
   const auto num_actual_outputs = actual_outputs.size();
   const auto last_formal = op_schema.outputs().size() - 1;
   for (size_t i = 0; i != num_actual_outputs; ++i) {
-    const onnxruntime::NodeArg* arg = actual_outputs[i];
+    const auto& formal = op_schema.outputs()[std::min(i, last_formal)];
+    if (!param_filter_fn(formal)) continue;
+    const NodeArg* arg = actual_outputs[i];
     if (!arg->Exists()) continue;
-    auto& formal = op_schema.outputs()[std::min(i, last_formal)];
     if (!traverse_fn(formal, arg->TypeAsProto())) return;
   }
 }
@@ -56,6 +68,7 @@ class TypeBindingResolver {
       type_binding_map_ = std::make_unique<TypeBindingMap>();
       TraverseFormalParametersWithTypeProto(
           node_,
+          [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },
           [this](const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
                  const ONNX_NAMESPACE::TypeProto* type) -> bool {
             type_binding_map_->emplace(param.GetName(), type);
@@ -80,13 +93,13 @@ class TypeBindingResolver {
     const ONNX_NAMESPACE::TypeProto* result{};
     TraverseFormalParametersWithTypeProto(
         node_,
-        [&name_or_type_str, &result](const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
-                                     const ONNX_NAMESPACE::TypeProto* type) -> bool {
-          if (param.GetName() == name_or_type_str || param.GetTypeStr() == name_or_type_str) {
-            result = type;
-            return false;
-          }
-          return true;
+        [&name_or_type_str](const ONNX_NAMESPACE::OpSchema::FormalParameter& param) -> bool {
+          return param.GetName() == name_or_type_str || param.GetTypeStr() == name_or_type_str;
+        },
+        [&result](const ONNX_NAMESPACE::OpSchema::FormalParameter&,
+                  const ONNX_NAMESPACE::TypeProto* type) -> bool {
+          result = type;
+          return false;
         });
     return result;
   }
@@ -179,8 +192,8 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   // check if type matches
   auto& kernel_type_constraints = kernel_def.TypeConstraints();
 
-  // Note: The number of input/output nodes is N and the number of type
-  // constraints is M. We select between an O(N*M) and an O(N+M) approach.
+  // Note: The number of formal input/output parameters is N and the number of
+  // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
   // The O(N*M) approach has lower initial overhead.
   // kTypeBindingResolverComplexityThreshold is the value of N*M above which we
   // will use the O(N+M) approach.
