@@ -341,12 +341,12 @@ if (WIN32)
 
     # set linker flags to minimize the binary size.
     if (MSVC)
-      foreach(type EXE SHARED)    
+      foreach(type EXE SHARED)
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF")
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
-		set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
       endforeach()
-    endif()      
+    endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning in Linux
