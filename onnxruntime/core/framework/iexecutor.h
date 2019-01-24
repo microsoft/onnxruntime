@@ -14,7 +14,6 @@ namespace onnxruntime {
 
 class MLValue;
 class SessionState;
-class Status;
 class TensorShape;
 namespace logging {
 class Logger;
