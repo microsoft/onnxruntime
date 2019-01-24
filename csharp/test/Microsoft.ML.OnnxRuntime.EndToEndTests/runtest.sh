@@ -8,9 +8,7 @@ BuildDir=$3
 TestDataUrl=$4
 TestDataChecksum=$5
 
-#TestDataUrl=https://onnxruntimetestdata.blob.core.windows.net/models/20190107.zip
-#TestDataChecksum=67622404e651317e24c581350718331a
-#These value would come from the build env variable
+#TestDataUrl and TestDataChecksum comes from the build env variable
 
 echo "Downloading test data"
 python3 $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir --test_data_url $TestDataUrl --test_data_checksum $TestDataChecksum
