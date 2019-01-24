@@ -103,7 +103,8 @@ class ScanImpl {
            int64_t num_scan_inputs,
            const std::vector<int64_t>& input_directions,
            const std::vector<int64_t>& output_directions,
-           const std::vector<int64_t>& axes);
+           const std::vector<int64_t>& input_axes,
+           const std::vector<int64_t>& output_axes);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -124,6 +125,7 @@ class ScanImpl {
 
   Status AllocateOutputTensors();
   Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
+  Status TransposeOutput();
 
   using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const MLValue>::Iterator>;
   using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<MLValue>::Iterator>;
@@ -132,17 +134,19 @@ class ScanImpl {
   const SessionState& session_state_;
   const GraphViewer& subgraph_;
 
-  int num_loop_state_variables_;
-  int num_scan_inputs_;
   int num_variadic_inputs_;
   int num_variadic_outputs_;
+  int num_loop_state_variables_;
+  int num_scan_inputs_;
+  int num_scan_outputs_;
 
   int64_t sequence_len_ = -1;
 
   const std::vector<int64_t>& input_directions_;
   const std::vector<int64_t>& output_directions_;
-  const std::vector<int64_t>& axes_from_attribute_;
-  std::vector<int64_t> axes_;
+  const std::vector<int64_t>& input_axes_from_attribute_;
+  const std::vector<int64_t>& output_axes_from_attribute_;
+  std::vector<int64_t> input_axes_;
 
   // inputs for graph. either original input value or transposed input if an axis other than 0 was specified
   std::vector<MLValue> inputs_;
@@ -171,11 +175,19 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
   ReadDirections(info, "scan_input_directions", input_directions_, num_scan_inputs_);
   ReadDirections(info, "scan_output_directions", output_directions_, num_scan_outputs);
 
-  if (info.GetAttrs<int64_t>("axes", axes_).IsOK()) {
-    ORT_ENFORCE(gsl::narrow_cast<int64_t>(axes_.size()) == num_scan_inputs_,
-                "Number of entries in 'axes' was ", axes_.size(), " but expected ", num_scan_inputs_);
+  if (info.GetAttrs<int64_t>("scan_input_axes", input_axes_).IsOK()) {
+    ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
+                "Number of entries in 'scan_input_axes' was ", input_axes_.size(), " but expected ", num_scan_inputs_);
   } else {
-    axes_ = std::vector<int64_t>(num_scan_inputs_, 0);
+    input_axes_ = std::vector<int64_t>(num_scan_inputs_, 0);
+  }
+
+  if (info.GetAttrs<int64_t>("scan_output_axes", output_axes_).IsOK()) {
+    ORT_ENFORCE(gsl::narrow_cast<int64_t>(output_axes_.size()) == num_scan_outputs,
+                "Number of entries in 'scan_output_axes' was ", output_axes_.size(), " but expected ",
+                num_scan_outputs);
+  } else {
+    output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
   }
 }
 
@@ -185,7 +197,8 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
-  ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_, output_directions_, axes_};
+  ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_, output_directions_,
+                     input_axes_, output_axes_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -200,47 +213,24 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    int64_t num_scan_inputs,
                    const std::vector<int64_t>& input_directions,
                    const std::vector<int64_t>& output_directions,
-                   const std::vector<int64_t>& axes)
+                   const std::vector<int64_t>& input_axes,
+                   const std::vector<int64_t>& output_axes)
     : context_{context},
       session_state_{session_state},
       subgraph_{*session_state.GetGraphViewer()},
       num_scan_inputs_{gsl::narrow_cast<int>(num_scan_inputs)},
       input_directions_{input_directions},
       output_directions_{output_directions},
-      axes_from_attribute_{axes},
+      input_axes_from_attribute_{input_axes},
+      output_axes_from_attribute_{output_axes},
       implicit_inputs_{context_.GetImplicitInputs()} {
   num_variadic_inputs_ = context_.NumVariadicInputs(0);
   num_variadic_outputs_ = context_.OutputCount();
   num_loop_state_variables_ = num_variadic_inputs_ - num_scan_inputs_;
+  num_scan_outputs_ = num_variadic_outputs_ - num_loop_state_variables_;
 
   inputs_.reserve(num_scan_inputs_);
-  axes_.reserve(num_scan_inputs_);
-}
-
-/**
-Calculate the transpose permutations and output shape by shifting the chosen axis to the first dimension.
-The other dimension indexes or values are pushed in order after the chosen axis.
-
-e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 2} and output shape will be {3, 2, 4}
-     if axis 2 is chosen the permutations will be {2, 0, 1} and the output shape will be {4, 2, 3}
-*/
-static void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
-                                     std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape) {
-  int64_t rank = input_shape.NumDimensions();
-  const auto& dims = input_shape.GetDims();
-
-  permutations.reserve(rank);
-  permutations.push_back(axis);
-
-  output_shape.reserve(rank);
-  output_shape.push_back(dims[axis]);
-
-  for (int64_t i = 0; i < rank; ++i) {
-    if (i != axis) {
-      permutations.push_back(i);
-      output_shape.push_back(dims[i]);
-    }
-  }
+  input_axes_.reserve(num_scan_inputs_);
 }
 
 Status ScanImpl::Initialize() {
@@ -279,7 +269,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
-    auto seq_len_dim = axes_[i - num_loop_state_variables_];
+    auto seq_len_dim = input_axes_[i - num_loop_state_variables_];
     auto this_seq_len = input_shape[seq_len_dim];
 
     if (sequence_len_ < 0) {
@@ -306,10 +296,10 @@ Status ScanImpl::ValidateInput() {
                            " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
-  // validate/calculate the axes values and populate axes_.
-  // we already checked that axes_from_attribute_.size() == num_scan_inputs_.
+  // validate/calculate the input axes values and populate input_axes_.
+  // we already checked that input_axes_from_attribute_.size() == num_scan_inputs_
   for (int i = 0; i < num_scan_inputs_; ++i) {
-    auto axis = axes_from_attribute_[i];
+    auto axis = input_axes_from_attribute_[i];
 
     // zero is always valid, so only do extra checks for non-zero values
     if (axis != 0) {
@@ -318,14 +308,17 @@ Status ScanImpl::ValidateInput() {
       if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
       else
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in axes for input ", i,
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_input_axes for input ", i,
                                " of ", axis, ". Input tensor rank was ", input_rank);
     }
 
-    axes_.push_back(axis);
+    input_axes_.push_back(axis);
   }
 
-  // no validation for loop state variables
+  // we're not guaranteed to have complete output shapes, so delay checking output_axes_from_attribute_
+  // values until after execution.
+
+  // no validation for loop state variables.
 
   // validate the scan inputs
   auto status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, graph_inputs);
@@ -339,7 +332,7 @@ Status ScanImpl::SetupInputs() {
   AllocatorPtr alloc;
 
   for (int i = 0; i < num_scan_inputs_; ++i) {
-    auto sequence_dim = axes_[i];
+    auto sequence_dim = input_axes_[i];
 
     if (sequence_dim == 0) {
       // no transpose required
@@ -393,8 +386,12 @@ Status ScanImpl::AllocateOutputTensors() {
       direction = static_cast<ScanDirection>(output_directions_[scan_output_index]);
     }
 
-    status = AllocateOutput(context_, subgraph_, i, false, -1, sequence_len_, output_iter, direction);
+    // if we need to transpose later, we need to use a temporary output buffer when executing the subgraph
+    bool temporary = output_axes_from_attribute_[scan_output_index] != 0;
+
+    status = AllocateOutput(context_, subgraph_, i, false, -1, sequence_len_, output_iter, direction, temporary);
     ORT_RETURN_IF_ERROR(status);
+
     output_iterators_.push_back(std::move(output_iter));
   }
 
@@ -448,6 +445,45 @@ Status ScanImpl::Execute() {
                            num_variadic_inputs_, num_variadic_outputs_, implicit_inputs_,
                            subgraph_output_names_, output_iterators_);
 
+  ORT_RETURN_IF_ERROR(status);
+
+  status = TransposeOutput();
+
+  return status;
+}
+
+Status ScanImpl::TransposeOutput() {
+  auto status = Status::OK();
+
+  for (int i = 0; i < num_scan_outputs_; ++i) {
+    auto axis = output_axes_from_attribute_[i];
+
+    if (axis != 0) {
+      auto output_index = i + num_loop_state_variables_;
+      const MLValue& temporary_output_mlvalue = output_iterators_[output_index]->GetOutput();
+      const Tensor& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
+
+      int64_t output_rank = temporary_output_tensor.Shape().NumDimensions();
+
+      // check axis is valid for input_rank and also handle any negative axis value
+      if (axis >= -output_rank && axis < output_rank)
+        axis = HandleNegativeAxis(axis, output_rank);
+      else
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
+                               " of ", axis, ". Output tensor rank was ", output_rank);
+
+      std::vector<int64_t> permutations;
+      std::vector<int64_t> new_shape;
+      CalculateTransposedShape(temporary_output_tensor.Shape(), axis, permutations, new_shape);
+
+      Tensor* output = context_.Output(output_index, new_shape);
+      ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
+
+      status = TransposeBase::DoTranspose(permutations, temporary_output_tensor, *output);
+      ORT_RETURN_IF_ERROR(status);
+    }
+  }
+
   return status;
 }
 
@@ -457,4 +493,5 @@ ONNX_CPU_OPERATOR_KERNEL(Scan,
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<9>);
+
 }  // namespace onnxruntime

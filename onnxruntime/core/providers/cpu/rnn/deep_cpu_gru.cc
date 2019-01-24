@@ -409,13 +409,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   ttp_.RunTask(std::move(task_fw));
 #else
         };
-    std::condition_variable cv;
-    std::mutex lock;
+    OrtCondVar cv;
+    OrtMutex lock;
     bool done = false;
 
     ttp_.Schedule([&]() {
       fn();
-      auto ul = std::unique_lock<std::mutex>(lock);
+      auto ul = std::unique_lock<OrtMutex>(lock);
       done = true;
       cv.notify_one();
     });
@@ -434,7 +434,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
 #ifndef USE_MKLDNN
 #ifdef USE_EIGEN_THREADPOOL
-  auto ul = std::unique_lock<std::mutex>(lock);
+  auto ul = std::unique_lock<OrtMutex>(lock);
     if (!done) cv.wait(ul);
 #else
     task_results_fw.get();

@@ -16,7 +16,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --use_tvm --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'

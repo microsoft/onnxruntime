@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/conv_impl.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
@@ -144,7 +145,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         Ymatrix.rowwise() += Bvec.transpose();
       }
 
-      fuse_activation(activation_, Ydata, Y_offset * group_, alpha_);
+      FuseActivation(activation_, Ydata, Y_offset * group_, alpha_);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;
