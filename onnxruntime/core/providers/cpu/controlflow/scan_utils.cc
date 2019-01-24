@@ -167,7 +167,7 @@ Status IterateSequence(OpKernelContextInternal& context,
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
           fetch_allocators[output] =
-              [&context, output, &iterator](const TensorShape& shape, MLValue& mlvalue) {
+              [&iterator](const TensorShape& shape, MLValue& mlvalue) {
                 return iterator.AllocateSubgraphOutput(shape, mlvalue);
               };
 
