@@ -149,11 +149,10 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
                                 const KernelCreateFn& kernel_creator) {
-  KernelCreateInfo create_info(kernel_builder.Build(), kernel_creator);
-  return Register(create_info);
+  return Register(KernelCreateInfo(kernel_builder.Build(), kernel_creator));
 }
 
-Status KernelRegistry::Register(KernelCreateInfo& create_info) {
+Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   auto& op_name = create_info.kernel_def->OpName();
 
   // Check op version conflicts.
@@ -162,14 +161,14 @@ Status KernelRegistry::Register(KernelCreateInfo& create_info) {
     if (i->second.kernel_def &&
         i->second.status.IsOK() &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      create_info.status =
+      auto st = create_info.status =
           Status(ONNXRUNTIME, FAIL,
                  "Failed to add kernel for " + op_name +
                      ": Conflicting with a registered kernel with op versions.");
       // For invalid entries, we keep them in the map now. Must check for status
       // when using the entries from the map.
       kernel_creator_fn_map_.emplace(op_name, std::move(create_info));
-      return create_info.status;
+      return st;
     }
   }
 

@@ -13,9 +13,11 @@
 
 #include "gsl/gsl_algorithm"
 
+#include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -47,7 +49,8 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::unique_ptr<OutputIterator>& output_iterator, ScanDirection direction) {
+                      std::unique_ptr<OutputIterator>& output_iterator, ScanDirection direction,
+                      bool temporary) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.
   auto& graph_outputs = subgraph.GetOutputs();
   auto* graph_output = graph_outputs.at(output_index);
@@ -77,8 +80,18 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
 
   scan_output_dims.insert(scan_output_dims.cend(), graph_output_dims.cbegin(), graph_output_dims.cend());
 
-  OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
-                         output_iterator, direction);
+  if (!temporary) {
+    OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
+                           output_iterator, direction);
+  } else {
+    auto mltype = utils::GetMLDataType(*graph_output);
+
+    // the outputs from Scan are constrained to tensors, so we can safely cast to TensorTypeBase
+    auto ml_data_type = static_cast<const TensorTypeBase*>(mltype)->GetElementType();
+
+    OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
+                           output_iterator, direction, temporary, ml_data_type);
+  }
 
   return Status::OK();
 }
@@ -96,10 +109,19 @@ Status IterateSequence(OpKernelContextInternal& context,
                        std::vector<std::string>& subgraph_output_names,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators) {
   Status status = Status::OK();
-  auto& graph_inputs = subgraph.GetInputsIncludingInitializers();
+
+  // prefer matching all inputs to the subgraph as per the Scan spec,
+  auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
+  if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
+    // fallback to just the required inputs.
+    graph_inputs = &subgraph.GetInputs();
+    ORT_ENFORCE(static_cast<size_t>(num_variadic_inputs) == graph_inputs->size(),
+                "Graph::InferAndVerifySubgraphTypes should have already validated that "
+                "num_variadic_inputs matched the subgraph inputs or required inputs.");
+  }
+
   NameMLValMap feeds;
   std::vector<MLValue> fetches;
-
   feeds.reserve(num_variadic_inputs + implicit_inputs.size());
   fetches.resize(num_variadic_outputs);
 
@@ -113,7 +135,7 @@ Status IterateSequence(OpKernelContextInternal& context,
   for (; seq_no < seq_length; ++seq_no) {
     for (int input = 0; input < num_variadic_inputs; ++input) {
       // the ordering of the Scan inputs should match the ordering of the subgraph inputs
-      auto name = graph_inputs[input]->Name();
+      auto name = (*graph_inputs)[input]->Name();
 
       if (input < num_loop_state_variables) {
         // add loop state variable input
@@ -156,8 +178,12 @@ Status IterateSequence(OpKernelContextInternal& context,
     // Many of the other pieces are constant across usages.
     // Not sure how best to handle the memory pattern side of things though.
     // For now just making it work. Optimization and refinement will follow.
-    SequentialExecutor executor{context.GetTerminateFlag()};
-    status = executor.Execute(session_state, feeds, subgraph_output_names, fetches, context.Logger());
+    //SequentialExecutor executor{context.GetTerminateFlag()};
+    //status = executor.Execute(session_state, feeds, subgraph_output_names, fetches, context.Logger());
+    //ORT_RETURN_IF_ERROR(status);
+
+    status = utils::ExecuteGraph(session_state, feeds, subgraph_output_names, fetches, /*sequential_execution*/ true,
+                                 context.GetTerminateFlag(), context.Logger());
     ORT_RETURN_IF_ERROR(status);
 
     // cycle the LoopStateVariable input/output in preparation for the next iteration
@@ -191,6 +217,25 @@ MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& s
                  DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 };
+
+void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
+                              std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape) {
+  int64_t rank = input_shape.NumDimensions();
+  const auto& dims = input_shape.GetDims();
+
+  permutations.reserve(rank);
+  permutations.push_back(axis);
+
+  output_shape.reserve(rank);
+  output_shape.push_back(dims[axis]);
+
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i != axis) {
+      permutations.push_back(i);
+      output_shape.push_back(dims[i]);
+    }
+  }
+}
 
 LoopStateVariable::LoopStateVariable(const MLValue& original_value,
                                      MLValue& final_value,
@@ -266,14 +311,18 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                bool is_loop_state_var,
                                bool is_v8,
                                TensorShape final_shape,
-                               ScanDirection direction)
+                               ScanDirection direction,
+                               bool temporary,
+                               MLDataType data_type)
     : context_{context},
       is_v8_{is_v8},
       output_index_{output_index},
       final_shape_{final_shape},
       is_loop_state_var_{is_loop_state_var},
       direction_{direction},
-      cur_iteration_{0} {
+      cur_iteration_{0},
+      temporary_{temporary},
+      data_type_{data_type} {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 
   if (is_v8) {
@@ -316,13 +365,25 @@ Status OutputIterator::Initialize() {
 Status OutputIterator::AllocateFinalBuffer() {
   // make sure a single buffer for the full output is created upfront.
   // we slice this into per-iteration pieces in Execute using MLValueTensorSlicer.
-  auto* tensor = context_.Output(output_index_, final_shape_);
-
-  if (!tensor)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output #", output_index_);
-
   // get the output tensor we just created as an MLValue
-  final_output_mlvalue_ = context_.GetOutputMLValue(output_index_);
+  if (!temporary_) {
+    // we can write directly to the Scan output
+    auto* tensor = context_.Output(output_index_, final_shape_);
+
+    if (!tensor) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for output #", output_index_);
+    }
+
+    final_output_mlvalue_ = context_.GetOutputMLValue(output_index_);
+  } else {
+    // we need to do a transpose at the end so need to write to a temporary buffer when executing the subgraph.
+    AllocatorPtr alloc;
+    auto status = context_.GetTempSpaceAllocator(&alloc);
+    ORT_RETURN_IF_ERROR(status);
+
+    temporary_final_output_mlvalue_ = AllocateTensorInMLValue(data_type_, final_shape_, alloc);
+    final_output_mlvalue_ = &temporary_final_output_mlvalue_;
+  }
 
   // if it's v8 there's always a batch size dimension so we need a slicer to hide that from each iteration
   if (is_v8_) {

@@ -20,6 +20,7 @@ class Scan final : public OpKernel {
   int64_t num_scan_inputs_;
   std::vector<int64_t> input_directions_;
   std::vector<int64_t> output_directions_;
-  std::vector<int64_t> axes_;
+  std::vector<int64_t> input_axes_;
+  std::vector<int64_t> output_axes_;
 };
 }  // namespace onnxruntime

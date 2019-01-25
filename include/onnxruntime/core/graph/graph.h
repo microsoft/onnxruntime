@@ -62,7 +62,7 @@ class Node {
     /** Construct a control edge.
     @param node The node the edge joins to the current node.
     */
-    EdgeEnd(const Node& node) noexcept;
+    explicit EdgeEnd(const Node& node) noexcept;
 
     /** Gets the Node that this EdgeEnd refers to. */
     const Node& GetNode() const noexcept;
@@ -77,8 +77,8 @@ class Node {
 
    private:
     const Node* node_;
-    int src_arg_index_;
-    int dst_arg_index_;
+    const int src_arg_index_;
+    const int dst_arg_index_;
   };
 
   /** Gets the Node's NodeIndex. */
@@ -265,6 +265,14 @@ class Node {
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 
+  /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
+  @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance. 
+           nullptr if the Node has no subgraphs.
+  */
+  const std::unordered_map<std::string, gsl::not_null<Graph*>>& GetAttributeNameToMutableSubgraphMap() {
+    return attr_to_subgraph_map_;
+  }
+
   /** Gets the execution ProviderType that this node will be executed by. */
   ProviderType GetExecutionProviderType() const noexcept;
 
@@ -420,7 +428,7 @@ class Node {
   Graph* graph_;
 
   // Map of attribute name to the Graph instance created from the GraphProto attribute
-  std::unordered_map<std::string, Graph*> attr_to_subgraph_map_;
+  std::unordered_map<std::string, gsl::not_null<Graph*>> attr_to_subgraph_map_;
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
@@ -522,7 +530,7 @@ class Graph {
   const GraphNodes& Nodes() const noexcept { return iterable_nodes_; }
 
   /** Gets the maximum NodeIndex value used in the Graph. */
-  int MaxNodeIndex() const { return gsl::narrow<int>(nodes_.size()); }
+  int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph. 
   @remarks This may be smaller than MaxNodeIndex(), as Nodes may be removed during optimization.

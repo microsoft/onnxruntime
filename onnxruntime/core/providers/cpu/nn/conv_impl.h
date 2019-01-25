@@ -23,23 +23,6 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
-template <typename T>
-void fuse_activation(const std::string& activation, T* y_data, size_t size, float alpha) {
-  EigenVectorArrayMap<T> y_vec(y_data, size);
-  if (activation.empty()) {
-    return;
-  } else if (activation == "Relu") {
-    y_vec = y_vec.cwiseMax(0);
-  } else if (activation == "Sigmoid") {
-    y_vec = (y_vec >= 0).select(1 / (1. + (-y_vec.abs()).exp()), 1 - 1 / (1. + (-y_vec.abs()).exp()));
-  } else if (activation == "Tanh") {
-    y_vec = y_vec.tanh();
-  } else if (activation == "LeakyRelu") {
-    y_vec = (y_vec >= 0).select(y_vec, (T)alpha * y_vec);
-  } else {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
-  }
-}
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
@@ -53,21 +36,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
-
-  if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                           " W: ", W->Shape().ToString().c_str());
-  }
-
-  for (size_t i = 0; i < kernel_shape.size(); ++i) {
-    if (kernel_shape[i] != W->Shape()[i + 2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
-    }
-  }
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
 
   bool Is2DKernel = kernel_shape.size() == 2;
   std::vector<int64_t> pads(pads_);
@@ -168,7 +138,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       auto Bvec = ConstEigenVectorMap<T>(B->template Data<T>(), M);
       Ymatrix.rowwise() += Bvec.transpose();
     }
-    fuse_activation(activation_, Ydata, Y_offset * group_, alpha_);
+    FuseActivation(activation_, Ydata, Y_offset * group_, alpha_);
 
     Xdata += X_offset * group_;
     Ydata += Y_offset * group_;

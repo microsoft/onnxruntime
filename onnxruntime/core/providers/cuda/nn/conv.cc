@@ -43,7 +43,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT* y_data = nullptr;
 
   {
-    std::lock_guard<std::mutex> lock(s_.mutex);
+    std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
     bool input_dims_changed = (s_.last_x_dims != x_dims);
     bool w_dims_changed = (s_.last_w_dims != w_dims);
@@ -59,7 +59,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-      std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
+      std::vector<int64_t> kernel_shape;
+      ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
       auto rank = kernel_shape.size();
       std::vector<int64_t> pads(pads_);
       if (pads.empty()) {

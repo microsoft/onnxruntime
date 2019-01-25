@@ -9,6 +9,8 @@
 #include "test/providers/provider_test_utils.h"
 #include "core/session/inference_session.h"
 
+#include "test/util/include/default_providers.h"
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -18,6 +20,7 @@ struct RunOptions {
   bool include_dim_values_in_main_graph = false;
   int symbolic_dim_value_in_main_graph = -1;
   bool include_dim_values_in_subgraph = true;
+  bool mixed_execution_providers = false;
 };
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
@@ -86,8 +89,6 @@ class IfOpTester : public OpTester {
 
     // add Identity node so if_graph_input_0 comes from graph inputs
     {
-      MTypeProto<std::string, float> map_type;
-
       inputs = {if_input};
       outputs = {&graph.GetOrCreateNodeArg("if_input_0", if_input->TypeAsProto())};
       graph.AddNode("identity", "Identity", "Pass if input through from graph inputs.", inputs, outputs);
@@ -201,7 +202,17 @@ void RunTest(bool condition_value,
     test.AddOutput<float>("if_out_0", output_shape, {11.f});
   }
 
-  test.Run(expect_result, failure_message);
+  if (options.mixed_execution_providers) {
+    // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
+    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+
+    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+  } else {
+    test.Run(expect_result, failure_message);
+  }
 }
 
 TEST(If, ShapeInMainGraph_NoShapeInSubgraph_True) {
@@ -236,6 +247,14 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
   RunTest(false, options);
 }
 
+#ifdef USE_CUDA
+TEST(If, MixedExecutionProviders) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  RunTest(true, options);
+}
+#endif  // USE_CUDA
+
 /*
 These tests require subgraphs with nodes that support symbolic dimensions.
 'Add' does not.
@@ -260,5 +279,6 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   RunTest(false, options);
 }
 */
+
 }  // namespace test
 }  // namespace onnxruntime

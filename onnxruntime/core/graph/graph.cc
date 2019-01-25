@@ -401,7 +401,7 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   if (attr != attributes_.cend() && attr->second.has_g()) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph{new Graph(*graph_, mutable_graph)};
-    attr_to_subgraph_map_[attr_name] = subgraph.get();
+    attr_to_subgraph_map_.insert({std::string{attr_name}, gsl::not_null<Graph*>{subgraph.get()}});
     subgraphs_.push_back(std::move(subgraph));
   }
 }
@@ -1305,18 +1305,32 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   output_types.clear();
 
-  auto& subgraph_inputs = subgraph.GetInputs();
-  auto num_subgraph_inputs = subgraph_inputs.size();
+  // the spec says all inputs should be provided for the subgraph so default to that first
+  auto* subgraph_inputs = &subgraph.GetInputsIncludingInitializers();
+  auto num_subgraph_inputs = subgraph_inputs->size();
 
   if (num_subgraph_inputs != input_types.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Size mismatch validating subgraph inputs. Got ",
-                           input_types.size(), " inputs but subgraph requires ", subgraph_inputs.size());
+    // we also allow for just the required inputs to be provided to be user friendly due to ONNX requiring
+    // initializers to have matching inputs (making them optional inputs that most likely the user doesn't want to
+    // override).
+    auto& required_subgraph_inputs = subgraph.GetInputs();
+    auto num_required_subgraph_inputs = required_subgraph_inputs.size();
+
+    if (num_required_subgraph_inputs != input_types.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Size mismatch validating subgraph inputs. Got ", input_types.size(),
+                             " inputs but subgraph has ", num_subgraph_inputs,
+                             " inputs and requires ", num_required_subgraph_inputs,
+                             " inputs. Either provide all subgraph inputs, or just the required inputs.");
+    } else {
+      subgraph_inputs = &required_subgraph_inputs;
+      num_subgraph_inputs = num_required_subgraph_inputs;
+    }
   }
 
   // apply type/shape info to the subgraph's inputs
   for (size_t i = 0; i < num_subgraph_inputs; ++i) {
     const auto& input_type = *input_types[i];
-    const auto& subgraph_input = *subgraph_inputs[i];
+    const auto& subgraph_input = *subgraph_inputs->at(i);
 
     NodeArg* mutable_nodearg = subgraph.GetNodeArg(subgraph_input.Name());
     status = mutable_nodearg->UpdateTypeAndShape(input_type);
@@ -2410,6 +2424,7 @@ Status Graph::SetGraphInputsOutputs() {
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
+  ORT_ENFORCE(nodes_.size() < std::numeric_limits<int>::max());
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
   Node* node{new_node.get()};
 

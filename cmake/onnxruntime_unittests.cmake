@@ -351,7 +351,8 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCase.cc
   ${onnx_test_runner_src_dir}/TestCase.h
   ${onnx_test_runner_src_dir}/path_lib.h
-  ${onnx_test_runner_src_dir}/sync_api.h)
+  ${onnx_test_runner_src_dir}/sync_api.h
+  ${onnx_test_runner_src_dir}/sync_api.cc)
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -363,18 +364,19 @@ if(WIN32)
   target_include_directories(win_getopt_mb INTERFACE ${mb_get_opt_src_dir}/include)
   set_target_properties(win_getopt_mb PROPERTIES FOLDER "ONNXRuntimeTest")
 
-  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/sync_api_win.cc)
+  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
+
   set(GETOPT_LIB_WIDE win_getopt_wide)
   set(GETOPT_LIB win_getopt_mb)
 else()
-  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h ${onnx_test_runner_src_dir}/sync_api_linux.cc)
+  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h)
   if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
     set(FS_STDLIB stdc++fs)
   endif()
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
-onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_test_utils gsl onnx onnx_proto)
+onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework onnxruntime_test_utils gsl onnx onnx_proto)
 add_dependencies(onnx_test_runner_common eigen onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -415,21 +417,6 @@ endif()
 if(WIN32)
   target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
-
-set(onnxruntime_exec_src_dir ${TEST_SRC_DIR}/onnxruntime_exec)
-file(GLOB onnxruntime_exec_src
-  "${onnxruntime_exec_src_dir}/*.cc"
-  "${onnxruntime_exec_src_dir}/*.h"
-  )
-
-add_executable(onnxruntime_exec ${onnxruntime_exec_src})
-
-target_include_directories(onnxruntime_exec PRIVATE ${ONNXRUNTIME_ROOT})
-# we need to force these dependencies to build first. just using target_link_libraries isn't sufficient
-add_dependencies(onnxruntime_exec ${onnxruntime_EXTERNAL_DEPENDENCIES})
-onnxruntime_add_include_to_target(onnxruntime_exec gsl)
-target_link_libraries(onnxruntime_exec PRIVATE ${onnx_test_libs})
-set_target_properties(onnxruntime_exec PROPERTIES FOLDER "ONNXRuntimeTest")
 
 add_test(NAME onnx_test_pytorch_converted
   COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)

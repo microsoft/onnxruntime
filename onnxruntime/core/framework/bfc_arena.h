@@ -23,6 +23,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
 #include "onnxruntime_config.h"
 
@@ -36,6 +37,7 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
+
 // Runtime statistics collected by an allocator.
 struct AllocatorStats {
   int64_t num_allocs;             // Number of allocations.
@@ -461,7 +463,7 @@ class BFCArena : public IArenaAllocator {
 
   std::unique_ptr<IDeviceAllocator> device_allocator_;
 
-  mutable std::mutex lock_;
+  mutable OrtMutex lock_;
 
   RegionManager region_manager_;
   std::vector<Chunk> chunks_;
