@@ -71,7 +71,7 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,   // maps to c type int32_t
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,   // maps to c type int64_t
   ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,  // maps to c++ type std::string
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,    //
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,      // maps to c type double
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,      // maps to c type uint32_t
