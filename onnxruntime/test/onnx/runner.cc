@@ -287,11 +287,15 @@ SeqTestRunner::SeqTestRunner(OrtSession* session1,
                              TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), repeat_count_(repeat_count) {
 }
 
-DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(MockedOrtAllocator::Create()) {
+DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(std::make_unique<MockedOrtAllocator>()) {
   std::string s;
   c->GetNodeName(&s);
   result = std::make_shared<TestCaseResult>(c->GetDataCount(), EXECUTE_RESULT::UNKNOWN_ERROR, s);
   SetTimeSpecToZero(&spent_time_);
+}
+
+DataRunner::~DataRunner() {
+  OrtReleaseSession(session);
 }
 
 void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result) {
@@ -322,14 +326,14 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   // Create output feed
   size_t output_count;
-  ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &output_count));
+  ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = nullptr;
-    ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, default_allocator, &output_name));
+    ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, default_allocator.get(), &output_name));
     assert(output_name != nullptr);
     output_names[i] = output_name;
-    (*default_allocator)->Free(default_allocator, output_name);
+    default_allocator->Free(output_name);
   }
 
   TIME_SPEC start_time, end_time;
@@ -348,7 +352,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     for (size_t i = 0; i != output_count; ++i) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
-    auto onnx_status = OrtRunInference(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
+    auto onnx_status = OrtRun(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
     if (onnx_status != nullptr) {
       std::string onnx_runtime_error_message = OrtGetErrorMessage(onnx_status);
       OrtReleaseStatus(onnx_status);
@@ -493,7 +497,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     auto sf2 = sf.clone();
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());
     std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> session_object(
-        sf2.OrtCreateInferenceSession(info->GetModelUrl()), OrtReleaseSession);
+        sf2.OrtCreateSession(info->GetModelUrl()), OrtReleaseSession);
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
     //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
     if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")

@@ -167,7 +167,7 @@ void* BFCArena::Reserve(size_t size) {
   if (size == 0)
     return nullptr;
 
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = device_allocator_->Alloc(size);
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
@@ -180,7 +180,7 @@ void* BFCArena::Reserve(size_t size) {
 }
 
 size_t BFCArena::RequestedSize(const void* ptr) {
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
   ORT_ENFORCE(h != kInvalidChunkHandle);
   BFCArena::Chunk* c = ChunkFromHandle(h);
@@ -188,7 +188,7 @@ size_t BFCArena::RequestedSize(const void* ptr) {
 }
 
 size_t BFCArena::AllocatedSize(const void* ptr) {
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
   ORT_ENFORCE(h != kInvalidChunkHandle);
   BFCArena::Chunk* c = ChunkFromHandle(h);
@@ -209,7 +209,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
   if (ptr != nullptr) {
     return ptr;
@@ -236,7 +236,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
 }
 
 void BFCArena::GetStats(AllocatorStats* stats) {
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   *stats = stats_;
 }
 
@@ -328,7 +328,7 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(it->first);

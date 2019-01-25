@@ -20,15 +20,13 @@ class Reshape final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override {
     // Copy the second input tensor into the shape vector
     const Tensor* shapeTensor = context->Input<Tensor>(1);
-    ORT_ENFORCE(shapeTensor->Shape().NumDimensions() == 1,
-                "A shape tensor must be a vector tensor.");
+    if (shapeTensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (shapeTensor->Shape().NumDimensions() != 1) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "A shape tensor must be a vector tensor, got ", shapeTensor->Shape().NumDimensions(), " dimensions");
     size_t nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
     const int64_t* data = shapeTensor->template Data<int64_t>();
-    std::vector<int64_t> shape;
-    for (size_t i = 0; i < nDims; ++i)
-      shape.push_back(data[i]);
-
+    std::vector<int64_t> shape(data, data + nDims);
     const Tensor* X = context->Input<Tensor>(0);
+    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const TensorShape& X_shape = X->Shape();
 
     ReshapeHelper helper(X_shape, shape);

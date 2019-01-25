@@ -12,8 +12,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "path_lib.h"
 //TODO: delete this
-#include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
+#include <core/platform/ort_mutex.h>
+#include <core/framework/data_types.h>
+#include <core/framework/ml_value.h>
+
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -23,6 +25,7 @@
 #pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
 #pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
 #pragma warning(disable : 4100)
+#pragma warning(disable : 4505)
 #pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
 #pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
 #pragma warning(disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
@@ -275,7 +278,7 @@ class OnnxTestCase : public ITestCase {
   std::basic_string<PATH_CHAR_TYPE> model_url_;
   OrtAllocator* allocator;
   std::vector<std::string> debuginfo_strings;
-  std::mutex m_;
+  onnxruntime::OrtMutex m_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -283,7 +286,7 @@ class OnnxTestCase : public ITestCase {
   Status loadModelFile(const PATH_CHAR_TYPE* model_url, ONNX_NAMESPACE::ModelProto** model_pb);
 
   std::string GetDatasetDebugInfoString(size_t dataset_id) override {
-    std::lock_guard<std::mutex> l(m_);
+    std::lock_guard<OrtMutex> l(m_);
     if (dataset_id < debuginfo_strings.size()) {
       return debuginfo_strings[dataset_id];
     }
@@ -478,12 +481,12 @@ Status OnnxTestCase::LoadTestData(OrtSession* session, size_t id, std::unordered
   if (st.IsOK()) {  //has an all-in-one input file
     std::ostringstream oss;
     {
-      std::lock_guard<std::mutex> l(m_);
+      std::lock_guard<OrtMutex> l(m_);
       oss << debuginfo_strings[id];
     }
     st = LoopDataFile(test_data_pb_fd, allocator, is_input ? input_value_info_ : output_value_info_, name_data_map, oss);
     {
-      std::lock_guard<std::mutex> l(m_);
+      std::lock_guard<OrtMutex> l(m_);
       debuginfo_strings[id] = oss.str();
     }
     if (!st.IsOK())
@@ -531,21 +534,21 @@ Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx
   if (!has_valid_names) {
     size_t count;
     if (is_input) {
-      ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtSessionGetInputCount(session, &count));
     } else {
-      ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputCount(session, &count));
+      ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &count));
     }
     if (count != test_data_pbs.size())
       ORT_THROW("data count mismatch");
     for (size_t i = 0; i != count; ++i) {
       char* temp_name;
       if (is_input) {
-        ORT_THROW_ON_ERROR(OrtInferenceSessionGetInputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtSessionGetInputName(session, i, allocator, &temp_name));
       } else {
-        ORT_THROW_ON_ERROR(OrtInferenceSessionGetOutputName(session, i, allocator, &temp_name));
+        ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, allocator, &temp_name));
       }
       var_names[i] = temp_name;
-      (*allocator)->Free(allocator, temp_name);
+      allocator->Free(allocator, temp_name);
     }
   }
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {

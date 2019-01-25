@@ -28,7 +28,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   std::vector<const char*> input_names{"X"};
   OrtValue* output_tensor = nullptr;
   const char* output_names[] = {"Y"};
-  ORT_THROW_ON_ERROR(OrtRunInference(session_object, NULL, input_names.data(), inputs.data(), inputs.size(), output_names, 1, &output_tensor));
+  ORT_THROW_ON_ERROR(OrtRun(session_object, NULL, input_names.data(), inputs.data(), inputs.size(), output_names, 1, &output_tensor));
   ASSERT_NE(output_tensor, nullptr);
   std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
   {
@@ -96,10 +96,10 @@ void TestInference(OrtEnv* env, T model_uri,
     std::cout << "Running simple inference with default provider" << std::endl;
   }
   if (custom_op) {
-    sf.AddCustomOp("libonnxruntime_custom_op_shared_lib_test.so");
+    sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
-  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateInferenceSession(model_uri), OrtReleaseSession);
-  std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
+  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
+  std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   // Now run
   RunSession(default_allocator.get(), inference_session.get(), dims_x, values_x, expected_dims_y, expected_values_y);
 }
@@ -148,7 +148,7 @@ TEST_F(CApiTest, DISABLED_custom_op) {
 TEST_F(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
   OrtSession* ret;
-  ORT_THROW_ON_ERROR(::OrtCreateInferenceSession(env, model_uri, nullptr, &ret));
+  ORT_THROW_ON_ERROR(::OrtCreateSession(env, model_uri, nullptr, &ret));
   ASSERT_NE(nullptr, ret);
   OrtReleaseSession(ret);
 }
@@ -156,7 +156,7 @@ TEST_F(CApiTest, create_session_without_session_option) {
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   size_t expected_len = 2;
-  std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
+  std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   {
     std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
         OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), OrtReleaseValue);

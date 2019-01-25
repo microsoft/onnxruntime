@@ -18,8 +18,8 @@
     <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
     <!--internal build related properties-->
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
-    <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
-    <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
 
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -32,33 +32,33 @@
   <!--TODO: Find a way to bundle the native symbol files properly -->
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\**\*.*"
-          PackagePath="\build\native"
+          PackagePath="\build\native\include"
           Pack="true"
-          CopyToOutputDirectory="Always"
+          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
-          PackagePath="\runtimes\win10-x64\native"
+          PackagePath="\runtimes\win-x64\native"
           Pack="true"
-          CopyToOutputDirectory="Always"
+          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
-          PackagePath="\runtimes\win10-x64\native"
+          PackagePath="\runtimes\win-x64\native"
           Pack="true"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
-          PackagePath="\runtimes\win10-x64\native"
+          PackagePath="\runtimes\win-x64\native"
           Pack="true"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\mkldnn.dll"
           Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
-          PackagePath="\runtimes\win10-x64\native"
+          PackagePath="\runtimes\win-x64\native"
           Pack="true"
           CopyToOutputDirectory="Always"
           Visible="false"

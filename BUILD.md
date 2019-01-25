@@ -43,14 +43,14 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
    cd onnxruntime
    ```
 2. Install cmake-3.11 or better from https://cmake.org/download/.
-3. (optional) Install protobuf 3.6.1 from source code(cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
-4. (optional) Install onnx from source code(cmake/external/onnx)
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
+4. (optional) Install onnx from source code (cmake/external/onnx)
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run './build.sh --config RelWithDebInfo --build\_wheel' for Linux (or './build.bat --config RelWithDebInfo --build\_wheel' for Windows)
+5. Run `./build.sh --config RelWithDebInfo --build\_wheel` for Linux (or `./build.bat --config RelWithDebInfo --build\_wheel` for Windows)
 
 The build script runs all unit tests by default.
 
@@ -76,8 +76,8 @@ ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](
 ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
 CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017. 
 
- - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the --cuda_home parameter.
- - The path to the CUDNN installation (include the 'cuda' folder in the path) must be provided via the CUDNN_PATH environment variable, or --cudnn_home parameter. The CUDNN path should contain 'bin', 'include' and 'lib' directories.
+ - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
+ - The path to the CUDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. The CUDNN path should contain `bin`, `include` and `lib` directories.
  - The path to the CUDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 You can build with:
@@ -101,7 +101,7 @@ To use the 14.11 toolset with a later version of Visual Studio 2017 you have two
    - For convenience, build.amd64.1411.bat will do this and can be used in the same way as build.bat.
      - e.g.` .\build.amd64.1411.bat --use_cuda`
 
-2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the "--msvc_toolset" build script parameter.
+2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter.
    - e.g. `.\build.bat --msvc_toolset 14.11`
 
 _Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.  
@@ -139,7 +139,7 @@ docker run --rm -it onnxruntime_dev /bin/bash
 
 #### GPU
 If you need GPU support, please also install:
-1. nvidia driver. Before doing this please add 'nomodeset rd.driver.blacklist=nouveau' to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
+1. nvidia driver. Before doing this please add `nomodeset rd.driver.blacklist=nouveau` to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
 2. nvidia-docker2: [Install doc](`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`)
 
 To test if your nvidia-docker works:
@@ -183,7 +183,7 @@ We've experimental support for Linux ARM builds. Windows on ARM is well tested.
     set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
     set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
     ```
-6. Append "-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake" to your cmake args, run cmake and make to build it.
+6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it.
 
 
 ### Native compiling on Linux (SLOWER)

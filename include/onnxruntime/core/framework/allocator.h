@@ -155,8 +155,9 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   //max_allowed is for avoiding unnecessary DIV.
   if (nmemb >= max_allowed && max_size / nmemb < size) {
     return false;
-  } else if (size >= max_allowed &&
-             nmemb > 0 && max_size / nmemb < size) {
+  }
+  if (size >= max_allowed &&
+      nmemb > 0 && max_size / nmemb < size) {
     return false;
   }
   if (alignment == 0)

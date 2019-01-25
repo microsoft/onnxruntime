@@ -123,7 +123,7 @@ class OpNodeProtoHelper {
 // the same signatures as InferenceContext other than const-ness.
 class ProtoHelperNodeContext {
  public:
-  ProtoHelperNodeContext(const onnxruntime::Node& node) : node_(node) {}
+  explicit ProtoHelperNodeContext(const onnxruntime::Node& node) : node_(node) {}
   ProtoHelperNodeContext() = delete;
 
   const ONNX_NAMESPACE::AttributeProto* getAttribute(const std::string& name) const;
