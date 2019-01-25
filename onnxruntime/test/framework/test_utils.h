@@ -9,6 +9,9 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
+#ifdef USE_TRT 
+#include "core/providers/trt/trt_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -16,6 +19,10 @@ IExecutionProvider* TestCPUExecutionProvider();
 
 #ifdef USE_CUDA
 IExecutionProvider* TestCudaExecutionProvider();
+#endif
+
+#ifdef USE_TRT
+IExecutionProvider* TestTRTExecutionProvider();
 #endif
 
 template <typename T>

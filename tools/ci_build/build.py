@@ -70,6 +70,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
+    parser.add_argument("--cuda_version", help="The version of CUDA toolkit to use. Auto-detect if not specified. e.g. 9.0")
     parser.add_argument("--cuda_home", help="Path to CUDA home."
                                             "Read from CUDA_HOME environment variable if --use_cuda is true and --cuda_home is not specified.")
     parser.add_argument("--cudnn_home", help="Path to CUDNN home. "
@@ -118,6 +119,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice packages")
     parser.add_argument("--brain_slice_client_package_name", help="Name of brainslice client package")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
+    parser.add_argument("--use_trt", action='store_true', help="Build with trt")
+    parser.add_argument("--trt_path", action='store_true', help="Path to trt dir")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -296,6 +299,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_BRAINSLICE=" + ("ON" if args.use_brainslice else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
+                 "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -304,6 +308,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_BRAINSLICE_LIB_PATH=%s/%s" % (args.brain_slice_package_path, args.brain_slice_package_name),
             "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (args.brain_slice_package_path, args.brain_slice_client_package_name),
             "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (args.brain_slice_package_path, bs_shared_lib_name)]
+
+    if args.use_trt:
+        cmake_args += ["-DTENSORRT_ROOT=%s" % args.trt_path]
 
     if args.use_llvm:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
@@ -545,6 +552,8 @@ def main():
             toolset = 'host=x64'
             if (args.msvc_toolset):
                 toolset += ',version=' + args.msvc_toolset
+            if (args.cuda_version):
+                toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():

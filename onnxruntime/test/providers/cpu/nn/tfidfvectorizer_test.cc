@@ -8,10 +8,10 @@
 
 namespace onnxruntime {
 namespace test {
-namespace ngram_test {
+namespace tfidfvectorizer_test {
 
-constexpr const char* domain = onnxruntime::kMSDomain;
-const int opset_ver = 1;
+constexpr const char* domain = kOnnxDomain;
+const int opset_ver = 9;
 
 void InitTestAttr(OpTester& test, const std::string& mode,
                   int64_t min_gram_length, int64_t max_gram_length, int64_t max_skip_count,
@@ -36,9 +36,9 @@ void InitTestAttr(OpTester& test, const std::string& mode,
     test.AddAttribute("pool_strings", pool_strings);
   }
 }
-}  // namespace ngram_test
+}  // namespace tfidfvectorizer_test
 
-using namespace ngram_test;
+using namespace tfidfvectorizer_test;
 
 // Here is what takes place in general and in particular
 // in this unit test.There are 7 n - grams : 4 unigrams and 3 bigrams
@@ -48,8 +48,8 @@ using namespace ngram_test;
 // However, attribute all controls whether we consider all of the supplied ngram[M..N] sizes
 // into consideration or not.With all = false, we only consider N - grams.
 
-TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_Skip0) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -70,8 +70,8 @@ TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TF_BatchOnlyBigrams_Skip0) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip0) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -95,8 +95,8 @@ TEST(ContribOpNgramTest, Int32_TF_BatchOnlyBigrams_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TF_OnlyBigrams_Skip0) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TF_OnlyBigrams_Skip0) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=0, Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -118,8 +118,8 @@ TEST(ContribOpNgramTest, String_TF_OnlyBigrams_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TF_BatchOnlyBigrams_Skip0) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TF_BatchOnlyBigrams_Skip0) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=0, Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -145,8 +145,8 @@ TEST(ContribOpNgramTest, String_TF_BatchOnlyBigrams_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_LevelEmpty) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_LevelEmpty) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 0},  // no unigrams, bi-grams start immediately
@@ -171,8 +171,8 @@ TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_LevelEmpty) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -195,8 +195,8 @@ TEST(ContribOpNgramTest, Int32_TF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TF_BatchOnlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, , Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -221,8 +221,8 @@ TEST(ContribOpNgramTest, Int32_TF_BatchOnlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TF_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TF_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, , Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -246,8 +246,8 @@ TEST(ContribOpNgramTest, String_TF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TF_BatchOnlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TF_BatchOnlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, , Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -270,8 +270,8 @@ TEST(ContribOpNgramTest, String_TF_BatchOnlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TF_UniAndBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_UniAndBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, , Min=1, Max=2, weights empty, int32
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -293,8 +293,8 @@ TEST(ContribOpNgramTest, Int32_TF_UniAndBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TF_BatchUniAndBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TF_BatchUniAndBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=1, Max=2, weights empty, int32
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -318,8 +318,8 @@ TEST(ContribOpNgramTest, Int32_TF_BatchUniAndBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TF_UniAndBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TF_UniAndBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=1, Max=2, weights empty, string
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -341,8 +341,8 @@ TEST(ContribOpNgramTest, String_TF_UniAndBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TF_BatchUniAndBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TF_BatchUniAndBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=1, Max=2, weights empty, string
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -366,8 +366,8 @@ TEST(ContribOpNgramTest, String_TF_BatchUniAndBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_IDF_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_IDF_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights empty, int32
   // We change to IDF but do not supply weights so
   // we should get all 1.0f where count is not zero
@@ -390,8 +390,8 @@ TEST(ContribOpNgramTest, Int32_IDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_IDF_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_IDF_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights empty, string
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
@@ -413,8 +413,8 @@ TEST(ContribOpNgramTest, String_IDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TFIDF_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TFIDF_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights empty, int32
   // We change to TFIDF but do not supply weights so
   // we should all get the original values as weights are 1.0f by
@@ -438,8 +438,8 @@ TEST(ContribOpNgramTest, Int32_TFIDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TFIDF_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TFIDF_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights empty, string
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
@@ -461,8 +461,8 @@ TEST(ContribOpNgramTest, String_TFIDF_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_IDFWeights_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_IDFWeights_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights specified, int32
   // We change to IDF with supplied weights. All
   // with non-zero counts must be replaced with the supplied weights
@@ -485,8 +485,8 @@ TEST(ContribOpNgramTest, Int32_IDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_IDFWeights_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_IDFWeights_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights specified, string
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
@@ -508,8 +508,8 @@ TEST(ContribOpNgramTest, String_IDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, Int32_TFIDFWeights_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, Int32_TFIDFWeights_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights specified, int32
   // We change to TFIDF with supplied weights.
   // We should have all counts scaled by weights
@@ -532,8 +532,8 @@ TEST(ContribOpNgramTest, Int32_TFIDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(ContribOpNgramTest, String_TFIDFWeights_onlyBigrams_Skip5) {
-  OpTester test("Ngram", opset_ver, domain);
+TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=Max=2, weights specified, string
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
