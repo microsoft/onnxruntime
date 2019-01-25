@@ -6,6 +6,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/contrib_ops/select_schema_defs.h"
+#include "core/graph/contrib_ops/reverse_sequence_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/shape_inference.h"
 
@@ -345,6 +346,7 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Select, RegisterSelectOpSchema);
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(ReverseSequence, RegisterReverseSequenceOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
       .SetDomain(kMSDomain)
