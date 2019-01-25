@@ -39,7 +39,7 @@ public:
 
     virtual void Free(void*) override
     {
-        ORT_THROW("TRT has on default allocator.");
+        ORT_THROW("TRT has no default allocator.");
     }
 };
 }  // namespace onnxruntime
