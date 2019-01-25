@@ -644,21 +644,6 @@ TEST(InferenceSessionTests, TestWithIstream) {
   RunModel(session_object, run_options);
 }
 
-TEST(InferenceSessionTests, TestWithExistingModel) {
-  SessionOptions so;
-
-  so.session_logid = "InferenceSessionTests.TestWithExistingModel";
-
-  InferenceSession session_object{so};
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(MODEL_URI, model).IsOK());
-  ASSERT_TRUE(session_object.Initialize(model).IsOK());
-
-  RunOptions run_options;
-  run_options.run_tag = "InferenceSessionTests.TestWithIstream";
-  RunModel(session_object, run_options);
-}
-
 TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
   SessionOptions so;
 
