@@ -29,7 +29,7 @@ docker run -h $HOSTNAME \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         "onnxruntime-$IMAGE" \
-        -e "OnnxRuntimeBuildDirectory=$OnnxRuntimeBuildDirectory" \
+        -e "OnnxRuntimeBuildDirectory=$BUILD_DIR" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $TestDataUrl $TestDataChecksum &
 
