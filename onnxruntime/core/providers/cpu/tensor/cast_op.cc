@@ -108,7 +108,7 @@ ADD_FROM_CAST_OP(double);
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cast,
     6,
-	9,
+    9,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()).TypeConstraint("T2", castOpTypeConstraints),
     Cast<MLFloat16>);

@@ -279,8 +279,8 @@ TEST(TensorOpTest, CastFromFloat16) {
 
 TEST(TensorOpTest, CastFromString) {
   const std::vector<int64_t> shape{2, 2, 2};
-  std::initializer_list<std::string> string_data = {"-INF", "+INF", "2.0f", "3.0f", "4.0f", "5.0f", "6.0f", "NaN"};
-  const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(), 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, NAN};
+  std::initializer_list<std::string> string_data = {"-inf", "+INF", "2.0f", "3.0f", "4.0f", "5.0f", "NaN", "nan"};
+  const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(), 2.0f, 3.0f, 4.0f, 5.0f, NAN, NAN};
   TestCastOp(string_data, float_output, shape, TensorProto::FLOAT);
 
   std::initializer_list<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
