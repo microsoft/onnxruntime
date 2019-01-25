@@ -239,12 +239,12 @@ ORT_API_STATUS(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_
 ORT_API_STATUS(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
 /**
- * \param out  should be freed by OrtReleaseSession after use
+ * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
 /**
- * \param out  should be freed by OrtReleaseSession after use
+ * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
