@@ -40,7 +40,8 @@ class GemmHelper {
     if (!IsValidBroadcast(bias, M_, N_))
       status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
 
-    ORT_ENFORCE(M_ > 0 && N_ > 0 && K_ > 0);
+    // it is possible the input is empty tensor, for example the output of roipool in fast rcnn.
+    ORT_ENFORCE(M_ >= 0 && K_ > 0 && N_ >= 0);
   }
 
   int64_t M() const { return M_; }
