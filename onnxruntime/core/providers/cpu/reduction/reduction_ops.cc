@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 using namespace std;
 namespace onnxruntime {
@@ -53,11 +54,11 @@ bool PrepareForReduce(OpKernelContext* ctx,
   const Tensor& input = *input_tensor_ptr;
 
   size_t ndim = input.Shape().GetDims().size();
-  for (int64_t axe : axes_) {
-    ORT_ENFORCE(axe >= 0 && axe < (int64_t)ndim, "Axis attribute out of range");
+  std::vector<int64_t> axes;
+  for (int64_t axis : axes_) {
+    axes.push_back(HandleNegativeAxis(axis, static_cast<int64_t>(ndim)));
   }
 
-  std::vector<int64_t> axes = axes_;
   if (axes.empty()) {
     // This is the default case for non-arg kind reductions. Reduce on all dimensions.
     for (size_t i = 0; i < ndim; i++)
