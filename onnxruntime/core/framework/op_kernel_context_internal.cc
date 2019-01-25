@@ -28,14 +28,6 @@ Tensor* OpKernelContextInternal::Output(int index, const TensorShape& shape) {
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
-int OpKernelContextInternal::NumVariadicInputs(size_t arg_num) const {
-  auto& arg_counts = kernel_->Node().InputArgCount();
-
-  ORT_ENFORCE(arg_num < arg_counts.size(), "Invalid arg_num of ", arg_num, ". Num args is ", arg_counts.size());
-
-  return arg_counts[arg_num];
-}
-
 Status OpKernelContextInternal::GetTempSpaceAllocator(AllocatorPtr* output) const {
   *output = execution_frame_->GetAllocator(kernel_->Allocator(0, OrtMemTypeDefault));
   if (!*output)
@@ -82,31 +74,21 @@ Fence_t OpKernelContextInternal::OutputFence(int index) const {
   return p_ml_value ? p_ml_value->Fence() : nullptr;
 }
 
-Status OpKernelContextInternal::GetOrCreateOutputMLValue(int index, MLValue*& p_value) {
-  auto output_arg_index = GetOutputArgIndex(index);
-  MLValueAllocationParameters parameters;
-  ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, parameters, p_value).IsOK());
-  return Status::OK();
+const SessionState* OpKernelContextInternal::SubgraphSessionState(const std::string& attribute_name) {
+  return GetSessionState().GetSubgraphSessionState(GetNodeIndex(), attribute_name);
 }
 
-int OpKernelContextInternal::GetInputArgIndex(int index) const {
-  return node_input_start_index_ + index;
-}
+std::unordered_map<std::string, const MLValue*> OpKernelContextInternal::GetImplicitInputs() const {
+  // we need to convert implicit_inputs_ to a name to MLValue map so it can be used in the ExecutionFrame
+  // for a subgraph (the index numbers will be different there).
+  std::unordered_map<std::string, const MLValue*> implicit_inputs_map;
+  const std::vector<NodeArg*>& implicit_inputs = kernel_->Node().ImplicitInputDefs();
 
-int OpKernelContextInternal::GetImplicitInputArgIndex(int index) const {
-  return node_implicit_input_start_index_ + index;
-}
+  for (int i = 0, end = gsl::narrow_cast<int>(implicit_inputs.size()); i < end; ++i) {
+    implicit_inputs_map[implicit_inputs[i]->Name()] = GetImplicitInputMLValue(i);
+  }
 
-int OpKernelContextInternal::GetOutputArgIndex(int index) const {
-  return node_output_start_index_ + index;
-}
-
-onnxruntime::NodeIndex OpKernelContextInternal::GetNodeIndex() const {
-  return kernel_->Node().Index();
-}
-
-const SessionState& OpKernelContextInternal::GetSessionState() const {
-  return execution_frame_->SessionState();
+  return implicit_inputs_map;
 }
 
 const MLValue* OpKernelContextInternal::GetInputMLValue(int index) const {
@@ -114,14 +96,6 @@ const MLValue* OpKernelContextInternal::GetInputMLValue(int index) const {
     return nullptr;
 
   int input_arg_index = GetInputArgIndex(index);
-  return execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
-}
-
-const MLValue* OpKernelContextInternal::GetImplicitInputMLValue(int index) const {
-  if (index < 0 || index >= ImplicitInputCount())
-    return nullptr;
-
-  int input_arg_index = GetImplicitInputArgIndex(index);
   return execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
 }
 

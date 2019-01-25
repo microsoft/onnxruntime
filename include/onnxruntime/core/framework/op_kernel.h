@@ -68,15 +68,21 @@ class OpKernelContext {
 
   virtual ~OpKernelContext() = default;
 
-  /**
-  Return the number of inputs for a variadic argument.
-  @param arg_num The operator argument number.
-  @returns Number of inputs the argument has.
-  */
-  int NumVariadicInputs(size_t arg_num) const;
+  const logging::Logger& Logger() const {
+    return *logger_;
+  }
 
-  MLDataType InputType(int index) const;
-  MLDataType OutputType(int index) const;
+  int InputCount() const {
+    return static_cast<int>(kernel_->Node().InputDefs().size());
+  }
+
+  int ImplicitInputCount() const {
+    return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
+  }
+
+  int OutputCount() const {
+    return static_cast<int>(kernel_->Node().OutputDefs().size());
+  }
 
   template <typename T>
   const T* Input(int index) const {
@@ -95,33 +101,32 @@ class OpKernelContext {
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
+  /**
+  Return the number of inputs for a variadic argument.
+  @param arg_num The operator argument number.
+  @returns Number of inputs the argument has.
+  */
+  int NumVariadicInputs(size_t arg_num) const {
+    auto& arg_counts = kernel_->Node().InputArgCount();
+
+    ORT_ENFORCE(arg_num < arg_counts.size(), "Invalid arg_num of ", arg_num, ". Num args is ", arg_counts.size());
+
+    return arg_counts[arg_num];
+  }
+
   // In the case that memory allocation has not been done for an output tensor,
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
   virtual Tensor* Output(int index, const TensorShape& shape) = 0;
-
-  const logging::Logger& Logger() const {
-    return *logger_;
-  }
-
-  int InputCount() const {
-    return static_cast<int>(kernel_->Node().InputDefs().size());
-  }
-
-  int ImplicitInputCount() const {
-    return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
-  }
-
-  int OutputCount() const {
-    return static_cast<int>(kernel_->Node().OutputDefs().size());
-  }
 
   /**
    * return an allocator on device 0, with memtype of OrtMemTypeDefault
    *
    */
   virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const = 0;
-  ;
+
+  virtual MLDataType InputType(int index) const = 0;
+  virtual MLDataType OutputType(int index) const = 0;
 
   /**
   Return the fence of current node's input.
@@ -147,27 +152,17 @@ class OpKernelContext {
   */
   virtual Fence_t OutputFence(int index) const = 0;
 
- protected:
-  onnxruntime::NodeIndex GetNodeIndex() const;
-  const SessionState& GetSessionState() const;
+  virtual const SessionState* SubgraphSessionState(const std::string& attribute_name) = 0;
+  virtual std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const = 0;
 
-  const MLValue* GetInputMLValue(int index) const;
-  const MLValue* GetImplicitInputMLValue(int index) const;
-  MLValue* GetOutputMLValue(int index);
+  virtual const MLValue* GetInputMLValue(int index) const = 0;
+  virtual MLValue* GetOutputMLValue(int index) = 0;
 
-  Status GetOrCreateOutputMLValue(int index, MLValue*& value);
-
-  int GetInputArgIndex(int index) const;
-  int GetImplicitInputArgIndex(int index) const;
-  int GetOutputArgIndex(int index) const;
+protected:
+  virtual Status GetOrCreateOutputMLValue(int index, MLValue*& p_value) = 0;
 
   const OpKernel* kernel_{nullptr};
   const logging::Logger* logger_{nullptr};
-
-  // The argument starting index in ExecutionFrame.
-  int node_input_start_index_{-1};
-  int node_implicit_input_start_index_{-1};
-  int node_output_start_index_{-1};
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists
