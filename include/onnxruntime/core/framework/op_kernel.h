@@ -72,6 +72,19 @@ class OpKernelContext {
     return *logger_;
   }
 
+  /**
+  Return the number of inputs for a variadic argument.
+  @param arg_num The operator argument number.
+  @returns Number of inputs the argument has.
+  */
+  int NumVariadicInputs(size_t arg_num) const {
+    auto& arg_counts = kernel_->Node().InputArgCount();
+
+    ORT_ENFORCE(arg_num < arg_counts.size(), "Invalid arg_num of ", arg_num, ". Num args is ", arg_counts.size());
+
+    return arg_counts[arg_num];
+  }
+
   int InputCount() const {
     return static_cast<int>(kernel_->Node().InputDefs().size());
   }
@@ -101,18 +114,8 @@ class OpKernelContext {
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
-  /**
-  Return the number of inputs for a variadic argument.
-  @param arg_num The operator argument number.
-  @returns Number of inputs the argument has.
-  */
-  int NumVariadicInputs(size_t arg_num) const {
-    auto& arg_counts = kernel_->Node().InputArgCount();
-
-    ORT_ENFORCE(arg_num < arg_counts.size(), "Invalid arg_num of ", arg_num, ". Num args is ", arg_counts.size());
-
-    return arg_counts[arg_num];
-  }
+  virtual MLDataType InputType(int index) const = 0;
+  virtual MLDataType OutputType(int index) const = 0;
 
   // In the case that memory allocation has not been done for an output tensor,
   // The memory allocation will be done on-the-fly with given tensor shape.
@@ -124,9 +127,6 @@ class OpKernelContext {
    *
    */
   virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const = 0;
-
-  virtual MLDataType InputType(int index) const = 0;
-  virtual MLDataType OutputType(int index) const = 0;
 
   /**
   Return the fence of current node's input.

@@ -19,20 +19,12 @@ class OpKernelContextInternal : public OpKernelContext {
   explicit OpKernelContextInternal(ExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const bool& terminate_flag)
-      : OpKernelContext(&kernel, logger),
-        execution_frame_(&frame),
-        terminate_flag_{terminate_flag} {
+                                   const bool& terminate_flag);
 
-    node_input_start_index_ = frame.GetFirstArgIndex(kernel_->Node().Index());
-    node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
-    node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
-  }
-
-  Tensor* Output(int index, const TensorShape& shape) override;
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const;
   MLDataType InputType(int index) const;
   MLDataType OutputType(int index) const;
+  Tensor* Output(int index, const TensorShape& shape) override;
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const;
 
   virtual Fence_t InputFence(int index) const;
   Fence_t ImplicitInputFence(int index) const;

@@ -10,6 +10,30 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+OpKernelContextInternal::OpKernelContextInternal(ExecutionFrame& frame,
+                                                 const OpKernel& kernel,
+                                                 const logging::Logger& logger,
+                                                 const bool& terminate_flag)
+    : OpKernelContext(&kernel, logger),
+      execution_frame_(&frame),
+      terminate_flag_{terminate_flag} {
+  node_input_start_index_ = frame.GetFirstArgIndex(kernel_->Node().Index());
+  node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
+  node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
+}
+
+MLDataType OpKernelContextInternal::InputType(int index) const {
+  int input_arg_index = GetInputArgIndex(index);
+  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
+  return p_ml_value ? p_ml_value->Type() : nullptr;
+}
+
+MLDataType OpKernelContextInternal::OutputType(int index) const {
+  auto output_arg_index = GetOutputArgIndex(index);
+  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
+  return p_ml_value ? p_ml_value->Type() : nullptr;
+}
+
 Tensor* OpKernelContextInternal::Output(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
@@ -33,18 +57,6 @@ Status OpKernelContextInternal::GetTempSpaceAllocator(AllocatorPtr* output) cons
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
   return Status::OK();
-}
-
-MLDataType OpKernelContextInternal::InputType(int index) const {
-  int input_arg_index = GetInputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
-  return p_ml_value ? p_ml_value->Type() : nullptr;
-}
-
-MLDataType OpKernelContextInternal::OutputType(int index) const {
-  auto output_arg_index = GetOutputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
-  return p_ml_value ? p_ml_value->Type() : nullptr;
 }
 
 Fence_t OpKernelContextInternal::InputFence(int index) const {
