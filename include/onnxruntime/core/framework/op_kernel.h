@@ -155,7 +155,6 @@ class OpKernelContext {
   const MLValue* GetImplicitInputMLValue(int index) const;
   MLValue* GetOutputMLValue(int index);
 
- protected:
   Status GetOrCreateOutputMLValue(int index, MLValue*& value);
 
   int GetInputArgIndex(int index) const;

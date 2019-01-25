@@ -39,9 +39,17 @@ class OpKernelContextInternal : public OpKernelContext {
 
   Tensor* Output(int index, const TensorShape& shape) override;
   Status GetTempSpaceAllocator(AllocatorPtr* output) const;
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const;
 
   virtual Fence_t InputFence(int index) const = 0;
+
+  Status GetOrCreateOutputMLValue(int index, MLValue*& value);
+
+  onnxruntime::NodeIndex GetNodeIndex() const;
+  const SessionState& GetSessionState() const;
+
+  int GetInputArgIndex(int index) const;
+  int GetImplicitInputArgIndex(int index) const;
+  int GetOutputArgIndex(int index) const;
 
   /**
   Return the fence of current node's implicit input.
