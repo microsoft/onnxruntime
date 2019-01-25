@@ -1103,22 +1103,6 @@ common::Status InferenceSession::Initialize() {
   return impl_->Initialize();
 }
 
-common::Status InferenceSession::Initialize(std::shared_ptr<Model>& model_in) {
-  if (!model_in) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "model_in does not contain a Model instance.");
-  }
-
-  // make sure graph is resolved.
-  Status status = model_in->MainGraph().Resolve();
-  ORT_RETURN_IF_ERROR(status);
-
-  status = impl_->Load([&](std::shared_ptr<Model>& model) { model = model_in; return Status::OK(); },
-                       "initialize_with_model");
-  ORT_RETURN_IF_ERROR(status);
-
-  return impl_->Initialize();
-}
-
 common::Status InferenceSession::Run(const NameMLValMap& feeds,
                                      const std::vector<std::string>& output_names,
                                      std::vector<MLValue>* p_fetches) {
