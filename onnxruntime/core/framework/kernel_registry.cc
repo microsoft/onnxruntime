@@ -3,7 +3,6 @@
 
 #include <memory>
 #include <unordered_map>
-
 #include "core/framework/kernel_registry.h"
 
 using namespace ::onnxruntime::common;
@@ -268,7 +267,12 @@ Status KernelRegistry::CreateKernel(const onnxruntime::Node& node,
     return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
   }
 
-  OpKernelInfo kernel_info(node, *kernel_create_info->kernel_def, execution_provider, session_state);
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           session_state.GetMLValueNameIdxMap(),
+                           session_state.GetFuncMgr(),
+                           session_state.GetInitializedTensors(),
+                           execution_provider);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }

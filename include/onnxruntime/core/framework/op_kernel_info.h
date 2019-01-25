@@ -6,15 +6,14 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/ml_value.h"
+#include "core/framework/mlvalue_name_idx_map.h"
+#include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/span"
 #include "gsl/gsl_util"
 
 namespace onnxruntime {
-
-class SessionState;
-
 /**
    A very light-weight class, which works as an aggregated
    view of all data needed for constructing a Kernel instance.
@@ -24,8 +23,10 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
  public:
   explicit OpKernelInfo(const onnxruntime::Node& node,
                         const KernelDef& kernel_def,
-                        const IExecutionProvider& execution_provider,
-                        const SessionState& session_state);
+                        const MLValueNameIdxMap& mlvalue_name_idx_map,
+                        const FuncManager* funcs_mgr,
+                        const std::unordered_map<int, MLValue>& initialized_tensors,
+                        const IExecutionProvider& execution_provider);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -49,11 +50,13 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   const onnxruntime::Node& node_;
   const KernelDef& kernel_def_;
+  const MLValueNameIdxMap& mlvalue_name_idx_map_;
+  const FuncManager* funcs_mgr_;
+  const std::unordered_map<int, MLValue>& initialized_tensors_;
   // For non cpu/cuda case, this pointer should be set so that function kernel
   // will delegate kernel compute call to <execution_provider> compute call.
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
   ProtoHelperNodeContext proto_helper_context_;
-  const SessionState& session_state_;
 };
 
 }  // namespace onnxruntime
