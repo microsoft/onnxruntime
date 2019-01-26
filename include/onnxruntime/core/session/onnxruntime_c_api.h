@@ -71,7 +71,7 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,   // maps to c type int32_t
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,   // maps to c type int64_t
   ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,  // maps to c++ type std::string
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,    //
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,      // maps to c type double
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,      // maps to c type uint32_t
@@ -139,26 +139,10 @@ ORT_RUNTIME_CLASS(AllocatorInfo);
 ORT_RUNTIME_CLASS(Session);
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(ValueList);
-
-struct OrtTypeInfo;
-typedef struct OrtTypeInfo OrtTypeInfo;
-struct OrtTensorTypeAndShapeInfo;
-typedef struct OrtTensorTypeAndShapeInfo OrtTensorTypeAndShapeInfo;
-struct OrtRunOptions;
-typedef struct OrtRunOptions OrtRunOptions;
-struct OrtSessionOptions;
-typedef struct OrtSessionOptions OrtSessionOptions;
-
-/**
- * Every type inherented from OrtObject should be deleted by OrtReleaseObject(...).
- */
-typedef struct OrtObject {
-  // Returns the new reference count.
-  uint32_t(ORT_API_CALL* AddRef)(void* this_);
-  // Returns the new reference count.
-  uint32_t(ORT_API_CALL* Release)(void* this_);
-
-} OrtObject;
+ORT_RUNTIME_CLASS(RunOptions);
+ORT_RUNTIME_CLASS(TypeInfo);
+ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
+ORT_RUNTIME_CLASS(SessionOptions);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -167,12 +151,6 @@ typedef struct OrtAllocator {
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
   const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
-
-// Inherented from OrtObject
-typedef struct OrtProviderFactoryInterface {
-  OrtObject parent;
-  OrtStatus*(ORT_API_CALL* CreateProvider)(void* this_, OrtProvider** out);
-} OrtProviderFactoryInterface;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
@@ -187,7 +165,7 @@ ORT_ALL_ARGS_NONNULL;
 
 /**
  * OrtEnv is process-wise. For each process, only one OrtEnv can be created. Don't do it multiple times
- * \param out Should be freed by `OrtReleaseObject` after use
+ * \param out Should be freed by `OrtReleaseEnv` after use
  */
 ORT_API_STATUS(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_function,
                _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
@@ -209,7 +187,7 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
                _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
 
 /**
- * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseObject after use
+ * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
  */
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions);
 
@@ -245,11 +223,15 @@ ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, u
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
-  * The order of invocation indicates the preference order as well. In other words call this method
+  * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
+  * functions to enable them in the session:
+  *   OrtSessionOptionsAppendExecutionProvider_CPU
+  *   OrtSessionOptionsAppendExecutionProvider_CUDA
+  *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
+  * The order they care called indicates the preference order as well. In other words call this method
   * on your most preferred execution provider first followed by the less preferred ones.
-  * Calling this API is optional in which case Ort will use its internal CPU execution provider.
+  * If none are called Ort will use its internal CPU execution provider.
   */
-ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f);
 
 ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 
@@ -257,12 +239,12 @@ ORT_API_STATUS(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_
 ORT_API_STATUS(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 
 /**
- * \param out  should be freed by OrtReleaseObject after use
+ * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetInputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
 /**
- * \param out  should be freed by OrtReleaseObject after use
+ * \param out  should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtSessionGetOutputTypeInfo, _In_ const OrtSession* sess, size_t index, _Out_ OrtTypeInfo** out);
 
@@ -275,7 +257,7 @@ ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t inde
                _Inout_ OrtAllocator* allocator, _Out_ char** value);
 
 /**
- * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseObject after use
+ * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
  */
 ORT_API(OrtRunOptions*, OrtCreateRunOptions);
 
@@ -345,7 +327,7 @@ ORT_API_STATUS(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
 ORT_API(const OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ OrtTypeInfo*);
 
 /**
- * The retured value should be released by calling OrtReleaseObject
+ * The retured value should be released by calling OrtReleaseTensorTypeAndShapeInfo
  */
 ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo);
 
@@ -374,35 +356,18 @@ ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out
 ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info);
 
 /**
- * \param out Should be freed by OrtReleaseObject after use
+ * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
  */
 ORT_API_STATUS(OrtGetTensorShapeAndType, _In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
 /**
  * Get the type information of an OrtValue
  * \param value
- * \param out The returned value should be freed by OrtReleaseObject after use
+ * \param out The returned value should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS(OrtGetTypeInfo, _In_ const OrtValue* value, OrtTypeInfo** out);
 
 ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value);
-
-/**
- * This function is a wrapper to "(*(OrtObject**)ptr)->AddRef(ptr)"
- * WARNING: There is NO type checking in this function.
- * Before calling this function, caller should make sure current ref count > 0
- * \return the new reference count
- */
-ORT_API(uint32_t, OrtAddRefToObject, _In_ void* ptr);
-
-/**
- *
- * A wrapper to "(*(OrtObject**)ptr)->Release(ptr)"
- * WARNING: There is NO type checking in this function.
- * \param ptr Can be NULL. If it's NULL, this function will return zero.
- * \return the new reference count.
- */
-ORT_API(uint32_t, OrtReleaseObject, _Inout_opt_ void* ptr);
 
 typedef enum OrtAllocatorType {
   OrtDeviceAllocator = 0,

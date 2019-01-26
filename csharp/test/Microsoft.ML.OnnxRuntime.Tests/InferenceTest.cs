@@ -522,9 +522,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtSessionGetOutputTypeInfo","OrtReleaseSession","OrtCreateSessionOptions","OrtCloneSessionOptions",
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
-            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSessionOptionsAppendExecutionProvider",
-            "OrtCreateCpuExecutionProviderFactory","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
-            "OrtCreateDefaultAllocator","OrtReleaseObject","OrtAllocatorFree","OrtAllocatorGetInfo",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSessionOptionsAppendExecutionProvider_CPU",
+            "OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
             "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetNumOfDimensions",
             "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};

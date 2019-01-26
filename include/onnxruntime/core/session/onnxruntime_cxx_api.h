@@ -38,36 +38,48 @@ struct default_delete<OrtEnv> {
     OrtReleaseEnv(ptr);
   }
 };
-}  // namespace std
 
-#define DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TYPE_NAME) \
-  namespace std {                                          \
-  template <>                                              \
-  struct default_delete<Ort##TYPE_NAME> {                  \
-    void operator()(Ort##TYPE_NAME* ptr) {                 \
-      (*reinterpret_cast<OrtObject**>(ptr))->Release(ptr); \
-    }                                                      \
-  };                                                       \
+template <>
+struct default_delete<OrtRunOptions> {
+  void operator()(OrtRunOptions* ptr) {
+    OrtReleaseRunOptions(ptr);
   }
+};
 
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TypeInfo);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(TensorTypeAndShapeInfo);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(RunOptions);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(SessionOptions);
-DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT(ProviderFactoryInterface*);
+template <>
+struct default_delete<OrtTypeInfo> {
+  void operator()(OrtTypeInfo* ptr) {
+    OrtReleaseTypeInfo(ptr);
+  }
+};
 
-#undef DECLARE_DEFAULT_DELETER_FOR_ONNX_OBJECT
+template <>
+struct default_delete<OrtTensorTypeAndShapeInfo> {
+  void operator()(OrtTensorTypeAndShapeInfo* ptr) {
+    OrtReleaseTensorTypeAndShapeInfo(ptr);
+  }
+};
+
+template <>
+struct default_delete<OrtSessionOptions> {
+  void operator()(OrtSessionOptions* ptr) {
+    OrtReleaseSessionOptions(ptr);
+  }
+};
+}  // namespace std
 
 namespace onnxruntime {
 class SessionOptionsWrapper {
  private:
-  std::unique_ptr<OrtSessionOptions, decltype(&OrtReleaseObject)> value;
+  std::unique_ptr<OrtSessionOptions> value;
   OrtEnv* env_;
-  SessionOptionsWrapper(_In_ OrtEnv* env, OrtSessionOptions* p) : value(p, OrtReleaseObject), env_(env){};
+  SessionOptionsWrapper(_In_ OrtEnv* env, OrtSessionOptions* p) : value(p), env_(env){};
 
  public:
+  operator OrtSessionOptions*() { return value.get(); }
+
   //TODO: for the input arg, should we call addref here?
-  SessionOptionsWrapper(_In_ OrtEnv* env) : value(OrtCreateSessionOptions(), OrtReleaseObject), env_(env){};
+  SessionOptionsWrapper(_In_ OrtEnv* env) : value(OrtCreateSessionOptions()), env_(env){};
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableSequentialExecution)
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableSequentialExecution)
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableProfiling)
@@ -87,15 +99,6 @@ class SessionOptionsWrapper {
   }
   void SetSessionThreadPoolSize(int session_thread_pool_size) {
     OrtSetSessionThreadPoolSize(value.get(), session_thread_pool_size);
-  }
-
-  /**
-  * The order of invocation indicates the preference order as well. In other words call this method
-  * on your most preferred execution provider first followed by the less preferred ones.
-  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
-  */
-  void AppendExecutionProvider(_In_ OrtProviderFactoryInterface** f) {
-    OrtSessionOptionsAppendExecutionProvider(value.get(), f);
   }
 
   SessionOptionsWrapper clone() const {
