@@ -77,6 +77,14 @@ jobs:
         workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
+    - task: VSTest@2
+      displayName: 'VsTest - C# Debug'
+      inputs:
+        testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
+        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
+        runInParallel: true
+        configuration: Debug
+
     - task: VSBuild@1
       displayName: 'Build Release'
       inputs:
@@ -104,6 +112,14 @@ jobs:
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+
+    - task: VSTest@2
+      displayName: 'VsTest - C# Release'
+      inputs:
+        testAssemblyVer2: '**\bin\Release\**\*Tests.dll'
+        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
+        runInParallel: true
+        configuration: Release
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
