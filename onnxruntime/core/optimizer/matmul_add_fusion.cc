@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/initializer.h"
-#include "core/graph/matmul_add_fusion.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/matmul_add_fusion.h"
 #include "core/graph/graph_utils.h"
 #include <deque>
 

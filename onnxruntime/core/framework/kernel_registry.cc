@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include "core/framework/kernel_registry.h"
+#include "core/framework/session_state.h"
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
