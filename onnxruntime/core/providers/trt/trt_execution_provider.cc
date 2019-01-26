@@ -19,21 +19,6 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime
 {
-void printSupportedNodes(SubGraphCollection_t& subGraphs, ::ONNX_NAMESPACE::ModelProto onnx_model)
-{
-    std::cout << "The model contains unsupported Nodes. It has been partitioned to ";
-    std::cout << subGraphs.size() << " TensorRT supported subGraph(s): " << std::endl;
-    for (auto subGraph: subGraphs)
-    {
-        std::cout << "\t{";
-        for (auto idx: subGraph)
-        {
-            std::cout << "\t" << idx << "," << onnx_model.graph().node(idx).op_type();
-        }
-        std::cout << "\t}"<< std::endl;
-    }
-}
-
 GraphProto ToGraphProto(const GraphViewer& graph)
 {
 
@@ -121,10 +106,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
     auto trt_parser  = infer_object(nvonnxparser::createParser(trt_network.get(), trt_logger));
 
     SubGraphCollection_t SupportedNodesVector;
-    if (!trt_parser->supportsModel(onnx_buf.data(), onnx_buf.size(), SupportedNodesVector))
-    {
-        printSupportedNodes(SupportedNodesVector, model_proto);
-    }
+    trt_parser->supportsModel(onnx_buf.data(), onnx_buf.size(), SupportedNodesVector);
     model_proto.release_graph();
 
     std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -133,7 +115,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
         //Find inputs, initializer and outputs for each supported subgraph
         std::set<size_t> node_set(group.begin(), group.end());
         std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-        if (group.size() > 0)
+        if (!group.empty())
         {
             std::set<const NodeArg*> fused_inputs, fused_outputs, erased;
             for (auto index : group)

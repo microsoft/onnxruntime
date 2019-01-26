@@ -17,7 +17,7 @@ struct TRTExecutionProviderInfo
 class TRTExecutionProvider : public IExecutionProvider
 {
 public:
-    explicit TRTExecutionProvider();
+    TRTExecutionProvider();
     virtual ~TRTExecutionProvider();
 
     std::vector<std::unique_ptr<ComputeCapability>>

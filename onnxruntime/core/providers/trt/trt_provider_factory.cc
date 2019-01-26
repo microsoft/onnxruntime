@@ -21,7 +21,7 @@ struct TRTProviderFactory
 OrtStatus* ORT_API_CALL CreateTRT(void* this_, OrtProvider** out)
 {
     TRTExecutionProviderInfo info;
-    TRTProviderFactory* this_ptr = (TRTProviderFactory*)this_;
+    TRTProviderFactory* this_ptr = static_cast<TRTProviderFactory*>(this_);
     info.device_id = this_ptr->device_id;
     TRTExecutionProvider* ret = new TRTExecutionProvider();
     *out = (OrtProvider*)ret;
@@ -30,7 +30,7 @@ OrtStatus* ORT_API_CALL CreateTRT(void* this_, OrtProvider** out)
 
 uint32_t ORT_API_CALL ReleaseTRT(void* this_)
 {
-    TRTProviderFactory* this_ptr = (TRTProviderFactory*)this_;
+    TRTProviderFactory* this_ptr = static_cast<TRTProviderFactory*>(this_);
     if (--this_ptr->ref_count == 0)
         delete this_ptr;
     return 0;
@@ -38,7 +38,7 @@ uint32_t ORT_API_CALL ReleaseTRT(void* this_)
 
 uint32_t ORT_API_CALL AddRefTRT(void* this_)
 {
-    TRTProviderFactory* this_ptr = (TRTProviderFactory*)this_;
+    TRTProviderFactory* this_ptr = static_cast<TRTProviderFactory*>(this_);
     ++this_ptr->ref_count;
     return 0;
 }

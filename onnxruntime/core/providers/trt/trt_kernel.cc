@@ -13,30 +13,6 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime
 {
-void printErrorNodes(std::shared_ptr<nvonnxparser::IParser> trt_parser, ::ONNX_NAMESPACE::ModelProto onnx_model)
-{
-    int nerror = trt_parser->getNbErrors();
-    for( int i=0; i<nerror; ++i )
-    {
-        nvonnxparser::IParserError const* error = trt_parser->getError(i);
-        if( error->node() != -1 )
-        {
-            ::ONNX_NAMESPACE::NodeProto const& node = onnx_model.graph().node(error->node());
-            std::cout << "While parsing node number " << error->node() << " [" << node.op_type();
-            if( node.output().size() )
-            {
-                std::cout << " -> \"" << node.output(0) << "\"";
-            }
-            std::cout << "]:" << std::endl;
-            std::cout << node.op_type() << std::endl;
-        }
-        std::cout << "ERROR: " << error->file() << ":" << error->line()
-             << " In function " << error->func() << ":\n"
-             << "[" << static_cast<int>(error->code()) << "] " << error->desc()
-             << std::endl;
-    }
-}
-
 TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
 {
     onnxruntime::Model model("");
@@ -47,12 +23,12 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
     {
         //This is a primitive node. Refer to an op directly
         std::vector<onnxruntime::NodeArg*> inputs, outputs;
-        for (auto input : node.InputDefs())
+        for (const auto& input : node.InputDefs())
         {
             auto& n_input = graph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
         }
-        for (auto output : node.OutputDefs())
+        for (const auto& output : node.OutputDefs())
         {
             auto& n_output = graph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
             outputs.push_back(&n_output);
@@ -72,7 +48,7 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
         ORT_ENFORCE(graph.Resolve().IsOK());
 
         //Add inputs to graph
-        for (int i = 0; i < node.InputDefs().size(); ++i)
+        for (int i = 0, end = node.InputDefs().size(); i < end; ++i)
         {
             const onnxruntime::Tensor* temp = nullptr;
             const onnxruntime::Tensor** constant_input_value = &temp;
@@ -87,7 +63,7 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
                 {
                     dtype = TensorProto_DataType_FLOAT;
                     auto input_data = input_tensor->Data<float>();
-                    for (int j = 0; j < input_tensor->Shape().Size(); ++j)
+                    for (int j = 0, end = input_tensor->Shape().Size(); j < end; ++j)
                     {
                         tensor_proto.add_float_data(input_data[j]);
                     }
@@ -96,7 +72,7 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
                 {
                     dtype = TensorProto_DataType_INT64;
                     auto input_data = input_tensor->Data<int64_t>();
-                    for (int j = 0; j < input_tensor->Shape().Size(); ++j)
+                    for (int j = 0, end = input_tensor->Shape().Size(); j < end; ++j)
                     {
                         tensor_proto.add_int64_data(input_data[j]);
                     }
@@ -126,18 +102,18 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
 
     //Add node's outputs to graphproto's outputs if the node's EdgeEnd nodes are not in the graph
     std::set<string> output_set;
-    for (int i = 0; i < model_p.graph().output().size(); ++i)
+    for (int i = 0, end = model_p.graph().output().size(); i < end; ++i)
     {
         output_set.insert(model_p.graph().output()[i].name());
     }
 
     std::vector<int> output_to_add;
-    for (int i = 0; i < node.OutputDefs().size(); ++i)
+    for (int i = 0, end = node.OutputDefs().size(); i < end; ++i)
     {
-        string output_name = node.OutputDefs()[i]->Name();
+        const std::string& output_name = node.OutputDefs()[i]->Name();
         if (output_set.find(output_name) == output_set.end())
         {
-            for (int j = 0; j < model_p.graph().value_info().size(); ++j)
+            for (int j = 0, end = model_p.graph().value_info().size(); j < end; ++j)
             {
                 if (output_name == model_p.graph().value_info()[j].name())
                 {
@@ -156,15 +132,12 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
     model_p.SerializeToString(&string_buf);
     std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
 
-    int verbosity = (int)nvinfer1::ILogger::Severity::kWARNING;
+    int verbosity = static_cast<int>(nvinfer1::ILogger::Severity::kWARNING);
     TRT_Logger trt_logger((nvinfer1::ILogger::Severity)verbosity);
     auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = infer_object(trt_builder->createNetwork());
     auto trt_parser  = infer_object(nvonnxparser::createParser(trt_network.get(), trt_logger));
-    if( !trt_parser->parse(onnx_buf.data(), onnx_buf.size()))
-    {
-        printErrorNodes(trt_parser, model_p);
-    }
+    trt_parser->parse(onnx_buf.data(), onnx_buf.size());
     trt_builder->setMaxBatchSize(max_batch_size);
     trt_builder->setMaxWorkspaceSize(max_workspace_size);
     engine_ = infer_object(trt_builder->buildCudaEngine(*trt_network.get()));
@@ -178,10 +151,10 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
     input_dimension_.resize(trt_network->getNbInputs());
     for (int i = 0; i < trt_network->getNbInputs(); i++)
     {
-        std::string name = trt_network->getInput(i)->getName();
+        const std::string& name = trt_network->getInput(i)->getName();
         size_t bindingIndex = engine_->getBindingIndex(name.c_str());
 
-        nvinfer1::Dims4 dimensions = static_cast<nvinfer1::Dims4&&>(engine_->getBindingDimensions((int)bindingIndex));
+        nvinfer1::Dims4 dimensions = static_cast<nvinfer1::Dims4&&>(engine_->getBindingDimensions(static_cast<int>(bindingIndex)));
         size_t eltCount = kBatchSize;
         input_dimension_[i].push_back(kBatchSize);
 
@@ -199,10 +172,10 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
     output_dimension_.resize(trt_network->getNbOutputs());
     for (int i = 0; i < trt_network->getNbOutputs(); i++)
     {
-        std::string name = trt_network->getOutput(i)->getName();
+        const std::string& name = trt_network->getOutput(i)->getName();
         size_t bindingIndex = engine_->getBindingIndex(name.c_str());
 
-        nvinfer1::Dims4 dimensions = static_cast<nvinfer1::Dims4&&>(engine_->getBindingDimensions((int)bindingIndex));
+        nvinfer1::Dims4 dimensions = static_cast<nvinfer1::Dims4&&>(engine_->getBindingDimensions(static_cast<int>(bindingIndex)));
         size_t eltCount = kBatchSize;
         output_dimension_[i].push_back(kBatchSize);
 
