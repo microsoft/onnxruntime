@@ -42,6 +42,7 @@
 
 #define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 
@@ -54,6 +55,15 @@
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
+
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int id, bool f, const char*, const char*, const char*);
+}  // namespace onnxruntime
+
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267 4996 4503 4003)
 #endif  // _MSC_VER
@@ -172,45 +182,32 @@ class SessionObjectInitializer {
   }
 };
 
-inline void RegisterExecutionProvider(InferenceSession* sess, OrtProviderFactoryInterface** f) {
-  OrtProvider* p;
-  (*f)->CreateProvider(f, &p);
-  std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
-  auto status = sess->RegisterExecutionProvider(std::move(q));
+inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
+  auto p = f.CreateProvider();
+  auto status = sess->RegisterExecutionProvider(std::move(p));
   if (!status.IsOK()) {
     throw std::runtime_error(status.ErrorMessage().c_str());
   }
 }
 
-#define FACTORY_PTR_HOLDER \
-  std::unique_ptr<OrtProviderFactoryInterface*, decltype(&OrtReleaseObject)> ptr_holder_(f, OrtReleaseObject);
-
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
+
 #ifdef USE_CUDA
   {
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
   }
 #endif
 
 #ifdef USE_MKLDNN
   {
     const bool enable_cpu_mem_arena = true;
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
   }
 #endif
 #if 0  //USE_NUPHAR
   {
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(0, ""));
   }
 #endif
 

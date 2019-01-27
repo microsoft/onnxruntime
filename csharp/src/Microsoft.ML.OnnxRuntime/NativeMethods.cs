@@ -90,20 +90,22 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
 
-        // release the typeinfo using OrtReleaseObject
+        // release the typeinfo using OrtReleaseTypeInfo
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session, 
                                                 ulong index, //TODO: port for size_t
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
 
-        // release the typeinfo using OrtReleaseObject
+        // release the typeinfo using OrtReleaseTypeInfo
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetOutputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session, 
                                                 ulong index, //TODO: port for size_t
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
 
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern void OrtReleaseTypeInfo(IntPtr /*(OrtTypeInfo*)*/session);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void OrtReleaseSession(IntPtr /*(OrtSession*)*/session);
@@ -112,11 +114,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region SessionOptions API
 
-        //Release using OrtReleaseObject
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*OrtSessionOptions* */ OrtCreateSessionOptions();
 
-       
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern void OrtReleaseSessionOptions(IntPtr /*(OrtSessionOptions*)*/session);
+
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtSessionOptions*)*/OrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions);
 
@@ -153,22 +156,20 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern int OrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
 
+
         ///**
         //  * The order of invocation indicates the preference order as well. In other words call this method
         //  * on your most preferred execution provider first followed by the less preferred ones.
         //  * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
         //  */
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtSessionOptionsAppendExecutionProvider(IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /* (OrtProviderFactoryPtr*)*/ factory);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CPU(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateCpuExecutionProviderFactory(int use_arena, out IntPtr /*(OrtProviderFactoryPtr*)*/ factory);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Mkldnn(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateMkldnnExecutionProviderFactory(int use_arena, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
-
-        [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateCUDAExecutionProviderFactory(int device_id, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CUDA(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern IntPtr /*(OrtStatus*)*/ OrtCreateNupharExecutionProviderFactory(int device_id, string target_str, out IntPtr /*(OrtProviderFactoryPtr**)*/ factory);
@@ -220,13 +221,8 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtCreateDefaultAllocator(out IntPtr /*(OrtAllocator**)*/ allocator);
 
-        /// <summary>
-        ///  Releases/Unrefs any object, including the Allocator
-        /// </summary>
-        /// <param name="ptr"></param>
-        /// <returns>remaining ref count</returns>
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern uint /*remaining ref count*/ OrtReleaseObject(IntPtr /*(void*)*/ ptr);
+        public static extern void OrtReleaseAllocator(IntPtr /*(OrtAllocator*)*/ allocator);
 
         /// <summary>
         /// Release any object allocated by an allocator
@@ -264,6 +260,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorShapeAndType(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern void OrtReleaseTensorTypeAndShapeInfo(IntPtr /*(OrtTensorTypeAndShapeInfo*)*/ value);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern TensorElementType OrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);

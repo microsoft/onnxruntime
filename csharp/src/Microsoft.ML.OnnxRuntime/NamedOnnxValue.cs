@@ -182,8 +182,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         }
 
-
-
         private bool TryPinAsTensor<T>(
                 out MemoryHandle pinnedMemoryHandle,
                 out IntPtr dataBufferPointer,

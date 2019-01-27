@@ -15,36 +15,29 @@ using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
 
-struct OrtTensorTypeAndShapeInfo : public onnxruntime::ObjectBase<OrtTensorTypeAndShapeInfo> {
+struct OrtTensorTypeAndShapeInfo {
  public:
-  friend class onnxruntime::ObjectBase<OrtTensorTypeAndShapeInfo>;
-
   ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   onnxruntime::TensorShape shape;
 
-  static OrtTensorTypeAndShapeInfo* Create() {
-    return new OrtTensorTypeAndShapeInfo();
-  }
-
+  OrtTensorTypeAndShapeInfo() = default;
   OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = delete;
   OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
-
- private:
-  OrtTensorTypeAndShapeInfo() = default;
-  ~OrtTensorTypeAndShapeInfo() {
-    assert(ref_count == 0);
-  }
 };
 
 #define API_IMPL_BEGIN try {
-#define API_IMPL_END                                           \
-  }                                                            \
-  catch (std::exception & ex) {                                \
+#define API_IMPL_END                                          \
+  }                                                           \
+  catch (std::exception & ex) {                               \
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
 ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo) {
-  return OrtTensorTypeAndShapeInfo::Create();
+  return new OrtTensorTypeAndShapeInfo();
+}
+
+ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, OrtTensorTypeAndShapeInfo* ptr) {
+  delete ptr;
 }
 
 ORT_API_STATUS_IMPL(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* this_ptr, enum ONNXTensorElementDataType type) {
@@ -126,13 +119,13 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const on
   OrtTensorTypeAndShapeInfo* ret = OrtCreateTensorTypeAndShapeInfo();
   auto status = OrtSetTensorElementType(ret, type);
   if (status != nullptr) {
-    OrtReleaseObject(ret);
+    OrtReleaseTensorTypeAndShapeInfo(ret);
     return status;
   }
   if (shape != nullptr) {
     status = OrtSetDims(ret, shape->GetDims().data(), shape->GetDims().size());
     if (status != nullptr) {
-      OrtReleaseObject(ret);
+      OrtReleaseTensorTypeAndShapeInfo(ret);
       return status;
     }
   }
@@ -160,7 +153,7 @@ ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value) {
       return ONNX_TYPE_UNKNOWN;
     }
     ONNXType ret = out->type;
-    OrtReleaseObject(out);
+    OrtReleaseTypeInfo(out);
     return ret;
   } catch (std::exception&) {
     return ONNX_TYPE_UNKNOWN;
@@ -170,7 +163,7 @@ ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value) {
 /**
  * Get the type information of an OrtValue
  * \param value
- * \return The returned value should be freed by OrtReleaseObject after use
+ * \return The returned value should be freed by OrtReleaseTypeInfo after use
  */
 ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* value, struct OrtTypeInfo** out) {
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
