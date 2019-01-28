@@ -25,7 +25,7 @@ Intel Simplified Software License (Version April 2018)
 
 Copyright (c) 2018 Intel Corporation.
 
-Use and Redistribution.  You may use and redistribute the software (the ìSoftwareî), without modification,
+Use and Redistribution.  You may use and redistribute the software (the ‚ÄúSoftware‚Äù), without modification,
 provided the following conditions are met:
 
 * Redistributions must reproduce the above copyright notice and the following terms of use in the Software
@@ -37,11 +37,11 @@ derived from this Software without specific prior written permission.
 * No reverse engineering, decompilation, or disassembly of this Software is permitted.
 
 Limited patent license.  Intel grants you a world-wide, royalty-free, non-exclusive license under patents it now
-or hereafter owns or controls to make, have made, use, import, offer to sell and sell (ìUtilizeî) this Software,
+or hereafter owns or controls to make, have made, use, import, offer to sell and sell (‚ÄúUtilize‚Äù) this Software,
 but solely to the extent that any such patent is necessary to Utilize the Software alone. The patent license
 shall not apply to any combinations which include this software.  No hardware per se is licensed hereunder.
 
-Third party and other Intel programs.  ìThird Party Programsî are the files listed in the ìthird-party-programs.txtî
+Third party and other Intel programs.  ‚ÄúThird Party Programs‚Äù are the files listed in the ‚Äúthird-party-programs.txt‚Äù
 text file that is included with the Software and may include Intel programs under separate license terms.
 Third Party Programs, even if included with the distribution of the Materials, are governed by
 separate license terms and those license terms solely govern your use of those programs.
@@ -51,7 +51,7 @@ INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNES
 FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT ARE DISCLAIMED. THIS SOFTWARE IS
 NOT INTENDED FOR USE IN SYSTEMS OR APPLICATIONS WHERE FAILURE OF THE SOFTWARE
 MAY CAUSE PERSONAL INJURY OR DEATH AND YOU AGREE THAT YOU ARE FULLY RESPONSIBLE FOR ANY
-CLAIMS, COSTS, DAMAGES, EXPENSES, AND ATTORNEYSí FEES ARISING OUT OF ANY SUCH USE,
+CLAIMS, COSTS, DAMAGES, EXPENSES, AND ATTORNEYS‚Äô FEES ARISING OUT OF ANY SUCH USE,
 EVEN IF ANY CLAIM ALLEGES THAT INTEL WAS NEGLIGENT REGARDING THE DESIGN OR MANUFACTURE OF
 THE MATERIALS.
 
@@ -71,7 +71,7 @@ Termination. Intel may terminate your right to use the Software in the event of 
 and you fail to cure the breach within a reasonable period of time.
 
 Feedback.  Should you provide Intel with comments, modifications, corrections, enhancements or other input
-(ìFeedbackî) related to the Software Intel will be free to use, disclose, reproduce, license or otherwise
+(‚ÄúFeedback‚Äù) related to the Software Intel will be free to use, disclose, reproduce, license or otherwise
 distribute or exploit the Feedback in its sole discretion without any obligations or restrictions of any kind,
 including without limitation, intellectual property rights or licensing obligations.
 
@@ -1133,6 +1133,22 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 _____
 
+NumPy License
+
+Copyright (c) 2005, NumPy Developers
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+    Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+    Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+    Neither the name of the NumPy Developers nor the names of any contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ‚ÄúAS IS‚Äù AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+_____
+
 Pytorch / Caffe2
 
 From PyTorch:
@@ -1203,6 +1219,55 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
+
+_____
+
+Caffe
+
+COPYRIGHT
+
+All contributions by the University of California:
+Copyright (c) 2014-2017 The Regents of the University of California (Regents)
+All rights reserved.
+
+All other contributions:
+Copyright (c) 2014-2017, the respective contributors
+All rights reserved.
+
+Caffe uses a shared copyright model: each contributor holds copyright over
+their contributions to Caffe. The project versioning records all such
+contribution and copyright details. If a contributor wants to further mark
+their specific copyright on a particular contribution, they should indicate
+their copyright solely in the commit message of the change when it is
+committed.
+
+LICENSE
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met: 
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer. 
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution. 
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+CONTRIBUTION AGREEMENT
+
+By contributing to the BVLC/caffe repository through pull-request, comment,
+or otherwise, the contributor releases their content to the
+license and copyright terms herein.
 
 _____
 
@@ -1547,7 +1612,7 @@ Ray Glover <ray.glover@uk.ibm.com>
 Robert Guo <robert.guo@mongodb.com>
 Roman Lebedev <lebedev.ri@gmail.com>
 Shuo Chen <chenshuo@chenshuo.com>
-Tobias UlvgÂrd <tobias.ulvgard@dirac.se>
+Tobias Ulvg√•rd <tobias.ulvgard@dirac.se>
 Tom Madams <tom.ej.madams@gmail.com> <tmadams@google.com>
 Yixuan Qiu <yixuanq@gmail.com>
 Yusuke Suzuki <utatane.tea@gmail.com>
