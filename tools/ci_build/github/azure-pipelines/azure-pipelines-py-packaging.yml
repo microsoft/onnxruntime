@@ -16,7 +16,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --use_tvm --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_openblas --use_tvm --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -49,7 +49,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_openblas --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -89,7 +89,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --build_dir $(buildDirectory) --config Release --build_wheel --use_mkldnn'
+        arguments: ' --build_dir $(buildDirectory) --config Release --build_wheel --use_openblas'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
@@ -151,7 +151,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
+        arguments: '--use_openblas --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
@@ -197,7 +197,7 @@ jobs:
     - script: |
         sudo python -m pip install numpy
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --use_mkldnn --build_wheel
+        ./build.sh --config Release --skip_submodule_sync --parallel --use_openblas --build_wheel
       displayName: 'Command Line Script'
 
     - task: CopyFiles@2
