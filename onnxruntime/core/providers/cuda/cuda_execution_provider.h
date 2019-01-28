@@ -9,6 +9,7 @@
 #include "core/framework/execution_provider.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
+#include "core/providers/cuda/cuda_type_common.h"
 
 namespace onnxruntime {
 
@@ -126,17 +127,20 @@ class CUDAExecutionProvider : public IExecutionProvider {
     const T* GetConstOnes(size_t count) {
       if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
-          constant_ones_float_ = cuda::CreateConstantOnes<float>();
+          auto one = cuda::ToCudaType<float>::FromFloat(1.0f);
+          constant_ones_float_ = cuda::CreateConstantOnes<float>(one);
         }
         return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
-          constant_ones_double_ = cuda::CreateConstantOnes<double>();
+          auto one = cuda::ToCudaType<double>::FromFloat(1.0f);
+          constant_ones_double_ = cuda::CreateConstantOnes<double>(one);
         }
         return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
-          constant_ones_half_ = cuda::CreateConstantOnes<half>();
+          auto one = cuda::ToCudaType<MLFloat16>::FromFloat(1.0f);
+          constant_ones_half_ = cuda::CreateConstantOnes<half>(one);
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
       } else {

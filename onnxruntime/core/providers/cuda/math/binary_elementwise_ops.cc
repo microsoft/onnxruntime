@@ -106,7 +106,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
     Prepare(context, 0, &prepare);                                                                               \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                            \
+    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         prepare.lhs_padded_strides.GpuPtr(),                                                                     \

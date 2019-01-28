@@ -11,6 +11,7 @@
 #include "shared_inc/fast_divmod.h"
 #include "core/util/math.h"
 #include "cuda_fwd.h"
+#include "cuda_type_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -138,26 +139,6 @@ class CudaKernel : public OpKernel {
 
  private:
   CUDAExecutionProvider* provider_;
-};
-
-// Type mapping for MLFloat16 to half
-template <typename T>
-class ToCudaType {
- public:
-  typedef T MappedType;
-  static MappedType FromFloat(float f) {
-    return static_cast<T>(f);
-  }
-};
-
-template <>
-class ToCudaType<MLFloat16> {
- public:
-  typedef half MappedType;
-  static MappedType FromFloat(float f) {
-    uint16_t h = math::floatToHalf(f);
-    return *reinterpret_cast<MappedType*>(&h);
-  }
 };
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {

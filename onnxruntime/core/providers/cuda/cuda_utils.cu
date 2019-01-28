@@ -30,13 +30,13 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 };
 
 template <typename T>
-std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return std::make_unique<ConstantBufferImpl<T>>((T)1);
+std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes(T value) {
+  return std::make_unique<ConstantBufferImpl<T>>(value);
 }
 
-template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
-template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
-template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
+template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>(float value);
+template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>(double value);
+template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>(half value);
 
 }  // namespace cuda
 }  // namespace onnxruntime

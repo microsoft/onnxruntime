@@ -28,7 +28,7 @@ class IConstantBuffer {
 };
 
 template <typename T>
-std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
+std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes(T value);
 
 }  // namespace cuda
 }  // namespace onnxruntime
