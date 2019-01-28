@@ -55,6 +55,8 @@ GraphProto ToGraphProto(const GraphViewer& graph)
     return graph_proto;
 }
 
+//This custom kernel is a temporary implementation.
+//TODO: change to the new function implementation.
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTRTExecutionProvider, kMSDomain, 1, TRTKernel);
 
 ONNX_OPERATOR_KERNEL_EX(TRTKernel,
