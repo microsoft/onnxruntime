@@ -44,8 +44,11 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
-            
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
+                else
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
+
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();
@@ -272,7 +275,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (typeInfo != IntPtr.Zero)
                 {
-                    NativeMethods.OrtReleaseObject(typeInfo);
+                    NativeMethods.OrtReleaseTypeInfo(typeInfo);
                 }
             }
         }
@@ -289,7 +292,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (typeInfo != IntPtr.Zero)
                 {
-                    NativeMethods.OrtReleaseObject(typeInfo);
+                    NativeMethods.OrtReleaseTypeInfo(typeInfo);
                 }
             }
         }

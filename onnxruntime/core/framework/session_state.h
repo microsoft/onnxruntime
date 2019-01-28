@@ -4,11 +4,11 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 #include "gsl/gsl_util"
 
+#include "core/platform/ort_mutex.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
@@ -21,14 +21,21 @@
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
 
+#ifdef USE_EIGEN_THREADPOOL
+#include <unsupported/Eigen/CXX11/ThreadPool>
+#endif
+
 namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelDef;
 class OpKernel;
-class TaskThreadPool;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+
+#ifndef USE_EIGEN_THREADPOOL
+class TaskThreadPool;
+#endif
 
 // SessionState should be modified by the inference session class only.
 // It is supposed to be passed by const-ref only to all the executors.
@@ -129,7 +136,7 @@ class SessionState {
   };
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
-  void AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
+  common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
   common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
@@ -146,8 +153,13 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
 
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool* GetThreadPool() const { return thread_pool_; }
+  void SetThreadPool(Eigen::NonBlockingThreadPool* p_pool) { thread_pool_ = p_pool; }
+#else
   TaskThreadPool* GetThreadPool() const { return thread_pool_; }
   void SetThreadPool(TaskThreadPool* p_pool) { thread_pool_ = p_pool; }
+#endif
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -174,7 +186,7 @@ class SessionState {
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_ = true;
   // lock for the mem_patterns_
-  mutable std::mutex mem_patterns_lock_;
+  mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
 
@@ -187,7 +199,12 @@ class SessionState {
       std::unordered_map<onnxruntime::NodeIndex,
                          std::unordered_map<std::string, gsl::not_null<const SessionState*>>>;
   SubgraphSessionStateMap subgraph_session_states_;
+
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool* thread_pool_ = nullptr;
+#else
   TaskThreadPool* thread_pool_ = nullptr;
+#endif
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

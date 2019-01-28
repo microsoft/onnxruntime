@@ -93,15 +93,16 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
     T* output_data = output->template MutableData<T>();
 
-    ::onnxruntime::math::CopyMatrix<CPUMathUtil>(
-        sizeof(T),
-        before_dims,                                          // M
-        split_size * after_dims_excluding_split,              // N
-        static_cast<const void*>(input_data + input_offset),  // A
-        after_dims_including_split_axis,                      // lda
-        static_cast<void*>(output_data),                      // B
-        split_size * after_dims_excluding_split,              // ldb
-        &CPUMathUtil::Instance());
+    ::onnxruntime::math::CopyMatrix<T>(
+        before_dims,                                       // M
+        split_size * after_dims_excluding_split,           // N
+        static_cast<const T*>(input_data + input_offset),  // A
+        after_dims_including_split_axis,                   // lda
+        static_cast<T*>(output_data),                      // B
+        split_size * after_dims_excluding_split,           // ldb
+        [](const T* src, T* dst, size_t count) {
+          memcpy(dst, src, count * sizeof(T));
+        });
 
     input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
   }

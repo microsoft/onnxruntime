@@ -22,6 +22,8 @@
 #include <gsl/gsl_byte>
 
 namespace onnxruntime {
+class InferenceSession;
+
 namespace test {
 // unfortunately std::optional is in C++17 so use a miniversion of it
 template <typename T>
@@ -238,7 +240,8 @@ class OpTester {
 
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
-           const RunOptions* run_options = nullptr);
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
   struct Data {
     onnxruntime::NodeArg def_;
@@ -306,6 +309,15 @@ class OpTester {
       throw;
     }
   }
+
+  void ExecuteModel(Model& model,
+                    InferenceSession& session_object,
+                    ExpectResult expect_result,
+                    const std::string& expected_failure_string,
+                    const RunOptions* run_options,
+                    std::unordered_map<std::string, MLValue> feeds,
+                    std::vector<std::string> output_names,
+                    const std::string& provider_type);
 
   const char* domain_;
   int opset_version_;

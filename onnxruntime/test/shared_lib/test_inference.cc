@@ -64,30 +64,21 @@ void TestInference(OrtEnv* env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
-    sf.AppendExecutionProvider(f);
-    OrtReleaseObject(f);
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_MKLDNN
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(1, &f));
-    sf.AppendExecutionProvider(f);
-    OrtReleaseObject(f);
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, 1));
     std::cout << "Running simple inference with mkldnn provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    OrtProviderFactoryInterface** f;
-    ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
-    sf.AppendExecutionProvider(f);
-    OrtReleaseObject(f);
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
@@ -99,7 +90,7 @@ void TestInference(OrtEnv* env, T model_uri,
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
-  std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
+  std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   // Now run
   RunSession(default_allocator.get(), inference_session.get(), dims_x, values_x, expected_dims_y, expected_values_y);
 }
@@ -156,7 +147,7 @@ TEST_F(CApiTest, create_session_without_session_option) {
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   size_t expected_len = 2;
-  std::unique_ptr<OrtAllocator> default_allocator(MockedOrtAllocator::Create());
+  std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   {
     std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
         OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), OrtReleaseValue);
@@ -196,7 +187,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   const struct OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(type_info);
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1, OrtGetNumOfDimensions(tensor_info));
-  OrtReleaseObject(type_info);
+  OrtReleaseTypeInfo(type_info);
 }
 
 int main(int argc, char** argv) {

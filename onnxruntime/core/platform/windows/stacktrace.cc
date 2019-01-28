@@ -68,7 +68,7 @@ class SymbolHelper {
       MaxNameLen = _countof(buffer);
     }
 
-    char buffer[1024];
+    char buffer[1024] = {0};
   };
 
   struct Line : IMAGEHLP_LINE64 {

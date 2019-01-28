@@ -1,0 +1,8 @@
+<!-- @DIRECTORY_BUILD_PROPS_COMMENT@ -->
+<Project>
+  <PropertyGroup>
+    <!-- Note: build.py puts the CMake binary directory under an additional directory named for the build
+               configuration, so we want the parent directory here. -->
+    <OnnxRuntimeBuildDirectory>@CMAKE_BINARY_DIR@/..</OnnxRuntimeBuildDirectory>
+  </PropertyGroup>
+</Project>

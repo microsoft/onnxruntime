@@ -9,7 +9,7 @@ common::Status CustomRegistry::RegisterCustomKernel(KernelDefBuilder& kernel_def
 }
 
 common::Status CustomRegistry::RegisterCustomKernel(KernelCreateInfo& create_info) {
-  return Register(create_info);
+  return Register(std::move(create_info));
 }
 
 }  // namespace onnxruntime
