@@ -1,11 +1,9 @@
-﻿using System;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Numerics.Tensors;
-using System.Buffers;
-using System.Collections;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 
 namespace Microsoft.ML.OnnxRuntime
@@ -15,7 +13,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     }
 
-    public class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
+    internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
         where T: IDisposable
     {
 
@@ -58,6 +56,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
         #endregion
     }
+
 
     public class DisposableNamedOnnxValue: NamedOnnxValue, IDisposable
     {
@@ -145,17 +144,16 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (disposing)
                 {
-                    // TODO: dispose managed state (managed objects).
+                    // dispose managed state (managed objects).
+                    if (_nativeMemoryManager != null)
+                    {
+                        _nativeMemoryManager.Dispose();
+                        _nativeMemoryManager = null;
+                    }
                 }
 
                 // free unmanaged resources (unmanaged objects) and override a finalizer below.
                 // set large fields to null.
-                if (_nativeMemoryManager != null)
-                {
-                    _nativeMemoryManager.Dispose();
-                    _nativeMemoryManager = null;
-                }
-
                 disposedValue = true;
             }
         }

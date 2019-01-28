@@ -39,7 +39,7 @@ namespace CSharpUsage
                 }
 
                 // Run the inference
-                using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                using (var results = session.Run(container))  // results is an IDisposableReadOnlyCollection<DisposableNamedOnnxValue> container
                 {
                     // dump the results
                     foreach (var r in results)
