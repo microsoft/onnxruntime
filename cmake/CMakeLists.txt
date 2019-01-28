@@ -400,9 +400,7 @@ if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1)
-  # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
-  #add_definitions(-DUSE_MKLML_FOR_BLAS=1)
+  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
   if (WIN32 OR APPLE)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
   else()
