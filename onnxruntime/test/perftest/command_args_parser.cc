@@ -62,6 +62,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kMklDnnExecutionProvider;
         } else if (!strcmp(optarg, "brainslice")) {
           test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
+        } else if (!strcmp(optarg, "trt")) {
+          test_config.machine_config.provider_type_name = onnxruntime::kTRTExecutionProvider;
         } else {
           return false;
         }

@@ -15,22 +15,19 @@ namespace onnxruntime {
 class Initializer final {
  public:
   static bool IsSupportedDataType(const ONNX_NAMESPACE::TensorProto* tensor_proto) {
-    if (tensor_proto == nullptr ||
-        (tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE)) {
-      return false;
-    }
-    return true;
+    return !(tensor_proto == nullptr ||
+             (tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+              tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
   }
 
   Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
               const std::string& name,
               const std::vector<int64_t>& dims) : size_(0) {
     data_type_ = data_type;
-    name_ = std::move(name);
+    name_ = name;
     dims_.assign(dims.cbegin(), dims.cend());
 
-    size_ = std::accumulate(dims_.begin(), dims_.end(), (int64_t)1, std::multiplies<int64_t>{});
+    size_ = std::accumulate(dims_.begin(), dims_.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
 
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
@@ -50,17 +47,17 @@ class Initializer final {
   Initializer(const ONNX_NAMESPACE::TensorProto* tensor_proto) : size_(0) {
     data_type_ = tensor_proto->data_type();
     if (tensor_proto->has_name()) {
-      name_ = std::move(tensor_proto->name());
+      name_ = tensor_proto->name();
     }
     dims_.reserve(tensor_proto->dims_size());
     for (int i = 0; i < tensor_proto->dims_size(); i++) {
       dims_.push_back(tensor_proto->dims(i));
     }
 
-    size_ = std::accumulate(dims_.begin(), dims_.end(), (int64_t)1, std::multiplies<int64_t>{});
+    size_ = std::accumulate(dims_.begin(), dims_.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
 
     if (tensor_proto->has_raw_data()) {
-      raw_data_ = std::move(tensor_proto->raw_data());
+      raw_data_ = tensor_proto->raw_data();
     } else {
       switch (data_type_) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
@@ -86,7 +83,7 @@ class Initializer final {
     }
   }
 
-  ~Initializer() {}
+  ~Initializer() = default;
 
   void ToProto(ONNX_NAMESPACE::TensorProto* tensor_proto) {
     tensor_proto->clear_name();
@@ -143,8 +140,8 @@ class Initializer final {
   template <typename T>
   T* data() {
     if (!raw_data_.empty()) {
-      return (T*)&raw_data_.data()[0];
-    } else {
+      return (T*)&raw_data_[0];
+    }
       switch (data_type_) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           return (T*)float_data_.data();
@@ -157,15 +154,15 @@ class Initializer final {
         default:
           break;
       }
-    }
+
     return nullptr;
   }
 
   template <typename T>
   const T* data() const {
     if (!raw_data_.empty()) {
-      return (T*)&raw_data_.data()[0];
-    } else {
+      return (T*)&raw_data_[0];
+    }
       switch (data_type_) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           return (T*)float_data_.data();
@@ -178,7 +175,7 @@ class Initializer final {
         default:
           break;
       }
-    }
+
     return nullptr;
   }
 

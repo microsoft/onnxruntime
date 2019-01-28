@@ -4,7 +4,7 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Command Line Script'
 
     - template: templates/clean-agent-build-directory-step.yml

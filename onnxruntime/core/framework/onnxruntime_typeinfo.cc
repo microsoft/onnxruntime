@@ -3,8 +3,8 @@
 
 //this file contains implementations of the C API
 
-#include "onnxruntime_typeinfo.h"
 #include <cassert>
+#include "onnxruntime_typeinfo.h"
 #include "core/framework/tensor.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -14,16 +14,19 @@ using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
-OrtTypeInfo::OrtTypeInfo(ONNXType type1, void* data1) noexcept : type(type1), data(data1) {
+OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtTensorTypeAndShapeInfo* data1) noexcept : type(type1), data(data1) {
 }
 
 OrtTypeInfo::~OrtTypeInfo() {
-  assert(ref_count == 0);
-  OrtReleaseObject(data);
+  OrtReleaseTensorTypeAndShapeInfo(data);
 }
 
 ORT_API(const struct OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ struct OrtTypeInfo* input) {
-  return input->type == ONNX_TYPE_TENSOR ? reinterpret_cast<const struct OrtTensorTypeAndShapeInfo*>(input->data) : nullptr;
+  return input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
+}
+
+ORT_API(void, OrtReleaseTypeInfo, OrtTypeInfo* ptr) {
+  delete ptr;
 }
 
 OrtStatus* GetTensorShapeAndType(const TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out);

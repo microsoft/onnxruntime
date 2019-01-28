@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/conv_impl.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
@@ -16,21 +17,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-  std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
-
-  if (kernel_shape.size() + 2 != W->Shape().NumDimensions()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                           " W: ", W->Shape().ToString().c_str());
-  }
-
-  for (size_t i = 0; i < kernel_shape.size(); ++i) {
-    if (kernel_shape[i] != W->Shape()[i + 2]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
-    }
-  }
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
 
   std::vector<int64_t> pads(pads_);
   if (pads.empty()) {
@@ -61,6 +49,22 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
 
   if (kernel_rank == 2 || kernel_rank == 3) {
+    MLAS_ACTIVATION Activation;
+    if (activation_.empty()) {
+        Activation.ActivationKind = MlasIdentityActivation;
+    } else if (activation_ == "Relu") {
+        Activation.ActivationKind = MlasReluActivation;
+    } else if (activation_ == "LeakyRelu") {
+        Activation.ActivationKind = MlasLeakyReluActivation;
+        Activation.alpha = alpha_;
+    } else if (activation_ == "Tanh") {
+        Activation.ActivationKind = MlasTanhActivation;
+    } else if (activation_ == "Sigmoid") {
+        Activation.ActivationKind = MlasLogisticActivation;
+    } else {
+      ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
+    }
+
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
@@ -75,6 +79,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     strides.data(),
                     output_shape.GetDims().data(),
                     static_cast<size_t>(M / group_),
+                    &Activation,
                     &WorkingBufferSize);
 
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
@@ -86,10 +91,6 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              B != nullptr ? B->template Data<float>() : nullptr,
              static_cast<float*>(working_buffer.get()),
              Ydata);
-
-    //TODO: this will be replaced with Tracy's changes.
-    fuse_activation(activation_, Ydata, Y->Shape().Size(), alpha_);
-
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -144,7 +145,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         Ymatrix.rowwise() += Bvec.transpose();
       }
 
-      fuse_activation(activation_, Ydata, Y_offset * group_, alpha_);
+      FuseActivation(activation_, Ydata, Y_offset * group_, alpha_);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;

@@ -17,7 +17,7 @@ enum UpsampleMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(OpKernelInfo info): scales_cached_(false) {
+  UpsampleBase(OpKernelInfo info) : scales_cached_(false) {
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
@@ -51,7 +51,7 @@ class UpsampleBase {
       return UpsampleMode::LINEAR;
     } else {
       ORT_THROW("mode attribute is " + mode + ". It can only be " +
-                        UpsampleModeNN + "(default) or " + UpsampleModeLinear + ".");
+                UpsampleModeNN + "(default) or " + UpsampleModeLinear + ".");
     }
   }
 
@@ -63,7 +63,7 @@ class UpsampleBase {
     if (UpsampleMode::LINEAR == mode) {
       ORT_ENFORCE(scales.size() == 4, "Upsample: linear mode upsample only support bilinear with 4 dimension.");
       ORT_ENFORCE(((scales[0] == 1) && (scales[1] == 1)),
-                          "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
+                  "Upsample: linear mode upsample only support bilinear, the first 2 scales should be 1.");
     }
   }
 
@@ -71,6 +71,9 @@ class UpsampleBase {
     const float* scale_data = scale->template Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
+    if (scales.size() == 0) {
+      scales.resize(scales_size);
+    }
     memcpy(scales.data(), scale_data, scales_size * sizeof(float));
     ScalesValidation(scales, mode_);
   }

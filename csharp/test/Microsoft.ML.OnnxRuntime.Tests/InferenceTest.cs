@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Numerics.Tensors;
 using System.Threading.Tasks;
 using Xunit;
@@ -13,10 +14,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 {
     public class InferenceTest
     {
+        private const string module = "onnxruntime.dll";
+
         [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory() , "squeezenet.onnx");
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             using (var session = new InferenceSession(modelPath))
             {
                 Assert.NotNull(session);
@@ -49,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void CanRunInferenceOnAModel()
         {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(),  "squeezenet.onnx");
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             using (var session = new InferenceSession(modelPath))
             {
@@ -121,7 +124,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            var msg = ex.ToString().Substring(0,101);
+            var msg = ex.ToString().Substring(0, 101);
             // TODO: message is diff in LInux. Use substring match
             Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
             session.Dispose();
@@ -210,6 +213,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestPreTrainedModelsOpset7And8()
         {
+            // 16-bit float not supported type in C#.
+            var skipModels = new[] {
+                "fp16_inception_v1",
+                "fp16_shufflenet",
+                "fp16_tiny_yolov2" };
+
             var opsets = new[] { "opset7", "opset8" };
             foreach (var opset in opsets)
             {
@@ -218,6 +227,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
+
+                    if (skipModels.Contains(modelDir.Name))
+                        continue;
+
                     try
                     {
                         var onnxModelNames = modelDir.GetFiles("*.onnx");
@@ -239,13 +252,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var innodepair = inMeta.First();
                         var innodename = innodepair.Key;
                         var innodedims = innodepair.Value.Dimensions;
-                        for (int i=0; i < innodedims.Length; i++)
+                        for (int i = 0; i < innodedims.Length; i++)
                         {
                             if (innodedims[i] < 0)
                                 innodedims[i] = -1 * innodedims[i];
                         }
-                        var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, "test_data_set_0", "input_0.pb"));
-                        var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, "test_data_set_0", "output_0.pb"));
+
+                        var testRoot = new DirectoryInfo(Path.Combine(cwd, opset, modelDir.Name));
+                        var testData = testRoot.EnumerateDirectories("test_data*").First();
+                        var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
+                        var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
                         var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                         var nov = new List<NamedOnnxValue>();
                         nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
@@ -470,6 +486,57 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
+        [Fact]
+        private void TestGpu()
+        {
+            // TODO: execute based on test pool directly (cpu or gpu)
+            var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
+            var tuple = (gpu != null) ? OpenSessionSqueezeNet(Int32.Parse(gpu)) : OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var tensor = tuple.Item3;
+            var inputMeta = session.InputMetadata;
+            var container = new List<NamedOnnxValue>();
+            container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
+            Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
+            session.Dispose();
+        }
+
+        [DllImport("kernel32", SetLastError = true)]
+        static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32", CharSet = CharSet.Ansi)]
+        static extern UIntPtr GetProcAddress(IntPtr hModule, string procName);
+
+        [Fact]
+        private void VerifyNativeMethodsExist()
+        {
+            // Check for  external API changes
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return;
+            var entryPointNames = new[]{
+            "OrtInitialize","OrtReleaseEnv","OrtGetErrorCode","OrtGetErrorMessage",
+            "OrtReleaseStatus","OrtCreateSession","OrtRun","OrtSessionGetInputCount",
+            "OrtSessionGetOutputCount","OrtSessionGetInputName","OrtSessionGetOutputName","OrtSessionGetInputTypeInfo",
+            "OrtSessionGetOutputTypeInfo","OrtReleaseSession","OrtCreateSessionOptions","OrtCloneSessionOptions",
+            "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
+            "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSessionOptionsAppendExecutionProvider_CPU",
+            "OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
+            "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
+            "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetNumOfDimensions",
+            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
+
+            var hModule = LoadLibrary(module);
+            foreach (var ep in entryPointNames)
+            {
+                var x = GetProcAddress(hModule, ep);
+                Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
+            }
+        }
+
         static float[] LoadTensorFromFile(string filename, bool skipheader = true)
         {
             var tensorData = new List<float>();
@@ -500,10 +567,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return floatArr;
         }
 
-        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet()
+        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            var session = new InferenceSession(modelPath);
+            var session = (cudaDeviceId.HasValue)
+                ? new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value)) 
+                : new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
             var inputMeta = session.InputMetadata;

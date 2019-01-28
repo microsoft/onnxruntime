@@ -234,7 +234,7 @@ class PlannerTest : public ::testing::Test {
 
     SequentialPlannerTestContext test_context(&shape_map_);
     auto status = SequentialPlanner::CreatePlan(
-        graph_, outer_scope_node_args, execution_providers, kernel_registry_manager,
+        GraphViewer(graph_), outer_scope_node_args, execution_providers, kernel_registry_manager,
         mlvalue_name_idx_map, test_context, plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

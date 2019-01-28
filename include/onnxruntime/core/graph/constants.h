@@ -23,5 +23,6 @@ constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kMklDnnExecutionProvider = "MKLDNNExecutionProvider";
 constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
 constexpr const char* kBrainSliceExecutionProvider = "BrainSliceExecutionProvider";
+constexpr const char* kTRTExecutionProvider = "TRTExecutionProvider";
 }  // namespace onnxruntime
 
