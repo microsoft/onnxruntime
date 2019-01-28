@@ -195,10 +195,10 @@ class PlannerTest : public ::testing::Test {
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def) {
     auto info = std::make_unique<OpKernelInfo>(*p_node,
-                                               kernel_def, 
+                                               kernel_def,
+                                               state_.GetInitializedTensors(),
                                                state_.GetMLValueNameIdxMap(),
                                                state_.GetFuncMgr(),
-                                               state_.GetInitializedTensors(),
                                                *execution_providers_.Get(*p_node));
     auto dummy = std::make_unique<DummyOpKernel>(*info);
     op_kernel_infos_.push_back(std::move(info));

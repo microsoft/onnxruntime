@@ -55,9 +55,9 @@ TEST(SessionStateTest, AddGetKernelTest) {
 
   OpKernelInfo p_info(node,
                       kernel_def, 
+                      s.GetInitializedTensors(),
                       s.GetMLValueNameIdxMap(),
                       s.GetFuncMgr(),
-                      s.GetInitializedTensors(),
                       execution_provider);
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));

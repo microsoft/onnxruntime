@@ -377,7 +377,10 @@ static common::Status CreateOpKernelInternal(const onnxruntime::Node& node,
                                              const SessionState& session_state,
                                              const KernelRegistryManager& custom_registry_manager,
                                              std::unique_ptr<OpKernel>& op_kernel) {
-  return custom_registry_manager.CreateKernel(node, exec_provider, session_state, op_kernel);
+  return custom_registry_manager.CreateKernel(node,
+                                              exec_provider,
+                                              session_state,
+                                              op_kernel);
 }
 
 static common::Status CreateOpKernel(const onnxruntime::Node& node,

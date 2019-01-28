@@ -10,25 +10,25 @@ namespace onnxruntime {
 
 OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const KernelDef& kernel_def,
+                           const std::unordered_map<int, MLValue>& initialized_tensors,
                            const MLValueNameIdxMap& mlvalue_name_idx_map,
                            const FuncManager* funcs_mgr,
-                           const std::unordered_map<int, MLValue>& initialized_tensors,
                            const IExecutionProvider& execution_provider)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
+      initialized_tensors_(initialized_tensors),
       mlvalue_name_idx_map_(mlvalue_name_idx_map),
       funcs_mgr_(funcs_mgr),
-      initialized_tensors_(initialized_tensors),
       execution_provider_(&execution_provider),
       proto_helper_context_(node) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_,
                    other.kernel_def_,
+                   other.initialized_tensors_,
                    other.mlvalue_name_idx_map_,
                    other.funcs_mgr_,
-                   other.initialized_tensors_,
                    *other.execution_provider_) {}
 
 const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType mem_type) const {
