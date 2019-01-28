@@ -23,7 +23,8 @@ void WordConvEmbedding::CharEmbeddingLookup(
     if (words_len_ptr[word_inx] > 0) {
       const int* cur_seq_ptr = seq_ptr + word_inx * word_len;
       float* cur_dst_ptr = dst + word_inx * word_len * char_embedding_size;
-      for (size_t char_inx = 0; char_inx < std::max<size_t>(words_len_ptr[word_inx], filter_width); char_inx++) {
+      size_t char_length_to_lookup = std::max<size_t>(words_len_ptr[word_inx], filter_width);
+      for (size_t char_inx = 0; char_inx < char_length_to_lookup; char_inx++) {
         memcpy(cur_dst_ptr, char_embedding_weight_p + (*cur_seq_ptr) * char_embedding_size, sizeof(float) * char_embedding_size);
         cur_dst_ptr += char_embedding_size;
         cur_seq_ptr++;
@@ -70,7 +71,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
     float* pactivationbuf = conv_activation_result_p.get();
 
     // unfolding buffer
-    while (words_len_ptr[tmp_word_inx] > 0 && tmp_word_inx < seq_len) {
+    while (tmp_word_inx < seq_len && words_len_ptr[tmp_word_inx] > 0) {
       const float* current_word_input = input + tmp_word_inx * input_word_size;
       int64_t word_unfolded_width = std::max<int64_t>(words_len_ptr[tmp_word_inx], filter_width) - filter_width + 1;
       words_unfolded_width += word_unfolded_width;
