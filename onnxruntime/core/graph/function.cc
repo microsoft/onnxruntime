@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/function_impl.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "onnx/shape_inference/implementation.h"
 
@@ -117,8 +117,16 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
     sub_graph.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
   }
+
+  for (auto input : meta_def->inputs) {
+    const onnx::TensorProto* initializer = nullptr;
+    if (graph.GetInitializedTensor(input, initializer)) {
+      sub_graph.AddInitializedTensor(*initializer);
+    }
+  }
+
   //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
-  ONNXRUNTIME_ENFORCE(sub_graph.Resolve().IsOK());
+  ORT_ENFORCE(sub_graph.Resolve().IsOK());
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
@@ -204,10 +212,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
         new_attr_map[attr.name()] = attr;
       }
     }
-    sub_graph.AddNode(node.name(), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
+    sub_graph.AddNode(node.name() + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
   }
   auto status = sub_graph.Resolve();
-  ONNXRUNTIME_ENFORCE(status.IsOK());
+  ORT_ENFORCE(status.IsOK());
 }
 
 FunctionImpl::~FunctionImpl() = default;

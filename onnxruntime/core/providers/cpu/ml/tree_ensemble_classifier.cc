@@ -155,22 +155,22 @@ TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info)
       classlabels_strings_(info.GetAttrsOrDefault<std::string>("classlabels_strings")),
       classlabels_int64s_(info.GetAttrsOrDefault<int64_t>("classlabels_int64s")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
-  ONNXRUNTIME_ENFORCE(!nodes_treeids_.empty());
-  ONNXRUNTIME_ENFORCE(class_nodeids_.size() == class_ids_.size());
-  ONNXRUNTIME_ENFORCE(class_nodeids_.size() == class_weights_.size());
-  ONNXRUNTIME_ENFORCE(nodes_nodeids_.size() == nodes_featureids_.size());
-  ONNXRUNTIME_ENFORCE(nodes_nodeids_.size() == nodes_modes_names_.size());
-  ONNXRUNTIME_ENFORCE(nodes_nodeids_.size() == nodes_values_.size());
-  ONNXRUNTIME_ENFORCE(nodes_nodeids_.size() == nodes_truenodeids_.size());
-  ONNXRUNTIME_ENFORCE(nodes_nodeids_.size() == nodes_falsenodeids_.size());
-  ONNXRUNTIME_ENFORCE((nodes_nodeids_.size() == nodes_hitrates_.size()) || (nodes_hitrates_.empty()));
+  ORT_ENFORCE(!nodes_treeids_.empty());
+  ORT_ENFORCE(class_nodeids_.size() == class_ids_.size());
+  ORT_ENFORCE(class_nodeids_.size() == class_weights_.size());
+  ORT_ENFORCE(nodes_nodeids_.size() == nodes_featureids_.size());
+  ORT_ENFORCE(nodes_nodeids_.size() == nodes_modes_names_.size());
+  ORT_ENFORCE(nodes_nodeids_.size() == nodes_values_.size());
+  ORT_ENFORCE(nodes_nodeids_.size() == nodes_truenodeids_.size());
+  ORT_ENFORCE(nodes_nodeids_.size() == nodes_falsenodeids_.size());
+  ORT_ENFORCE((nodes_nodeids_.size() == nodes_hitrates_.size()) || (nodes_hitrates_.empty()));
 
-  ONNXRUNTIME_ENFORCE(classlabels_strings_.empty() ^ classlabels_int64s_.empty(),
+  ORT_ENFORCE(classlabels_strings_.empty() ^ classlabels_int64s_.empty(),
               "Must provide classlabels_strings or classlabels_int64s but not both.");
 
   // in the absence of bool type supported by GetAttrs this ensure that we don't have any negative
   // values so that we can check for the truth condition without worrying about negative values.
-  ONNXRUNTIME_ENFORCE(std::all_of(
+  ORT_ENFORCE(std::all_of(
       std::begin(missing_tracks_true_),
       std::end(missing_tracks_true_), [](int64_t elem) { return elem >= 0; }));
 
@@ -266,7 +266,7 @@ void TreeEnsembleClassifier<T>::Initialize() {
     // they must be in the same tree
     int64_t id = nodes_treeids_[i] * kOffset_ + nodes_truenodeids_[i];
     it = parents.find(id);
-    ONNXRUNTIME_ENFORCE(it != parents.end());
+    ORT_ENFORCE(it != parents.end());
     it->second++;
   }
   // all false nodes arent roots_
@@ -275,7 +275,7 @@ void TreeEnsembleClassifier<T>::Initialize() {
     // they must be in the same tree
     int64_t id = nodes_treeids_[i] * kOffset_ + nodes_falsenodeids_[i];
     it = parents.find(id);
-    ONNXRUNTIME_ENFORCE(it != parents.end());
+    ORT_ENFORCE(it != parents.end());
     it->second++;
   }
   // find all the nodes that dont have other nodes pointing at them
@@ -288,7 +288,7 @@ void TreeEnsembleClassifier<T>::Initialize() {
   }
   class_count_ = !classlabels_strings_.empty() ? classlabels_strings_.size() : classlabels_int64s_.size();
   using_strings_ = !classlabels_strings_.empty();
-  ONNXRUNTIME_ENFORCE(base_values_.empty() ||
+  ORT_ENFORCE(base_values_.empty() ||
               base_values_.size() == static_cast<size_t>(class_count_) ||
               base_values_.size() == weights_classes_.size());
 }
@@ -324,7 +324,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
     }
     // walk each tree from its root
     for (size_t j = 0, end = roots_.size(); j < end; ++j) {
-      ONNXRUNTIME_RETURN_IF_ERROR(ProcessTreeNode(classes, roots_[j], x_data, current_weight_0));
+      ORT_RETURN_IF_ERROR(ProcessTreeNode(classes, roots_[j], x_data, current_weight_0));
     }
     float maxweight = 0.f;
     int64_t maxclass = -1;
@@ -473,7 +473,7 @@ common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::map<int64_t, floa
         return Status(ONNXRUNTIME, INVALID_ARGUMENT, err_msg.str());
       }
     }
-    ONNXRUNTIME_ENFORCE(treeindex >= 0);
+    ORT_ENFORCE(treeindex >= 0);
     treeindex = treeindex + root;
     mode = static_cast<NODE_MODE>(nodes_modes_[treeindex]);
     loopcount++;

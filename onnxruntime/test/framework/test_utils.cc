@@ -17,5 +17,12 @@ IExecutionProvider* TestCudaExecutionProvider() {
   return &cuda_provider;
 }
 #endif
+
+#ifdef USE_TRT
+IExecutionProvider* TestTRTExecutionProvider() {
+  static TRTExecutionProvider trt_provider;
+  return &trt_provider;
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

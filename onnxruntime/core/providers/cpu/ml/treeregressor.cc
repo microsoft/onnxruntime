@@ -30,10 +30,10 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
       base_values_(info.GetAttrsOrDefault<float>("base_values")),
       transform_(::onnxruntime::ml::MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))),
       aggregate_function_(::onnxruntime::ml::MakeAggregateFunction(info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"))) {
-  ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("n_targets", &n_targets_).IsOK());
+  ORT_ENFORCE(info.GetAttr<int64_t>("n_targets", &n_targets_).IsOK());
 
   //update nodeids to start at 0
-  ONNXRUNTIME_ENFORCE(!nodes_treeids_.empty());
+  ORT_ENFORCE(!nodes_treeids_.empty());
   int64_t current_tree_id = 1234567891L;
   std::vector<int64_t> tree_offsets;
 
@@ -63,14 +63,14 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   }
 
   size_t nodes_id_size = nodes_nodeids_.size();
-  ONNXRUNTIME_ENFORCE(target_nodeids_.size() == target_ids_.size());
-  ONNXRUNTIME_ENFORCE(target_nodeids_.size() == target_weights_.size());
-  ONNXRUNTIME_ENFORCE(nodes_id_size == nodes_featureids_.size());
-  ONNXRUNTIME_ENFORCE(nodes_id_size == nodes_values_.size());
-  ONNXRUNTIME_ENFORCE(nodes_id_size == nodes_modes_.size());
-  ONNXRUNTIME_ENFORCE(nodes_id_size == nodes_truenodeids_.size());
-  ONNXRUNTIME_ENFORCE(nodes_id_size == nodes_falsenodeids_.size());
-  ONNXRUNTIME_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (0 == nodes_hitrates_.size()));
+  ORT_ENFORCE(target_nodeids_.size() == target_ids_.size());
+  ORT_ENFORCE(target_nodeids_.size() == target_weights_.size());
+  ORT_ENFORCE(nodes_id_size == nodes_featureids_.size());
+  ORT_ENFORCE(nodes_id_size == nodes_values_.size());
+  ORT_ENFORCE(nodes_id_size == nodes_modes_.size());
+  ORT_ENFORCE(nodes_id_size == nodes_truenodeids_.size());
+  ORT_ENFORCE(nodes_id_size == nodes_falsenodeids_.size());
+  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (0 == nodes_hitrates_.size()));
 
   max_tree_depth_ = 1000;
   offset_ = four_billion_;
@@ -122,7 +122,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     //they must be in the same tree
     int64_t id = nodes_treeids_[i] * offset_ + nodes_truenodeids_[i];
     it = parents.find(id);
-    ONNXRUNTIME_ENFORCE(it != parents.end());
+    ORT_ENFORCE(it != parents.end());
     it->second++;
   }
   //all false nodes aren't roots
@@ -131,7 +131,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     //they must be in the same tree
     int64_t id = nodes_treeids_[i] * offset_ + nodes_falsenodeids_[i];
     it = parents.find(id);
-    ONNXRUNTIME_ENFORCE(it != parents.end());
+    ORT_ENFORCE(it != parents.end());
     it->second++;
   }
   //find all the nodes that dont have other nodes pointing at them
@@ -139,11 +139,11 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     if (parent.second == 0) {
       int64_t id = parent.first;
       it = indices.find(id);
-      ONNXRUNTIME_ENFORCE(it != indices.end());
+      ORT_ENFORCE(it != indices.end());
       roots_.push_back(it->second);
     }
   }
-  ONNXRUNTIME_ENFORCE(base_values_.empty() || base_values_.size() == static_cast<size_t>(n_targets_));
+  ORT_ENFORCE(base_values_.empty() || base_values_.size() == static_cast<size_t>(n_targets_));
 }
 
 template <typename T>
@@ -236,7 +236,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
     //for each tree
     for (size_t j = 0; j < roots_.size(); j++) {
       //walk each tree from its root
-      ONNXRUNTIME_RETURN_IF_ERROR(ProcessTreeNode(scores, roots_[j], x_data, current_weight_0));
+      ORT_RETURN_IF_ERROR(ProcessTreeNode(scores, roots_[j], x_data, current_weight_0));
     }
     //find aggregate, could use a heap here if there are many classes
     std::vector<float> outputs;

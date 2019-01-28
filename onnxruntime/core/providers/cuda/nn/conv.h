@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/platform/ort_mutex.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_base.h"
@@ -47,7 +48,7 @@ struct CudnnConvState {
   CudnnConvolutionDescriptor conv_desc;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
-  std::mutex mutex;
+  OrtMutex mutex;
 };
 
 enum : size_t {
@@ -59,10 +60,10 @@ class Conv : public CudaKernel, public ConvBase {
  public:
   Conv(const OpKernelInfo& info) : CudaKernel(info), ConvBase(info) {
     auto pads_size = pads_.size();
-    ONNXRUNTIME_ENFORCE(pads_size % 2 == 0);
+    ORT_ENFORCE(pads_size % 2 == 0);
     auto rank = pads_size / 2;
     for (size_t i = 0; i < rank; i++) {
-      ONNXRUNTIME_ENFORCE(pads_[i] == pads_[i + rank], "cudnn only supports symmetric padding");
+      ORT_ENFORCE(pads_[i] == pads_[i + rank], "cudnn only supports symmetric padding");
     }
   }
 

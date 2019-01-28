@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 using namespace std;
 namespace onnxruntime {
@@ -49,18 +50,18 @@ bool PrepareForReduce(OpKernelContext* ctx,
                       bool keepdims_,
                       bool check_no_transpose = false) {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(input_tensor_ptr != nullptr);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& input = *input_tensor_ptr;
 
   size_t ndim = input.Shape().GetDims().size();
-  for (int64_t axe : axes_) {
-    ONNXRUNTIME_ENFORCE(axe >= 0 && axe < (int64_t)ndim, "Axis attribute out of range");
+  std::vector<int64_t> axes;
+  for (int64_t axis : axes_) {
+    axes.push_back(HandleNegativeAxis(axis, static_cast<int64_t>(ndim)));
   }
 
-  std::vector<int64_t> axes = axes_;
   if (axes.empty()) {
     // This is the default case for non-arg kind reductions. Reduce on all dimensions.
-    for (int i = 0; i < ndim; i++)
+    for (size_t i = 0; i < ndim; i++)
       axes.push_back(i);
   }
 
@@ -296,7 +297,9 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-    #pragma omp parallel for
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
     for (int64_t i = 0; i < block_size; ++i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
     }
@@ -350,8 +353,10 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
-    
-    #pragma omp parallel for
+
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
     for (int64_t i = 0; i < block_size; ++i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
     }

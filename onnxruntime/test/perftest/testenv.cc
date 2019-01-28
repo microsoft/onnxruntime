@@ -12,21 +12,17 @@
 #include <filesystem>
 #endif
 #include "providers.h"
+#include "default_providers.h"
 
 using namespace std::experimental::filesystem::v1;
 using onnxruntime::Status;
 
-inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, ONNXRuntimeProviderFactoryPtr* f) {
-  ONNXRuntimeProviderPtr p;
-  (*f)->CreateProvider(f, &p);
-  std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
-  auto status = sess->RegisterExecutionProvider(std::move(q));
+inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, std::unique_ptr<onnxruntime::IExecutionProvider>&& f) {
+  auto status = sess->RegisterExecutionProvider(std::move(f));
   if (!status.IsOK()) {
     throw std::runtime_error(status.ErrorMessage().c_str());
   }
 }
-#define FACTORY_PTR_HOLDER \
-  std::unique_ptr<ONNXRuntimeProviderFactoryPtr, decltype(&ONNXRuntimeReleaseObject)> ptr_holder_(f, ONNXRuntimeReleaseObject);
 
 Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& sess, const path& model_url, const std::string& logid) const {
   ::onnxruntime::SessionOptions so;
@@ -41,46 +37,43 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
   for (const std::string& provider : providers_) {
     if (provider == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      ONNXRuntimeProviderFactoryPtr* f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
-      FACTORY_PTR_HOLDER;
-      RegisterExecutionProvider(sess.get(), f);
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultCudaExecutionProvider());
 #else
-      ONNXRUNTIME_THROW("CUDA is not supported in this build");
+      ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-      ONNXRuntimeProviderFactoryPtr* f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena_ ? 1 : 0, &f));
-      FACTORY_PTR_HOLDER;
-      RegisterExecutionProvider(sess.get(), f);
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultMkldnnExecutionProvider(enable_cpu_mem_arena_ ? 1 : 0));
 #else
-      ONNXRUNTIME_THROW("CUDA is not supported in this build");
+      ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-      ONNXRuntimeProviderFactoryPtr* f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
-      RegisterExecutionProvider(sess.get(), f);
-      FACTORY_PTR_HOLDER;
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultNupharExecutionProvider());
 #else
-      ONNXRUNTIME_THROW("CUDA is not supported in this build");
+      ORT_THROW("CUDA is not supported in this build");
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      ONNXRuntimeProviderFactoryPtr* f;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateBrainSliceExecutionProviderFactory(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultBrainsliceExecutionProvider());
+#else
+      ORT_THROW("This executable was not built with BrainSlice");
+#endif
+    } else if (provider == onnxruntime::kTRTExecutionProvider) {
+#if USE_TRT
+      OrtProviderFactoryInterface** f;
+      ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
       RegisterExecutionProvider(sess.get(), f);
       FACTORY_PTR_HOLDER;
 #else
-      ONNXRUNTIME_THROW("This executable was not built with BrainSlice");
+      ORT_THROW("TensorRT is not supported in this build");
 #endif
     }
-    //TODO: add more
+    // TODO: add more
   }
 
   status = sess->Load(model_url.string());
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
   LOGS_DEFAULT(INFO) << "successfully loaded model from " << model_url;
   status = sess->Initialize();
   if (status.IsOK())

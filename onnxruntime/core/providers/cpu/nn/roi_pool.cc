@@ -24,7 +24,7 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
   int num_rois = static_cast<int>(R->Shape()[0]);
 
   // Each ROI is of the form [batch_index x1 y1 x2 y2]
-  ONNXRUNTIME_ENFORCE(R->Shape()[1] == 5);
+  ORT_ENFORCE(R->Shape()[1] == 5);
 
   std::vector<int64_t> output_dims({num_rois, channels, pooled_height_, pooled_width_});
 
@@ -41,8 +41,8 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
     int roi_start_h = static_cast<int>(round(rois[2] * spatial_scale_));
     int roi_end_w = static_cast<int>(round(rois[3] * spatial_scale_));
     int roi_end_h = static_cast<int>(round(rois[4] * spatial_scale_));
-    ONNXRUNTIME_ENFORCE(roi_batch_id >= 0);
-    ONNXRUNTIME_ENFORCE(roi_batch_id < batch_size);
+    ORT_ENFORCE(roi_batch_id >= 0);
+    ORT_ENFORCE(roi_batch_id < batch_size);
 
     // Force malformed ROIs to be 1x1
     int roi_height = std::max(roi_end_h - roi_start_h + 1, 1);
@@ -80,7 +80,7 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
 
           // Define an empty pooling region to be zero
           bool is_empty = (hend <= hstart) || (wend <= wstart);
-          Ydata[pool_index] = is_empty ? 0 : std::numeric_limits<float>::min();
+          Ydata[pool_index] = is_empty ? 0 : std::numeric_limits<float>::lowest();
 
           for (int h = hstart; h < hend; ++h) {
             for (int w = wstart; w < wend; ++w) {

@@ -7,7 +7,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -42,6 +42,7 @@
 
 #define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 
@@ -54,6 +55,15 @@
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
+
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int id, bool f, const char*, const char*, const char*);
+}  // namespace onnxruntime
+
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267 4996 4503 4003)
 #endif  // _MSC_VER
@@ -172,45 +182,32 @@ class SessionObjectInitializer {
   }
 };
 
-inline void RegisterExecutionProvider(InferenceSession* sess, ONNXRuntimeProviderFactoryPtr* f) {
-  ONNXRuntimeProviderPtr p;
-  (*f)->CreateProvider(f, &p);
-  std::unique_ptr<onnxruntime::IExecutionProvider> q((onnxruntime::IExecutionProvider*)p);
-  auto status = sess->RegisterExecutionProvider(std::move(q));
+inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
+  auto p = f.CreateProvider();
+  auto status = sess->RegisterExecutionProvider(std::move(p));
   if (!status.IsOK()) {
     throw std::runtime_error(status.ErrorMessage().c_str());
   }
 }
 
-#define FACTORY_PTR_HOLDER \
-  std::unique_ptr<ONNXRuntimeProviderFactoryPtr, decltype(&ONNXRuntimeReleaseObject)> ptr_holder_(f, ONNXRuntimeReleaseObject);
-
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
+
 #ifdef USE_CUDA
   {
-    ONNXRuntimeProviderFactoryPtr* f;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateCUDAExecutionProviderFactory(0, &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
   }
 #endif
 
 #ifdef USE_MKLDNN
   {
     const bool enable_cpu_mem_arena = true;
-    ONNXRuntimeProviderFactoryPtr* f;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
   }
 #endif
 #if 0  //USE_NUPHAR
   {
-    ONNXRuntimeProviderFactoryPtr* f;
-    ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateNupharExecutionProviderFactory(0, "", &f));
-    RegisterExecutionProvider(sess, f);
-    FACTORY_PTR_HOLDER;
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(0, ""));
   }
 #endif
 
@@ -222,8 +219,9 @@ void InitializeSession(InferenceSession* sess) {
 
 void addGlobalMethods(py::module& m) {
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
-  m.def("get_device", []() -> std::string { return BACKEND_DEVICE; },
-        "Return the device used to compute the prediction (CPU, MKL, ...)");
+  m.def(
+      "get_device", []() -> std::string { return BACKEND_DEVICE; },
+      "Return the device used to compute the prediction (CPU, MKL, ...)");
 }
 
 void addObjectMethods(py::module& m) {
@@ -231,21 +229,37 @@ void addObjectMethods(py::module& m) {
   py::add_ostream_redirect(m, "onnxruntime_ostream_redirect");
   py::class_<SessionOptions>(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc")
       .def(py::init())
+      .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
+                     R"pbdoc(Enables the memory pattern optimization.
+The idea is if the input shapes are the same, we could trace the internal memory allocation
+and generate a memory pattern for future request. So next time we could just do one allocation
+with a big chunk for all the internal memory allocation. Default is true.)pbdoc")
+      .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
+                     R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
+Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &SessionOptions::enable_profiling,
-                     R"pbdoc(Enable profiling for this session.)pbdoc")
-      .def_readwrite("profile_file_prefix", &SessionOptions::profile_file_prefix,
-                     R"pbdoc(The prefix of the profile file. The current time will be appended to the file name.)pbdoc")
+                     R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+      .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
+                     R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
+      .def_readwrite("max_num_graph_transformation_steps", &SessionOptions::max_num_graph_transformation_steps,
+                     R"pbdoc(Runs optimization steps on the execution graph. Default is 5.)pbdoc")
       .def_readwrite("session_logid", &SessionOptions::session_logid,
                      R"pbdoc(Logger id to use for session output.)pbdoc")
       .def_readwrite("session_log_verbosity_level", &SessionOptions::session_log_verbosity_level,
-                     R"pbdoc(Applies to session load, initialization, etc.)pbdoc");
+                     R"pbdoc(Applies to session load, initialization, etc. Default is 0.)pbdoc")
+      .def_readwrite("session_thread_pool_size", &SessionOptions::session_thread_pool_size,
+                     R"pbdoc(How many threads in the session thread pool. Default is 0 to let onnxruntime choose.
+This parameter is unused unless *enable_sequential_execution* is false.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("run_log_verbosity_level", &RunOptions::run_log_verbosity_level,
                      "Applies to a particular Run() invocation.")
       .def_readwrite("run_tag", &RunOptions::run_tag,
-                     "To identify logs generated by a particular Run() invocation.");
+                     "To identify logs generated by a particular Run() invocation.")
+      .def_readwrite("terminate", &RunOptions::terminate,
+                     R"pbdoc(Set to True to terminate any currently executing calls that are using this
+RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -260,73 +274,81 @@ facilitate the comparison.)pbdoc")
   py::class_<onnxruntime::NodeArg>(m, "NodeArg", R"pbdoc(Node argument definition, for both input and output,
 including arg name, arg type (contains both type and shape).)pbdoc")
       .def_property_readonly("name", &onnxruntime::NodeArg::Name, "node name")
-      .def_property_readonly("type", [](const onnxruntime::NodeArg& na) -> std::string {
-        return *(na.Type());
-      }, "node type")
-      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-        std::ostringstream res;
-        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          res << "[]";
-        } else {
-          res << "[";
-          for (int i = 0; i < shape->dim_size(); ++i) {
-            if (shape->dim(i).has_dim_value()) {
-              res << shape->dim(i).dim_value();
-            } else if (shape->dim(i).has_dim_param()) {
-              res << "None";
+      .def_property_readonly(
+          "type", [](const onnxruntime::NodeArg& na) -> std::string {
+            return *(na.Type());
+          },
+          "node type")
+      .def(
+          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+            std::ostringstream res;
+            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              res << "[]";
+            } else {
+              res << "[";
+              for (int i = 0; i < shape->dim_size(); ++i) {
+                if (shape->dim(i).has_dim_value()) {
+                  res << shape->dim(i).dim_value();
+                } else if (shape->dim(i).has_dim_param()) {
+                  res << "None";
+                }
+                if (i < shape->dim_size() - 1) {
+                  res << ", ";
+                }
+              }
+              res << "]";
             }
-            if (i < shape->dim_size() - 1) {
-              res << ", ";
+            res << ")";
+
+            return std::string(res.str());
+          },
+          "converts the node into a readable string")
+      .def_property_readonly(
+          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              return arr;
             }
-          }
-          res << "]";
-        }
-        res << ")";
 
-        return std::string(res.str());
-      }, "converts the node into a readable string")
-      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          return arr;
-        }
-
-        arr.resize(shape->dim_size());
-        for (int i = 0; i < shape->dim_size(); ++i) {
-          if (shape->dim(i).has_dim_value()) {
-            arr[i] = py::cast(shape->dim(i).dim_value());
-          } else if (shape->dim(i).has_dim_param()) {
-            arr[i] = py::none();
-          }
-        }
-        return arr;
-      }, "node shape (assuming the node holds a tensor)");
+            arr.resize(shape->dim_size());
+            for (int i = 0; i < shape->dim_size(); ++i) {
+              if (shape->dim(i).has_dim_value()) {
+                arr[i] = py::cast(shape->dim(i).dim_value());
+              } else if (shape->dim(i).has_dim_param()) {
+                arr[i] = py::none();
+              }
+            }
+            return arr;
+          },
+          "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
       .def(py::init<SessionOptions, SessionObjectInitializer>())
-      .def("load_model", [](InferenceSession* sess, const std::string& path) {
-        auto status = sess->Load(path);
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-        InitializeSession(sess);
-      },
-           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
-        std::istringstream buffer(serializedModel);
-        auto status = sess->Load(buffer);
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-        InitializeSession(sess);
-      },
-           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def(
+          "load_model", [](InferenceSession* sess, const std::string& path) {
+            auto status = sess->Load(path);
+            if (!status.IsOK()) {
+              throw std::runtime_error(status.ToString().c_str());
+            }
+            InitializeSession(sess);
+          },
+          R"pbdoc(Load a model saved in ONNX format.)pbdoc")
+      .def(
+          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
+            std::istringstream buffer(serializedModel);
+            auto status = sess->Load(buffer);
+            if (!status.IsOK()) {
+              throw std::runtime_error(status.ToString().c_str());
+            }
+            InitializeSession(sess);
+          },
+          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {

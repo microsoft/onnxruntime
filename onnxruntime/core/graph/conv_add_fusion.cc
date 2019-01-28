@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/initializer.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/conv_add_fusion.h"
 
 using namespace onnx;
@@ -11,12 +12,12 @@ namespace onnxruntime {
 Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    if (node.OpType() != "Conv" || node.GetOutputEdgesCount() != 1) {
+    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (next_node.OpType() != "Add" ||
+    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
@@ -36,9 +37,22 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Currently, fusion is only supported for float or double data type.
     if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
-        conv_W_tensor_proto->dims_size() != 4 ||
-        add_B_tensor_proto->dims_size() != 3 ||
+        conv_W_tensor_proto->dims_size() < 4 ||
+        add_B_tensor_proto->dims_size() != conv_W_tensor_proto->dims_size() - 1 ||
         conv_W_tensor_proto->dims(0) != add_B_tensor_proto->dims(0)) {
+      continue;
+    }
+
+    // The dimensions of add_B should be equal to 1 except first dimension.
+    bool flag = false;
+    for (int i = 1; i < add_B_tensor_proto->dims_size(); i++) {
+      if (add_B_tensor_proto->dims(i) != 1) {
+        flag = true;
+        break;
+      }
+    }
+
+    if (flag) {
       continue;
     }
 
@@ -49,7 +63,6 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
           conv_B_tensor_proto->dims_size() != 1 ||
-          add_B_tensor_proto->dims_size() != 3 ||
           conv_B_tensor_proto->dims(0) != add_B_tensor_proto->dims(0)) {
         continue;
       }
@@ -57,6 +70,9 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
       auto add_B = std::make_unique<Initializer>(add_B_tensor_proto);
 
+      if (conv_B->size() != add_B->size()) {
+        continue;
+      }
       // Calculate new value of initializers of conv node
       conv_B->add(*add_B);
 
@@ -93,17 +109,16 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Replace the input of the node following add node
     const NodeArg* add_output_def = add_node.OutputDefs()[0];
-    const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
+    NodeArg* conv_output_def = conv_node.MutableOutputDefs()[0];
     for (auto it = add_node.OutputNodesBegin(); it != add_node.OutputNodesEnd(); ++it) {
       auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
         return Status(ONNXRUNTIME, INVALID_ARGUMENT);
       }
-
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == add_output_def) {
-          def = const_cast<NodeArg*>(conv_output_def);
+          def = conv_output_def;
         }
       }
     }
@@ -117,7 +132,7 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
 
   return Status::OK();

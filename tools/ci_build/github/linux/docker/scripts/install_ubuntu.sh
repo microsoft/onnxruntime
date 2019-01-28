@@ -8,12 +8,13 @@ esac
 done
 
 DEBIAN_FRONTEND=noninteractive
+
 apt-get update && apt-get install -y software-properties-common
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
         autotools-dev \
         build-essential \
-        git ca-certificates \
+        git apt-transport-https \
         ca-certificates \
         pkg-config \
         wget \
@@ -25,6 +26,7 @@ apt-get update && apt-get install -y --no-install-recommends \
         sudo \
         gfortran \
         python3-dev \
+        language-pack-en \
         libopenblas-dev \
         liblttng-ust0 \
         libcurl3 \
@@ -37,6 +39,18 @@ apt-get update && apt-get install -y --no-install-recommends \
         zip \
         rsync libunwind8 libpng16-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest
+
+locale-gen en_US.UTF-8
+update-locale LANG=en_US.UTF-8
+
+OS_VER=`lsb_release -r -s`
+mkdir -p /tmp/dotnet
+aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
+dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
+apt-get install -y apt-transport-https
+apt-get update
+apt-get install -y dotnet-sdk-2.2
+rm -rf /tmp/dotnet || true
 
 if [ $PYTHON_VER != "3.5" ]; then
     apt-get install -y --no-install-recommends \

@@ -43,7 +43,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT* y_data = nullptr;
 
   {
-    std::lock_guard<std::mutex> lock(s_.mutex);
+    std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
     bool input_dims_changed = (s_.last_x_dims != x_dims);
     bool w_dims_changed = (s_.last_w_dims != w_dims);
@@ -57,9 +57,10 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       const int64_t N = X->Shape()[0];
       const int64_t M = W->Shape()[0];
 
-      ONNXRUNTIME_RETURN_IF_ERROR(ValidateInputShape(X, W));
+      ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
-      std::vector<int64_t> kernel_shape = ComputeKernelShape(W->Shape());
+      std::vector<int64_t> kernel_shape;
+      ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
       auto rank = kernel_shape.size();
       std::vector<int64_t> pads(pads_);
       if (pads.empty()) {
@@ -76,7 +77,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       std::vector<int64_t> y_dims;
       y_dims.insert(y_dims.begin(), {N, M});
-      ONNXRUNTIME_RETURN_IF_ERROR(InferOutputShape<true>(x_shape.Slice(2), kernel_shape, strides, dilations, &pads, &y_dims));
+      ORT_RETURN_IF_ERROR(InferOutputShape<true>(x_shape.Slice(2), kernel_shape, strides, dilations, &pads, &y_dims));
       s_.y_dims = y_dims;
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
@@ -92,14 +93,14 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         strides.push_back(1);
         dilations.push_back(1);
       }
-      ONNXRUNTIME_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-      ONNXRUNTIME_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
       if (w_dims_changed)
-        ONNXRUNTIME_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+        ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ONNXRUNTIME_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, mode, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations, mode, CudnnTensor::GetDataType<CudaT>()));
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
 
       IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
@@ -107,14 +108,14 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       if (has_bias) {
         const Tensor* B = context->Input<Tensor>(2);
         const auto& b_shape = B->Shape();
-        ONNXRUNTIME_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
+        ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
         std::vector<int64_t> b_dims(2 + kernel_shape.size());
         b_dims[0] = 1;           // N
         b_dims[1] = b_shape[0];  // C
         for (int i = 0; i < kernel_shape.size(); i++)
           b_dims[2 + i] = 1;
 
-        ONNXRUNTIME_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
+        ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       }
 
       Tensor* Y = context->Output(0, TensorShape(s_.y_dims));

@@ -13,7 +13,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/framework/allocator.h"
 
 #ifdef _MSC_VER
@@ -204,7 +203,11 @@ class UniDirectionalLstm {
                      const ActivationFuncs::Entry& activation_func_g,
                      const ActivationFuncs::Entry& activation_func_h,
                      const float clip,
+#ifdef USE_EIGEN_THREADPOOL
+                     Eigen::NonBlockingThreadPool& ttp);
+#else
                      TaskThreadPool& ttp);
+#endif
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -296,7 +299,11 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::ActivationFuncPtr> activation_g_;
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
+#ifdef USE_EIGEN_THREADPOOL
+  Eigen::NonBlockingThreadPool& ttp_;
+#else
   TaskThreadPool& ttp_;
+#endif
 };
 
 }  // namespace detail
@@ -314,9 +321,9 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
-    ONNXRUNTIME_NOT_IMPLEMENTED("LSTM operator does not support double yet");
+    ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");
   } else
-    ONNXRUNTIME_THROW("Invalid data type for LSTM operator of ", data_type);
+    ORT_THROW("Invalid data type for LSTM operator of ", data_type);
 
   return status;
 }
@@ -350,7 +357,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   int input_size = gsl::narrow<int>(X_shape[2]);
 
   Status status = ValidateInputs(X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   // LSTM outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
@@ -364,7 +371,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   gsl::span<const T> input_weights = W.DataAsSpan<T>();
   gsl::span<const T> recurrent_weights = R.DataAsSpan<T>();
@@ -507,7 +514,7 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
                                      const Tensor* P, int batch_size) const {
   auto status = rnn::detail::ValidateCommonRnnInputs(X, W, R, B, 4, sequence_lens, initial_h,
                                                      num_directions_, hidden_size_);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   if (initial_c != nullptr) {
     auto& initial_c_shape = initial_c->Shape();
@@ -517,8 +524,8 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
-                                     num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
+                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -528,8 +535,8 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
-                                     num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
+                             num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();
@@ -559,7 +566,11 @@ UniDirectionalLstm<T>::UniDirectionalLstm(AllocatorPtr allocator,
                                           const ActivationFuncs::Entry& activation_func_g,
                                           const ActivationFuncs::Entry& activation_func_h,
                                           const float clip,
+#ifdef USE_EIGEN_THREADPOOL
+                                          Eigen::NonBlockingThreadPool& ttp)
+#else
                                           TaskThreadPool& ttp)
+#endif
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),
@@ -882,8 +893,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     };
 
-    ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows,
-                            ttp_, logger_);
+    ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows, ttp_, logger_);
 
   } else {
     span_T_iter c_prev = batched_internal_state_prev_one_step.begin();

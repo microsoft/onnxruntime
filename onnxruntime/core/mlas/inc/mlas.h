@@ -44,6 +44,35 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
+// Activiation routines.
+//
+
+enum MLAS_ACTIVATION_KIND {
+    MlasIdentityActivation,
+    MlasReluActivation,
+    MlasLeakyReluActivation,
+    MlasTanhActivation,
+    MlasLogisticActivation,
+};
+
+struct MLAS_ACTIVATION {
+    MLAS_ACTIVATION_KIND ActivationKind;
+    float alpha;
+};
+
+void
+MLASCALL
+MlasActivation(
+    const MLAS_ACTIVATION* Activation,
+    const float* Input,
+    const float* Bias,
+    size_t M,
+    float* Output,
+    size_t N,
+    size_t ldc
+    );
+
+//
 // Single precision matrix/matrix multiply routine.
 //
 
@@ -76,6 +105,7 @@ enum MLAS_CONV_ALGORITHM {
 };
 
 struct MLAS_CONV_PARAMETERS {
+    const MLAS_ACTIVATION* Activation;
     size_t Dimensions;
     size_t BatchCount;
     size_t GroupCount;
@@ -102,7 +132,7 @@ struct MLAS_CONV_PARAMETERS {
     } u;
 };
 
-bool
+void
 MLASCALL
 MlasConvPrepare(
     MLAS_CONV_PARAMETERS* Parameters,
@@ -115,7 +145,9 @@ MlasConvPrepare(
     const int64_t* DilationShape,
     const int64_t* Padding,
     const int64_t* StrideShape,
+    const int64_t* OutputShape,
     size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize
     );
 
@@ -155,17 +187,23 @@ MlasPool(
     );
 
 //
-// Bias addition routine.
+// Miscellaneous compute routines.
 //
 
 void
 MLASCALL
-MlasBiasAdd(
-    const float* Bias,
-    size_t M,
+MlasComputeLogistic(
+    const float* Input,
     float* Output,
-    size_t N,
-    size_t ldc
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeTanh(
+    const float* Input,
+    float* Output,
+    size_t N
     );
 
 //

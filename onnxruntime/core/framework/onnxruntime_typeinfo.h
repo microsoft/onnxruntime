@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/framework/onnx_object.h"
-#include "core/framework/onnx_object_cxx.h"
-#include "core/framework/tensor_type_and_shape_c_api.h"
 #include <atomic>
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 class DataTypeImpl;
@@ -20,21 +18,21 @@ class TypeProto;
  * the equivalent of onnx::TypeProto
  * This class is mainly for the C API
  */
-struct ONNXRuntimeTypeInfo : public onnxruntime::ObjectBase<ONNXRuntimeTypeInfo> {
+struct OrtTypeInfo {
  public:
-  friend class onnxruntime::ObjectBase<ONNXRuntimeTypeInfo>;
+  ONNXType type = ONNX_TYPE_UNKNOWN;
 
-  ONNXRuntimeType type = ONNXRUNTIME_TYPE_UNKNOWN;
+  ~OrtTypeInfo();
+
   //owned by this
-  void* data = nullptr;
-  ONNXRuntimeTypeInfo(const ONNXRuntimeTypeInfo& other) = delete;
-  ONNXRuntimeTypeInfo& operator=(const ONNXRuntimeTypeInfo& other) = delete;
+  OrtTensorTypeAndShapeInfo* data = nullptr;
+  OrtTypeInfo(const OrtTypeInfo& other) = delete;
+  OrtTypeInfo& operator=(const OrtTypeInfo& other) = delete;
 
-  static ONNXStatusPtr FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
-                                        const onnxruntime::DataTypeImpl* tensor_data_type, ONNXRuntimeTypeInfo** out);
-  static ONNXStatusPtr FromDataTypeImpl(const onnx::TypeProto*, ONNXRuntimeTypeInfo** out);
+  static OrtStatus* FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
+                                     const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out);
+  static OrtStatus* FromDataTypeImpl(const onnx::TypeProto*, OrtTypeInfo** out);
 
  private:
-  ONNXRuntimeTypeInfo(ONNXRuntimeType type, void* data) noexcept;
-  ~ONNXRuntimeTypeInfo();
+  OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;
 };

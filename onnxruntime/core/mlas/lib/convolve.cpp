@@ -29,20 +29,17 @@ Abstract:
 //
 
 struct MLAS_CONV_WORK_BLOCK {
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    volatile LONG Counter;
     const MLAS_CONV_PARAMETERS* Parameters;
     const float* Input;
     const float* Filter;
     const float* Bias;
     float* WorkingBuffer;
     float* Output;
-#endif
     struct SEGMENT {
         size_t StartN;
         size_t CountN;
     } Segments[MLAS_MAXIMUM_THREAD_COUNT];
-    uint32_t TargetThreadCount;
+    int32_t TargetThreadCount;
 };
 
 void
@@ -601,23 +598,18 @@ Return Value:
         }
 
         //
-        // Add the optional bias vector.
+        // Apply the activation with optional bias.
         //
 
-        if (Bias != nullptr) {
-            MlasBiasAdd(Bias, FilterCount, SegmentOutput, CountN, OutputSize);
-        }
+        MlasActivation(Parameters->Activation, SegmentOutput, Bias, FilterCount,
+            SegmentOutput, CountN, OutputSize);
     }
 }
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
 void
-CALLBACK
-MlasConvWorkCallback(
-    PTP_CALLBACK_INSTANCE Instance,
+MlasConvOperationThreaded(
     void* Context,
-    PTP_WORK WorkObject
+    int32_t Index
     )
 /*++
 
@@ -628,11 +620,9 @@ Routine Description:
 
 Arguments:
 
-    Instance - Supplies the callback instance object.
+    Context - Supplies the pointer to the context for the threaded operation.
 
-    Context - Supplies the pointer to the parameters for the SGEMM operation.
-
-    WorkObject - Supplies the threadpool work object.
+    Index - Supplies the current index of the threaded operation.
 
 Return Value:
 
@@ -640,12 +630,7 @@ Return Value:
 
 --*/
 {
-    MLAS_UNREFERENCED_PARAMETER(Instance);
-    MLAS_UNREFERENCED_PARAMETER(WorkObject);
-
     MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
-
-    LONG Index = InterlockedIncrement(&WorkBlock->Counter) - 1;
 
     MLAS_CONV_WORK_BLOCK::SEGMENT* Segment = &WorkBlock->Segments[Index];
 
@@ -658,11 +643,9 @@ Return Value:
 }
 
 void
-CALLBACK
-MlasConvGemmDirectWorkCallback(
-    PTP_CALLBACK_INSTANCE Instance,
+MlasConvGemmDirectThreaded(
     void* Context,
-    PTP_WORK WorkObject
+    int32_t Index
     )
 /*++
 
@@ -673,11 +656,9 @@ Routine Description:
 
 Arguments:
 
-    Instance - Supplies the callback instance object.
+    Context - Supplies the pointer to the context for the threaded operation.
 
-    Context - Supplies the pointer to the parameters for the SGEMM operation.
-
-    WorkObject - Supplies the threadpool work object.
+    Index - Supplies the current index of the threaded operation.
 
 Return Value:
 
@@ -685,12 +666,7 @@ Return Value:
 
 --*/
 {
-    MLAS_UNREFERENCED_PARAMETER(Instance);
-    MLAS_UNREFERENCED_PARAMETER(WorkObject);
-
     MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
-
-    LONG Index = InterlockedIncrement(&WorkBlock->Counter) - 1;
 
     const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
 
@@ -746,16 +722,19 @@ Return Value:
             output, OutputSize);
 
         //
-        // Add the optional bias vector.
+        // Apply the activation with optional bias.
         //
 
-        if (WorkBlock->Bias != nullptr) {
-            MlasBiasAdd(WorkBlock->Bias + group * FilterCount, FilterCount, output, OutputSize, OutputSize);
+        const float* bias = WorkBlock->Bias;
+
+        if (bias != nullptr) {
+            bias += group * FilterCount;
         }
+
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, output,
+            OutputSize, OutputSize);
     }
 }
-
-#endif
 
 inline
 bool
@@ -798,7 +777,7 @@ Return Value:
 --*/
 {
 
-#if defined(MLAS_USE_WIN32_THREADPOOL) || defined(MLAS_USE_OPENMP)
+#if defined(MLAS_HAS_THREADING_SUPPORT)
 
     MLAS_CONV_WORK_BLOCK WorkBlock;
 
@@ -809,23 +788,10 @@ Return Value:
         return false;
     }
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
-    //
-    // Create an object to submit work to the threadpool.
-    //
-
-    PTP_WORK WorkObject = CreateThreadpoolWork(MlasConvWorkCallback, &WorkBlock, nullptr);
-
-    if (WorkObject == nullptr) {
-        return false;
-    }
-
     //
     // Initialize the common fields of the work block.
     //
 
-    WorkBlock.Counter = 0;
     WorkBlock.Parameters = Parameters;
     WorkBlock.Input = Input;
     WorkBlock.Filter = Filter;
@@ -833,13 +799,11 @@ Return Value:
     WorkBlock.WorkingBuffer = WorkingBuffer;
     WorkBlock.Output = Output;
 
-#endif
-
     //
     // Segment the operation across multiple threads.
     //
 
-    uint32_t Index = 0;
+    int32_t Index = 0;
     size_t SegmentCountN;
 
     for (size_t SegmentStartN = 0; SegmentStartN < OutputSize; SegmentStartN += SegmentCountN) {
@@ -853,51 +817,10 @@ Return Value:
         WorkBlock.Segments[Index].StartN = SegmentStartN;
         WorkBlock.Segments[Index].CountN = SegmentCountN;
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
-        //
-        // Execute one of the segments on a worker thread.
-        //
-
-        if (Index > 0) {
-            SubmitThreadpoolWork(WorkObject);
-        }
-
-#endif
-
         Index++;
     }
 
-#if defined(MLAS_USE_OPENMP)
-
-    #pragma omp parallel for
-    for (int32_t tid = 0; tid < int32_t(Index); tid++) {
-
-        MLAS_CONV_WORK_BLOCK::SEGMENT* Segment = &WorkBlock.Segments[tid];
-
-        float* ColumnBuffer =
-            WorkingBuffer + tid * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
-
-        MlasConvOperation(Parameters, Input, Filter, Bias, ColumnBuffer, Output,
-            Segment->StartN, Segment->CountN);
-    }
-
-#elif defined(MLAS_USE_WIN32_THREADPOOL)
-
-    //
-    // Execute the remaining segment on this thread.
-    //
-
-    MlasConvWorkCallback(nullptr, &WorkBlock, WorkObject);
-
-    //
-    // Wait for the worker threads to complete.
-    //
-
-    WaitForThreadpoolWorkCallbacks(WorkObject, FALSE);
-    CloseThreadpoolWork(WorkObject);
-
-#endif
+    MlasExecuteThreaded(MlasConvOperationThreaded, &WorkBlock, Index);
 
     return true;
 
@@ -971,7 +894,7 @@ Return Value:
 
     const MLAS_CONV_ALGORITHM Algorithm = Parameters->Algorithm;
 
-#if defined(MLAS_USE_WIN32_THREADPOOL) || defined(MLAS_USE_OPENMP)
+#if defined(MLAS_HAS_THREADING_SUPPORT)
 
     //
     // Schedule batches of GEMMs across multiple threads.
@@ -981,76 +904,25 @@ Return Value:
 
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
+        int32_t TargetThreadCount = MlasPlatform.GetMaximumThreadCount();
 
-        uint32_t TargetThreadCount = MlasPlatform.GetMaximumThreadCount();
-
-        if (TargetThreadCount >= BatchGroupCount) {
-            TargetThreadCount = uint32_t(BatchGroupCount);
+        if (size_t(TargetThreadCount) >= BatchGroupCount) {
+            TargetThreadCount = int32_t(BatchGroupCount);
         }
 
-        if (TargetThreadCount > 1) {
+        MLAS_CONV_WORK_BLOCK WorkBlock;
 
-            MLAS_CONV_WORK_BLOCK WorkBlock;
+        WorkBlock.Parameters = Parameters;
+        WorkBlock.Input = Input;
+        WorkBlock.Filter = Filter;
+        WorkBlock.Bias = Bias;
+        WorkBlock.WorkingBuffer = nullptr;
+        WorkBlock.Output = Output;
+        WorkBlock.TargetThreadCount = TargetThreadCount;
 
-            PTP_WORK WorkObject = CreateThreadpoolWork(MlasConvGemmDirectWorkCallback, &WorkBlock, nullptr);
-
-            if (WorkObject != nullptr) {
-
-                WorkBlock.Counter = 0;
-                WorkBlock.Parameters = Parameters;
-                WorkBlock.Input = Input;
-                WorkBlock.Filter = Filter;
-                WorkBlock.Bias = Bias;
-                WorkBlock.WorkingBuffer = nullptr;
-                WorkBlock.Output = Output;
-                WorkBlock.TargetThreadCount = TargetThreadCount;
-
-                for (uint32_t Index = 1; Index < TargetThreadCount; Index++) {
-                    SubmitThreadpoolWork(WorkObject);
-                }
-
-                MlasConvGemmDirectWorkCallback(nullptr, &WorkBlock, WorkObject);
-
-                WaitForThreadpoolWorkCallbacks(WorkObject, FALSE);
-                CloseThreadpoolWork(WorkObject);
-
-                return;
-            }
-        }
-
-#else
-
-        #pragma omp parallel for
-        for (int64_t bg = 0; bg < int64_t(BatchGroupCount); bg++) {
-
-            size_t group = size_t(bg % GroupCount);
-
-            const float* input = Input + bg * InputGroupSize;
-            const float* filter = Filter + group * FilterGroupSize;
-            float* output = Output + bg * OutputGroupSize;
-
-            //
-            // Invoke the non-threaded GEMM directly with the input tensor.
-            //
-
-            MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
-                OutputSize, K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, 0.0f,
-                output, OutputSize);
-
-            //
-            // Add the optional bias vector.
-            //
-
-            if (Bias != nullptr) {
-                MlasBiasAdd(Bias + group * FilterCount, FilterCount, output, OutputSize, OutputSize);
-            }
-        }
+        MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount);
 
         return;
-
-#endif
-
     }
 
 #endif
@@ -1083,12 +955,11 @@ Return Value:
                         Output, OutputSize);
 
                     //
-                    // Add the optional bias vector.
+                    // Apply the activation with optional bias.
                     //
 
-                    if (bias != nullptr) {
-                        MlasBiasAdd(bias, FilterCount, Output, OutputSize, OutputSize);
-                    }
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, Output,
+                        OutputSize, OutputSize);
 
                     break;
                 }
@@ -1110,12 +981,11 @@ Return Value:
                         K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize);
 
                     //
-                    // Add the optional bias vector.
+                    // Apply the activation with optional bias.
                     //
 
-                    if (bias != nullptr) {
-                        MlasBiasAdd(bias, FilterCount, Output, OutputSize, OutputSize);
-                    }
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, Output,
+                        OutputSize, OutputSize);
 
                     break;
                 }
@@ -1152,7 +1022,7 @@ Return Value:
     }
 }
 
-bool
+void
 MLASCALL
 MlasConvPrepare(
     MLAS_CONV_PARAMETERS* Parameters,
@@ -1165,7 +1035,9 @@ MlasConvPrepare(
     const int64_t* DilationShape,
     const int64_t* Padding,
     const int64_t* StrideShape,
+    const int64_t* OutputShape,
     size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize
     )
 /*++
@@ -1200,29 +1072,27 @@ Arguments:
 
     StrideShape - Supplies the shape of the stride.
 
+    OutputShape - Supplies the shape of the output tensor.
+
     FilterCount - Supplies the number of rows of the filter matrix per group.
+
+    Activation - Supplies the parameters for the activation to apply to the
+        convolution output.
 
     WorkingBufferSize - Receives the number of elements to allocate for the
         working buffer for intermediate results.
 
 Return Value:
 
-    Returns true if implementation can support this operation.
+    None.
 
 --*/
 {
     //
-    // Support only 2D or 3D convolutions.
+    // Save the convolution parameters.
     //
 
-    if (Dimensions != 2 && Dimensions != 3) {
-        return false;
-    }
-
-    //
-    // Build the convolution parameters.
-    //
-
+    Parameters->Activation = Activation;
     Parameters->Dimensions = Dimensions;
     Parameters->BatchCount = BatchCount;
     Parameters->GroupCount = GroupCount;
@@ -1240,24 +1110,12 @@ Return Value:
     for (size_t dim = 0; dim < Dimensions; dim++) {
 
         Parameters->InputShape[dim] = size_t(InputShape[dim]);
+        Parameters->OutputShape[dim] = size_t(OutputShape[dim]);
         Parameters->KernelShape[dim] = size_t(KernelShape[dim]);
         Parameters->DilationShape[dim] = size_t(DilationShape[dim]);
         Parameters->Padding[dim] = size_t(Padding[dim]);
         Parameters->Padding[dim + Dimensions] = size_t(Padding[dim + Dimensions]);
         Parameters->StrideShape[dim] = size_t(StrideShape[dim]);
-
-        //
-        // Compute the output shape.
-        //
-
-        int64_t OutputShape = (InputShape[dim] + Padding[dim] + Padding[dim + Dimensions] -
-            (DilationShape[dim] * (KernelShape[dim] - 1) + 1)) / StrideShape[dim] + 1;
-
-        if (OutputShape <= 0) {
-            return false;
-        }
-
-        Parameters->OutputShape[dim] = size_t(OutputShape);
 
         InputSize *= Parameters->InputShape[dim];
         OutputSize *= Parameters->OutputShape[dim];
@@ -1290,7 +1148,7 @@ Return Value:
             Parameters->u.GemmDirect.TransB = CblasNoTrans;
             Parameters->u.GemmDirect.ldb = OutputSize;
 
-            return true;
+            return;
         }
 
         if (Dimensions == 2 && AllDilationsAreOne && InputChannels == 1) {
@@ -1306,7 +1164,7 @@ Return Value:
                 Parameters->u.GemmDirect.TransB = CblasTrans;
                 Parameters->u.GemmDirect.ldb = Parameters->InputShape[1];
 
-                return true;
+                return;
             }
 
             if (Parameters->KernelShape[0] == Parameters->InputShape[0] &&
@@ -1316,7 +1174,7 @@ Return Value:
                 Parameters->u.GemmDirect.TransB = CblasNoTrans;
                 Parameters->u.GemmDirect.ldb = Parameters->InputShape[1];
 
-                return true;
+                return;
             }
         }
     }
@@ -1343,16 +1201,16 @@ Return Value:
         // threaded path.
         //
 
-        uint32_t TargetThreadCount;
+        int32_t TargetThreadCount;
         double Complexity = double(FilterCount) * double(OutputSize) * double(K);
 
         if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
-            TargetThreadCount = uint32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
+            TargetThreadCount = int32_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
         } else {
             TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
         }
 
-        uint32_t MaximumThreadCount = MlasPlatform.GetMaximumThreadCount();
+        int32_t MaximumThreadCount = MlasPlatform.GetMaximumThreadCount();
 
         if (TargetThreadCount >= MaximumThreadCount) {
             TargetThreadCount = MaximumThreadCount;
@@ -1384,6 +1242,4 @@ Return Value:
 
         *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
     }
-
-    return true;
 }

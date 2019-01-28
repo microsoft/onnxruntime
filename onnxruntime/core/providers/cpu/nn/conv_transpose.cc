@@ -37,7 +37,7 @@ inline void ComputeTransposePadAndOutputShape(
     int64_t* pad_tail,
     int64_t* out_size) {
   if (*out_size != -1) {
-    ONNXRUNTIME_ENFORCE(*out_size >= 0);
+    ORT_ENFORCE(*out_size >= 0);
     // total padding size
     int64_t paddings = std::max<int64_t>(0, (in_size - 1) * stride + kernel + adj - *out_size);
     if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when paddings are odd.
@@ -81,7 +81,7 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
 
   // input validations
   if (group_ <= 0) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0",
                            " group: ", group_);
   }
 
@@ -89,12 +89,12 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
     // This condition is not true for two tests in ONNX tests series:
     // test_convtranspose_1d_cpu, test_convtranspose_3d_cpu.
     // TODO: the error message should tell which operator raises it.
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 4-dimensional.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 4-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
 
   if (input_shape.NumDimensions() != F->Shape().NumDimensions()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.",
                            " X: ", X->Shape().ToString().c_str(),
                            " W: ", F->Shape().ToString().c_str());
   }
@@ -102,7 +102,7 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   const int64_t num_input_channels = input_shape[1];
 
   if (F->Shape()[0] != num_input_channels) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
                            " filter_number: ", F->Shape()[0],
                            " num_input_channels: ", num_input_channels);
   }
@@ -117,24 +117,13 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   // num_input_channels is k*group_. hence removing the check for num_output_channels here.
 
   if (num_input_channels % group_ != 0) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.",
                            " num_input_channels: ", num_input_channels,
                            " group: ", group_);
   }
 
-  std::vector<int64_t> kernel_shape = ComputeKernelShape(F->Shape());
-
-  if (kernel_shape[0] != F->Shape()[2]) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel height does not match filter height.",
-                           " kernel_height: ", kernel_shape[0],
-                           " filter_height: ", F->Shape()[2]);
-  }
-
-  if (kernel_shape[1] != F->Shape()[3]) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel width does not match filter width.",
-                           " kernel_width: ", kernel_shape[1],
-                           " filter_width: ", F->Shape()[3]);
-  }
+  std::vector<int64_t> kernel_shape;
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(F->Shape(), kernel_shape));
 
   std::vector<int64_t> output_padding(output_padding_);
   if (output_padding.empty()) {
@@ -192,8 +181,8 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
   if (output_shape_size != 0) {
     output_height = output_shape_[output_shape_size - 2];
     output_width = output_shape_[output_shape_size - 1];
-    ONNXRUNTIME_ENFORCE(output_height >= H, "Output height cannot be smaller than input height.");
-    ONNXRUNTIME_ENFORCE(output_width >= W, "Output width cannot be smaller than input width.");
+    ORT_ENFORCE(output_height >= H, "Output height cannot be smaller than input height.");
+    ORT_ENFORCE(output_width >= W, "Output width cannot be smaller than input width.");
   }
 
   ComputeTransposePadAndOutputShape(
@@ -223,7 +212,7 @@ template <typename T>
 Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   Prepare p;
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(context, num_inputs == 3, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(context, num_inputs == 3, p));
 
   const int64_t input_image_size = p.H * p.W;
   const int64_t X_offset = p.num_input_channels / group_ * input_image_size;
@@ -233,7 +222,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
   const int64_t output_image_size = p.Y->Shape()[2] * p.Y->Shape()[3];
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   auto col_data = alloc->Alloc(sizeof(T) * kernel_dim * p.H * p.W);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));

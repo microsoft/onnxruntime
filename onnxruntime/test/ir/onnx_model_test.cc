@@ -4,7 +4,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <memory>
 #include "core/platform/env.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"
@@ -13,7 +13,7 @@ using namespace onnxruntime;
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
-#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 // Tests that Resolve() properly clears the state of topological sorted nodes,
 // inputs, outputs and valueInfo.
 // Assumes the graph passed in has been previously resolved.
@@ -72,7 +72,7 @@ TEST(ONNXModelsTest, non_existing_model) {
 #endif
 }
 
-#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   using ::google::protobuf::io::CodedInputStream;
   using ::google::protobuf::io::FileInputStream;

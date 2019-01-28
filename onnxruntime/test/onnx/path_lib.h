@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/visibility_macros.h"
 #include <string.h>
 #include <string>
 #include <sstream>
@@ -15,13 +14,14 @@
 #include <sys/types.h>
 #include <dirent.h>
 #endif
+#include "core/session/onnxruntime_c_api.h"
 
 #ifdef _WIN32
 typedef wchar_t PATH_CHAR_TYPE;
-#define ONNXRUNTIME_TSTR(X) L##X
+#define ORT_TSTR(X) L##X
 #else
 typedef char PATH_CHAR_TYPE;
-#define ONNXRUNTIME_TSTR(X) (X)
+#define ORT_TSTR(X) (X)
 #endif
 
 template <typename T>
@@ -50,7 +50,14 @@ inline int MyStrCmp<wchar_t>(const wchar_t* s1, const wchar_t* s2) {
   return wcscmp(s1, s2);
 }
 
-enum class FileType { TYPE_BLK, TYPE_CHR, TYPE_DIR, TYPE_FIFO, TYPE_LNK, TYPE_REG, TYPE_SOCK, TYPE_UNKNOWN };
+enum class FileType { TYPE_BLK,
+                      TYPE_CHR,
+                      TYPE_DIR,
+                      TYPE_FIFO,
+                      TYPE_LNK,
+                      TYPE_REG,
+                      TYPE_SOCK,
+                      TYPE_UNKNOWN };
 
 template <typename PATH_CHAR_TYPE>
 PATH_CHAR_TYPE GetPathSep();

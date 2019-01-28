@@ -4,15 +4,18 @@
 #include "core/framework/environment.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/op.h"
-#include "onnx/defs/schema.h"
-#include "contrib_ops/contrib_ops.h"
+#include "onnx/defs/operator_sets.h"
+#include "onnx/defs/operator_sets-ml.h"
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+
+std::atomic<bool> Environment::is_initialized_{false};
 
 Status Environment::Create(std::unique_ptr<Environment>& environment) {
   environment = std::unique_ptr<Environment>(new Environment());
@@ -27,13 +30,19 @@ Status Environment::Initialize() {
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+      // Register contributed schemas.
+      // The corresponding kernels are registered inside the appropriate execution provider.
+      contrib::RegisterContribSchemas();
+      RegisterOnnxOperatorSetSchema();
+      RegisterOnnxMLOperatorSetSchema();
+      RegisterOnnxFunctionBuilder();
     });
-
+    //TODO:put all of the following things into call_once
     // Register MVN operator for backward compatibility.
     // Experimental operator does not have history kept in ONNX. Unfortunately, RS5 takes bunch of experimental operators
     // in onnx as production ops. MVN is one of them. Now (9/26/2018) MVN is a production function in ONNX. The experimental
     // MVN op was removed. The history has to be kept locally as below.
-    ONNXRUNTIME_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
         .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
         .Attr("across_channels", "If 1, mean and variance are computed across channels. Default is 0.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("normalize_variance", "If 0, normalize the mean only.  Default is 1.", AttributeProto::INT, static_cast<int64_t>(1))
@@ -45,7 +54,7 @@ Status Environment::Initialize() {
             "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
     // MVN operator is deprecated since operator set 9 (replaced with MVN function).
-    ONNXRUNTIME_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
         .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
         .SinceVersion(9)
         .Deprecate()
@@ -62,7 +71,7 @@ Status Environment::Initialize() {
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx
-    ONNXRUNTIME_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
@@ -74,7 +83,7 @@ Status Environment::Initialize() {
 Internal copy node
 )DOC");
 
-    ONNXRUNTIME_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyToHost)
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyToHost)
         .Input(0, "X", "input", "T")
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
@@ -86,9 +95,7 @@ Internal copy node
 Internal copy node
 )DOC");
 
-    // Register contributed schemas.
-    // The corresponding kernels are registered inside the appropriate execution provider.
-    contrib::RegisterContribSchemas();
+    is_initialized_ = true;
   } catch (std::exception& ex) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
   } catch (...) {

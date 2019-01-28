@@ -12,13 +12,21 @@
 
 using namespace onnxruntime;
 
+#if (!EIGEN_VERSION_AT_LEAST(3, 3, 6))
+namespace Eigen {
+namespace half_impl {
+using __half_raw = ::Eigen::half_impl::__half;
+}
+}  // namespace Eigen
+#endif
+
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
 
 namespace {
 
-OnnxRuntimeTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::TensorProto_DataType type) {
+ONNXTensorElementDataType CApiElementTypeFromProto(int type) {
   switch (type) {
     CASE_TYPE(FLOAT)
     CASE_TYPE(UINT8)
@@ -41,6 +49,13 @@ OnnxRuntimeTensorElementDataType CApiElementTypeFromProto(ONNX_NAMESPACE::Tensor
   }
 }
 
+template <typename T>
+bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
+  if (diff > tol) return false;
+  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) && !(std::isinf(outvalue) && std::isinf(expected_value))) return false;
+  return true;
+}
+
 template <typename FLOAT_TYPE>
 std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue, const Tensor& expected_value,
                                                           double per_sample_tolerance,
@@ -56,14 +71,20 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
     const double real_value = post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di]))
                                               : real_output[di];
     const double diff = fabs(expected_output[di] - real_value);
-    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_output[di]);
-    if (diff > rtol || (std::isnan(diff) && !std::isnan(expected_output[di]))) {
+    const double tol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_output[di]);
+    if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
       res.first = COMPARE_RESULT::RESULT_DIFFERS;
       // update error message if this is a larger diff
       if (diff > max_diff || (std::isnan(diff) && !std::isnan(max_diff))) {
+        int64_t expected_int = 0;
+        int64_t real_int = 0;
+        memcpy(&expected_int, &expected_output[di], sizeof(FLOAT_TYPE));
+        memcpy(&real_int, &real_output[di], sizeof(FLOAT_TYPE));
+
         std::ostringstream oss;
-        oss << "expected " << expected_output[di] << ", got " << real_value
-            << ", diff: " << diff << ", tol=" << rtol << ".";
+        oss << std::hex << "expected " << expected_output[di] << " (" << expected_int << "), got "
+            << real_value << " (" << real_int << ")"
+            << ", diff: " << diff << ", tol=" << tol << ".";
         res.second = oss.str();
         max_diff = diff;
       }
@@ -102,12 +123,35 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
   for (size_t di = 0; di != size1; ++di) {
-    float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half(expected_output[di].val));
-    float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half(real_output[di].val));
+    float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
+    float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
     const double diff = fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
-    if (diff > rtol || (std::isnan(diff) && !std::isnan(expected))) {
+    if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
+      std::ostringstream oss;
+      oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
+
+      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+    }
+  }
+  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+}
+
+std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
+                                                             double per_sample_tolerance,
+                                                             double relative_per_sample_tolerance,
+                                                             bool post_processing) {
+  const size_t size1 = expected_value.Shape().Size();
+  const BFloat16* expected_output = expected_value.template Data<BFloat16>();
+  const BFloat16* real_output = outvalue.template Data<BFloat16>();
+  for (size_t di = 0; di != size1; ++di) {
+    float expected = expected_output[di].ToFloat();
+    float real = real_output[di].ToFloat();
+    real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
+    const double diff = fabs(expected - real);
+    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
+    if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
       std::ostringstream oss;
       oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
 
@@ -156,6 +200,9 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
   } else if (p1 == DataTypeImpl::GetType<MLFloat16>()) {
     return CompareFloat16Result(outvalue, expected_tensor,
                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing);
+  } else if (p1 == DataTypeImpl::GetType<BFloat16>()) {
+    return CompareBFloat16Result(outvalue, expected_tensor,
+                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing);
   } else {
     return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
   }
@@ -189,7 +236,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
                               : real_output_key_value_pair.second;
       const double diff = fabs(expected_key_value_pair->second - real);
       const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_key_value_pair->second);
-      if (diff > rtol || (std::isnan(diff) && !std::isnan(expected_key_value_pair->second))) {
+      if (!IsResultCloselyMatch<double>(real, expected_key_value_pair->second, diff, rtol)) {
         std::ostringstream oss;
         oss << "expected " << expected_key_value_pair->second << ", got " << real
             << ", diff: " << diff << ", tol=" << rtol;
@@ -245,6 +292,8 @@ const char* ElementTypeToString(MLDataType type) {
 
   else if (type == DataTypeImpl::GetType<MLFloat16>()) {
     return "tensor(MLFloat16)";
+  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+    return "tensor(bfloat16)";
   } else {
     return "unknown";
   }
@@ -313,10 +362,10 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
                            per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
 
-std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const ONNXValuePtr o) {
+std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
-    if (ONNXRuntimeIsTensor(o) == 0) {
+    if (!OrtIsTensor(o)) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
 
@@ -325,14 +374,14 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
     //	return COMPARE_RESULT::TYPE_MISMATCH;
     //}
-    std::unique_ptr<ONNXRuntimeTensorTypeAndShapeInfo> info;
+    std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
     {
-      ONNXRuntimeTensorTypeAndShapeInfo* t1;
-      ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeGetTensorShapeAndType(o, &t1));
+      OrtTensorTypeAndShapeInfo* t1;
+      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(o, &t1));
       info.reset(t1);
     }
-    OnnxRuntimeTensorElementDataType real_type = ONNXRuntimeGetTensorElementType(info.get());
-    OnnxRuntimeTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
+    ONNXTensorElementDataType real_type = OrtGetTensorElementType(info.get());
+    ONNXTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
     if (real_type != expected_type) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }

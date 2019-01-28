@@ -19,7 +19,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
-  std::vector<int64_t> output_shape = ComputeOutputShape(X_shape.GetDims(), axes_);
+  std::vector<int64_t> output_shape = ComputeOutputShape(X_shape, axes_);
 
   Tensor* Y = ctx->Output(0, TensorShape(output_shape));
 

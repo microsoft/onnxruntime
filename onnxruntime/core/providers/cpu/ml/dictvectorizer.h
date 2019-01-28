@@ -15,7 +15,7 @@ class DictVectorizerOp final : public OpKernel {
   DictVectorizerOp(const OpKernelInfo& info) : OpKernel(info) {
     //In some stupid models, the vocabulary could have duplicated elements.
     //We must support that, otherwise some tests will be break.
-    ONNXRUNTIME_ENFORCE(info.GetAttrs(std::is_same<AttrType, std::string>::value ? "string_vocabulary" : "int64_vocabulary", vocabulary_).IsOK());
+    ORT_ENFORCE(info.GetAttrs(std::is_same<AttrType, std::string>::value ? "string_vocabulary" : "int64_vocabulary", vocabulary_).IsOK());
   }
   common::Status Compute(OpKernelContext* ctx) const override {
     auto map = ctx->Input<std::map<AttrType, TargetType> >(0);

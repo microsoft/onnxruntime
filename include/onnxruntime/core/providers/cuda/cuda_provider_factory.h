@@ -6,11 +6,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 /**
  * \param device_id cuda device id, starts from zero.
- * \param out Call ONNXRuntimeReleaseObject() method when you no longer need to use it.
  */
-ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateCUDAExecutionProviderFactory, int device_id, _Out_ ONNXRuntimeProviderFactoryPtr** out);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
 
 #ifdef __cplusplus
 }

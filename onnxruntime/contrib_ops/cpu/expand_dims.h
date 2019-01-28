@@ -24,7 +24,7 @@ class ExpandDims final : public OpKernel {
     const Tensor* axis_tensor = context->Input<Tensor>(1);
     if (axis_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
-    ONNXRUNTIME_ENFORCE(axis_tensor->Shape().IsScalar(), "An axis tensor must be a scalar tensor.");
+    ORT_ENFORCE(axis_tensor->Shape().IsScalar(), "An axis tensor must be a scalar tensor.");
     const int64_t axis = static_cast<int64_t>(axis_tensor->template Data<int32_t>()[0]);
     const Tensor* X = context->Input<Tensor>(0);
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
@@ -32,7 +32,7 @@ class ExpandDims final : public OpKernel {
 
     std::vector<int64_t> expanded_shape(X_shape.GetDims());
     int64_t X_NumDims = X_shape.Size();
-    ONNXRUNTIME_ENFORCE(axis <= X_NumDims && axis >= -X_NumDims,
+    ORT_ENFORCE(axis <= X_NumDims && axis >= -X_NumDims,
                 "Axis must be within range [", -X_NumDims, ", ", X_NumDims, "].", " Axis is ", axis);
     if (axis >= 0) {
       expanded_shape.insert(expanded_shape.begin() + axis, 1);

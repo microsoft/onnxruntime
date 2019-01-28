@@ -2,15 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/run_options_c_api.h"
 #include "test_fixture.h"
 using namespace onnxruntime;
 
 TEST_F(CApiTest, run_options) {
-  std::unique_ptr<ONNXRuntimeRunOptions> options(ONNXRuntimeCreateRunOptions());
+  std::unique_ptr<OrtRunOptions> options(OrtCreateRunOptions());
   ASSERT_NE(options, nullptr);
-  ASSERT_EQ(ONNXRuntimeRunOptionsSetRunLogVerbosityLevel(options.get(), 1), nullptr);
-  ASSERT_EQ(ONNXRuntimeRunOptionsSetRunTag(options.get(), "abc"), nullptr);
-  ASSERT_STREQ(ONNXRuntimeRunOptionsGetRunTag(options.get()), "abc");
-  ASSERT_EQ(ONNXRuntimeRunOptionsGetRunLogVerbosityLevel(options.get()), (unsigned)1);
+  ASSERT_EQ(OrtRunOptionsSetRunLogVerbosityLevel(options.get(), 1), nullptr);
+  ASSERT_EQ(OrtRunOptionsSetRunTag(options.get(), "abc"), nullptr);
+  ASSERT_STREQ(OrtRunOptionsGetRunTag(options.get()), "abc");
+  ASSERT_EQ(OrtRunOptionsGetRunLogVerbosityLevel(options.get()), (unsigned)1);
 }

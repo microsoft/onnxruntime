@@ -5,9 +5,6 @@ ONNX Runtime follows [Semantic Versioning 2.0](https://semver.org/) for its publ
 Each release has the form MAJOR.MINOR.PATCH. The meanings of MAJOR, MINOR and PATCH are
 same as what is described in the semantic versioning doc linked above.
 
-### ABI
-Please refer to the [ABI doc](ABI.md) for more details about binary compatibility.
-
 ## Current stable release version
 The version number of the current stable release can be found
 [here](../VERSION_NUMBER)
@@ -33,4 +30,5 @@ opset version implemented in that release.
 
 | ONNX Runtime release version | ONNX opset version <br> implemented in this release | ONNX ML opset version <br> implemented in this release | Supported ONNX IR version |
 |------------------------------|--------------------|----------------------|------------------|
+| 0.1.5 | 8 | 1 | 3 |
 | 0.1.4 | 8 | 1 | 3 |

@@ -8,7 +8,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
@@ -43,9 +42,9 @@ DeepCpuAttnLstmOp::Compute(OpKernelContext* context) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
-    ONNXRUNTIME_NOT_IMPLEMENTED("LSTM operator does not support double yet");
+    ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");
   } else
-    ONNXRUNTIME_THROW("Invalid data type for LSTM operator of ", data_type);
+    ORT_THROW("Invalid data type for LSTM operator of ", data_type);
 
   return status;
 }
@@ -103,7 +102,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
   Status status = ValidateInputs(
       X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size,
       am_query_layer_weights, am_memory_layer_weights, am_v_weights, attn_memory, attn_memory_seq_lens, attn_layer_weights);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   const int max_memory_step = gsl::narrow<int>(attn_memory.Shape()[1]);
   const int memory_depth = gsl::narrow<int>(am_memory_layer_weights.Shape()[1]);
@@ -128,7 +127,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   gsl::span<const T> input_weights = W.DataAsSpan<T>();
   gsl::span<const T> recurrent_weights = R.DataAsSpan<T>();
@@ -333,46 +332,46 @@ static Status ValidateRnnInputsWithExtraInputFromState(
   int64_t input_size = X_shape[2] + extra_input_size;
 
   if (X_shape.NumDimensions() != 3)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
   if (W_shape.NumDimensions() != 3 ||
       W_shape[0] != num_directions ||
       W_shape[1] != hidden_size * WRB_dim_1_multipler ||
       W_shape[2] != input_size)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                                   num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                                   input_size, "}. Actual:", W_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
+                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                           input_size, "}. Actual:", W_shape);
 
   if (R_shape.NumDimensions() != 3 ||
       R_shape[0] != num_directions ||
       R_shape[1] != hidden_size * WRB_dim_1_multipler ||
       R_shape[2] != hidden_size)
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                                   num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                                   hidden_size, "}. Actual:", R_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
+                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                           hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions ||
         B_shape[1] != 2 * WRB_dim_1_multipler * hidden_size)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
-                                     num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
+                             num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
   }
 
   if (sequence_lens != nullptr) {
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
-                                     batch_size, "}. Actual:", sequence_lens_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
+                             batch_size, "}. Actual:", sequence_lens_shape);
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
     if (std::any_of(sequence_len_entries.cbegin(),
                     sequence_len_entries.cend(),
                     [seq_length](int len) { return len <= 0 || len > seq_length; })) {
-      return ONNXRUNTIME_MAKE_STATUS(
+      return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
     }
@@ -386,8 +385,8 @@ static Status ValidateRnnInputsWithExtraInputFromState(
         initial_h_shape[1] != batch_size ||
         initial_h_shape[2] != hidden_size)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
-                                     num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
+                             num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
   }
 
   return Status::OK();
@@ -402,27 +401,27 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   // Check memory of [batch_size, max_memory_step, memory_depth_], its sequence length of [batch_size]
   auto memory_shape = attn_memory.Shape();
   if (memory_shape.NumDimensions() != 3 || memory_shape[0] != batch_size) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Attention mechanism memory shape error! Expected: {", batch_size,
-                                   "}, actural: ", memory_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Attention mechanism memory shape error! Expected: {", batch_size,
+                           "}, actural: ", memory_shape);
   }
   const int max_memory_step = gsl::narrow<int>(memory_shape[1]);
   const int memory_depth = gsl::narrow<int>(memory_shape[2]);
   if (attn_memory_seq_lens != nullptr) {
     auto memory_seq_lens_shape = attn_memory_seq_lens->Shape();
     if (memory_seq_lens_shape.NumDimensions() != 1 || memory_seq_lens_shape[0] != batch_size) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Attention mechanism memory sequence lengths must have shape {", batch_size,
-                                     "}, actural: ", memory_seq_lens_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Attention mechanism memory sequence lengths must have shape {", batch_size,
+                             "}, actural: ", memory_seq_lens_shape);
     }
     const gsl::span<const int> mem_seq_lens_span = attn_memory_seq_lens->DataAsSpan<int>();
     auto item_not_in_range = std::find_if(
         mem_seq_lens_span.cbegin(), mem_seq_lens_span.cend(),
         [max_memory_step](int len) { return len <= 0 || len > max_memory_step; });
     if (item_not_in_range != mem_seq_lens_span.cend()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Attention mechanism memory sequence lengths value must in (0, ",
-                                     max_memory_step, "], while ", *item_not_in_range, " found!");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Attention mechanism memory sequence lengths value must in (0, ",
+                             max_memory_step, "], while ", *item_not_in_range, " found!");
     }
   }
 
@@ -431,9 +430,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   if (memory_layer_shape.NumDimensions() != 3 ||
       memory_layer_shape[0] != num_directions_ ||
       memory_layer_shape[1] != memory_depth) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Attention memory layer weight shape error! Expected:{",
-                                   num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Attention memory layer weight shape error! Expected:{",
+                           num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
   }
   const int am_attn_size = gsl::narrow<int>(memory_layer_shape[2]);
 
@@ -443,9 +442,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
       query_layer_shape[0] != num_directions_ ||
       query_layer_shape[1] != hidden_size_ ||
       query_layer_shape[2] != am_attn_size) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Attention query layer weight shape error! Expected:{",
-                                   num_directions_, ", ", hidden_size_, ", ", am_attn_size, "}, Got: ", query_layer_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Attention query layer weight shape error! Expected:{",
+                           num_directions_, ", ", hidden_size_, ", ", am_attn_size, "}, Got: ", query_layer_shape);
   }
 
   // check attention v for [num_directions, am_attn_size]
@@ -453,9 +452,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   if (v_shape.NumDimensions() != 2 ||
       v_shape[0] != num_directions_ ||
       v_shape[1] != am_attn_size) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Attention v weight shape error! Expected:{", num_directions_, ", ", am_attn_size,
-                                   "}. Got: ", v_shape);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Attention v weight shape error! Expected:{", num_directions_, ", ", am_attn_size,
+                           "}. Got: ", v_shape);
   }
 
   // Check attention layer weights for [num_directions, memory_depth+cell_hidden_size, aw_attn_size]
@@ -466,16 +465,16 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
     if (attn_layer_shape.NumDimensions() != 3 ||
         attn_layer_shape[0] != num_directions_ ||
         attn_layer_shape[1] != memory_depth + hidden_size_) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Attention layer weight shape error! Expected: {", num_directions_, ", ",
-                                     memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Attention layer weight shape error! Expected: {", num_directions_, ", ",
+                             memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
     }
     aw_attn_size = gsl::narrow<int>(attn_layer_shape[2]);
   }
 
   auto status = ValidateRnnInputsWithExtraInputFromState(
       X, W, R, B, 4, sequence_lens, initial_h, num_directions_, hidden_size_, aw_attn_size);
-  ONNXRUNTIME_RETURN_IF_ERROR(status);
+  ORT_RETURN_IF_ERROR(status);
 
   if (initial_c != nullptr) {
     auto& initial_c_shape = initial_c->Shape();
@@ -485,8 +484,8 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
-                                     num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
+                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -496,8 +495,8 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
-                                     num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
+                             num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();

@@ -17,10 +17,9 @@ Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::uniq
 }
 
 Status TopDownRuleBasedTransformer::Apply(Graph& graph, bool& modified) const {
-  ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+  ORT_RETURN_IF_ERROR(graph.Resolve());
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
-  GraphEditor graph_editor(graph);
 
   for (NodeIndex i : order) {
     auto node = graph.GetNode(i);
@@ -34,13 +33,13 @@ Status TopDownRuleBasedTransformer::Apply(Graph& graph, bool& modified) const {
       continue;
 
     for (const auto& rule : *rules) {
-      ONNXRUNTIME_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph_editor, *node, modified));
+      ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, *node, modified));
     }
   }
 
   // Resolve the graph at the end of all passes.
   if (modified) {
-    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
 
   return Status::OK();

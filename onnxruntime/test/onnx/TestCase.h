@@ -18,8 +18,8 @@ class ValueInfoProto;
 class ITestCase {
  public:
   //must be called before calling the other functions
-  virtual ::onnxruntime::common::Status SetModelPath(_In_ const PATH_CHAR_TYPE* path) ONNXRUNTIME_ALL_ARGS_NONNULL = 0;
-  virtual ::onnxruntime::common::Status LoadTestData(ONNXSessionPtr session, size_t id, std::unordered_map<std::string, ONNXValuePtr>& name_data_map, bool is_input) = 0;
+  virtual ::onnxruntime::common::Status SetModelPath(_In_ const PATH_CHAR_TYPE* path) ORT_ALL_ARGS_NONNULL = 0;
+  virtual ::onnxruntime::common::Status LoadTestData(OrtSession* session, size_t id, std::unordered_map<std::string, OrtValue*>& name_data_map, bool is_input) = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetTestCaseName() const = 0;
   //a string to help identify the dataset
@@ -34,4 +34,4 @@ class ITestCase {
   virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) = 0;
 };
 
-ITestCase* CreateOnnxTestCase(ONNXRuntimeAllocator* ptr, const std::string& test_case_name);
+ITestCase* CreateOnnxTestCase(OrtAllocator* ptr, const std::string& test_case_name);

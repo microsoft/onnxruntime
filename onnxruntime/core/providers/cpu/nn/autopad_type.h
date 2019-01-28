@@ -18,7 +18,8 @@ enum class AutoPadType {
 inline AutoPadType StringToAutoPadType(const std::string& str) {
   if (str.empty()) {
     return AutoPadType::NOTSET;
-  } else if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
+  }
+  if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
     return AutoPadType::NOTSET;
   } else if (str == "VALID") {
     return AutoPadType::VALID;
@@ -27,7 +28,7 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
   } else if (str == "SAME_LOWER") {
     return AutoPadType::SAME_LOWER;
   } else {
-    ONNXRUNTIME_ENFORCE(false, "Unknown AutoPadType String");
+    ORT_ENFORCE(false, "Unknown AutoPadType String");
   }
 }
 }  // namespace onnxruntime

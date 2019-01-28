@@ -49,12 +49,12 @@ class DummyOpKernel : public OpKernel {
  public:
   DummyOpKernel(const OpKernelInfo& p) : OpKernel(p) {}
   Status Compute(OpKernelContext* context) const {
-    ONNXRUNTIME_UNUSED_PARAMETER(context);
+    ORT_UNUSED_PARAMETER(context);
     return Status::OK();
   }
   Status ComputeAsync(OpKernelContext* context, DoneCallback done) const {
-    ONNXRUNTIME_UNUSED_PARAMETER(context);
-    ONNXRUNTIME_UNUSED_PARAMETER(done);
+    ORT_UNUSED_PARAMETER(context);
+    ORT_UNUSED_PARAMETER(done);
     return Status::OK();
   }
 };
@@ -234,7 +234,7 @@ class PlannerTest : public ::testing::Test {
 
     SequentialPlannerTestContext test_context(&shape_map_);
     auto status = SequentialPlanner::CreatePlan(
-        graph_, outer_scope_node_args, execution_providers, kernel_registry_manager,
+        GraphViewer(graph_), outer_scope_node_args, execution_providers, kernel_registry_manager,
         mlvalue_name_idx_map, test_context, plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

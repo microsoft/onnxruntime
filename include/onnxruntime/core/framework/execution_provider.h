@@ -7,13 +7,15 @@
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
+#include "core/framework/func_api.h"
 
 namespace onnxruntime {
 class GraphViewer;
+class Node;
 }  // namespace onnxruntime
 namespace onnxruntime {
 
-struct ComputationCapacity;
+struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
 
@@ -21,6 +23,18 @@ class KernelRegistryManager;
    Logical device representation.
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
+
+// if we are export the fused function to dll, the function will still in the same binary as lotus
+// use std function to give execution provider some chance to capture some state.
+using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
+using ComputeFunc = std::function<int(FunctionState, ONNXRunTimeTensor*, size_t, ONNXRunTimeTensor*, size_t)>;
+using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
+
+struct NodeComputeInfo {
+  CreateFunctionStateFunc create_state_func;
+  ComputeFunc compute_func;
+  DestroyFunctionStateFunc release_state_func;
+};
 
 class IExecutionProvider {
  public:
@@ -40,7 +54,7 @@ class IExecutionProvider {
   /**
      Get allocator with specified MemType
   */
-  virtual AllocatorPtr GetAllocator(int id, ONNXRuntimeMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
   /**
      Get execution provider's capability for the specified <graph>.
@@ -50,7 +64,7 @@ class IExecutionProvider {
      have overlap, and it's ONNXRuntime's responsibility to do the partition
      and decide whether a node will be assigned to <*this> execution provider.
   */
-  virtual std::vector<std::unique_ptr<ComputationCapacity>>
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& kernel_registries) const;
 
@@ -65,7 +79,7 @@ class IExecutionProvider {
      with multiple sessions/models.
      2. Adding an execution provider into ONNXRuntime does not need to touch ONNXRuntime
      frameowrk/session code.
-     3. onnxruntime runtime (framework/session) does not depend on any specific
+     3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
@@ -120,6 +134,22 @@ class IExecutionProvider {
   virtual common::Status OnRunEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
+
+  /**
+  Given a list of fused_node, return create_state/compute/release_state func for each node.
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  /**
+  Given a list of fused_node, return a dll that expose functions for each node.
+  For each node, there should be three symbols:
+     Create_State_${node_name}
+     Compute_${node_name}
+     Release_State_${node_name}
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                 std::string& dll_path);
 
  private:
   AllocatorMap allocators_;

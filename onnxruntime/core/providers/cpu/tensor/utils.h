@@ -83,13 +83,49 @@ struct TensorAxisCounters {
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
 };
 
+struct ExtentAxisCounters {
+  ExtentAxisCounters(gsl::span<const int64_t> extents) : extents_(extents) {
+    indices_.resize(extents_.size() - 1, 0);
+    axis_ = indices_.size();
+
+    // If a tensor has a shape, but one of the axes is 0 in size, there are no elements, so nothing to iterate
+    if (std::find(extents.cbegin(), extents.cend(), 0) != extents.cend())
+      running_ = false;
+  }
+
+  // Returns true if there was a carry to the next axis
+  bool Increment() {
+    if (axis_-- == 0) {
+      running_ = false;
+      return false;
+    }
+
+    if (++indices_[axis_] != extents_[axis_]) {
+      axis_ = indices_.size();
+      return false;
+    }
+
+    indices_[axis_] = 0;  // Reset the counter for this axis
+    return true;          // There was a carry
+  }
+
+  size_t Axis() const { return axis_; }
+  operator bool() const { return running_; }
+
+ private:
+  bool running_{true};
+  size_t axis_;
+  std::vector<int64_t> indices_;      // There is no index for innermost axis since it's a special case
+  gsl::span<const int64_t> extents_;  // The extents of each axis
+};
+
 // A std::vector that holds the number of entries to skip to go to the next axis start given an extent in each axis
 // This is used by the SliceIterator to iterate over a slice of a tensor
 struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const Tensor& tensor, gsl::span<const int64_t> extents)
       : std::vector<int64_t>(tensor.Shape().NumDimensions(), 0) {
     auto& dims = tensor.Shape().GetDims();
-    ONNXRUNTIME_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size());
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size());
     size_t pitch = dims.back();
     back() = pitch - extents[size() - 1];
     for (size_t i = size() - 1; i-- > 0;) {
@@ -100,13 +136,13 @@ struct SliceSkips : std::vector<int64_t> {
   }
 };
 
-// This provides easy sequential iteration over a subset of a tensor given a span of starts & etents
+// This provides easy sequential iteration over a subset of a tensor given a span of starts & extents
 template <typename T>
 struct SliceIterator {
   SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
       : tensor_(tensor), extents_(extents), skips_(tensor, extents), indices_(extents.size(), 0) {
     auto& dims = tensor_.Shape().GetDims();
-    ONNXRUNTIME_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
 
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
@@ -137,7 +173,7 @@ struct SliceIterator {
   }
 
   T* CopyInnermostAxis(T* output) {
-    gsl::copy(gsl::make_span(input_, inner_extent_), gsl::make_span(output, inner_extent_));
+    std::copy(input_, input_ + inner_extent_, output);
     input_ += inner_extent_;
     output += inner_extent_;
     AdvanceOverInnerExtent();

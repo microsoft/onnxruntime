@@ -1,88 +1,59 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/allocator.h"
 #include <atomic>
-#include <stdexcept>
-#include "core/framework/allocator_info.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <assert.h>
 
-#define ONNXRUNTIME_ALLOCATOR_IMPL_BEGIN(CLASS_NAME)                                                \
-  class CLASS_NAME {                                                                                \
-   private:                                                                                         \
-    const ONNXRuntimeAllocatorInteface* vtable_ = &table_;                                          \
-    std::atomic_int ref_count_;                                                                     \
-    static void* ONNXRUNTIME_API_STATUSCALL Alloc_(void* this_ptr, size_t size) {                   \
-      return ((CLASS_NAME*)this_ptr)->Alloc(size);                                                  \
-    }                                                                                               \
-    static void ONNXRUNTIME_API_STATUSCALL Free_(void* this_ptr, void* p) {                         \
-      return ((CLASS_NAME*)this_ptr)->Free(p);                                                      \
-    }                                                                                               \
-    static const ONNXRuntimeAllocatorInfo* ONNXRUNTIME_API_STATUSCALL Info_(const void* this_ptr) { \
-      return ((const CLASS_NAME*)this_ptr)->Info();                                                 \
-    }                                                                                               \
-    static uint32_t ONNXRUNTIME_API_STATUSCALL AddRef_(void* this_) {                               \
-      CLASS_NAME* this_ptr = (CLASS_NAME*)this_;                                                    \
-      return ++this_ptr->ref_count_;                                                                \
-    }                                                                                               \
-    static uint32_t ONNXRUNTIME_API_STATUSCALL Release_(void* this_) {                              \
-      CLASS_NAME* this_ptr = (CLASS_NAME*)this_;                                                    \
-      uint32_t ret = --this_ptr->ref_count_;                                                        \
-      if (ret == 0)                                                                                 \
-        delete this_ptr;                                                                            \
-      return 0;                                                                                     \
-    }                                                                                               \
-    static ONNXRuntimeAllocatorInteface table_;
+// In the future we'll have more than one allocator type. Since all allocators are of type 'OrtAllocator' and there is a single
+// OrtReleaseAllocator function, we need to have a common base type that lets us delete them.
+struct OrtAllocatorImpl : OrtAllocator {
+  virtual ~OrtAllocatorImpl() {}
+};
 
-#define ONNXRUNTIME_ALLOCATOR_IMPL_END \
-  }                                    \
-  ;
-
-ONNXRUNTIME_ALLOCATOR_IMPL_BEGIN(ONNXRuntimeDefaultAllocator)
-private:
-ONNXRuntimeAllocatorInfo* cpuAllocatorInfo;
-ONNXRuntimeDefaultAllocator() : ref_count_(1){
-  ONNXRUNTIME_THROW_ON_ERROR(ONNXRuntimeCreateAllocatorInfo("Cpu", ONNXRuntimeDeviceAllocator, 0, ONNXRuntimeMemTypeDefault, &cpuAllocatorInfo));
-}
-~ONNXRuntimeDefaultAllocator() {
-  assert(ref_count_ == 0);
-  ReleaseONNXRuntimeAllocatorInfo(cpuAllocatorInfo);
-}
-
-public:
-ONNXRuntimeDefaultAllocator(const ONNXRuntimeDefaultAllocator&) = delete;
-ONNXRuntimeDefaultAllocator& operator=(const ONNXRuntimeDefaultAllocator&) = delete;
-ONNXRuntimeAllocatorInteface** Upcast() {
-  return const_cast<ONNXRuntimeAllocatorInteface**>(&vtable_);
-}
-static ONNXRuntimeAllocatorInteface** Create() {
-  return (ONNXRuntimeAllocatorInteface**)new ONNXRuntimeDefaultAllocator();
-}
-void* Alloc(size_t size) {
-  return ::malloc(size);
-}
-void Free(void* p) {  
-  return ::free(p);
-}
-const ONNXRuntimeAllocatorInfo* Info() const {
-  return cpuAllocatorInfo;
-}
-ONNXRUNTIME_ALLOCATOR_IMPL_END
-
-#define API_IMPL_BEGIN try {
-#define API_IMPL_END                                                   \
-  }                                                                    \
-  catch (std::exception & ex) {                                        \
-    return CreateONNXStatus(ONNXRUNTIME_RUNTIME_EXCEPTION, ex.what()); \
+struct OrtDefaultAllocator : OrtAllocatorImpl {
+  OrtDefaultAllocator() {
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
+    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
+    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
+    ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
   }
 
-ONNXRuntimeAllocatorInteface ONNXRuntimeDefaultAllocator::table_ = {
-    {ONNXRuntimeDefaultAllocator::AddRef_, ONNXRuntimeDefaultAllocator::Release_}, ONNXRuntimeDefaultAllocator::Alloc_, ONNXRuntimeDefaultAllocator::Free_, ONNXRuntimeDefaultAllocator::Info_};
+  ~OrtDefaultAllocator() {
+    OrtReleaseAllocatorInfo(cpuAllocatorInfo);
+  }
 
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateDefaultAllocator, _Out_ ONNXRuntimeAllocator** out){
-    API_IMPL_BEGIN
-    *out = ONNXRuntimeDefaultAllocator::Create();
-    return nullptr;
-    API_IMPL_END
+  void* Alloc(size_t size) {
+    return ::malloc(size);
+  }
+  void Free(void* p) {
+    return ::free(p);
+  }
+  const OrtAllocatorInfo* Info() const {
+    return cpuAllocatorInfo;
+  }
+
+ private:
+  OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
+  OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
+
+  OrtAllocatorInfo* cpuAllocatorInfo;
+};
+
+#define API_IMPL_BEGIN try {
+#define API_IMPL_END                                          \
+  }                                                           \
+  catch (std::exception & ex) {                               \
+    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
+  }
+
+ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
+  API_IMPL_BEGIN
+  *out = new OrtDefaultAllocator();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator) {
+  delete static_cast<OrtAllocatorImpl*>(allocator);
 }

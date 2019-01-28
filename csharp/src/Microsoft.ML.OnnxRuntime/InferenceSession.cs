@@ -44,15 +44,18 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeCreateInferenceSession(envHandle, modelPath, options.NativeHandle, out _nativeHandle));
-            
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
+                else
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
+
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();
 
                 // get input count
                 ulong inputCount = 0;
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInferenceSessionGetInputCount(_nativeHandle, out inputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
 
                 // get all the output names
                 for (ulong i = 0; i < inputCount; i++)
@@ -62,7 +65,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 // get output count
                 ulong outputCount = 0;
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInferenceSessionGetOutputCount(_nativeHandle, out outputCount));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
 
                 // get all the output names
                 for (ulong i = 0; i < outputCount; i++)
@@ -74,7 +77,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (_nativeHandle != IntPtr.Zero)
                 {
-                    NativeMethods.ReleaseONNXSession(_nativeHandle);
+                    NativeMethods.OrtReleaseSession(_nativeHandle);
                     _nativeHandle = IntPtr.Zero;
                 }
                 throw e;
@@ -148,7 +151,7 @@ namespace Microsoft.ML.OnnxRuntime
             string[] outputNamesArray = outputNames.ToArray();
             IntPtr[] outputValueArray = new IntPtr[outputNames.Count];
 
-            IntPtr status = NativeMethods.ONNXRuntimeRunInference(
+            IntPtr status = NativeMethods.OrtRun(
                                                 this._nativeHandle,
                                                 IntPtr.Zero,  // TODO: use Run options when Run options creation API is available
                                                               // Passing null uses the default run options in the C-api
@@ -178,7 +181,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     if (outputValueArray[i] != IntPtr.Zero)
                     {
-                        NativeMethods.ReleaseONNXValue(outputValueArray[i]);
+                        NativeMethods.OrtReleaseValue(outputValueArray[i]);
                     }
                 }
                 throw e;
@@ -188,7 +191,7 @@ namespace Microsoft.ML.OnnxRuntime
                 // always unpin the input buffers, and delete the native Onnx value objects
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    NativeMethods.ReleaseONNXValue(inputTensors[i]); // this should not release the buffer, but should delete the native tensor object
+                    NativeMethods.OrtReleaseValue(inputTensors[i]); // this should not release the buffer, but should delete the native tensor object
                     pinnedBufferHandles[i].Dispose();
                 }
             }
@@ -212,7 +215,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr  status = NativeMethods.ONNXRuntimeInferenceSessionGetOutputName(
+            IntPtr  status = NativeMethods.OrtSessionGetOutputName(
                                                 _nativeHandle,
                                                 index,  
                                                 NativeMemoryAllocator.DefaultInstance.Handle,
@@ -238,7 +241,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.ONNXRuntimeInferenceSessionGetInputName(
+            IntPtr status = NativeMethods.OrtSessionGetInputName(
                                                 _nativeHandle,
                                                 index,
                                                 NativeMemoryAllocator.DefaultInstance.Handle,
@@ -265,14 +268,14 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr typeInfo = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInferenceSessionGetInputTypeInfo(_nativeHandle, index, out typeInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputTypeInfo(_nativeHandle, index, out typeInfo));
                 return GetMetadataFromTypeInfo(typeInfo);
             }
             finally
             {
                 if (typeInfo != IntPtr.Zero)
                 {
-                    NativeMethods.ONNXRuntimeReleaseObject(typeInfo);
+                    NativeMethods.OrtReleaseTypeInfo(typeInfo);
                 }
             }
         }
@@ -282,30 +285,30 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr typeInfo = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.ONNXRuntimeInferenceSessionGetOutputTypeInfo(_nativeHandle, index, out typeInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputTypeInfo(_nativeHandle, index, out typeInfo));
                 return GetMetadataFromTypeInfo(typeInfo);
             }
             finally
             {
                 if (typeInfo != IntPtr.Zero)
                 {
-                    NativeMethods.ONNXRuntimeReleaseObject(typeInfo);
+                    NativeMethods.OrtReleaseTypeInfo(typeInfo);
                 }
             }
         }
 
         private NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
         {
-            IntPtr tensorInfo = NativeMethods.ONNXRuntimeCastTypeInfoToTensorInfo(typeInfo);
-                    // Convert the newly introduced ONNXRuntimeTypeInfo* to the older ONNXRuntimeTypeAndShapeInfo* 
+            IntPtr tensorInfo = NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo);
+                    // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo* 
 
-            TensorElementType type = NativeMethods.ONNXRuntimeGetTensorElementType(tensorInfo);
+            TensorElementType type = NativeMethods.OrtGetTensorElementType(tensorInfo);
             Type dotnetType = null;
             int width = 0;
             TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width); 
-            ulong numDimensions = NativeMethods.ONNXRuntimeGetNumOfDimensions(tensorInfo);
+            ulong numDimensions = NativeMethods.OrtGetNumOfDimensions(tensorInfo);
             long[] dimensions = new long[(int)numDimensions];
-            NativeMethods.ONNXRuntimeGetDimensions(tensorInfo, dimensions, numDimensions);
+            NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions);
             int[] intDimensions = new int[(int)numDimensions];
             for (ulong i = 0; i < numDimensions; i++)
             {
@@ -340,7 +343,7 @@ namespace Microsoft.ML.OnnxRuntime
             // cleanup unmanaged resources
             if (_nativeHandle != IntPtr.Zero)
             {
-                NativeMethods.ReleaseONNXSession(_nativeHandle);
+                NativeMethods.OrtReleaseSession(_nativeHandle);
             }
         }
 

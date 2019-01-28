@@ -1,14 +1,23 @@
 # Build ONNX Runtime
 
+## Supported architectures
+
+|           | x86_32       | x86_64       | ARM32        | ARM64        |
+|-----------|:------------:|:------------:|:------------:|:------------:|
+|Windows    | YES          | YES          |  YES         | YES          |
+|Linux      | YES          | YES          |  YES         | YES          |
+|Mac OS X   | NO           | YES          |  NO          | NO           |
+
 ## Supported dev environments
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
 |Windows 10   | YES          | YES         |Must use VS 2017 or the latest VS2015|
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
-|Ubuntu 16.x  | YES          | YES         |                            |
+|Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |Ubuntu 17.x  | YES          | YES         |                            |
 |Ubuntu 18.x  | YES          | YES         |                            |
+|Fedora 23    | YES          | YES         |                            |
 |Fedora 24    | YES          | YES         |                            |
 |Fedora 25    | YES          | YES         |                            |
 |Fedora 26    | YES          | YES         |                            |
@@ -22,20 +31,27 @@ OS/Compiler Matrix:
 
 | OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang |
 |-------------|:------------:|:----------------:|:---------------:|
-|Windows 10   | YES          | Not tested       | Not tested      |
+|Windows 10   | YES          | Not tested       | planning      |
 |Linux        | NO           | YES(gcc>=5.0)    | YES             |
 
 ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
 
 ## Build
-Install cmake-3.11 or better from https://cmake.org/download/.
+1. Checkout the source tree:
+   ```
+   git clone --recursive https://github.com/Microsoft/onnxruntime
+   cd onnxruntime
+   ```
+2. Install cmake-3.11 or better from https://cmake.org/download/.
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
+4. (optional) Install onnx from source code (cmake/external/onnx)
+    ```
+    export ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
+5. Run `./build.sh --config RelWithDebInfo --build\_wheel` for Linux (or `./build.bat --config RelWithDebInfo --build\_wheel` for Windows)
 
-Checkout the source tree:
-```
-git clone --recursive https://github.com/Microsoft/onnxruntime
-cd onnxruntime
-./build.sh for Linux (or ./build.bat for Windows)
-```
 The build script runs all unit tests by default.
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
@@ -60,8 +76,8 @@ ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](
 ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
 CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017. 
 
- - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the --cuda_home parameter.
- - The path to the CUDNN installation (include the 'cuda' folder in the path) must be provided via the CUDNN_PATH environment variable, or --cudnn_home parameter. The CUDNN path should contain 'bin', 'include' and 'lib' directories.
+ - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
+ - The path to the CUDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. The CUDNN path should contain `bin`, `include` and `lib` directories.
  - The path to the CUDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
 
 You can build with:
@@ -85,7 +101,7 @@ To use the 14.11 toolset with a later version of Visual Studio 2017 you have two
    - For convenience, build.amd64.1411.bat will do this and can be used in the same way as build.bat.
      - e.g.` .\build.amd64.1411.bat --use_cuda`
 
-2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the "--msvc_toolset" build script parameter.
+2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter.
    - e.g. `.\build.bat --msvc_toolset 14.11`
 
 _Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.  
@@ -123,7 +139,7 @@ docker run --rm -it onnxruntime_dev /bin/bash
 
 #### GPU
 If you need GPU support, please also install:
-1. nvidia driver. Before doing this please add 'nomodeset rd.driver.blacklist=nouveau' to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
+1. nvidia driver. Before doing this please add `nomodeset rd.driver.blacklist=nouveau` to your linux [kernel boot parameters](https://www.kernel.org/doc/html/v4.17/admin-guide/kernel-parameters.html).
 2. nvidia-docker2: [Install doc](`https://github.com/NVIDIA/nvidia-docker/wiki/Installation-(version-2.0)`)
 
 To test if your nvidia-docker works:
@@ -141,3 +157,43 @@ Then run it
 ```
 ./tools/ci_build/github/linux/run_dockerbuild.sh
 ```
+
+## ARM Builds
+We've experimental support for Linux ARM builds. Windows on ARM is well tested.
+
+### Cross compiling on Linux(FASTER)
+1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
+2. Setup env vars
+    ```bash
+       export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
+       export CC=arm-linux-gnueabihf-gcc
+       export CXX=arm-linux-gnueabihf-g++
+    ```
+3. Get a pre-compiled protoc: 
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
+4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
+5. Save the following content as tool.cmake
+    ```
+    set(CMAKE_SYSTEM_NAME Linux)
+    set(CMAKE_SYSTEM_PROCESSOR arm)
+    set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-c++)
+    set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+    ```
+6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it.
+
+
+### Native compiling on Linux (SLOWER)
+
+Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total. If you want to use [Azure Container Registry Tasks](https://docs.microsoft.com/en-us/azure/container-registry/container-registry-tasks-overview) to build the Docker image in cloud, you may want to split this Dockerfile to two steps:
+
+1. Build environment image creation: steps before onnxruntime repo clone
+2. ONNX Runtime and Python binding creation: the rest of steps in the original Dockerfile with step 1 output as base image.
+
+By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours) 
+
+### Cross compiling on Windows
+(TODO)

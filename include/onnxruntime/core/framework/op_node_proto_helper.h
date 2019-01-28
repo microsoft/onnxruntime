@@ -4,18 +4,18 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "gsl/span"
 
 #ifdef __has_attribute
-#define ONNXRUNTIME_HAVE_ATTRIBUTE(x) __has_attribute(x)
+#define ORT_HAVE_ATTRIBUTE(x) __has_attribute(x)
 #else
-#define ONNXRUNTIME_HAVE_ATTRIBUTE(x) 0
+#define ORT_HAVE_ATTRIBUTE(x) 0
 #endif
 
-#if ONNXRUNTIME_HAVE_ATTRIBUTE(nodiscard)
+#if ORT_HAVE_ATTRIBUTE(nodiscard)
 #define MUST_USE_RESULT [[nodiscard]]
-#elif defined(__clang__) && ONNXRUNTIME_HAVE_ATTRIBUTE(warn_unused_result)
+#elif defined(__clang__) && ORT_HAVE_ATTRIBUTE(warn_unused_result)
 #define MUST_USE_RESULT __attribute__((warn_unused_result))
 #else
 #define MUST_USE_RESULT
@@ -110,7 +110,7 @@ class OpNodeProtoHelper {
 
   const ONNX_NAMESPACE::AttributeProto* GetAttribute(const std::string& name) const {
     const ONNX_NAMESPACE::AttributeProto* attr = TryGetAttribute(name);
-    ONNXRUNTIME_ENFORCE(attr != nullptr);
+    ORT_ENFORCE(attr != nullptr);
     return attr;
   }
 
@@ -123,7 +123,7 @@ class OpNodeProtoHelper {
 // the same signatures as InferenceContext other than const-ness.
 class ProtoHelperNodeContext {
  public:
-  ProtoHelperNodeContext(const onnxruntime::Node& node) : node_(node) {}
+  explicit ProtoHelperNodeContext(const onnxruntime::Node& node) : node_(node) {}
   ProtoHelperNodeContext() = delete;
 
   const ONNX_NAMESPACE::AttributeProto* getAttribute(const std::string& name) const;

@@ -16,3 +16,12 @@
 [submodule "cmake/external/gsl"]
 	path = cmake/external/gsl
 	url = https://github.com/Microsoft/GSL.git
+[submodule "cmake/external/gemmlowp"]
+	path = cmake/external/gemmlowp
+	url = https://github.com/google/gemmlowp.git
+[submodule "cmake/external/nsync"]
+	path = cmake/external/nsync
+	url = https://github.com/google/nsync
+[submodule "cmake/external/onnx-tensorrt"]
+	path = cmake/external/onnx-tensorrt
+	url = https://github.com/stevenlix/onnx-tensorrt.git

@@ -4,7 +4,7 @@
 // example custom op
 
 #include "core/framework/custom_ops_author.h"
-#include "core/common/visibility_macros.h"
+#include "core/session/onnxruntime_c_api.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -31,7 +31,7 @@ class FooKernel : public OpKernel {
   }
 };
 
-ONNX_RUNTIME_EXPORT KernelsContainer* GetAllKernels() {
+ORT_EXPORT KernelsContainer* GetAllKernels() {
   KernelsContainer* kc = new KernelsContainer;
 
   KernelDefBuilder def_builder;
@@ -46,7 +46,7 @@ ONNX_RUNTIME_EXPORT KernelsContainer* GetAllKernels() {
   return kc;
 }
 
-ONNX_RUNTIME_EXPORT SchemasContainer* GetAllSchemas() {
+ORT_EXPORT SchemasContainer* GetAllSchemas() {
   SchemasContainer* sc = new SchemasContainer;
   sc->domain = onnxruntime::kOnnxDomain;
   sc->baseline_opset_version = 5;
@@ -74,10 +74,10 @@ ONNX_RUNTIME_EXPORT SchemasContainer* GetAllSchemas() {
   return sc;
 }
 
-ONNX_RUNTIME_EXPORT void FreeKernelsContainer(KernelsContainer* kc) {
+ORT_EXPORT void FreeKernelsContainer(KernelsContainer* kc) {
   delete kc;
 }
 
-ONNX_RUNTIME_EXPORT void FreeSchemasContainer(SchemasContainer* sc) {
+ORT_EXPORT void FreeSchemasContainer(SchemasContainer* sc) {
   delete sc;
 }

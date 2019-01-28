@@ -4,51 +4,34 @@
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #include <atomic>
 #include "mkldnn_execution_provider.h"
+#include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
 
-namespace {
-struct MkldnnProviderFactory {
-  const ONNXRuntimeProviderFactoryInterface* const cls;
-  std::atomic_int ref_count;
-  bool create_arena;
-  MkldnnProviderFactory();
+namespace onnxruntime {
+struct MkldnnProviderFactory : IExecutionProviderFactory {
+  MkldnnProviderFactory(bool create_arena) : create_arena_(create_arena) {}
+  ~MkldnnProviderFactory() override {}
+
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+
+ private:
+  bool create_arena_;
 };
 
-ONNXStatusPtr ONNXRUNTIME_API_STATUSCALL CreateMkldnn(void* this_, ONNXRuntimeProviderPtr* out) {
+std::unique_ptr<IExecutionProvider> MkldnnProviderFactory::CreateProvider() {
   MKLDNNExecutionProviderInfo info;
-  MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
-  info.create_arena = this_ptr->create_arena;
-  MKLDNNExecutionProvider* ret = new MKLDNNExecutionProvider(info);
-  *out = (ONNXRuntimeProviderPtr)ret;
-  return nullptr;
+  info.create_arena = create_arena_;
+  return std::make_unique<MKLDNNExecutionProvider>(info);
 }
 
-uint32_t ONNXRUNTIME_API_STATUSCALL ReleaseMkldnn(void* this_) {
-  MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
-  if (--this_ptr->ref_count == 0)
-    delete this_ptr;
-  return 0;
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id) {
+  return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
 }
 
-uint32_t ONNXRUNTIME_API_STATUSCALL AddRefMkldnn(void* this_) {
-  MkldnnProviderFactory* this_ptr = (MkldnnProviderFactory*)this_;
-  ++this_ptr->ref_count;
-  return 0;
-}
+}  // namespace onnxruntime
 
-constexpr ONNXRuntimeProviderFactoryInterface mkl_cls = {
-    {AddRefMkldnn,
-     ReleaseMkldnn},
-    CreateMkldnn,
-};
-
-MkldnnProviderFactory::MkldnnProviderFactory() : cls(&mkl_cls), ref_count(1), create_arena(true) {}
-}  // namespace
-
-ONNXRUNTIME_API_STATUS_IMPL(ONNXRuntimeCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryPtr** out) {
-  MkldnnProviderFactory* ret = new MkldnnProviderFactory();
-  ret->create_arena = (use_arena != 0);
-  *out = (ONNXRuntimeProviderFactoryPtr*)ret;
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Mkldnn(use_arena));
   return nullptr;
 }

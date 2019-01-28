@@ -4,13 +4,15 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/fuse_nodes_funcs.h"
 
 namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
+class SessionState;
 
 class GraphPartitioner {
  public:
@@ -20,10 +22,10 @@ class GraphPartitioner {
       : kernel_registry_mgr_(kernel_registry_mgr),
         providers_(providers) {}
 
-  Status Partition(onnxruntime::Graph& graph) const;
+  Status Partition(onnxruntime::Graph& graph, bool export_dll, FuncManager* func_mgr) const;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;

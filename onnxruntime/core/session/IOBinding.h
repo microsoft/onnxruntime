@@ -43,7 +43,7 @@ class IOBinding {
     * If the input mlvalue is not at the desired location (specified by the execution provider), this will
     * copy it to the desired location. This copy may or may not be async. It depends on the exec provider.
     * If the input mlvalue is not at the desired location, it should be preallocated
-    * If the input mlvalue isn't preallocated, it should have memtype of ONNXRuntimeMemTypeDefault
+    * If the input mlvalue isn't preallocated, it should have memtype of OrtMemTypeDefault
     * For copying it leverages IExecutionProvider::CopyTensor().
     */
   common::Status BindInput(const std::string& name, const MLValue& ml_value);
@@ -86,11 +86,6 @@ class IOBinding {
   std::vector<std::string> output_names_;
   std::vector<MLValue> outputs_;
 
-  static common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
-                                                  const std::string& input_name,
-                                                  const MLValue& orig_mlvalue,
-                                                  MLValue& new_mlvalue);
-
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
 };
 }  // namespace onnxruntime

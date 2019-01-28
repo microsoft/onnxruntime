@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/rewrite_rule.h"
 
 namespace onnxruntime {
@@ -39,7 +39,7 @@ class GraphTransformer {
   virtual common::Status Apply(Graph& graph, bool& modified) const = 0;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
 
   const std::string name_;
   const std::string desc_;
@@ -91,8 +91,8 @@ class RuleBasedGraphTransformer : public GraphTransformer {
     auto entry = op_to_rules_.find(op_type);
     if (entry != op_to_rules_.cend())
       return &entry->second;
-    else
-      return nullptr;
+
+    return nullptr;
   }
 
  private:

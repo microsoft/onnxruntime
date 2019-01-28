@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp2.0</TargetFramework>
@@ -6,11 +6,14 @@
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <Platform>AnyCPU</Platform>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <buildDirectory Condition="'$(buildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</buildDirectory>
-    <NativeBuildOutputDir>$(buildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
+    <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx\onnx</ProtoSrc>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.6.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
     <PackageReference Include="xunit" Version="2.4.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />
@@ -19,6 +22,10 @@
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
   </ItemGroup>
+
+  <Target Name="ProtoGen" BeforeTargets="Build">
+    <Exec Command="$(ProtocDirectory)\protoc.exe  -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+  </Target>
 
   <ItemGroup>
     <None Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb">
@@ -29,6 +36,11 @@
     <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
+    </None>
+
+    <None Include="$(OnnxRuntimeBuildDirectory)\models\**\*">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Visible>false</Visible>
     </None>
   </ItemGroup>
 

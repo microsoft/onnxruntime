@@ -45,7 +45,7 @@ struct PoolParams {
   mkldnn::memory::dims& padding_right;
   bool count_include_pad;
 
-  PoolParams(std::string op_name, std::string version,
+  PoolParams(const std::string& op_name, const std::string& version,
              mkldnn::memory::dims& src_dims, mkldnn::memory::dims& dst_dims,
              mkldnn::memory::dims& kernel, mkldnn::memory::dims& strides,
              mkldnn::memory::dims& padding_left, mkldnn::memory::dims& padding_right,
@@ -90,9 +90,9 @@ class PoolPrimitive : public PrimitiveBase {
 
   ~PoolPrimitive() = default;
 
-  void Compute(const T* src_data, const T* dst_data) {
+  void Compute(const T* src_data, T* dst_data) {
     context_.src_mem->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
-    context_.dst_mem->set_data_handle(static_cast<void*>(const_cast<T*>(dst_data)));
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
     context_.stream->submit(context_.net);
 
     context_.src_mem->set_data_handle(nullptr);
@@ -103,6 +103,9 @@ class PoolPrimitive : public PrimitiveBase {
   mkldnn::memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
   mkldnn::memory::format GetDstMemoryFormat() const { return context_.dst_fmt; }
 
+  size_t GetSrcSize() const { return context_.src_size; }
+  size_t GetDstSize() const { return context_.dst_size; }
+
   // std::unique_ptr<mkldnn::memory::desc> GetDstMemoryDesc() const { return context_.dst_md; }
   mkldnn::pooling_forward::primitive_desc* GetPrimitiveDesc() const {
     return context_.fwd_primitive_desc.get();
@@ -112,6 +115,9 @@ class PoolPrimitive : public PrimitiveBase {
   struct PoolContext {
     mkldnn::memory::format src_fmt;
     mkldnn::memory::format dst_fmt;
+
+    size_t src_size;
+    size_t dst_size;
 
     std::unique_ptr<mkldnn::memory> src_mem;
     std::unique_ptr<mkldnn::memory> dst_mem;
@@ -131,6 +137,8 @@ class PoolPrimitive : public PrimitiveBase {
     PoolContext()
         : src_fmt(mkldnn::memory::format::any),
           dst_fmt(mkldnn::memory::format::any),
+          src_size(0),
+          dst_size(0),
           src_mem(nullptr),
           dst_mem(nullptr),
           fwd_desc(nullptr),
@@ -177,6 +185,9 @@ class PoolPrimitive : public PrimitiveBase {
 
     context_.dst_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_primitive_desc.get()->dst_primitive_desc().desc().data.format);
+
+    context_.src_size = context_.fwd_primitive_desc.get()->src_primitive_desc().get_size();
+    context_.dst_size = context_.fwd_primitive_desc.get()->dst_primitive_desc().get_size();
 
     context_.src_mem.reset(
         new mkldnn::memory(context_.fwd_primitive_desc.get()->src_primitive_desc(), nullptr));
@@ -225,7 +236,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const auto& x_dims = x_shape.GetDims();
 
   if (x_shape.NumDimensions() < 3) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
   if (x_shape.NumDimensions() == 3) {
@@ -265,7 +276,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   mkldnn::memory::dims padding_right_mkl(pads.begin() + (pads.size() / 2), pads.end());
 
   AllocatorPtr alloc;
-  ONNXRUNTIME_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   IAllocatorUniquePtr<void> src_reorder_buffer;
   IAllocatorUniquePtr<void> dst_reorder_buffer;
 
@@ -288,7 +299,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     if (src_md.data.format != pool_primitive->GetSrcMemoryFormat()) {
       auto pd = mkldnn::memory::primitive_desc(src_md, cpu_engine);
       mkldnn::memory src = mkldnn::memory(pd, (void*)src_data);
-      src_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * X->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      src_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, pool_primitive->GetSrcSize());
       mkldnn::memory dst = mkldnn::memory(fwd_primitive_desc->src_primitive_desc(), src_reorder_buffer.get());
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
@@ -297,7 +310,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
     // Allocate dst buffer if reorder is necessary
     if (dst_md.data.format != pool_primitive->GetDstMemoryFormat()) {
-      dst_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, sizeof(T) * Y->Shape().Size());
+      // allocate the size queried from memory primitive desc. it may not match tensor logical size due to
+      // mkldnn using padding to allow use of blocked format.
+      dst_reorder_buffer = IAllocator::MakeUniquePtr<void>(alloc, pool_primitive->GetDstSize());
       dst_data = static_cast<T*>(dst_reorder_buffer.get());
     }
 
@@ -311,8 +326,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       MemoryReorderParams params(src, dst);
       DoReorder<T>(params);
     }
-  } catch (mkldnn::error& e) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
+  } catch (const mkldnn::error& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.message.c_str());
   }
 
   return Status::OK();

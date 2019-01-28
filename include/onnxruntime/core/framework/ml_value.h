@@ -34,13 +34,13 @@ class MLValue {
 
   template <typename T>
   const T& Get() const {
-    ONNXRUNTIME_ENFORCE(DataTypeImpl::GetType<T>() == type_, DataTypeImpl::GetType<T>(), " != ", type_);
+    ORT_ENFORCE(DataTypeImpl::GetType<T>() == type_, DataTypeImpl::GetType<T>(), " != ", type_);
     return *static_cast<T*>(data_.get());
   }
 
   template <typename T>
   T* GetMutable() {
-    ONNXRUNTIME_ENFORCE(DataTypeImpl::GetType<T>() == type_, DataTypeImpl::GetType<T>(), " != ", type_);
+    ORT_ENFORCE(DataTypeImpl::GetType<T>() == type_, DataTypeImpl::GetType<T>(), " != ", type_);
     return static_cast<T*>(data_.get());
   }
 

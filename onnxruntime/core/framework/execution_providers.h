@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "core/framework/execution_provider.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -25,14 +25,14 @@ class ExecutionProviders {
   common::Status Add(const std::string& provider_id, std::unique_ptr<IExecutionProvider> p_exec_provider) {
     // make sure there are no issues before we change any internal data structures
     if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-      auto status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
       LOGS_DEFAULT(ERROR) << status.ErrorMessage();
       return status;
     }
 
     for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
       if (allocator_idx_map_.find(allocator->Info()) != allocator_idx_map_.end()) {
-        auto status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, allocator->Info(), " allocator already registered.");
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, allocator->Info(), " allocator already registered.");
         LOGS_DEFAULT(ERROR) << status.ErrorMessage();
         return status;
       }
@@ -41,10 +41,10 @@ class ExecutionProviders {
     // index that provider will have after insertion
     auto new_provider_idx = exec_providers_.size();
 
-    ONNXRUNTIME_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
 
     for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
-      ONNXRUNTIME_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
+      ORT_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
     }
 
     exec_providers_.push_back(std::move(p_exec_provider));
@@ -65,7 +65,7 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
-  const IExecutionProvider* Get(const ONNXRuntimeAllocatorInfo& allocator_info) const {
+  const IExecutionProvider* Get(const OrtAllocatorInfo& allocator_info) const {
     auto it = allocator_idx_map_.find(allocator_info);
     if (it == allocator_idx_map_.end()) {
       return nullptr;
@@ -85,8 +85,8 @@ class ExecutionProviders {
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;
-  // using std::map as ONNXRuntimeAllocatorInfo would need a custom hash function to be used with unordered_map,
+  // using std::map as OrtAllocatorInfo would need a custom hash function to be used with unordered_map,
   // and as this isn't performance critical it's not worth the maintenance overhead of adding one.
-  std::map<ONNXRuntimeAllocatorInfo, size_t> allocator_idx_map_;
+  std::map<OrtAllocatorInfo, size_t> allocator_idx_map_;
 };
 }  // namespace onnxruntime

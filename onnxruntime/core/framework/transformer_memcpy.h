@@ -20,11 +20,12 @@ class TransformerMemcpyImpl {
 
  private:
   void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries);
-  void AddCopyNode(const onnxruntime::NodeArg* arg, bool is_input);
+  void BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries);
+  void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
   void ProcessInitializers();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
 
   // use value-based compare to make sure transformer output order is consistent
   struct NodeCompare {
@@ -41,11 +42,13 @@ class TransformerMemcpyImpl {
   };
 
   std::set<onnxruntime::Node*, NodeCompare> provider_nodes_;
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_input_defs_;   // all input defs of non-provider nodes
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_output_defs_;  // all output defs of non-provider nodes
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_input_defs_;       // all input defs of provider nodes that should be in provider allocator
-  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;      // all output defs of provider nodes that should be in provider allocator
-  std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements_;
+  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_input_defs_;  // all input defs of non-provider nodes
+  std::set<onnxruntime::NodeArg*, NodeArgCompare> non_provider_output_defs_;       // all output defs of non-provider nodes
+  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_input_defs_;      // all input defs of provider nodes that should be in provider allocator
+  std::set<onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;           // all output defs of provider nodes that should be in provider allocator
+  std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_input_nodes_;
+  std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_output_nodes_;
+
   onnxruntime::Graph& graph_;
   std::string provider_;
 };

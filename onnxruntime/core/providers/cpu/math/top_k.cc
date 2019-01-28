@@ -31,7 +31,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     TopK<float>);
 
 static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
-  ONNXRUNTIME_ENFORCE(k <= dims.size());
+  ORT_ENFORCE(k <= dims.size());
   int64_t r = 1;
   for (size_t i = 0; i < k; ++i) {
     r *= dims[i];

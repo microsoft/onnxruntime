@@ -7,55 +7,46 @@
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
 
-
-
-ONNXRuntimeSessionOptions::~ONNXRuntimeSessionOptions() {
-  assert(ref_count == 0);
-  for (ONNXRuntimeProviderFactoryPtr* p : provider_factories) {
-    ONNXRuntimeReleaseObject(p);
-  }
+OrtSessionOptions::~OrtSessionOptions() {
 }
 
-ONNXRuntimeSessionOptions& ONNXRuntimeSessionOptions::operator=(const ONNXRuntimeSessionOptions&) {
+OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   throw std::runtime_error("not implemented");
 }
-ONNXRuntimeSessionOptions::ONNXRuntimeSessionOptions(const ONNXRuntimeSessionOptions& other)
+OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
-  for (ONNXRuntimeProviderFactoryPtr* p : other.provider_factories) {
-    ONNXRuntimeAddRefToObject(p);
-  }
 }
-ONNXRUNTIME_API(ONNXRuntimeSessionOptions*, ONNXRuntimeCreateSessionOptions) {
-  std::unique_ptr<ONNXRuntimeSessionOptions> options = std::make_unique<ONNXRuntimeSessionOptions>();
+
+ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
+  std::unique_ptr<OrtSessionOptions> options = std::make_unique<OrtSessionOptions>();
   return options.release();
 }
 
-ONNXRUNTIME_API(ONNXRuntimeSessionOptions*, ONNXRuntimeCloneSessionOptions, ONNXRuntimeSessionOptions* input) {
+ORT_API(void, OrtReleaseSessionOptions, OrtSessionOptions* ptr) {
+  delete ptr;
+}
+
+ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions* input) {
   try {
-    return new ONNXRuntimeSessionOptions(*input);
+    return new OrtSessionOptions(*input);
   } catch (std::exception&) {
     return nullptr;
   }
 }
 
-ONNXRUNTIME_API(void, ONNXRuntimeSessionOptionsAppendExecutionProvider, _In_ ONNXRuntimeSessionOptions* options, _In_ ONNXRuntimeProviderFactoryPtr* f) {
-  ONNXRuntimeAddRefToObject(f);
-  options->provider_factories.push_back(f);
-}
-
-ONNXRUNTIME_API(void, ONNXRuntimeEnableSequentialExecution, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options) {
   options->value.enable_sequential_execution = true;
 }
-ONNXRUNTIME_API(void, ONNXRuntimeDisableSequentialExecution, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options) {
   options->value.enable_sequential_execution = false;
 }
 
 // enable profiling for this session.
-ONNXRUNTIME_API(void, ONNXRuntimeEnableProfiling, _In_ ONNXRuntimeSessionOptions* options, _In_ const char* profile_file_prefix) {
+ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix) {
   options->value.enable_profiling = true;
   options->value.profile_file_prefix = profile_file_prefix;
 }
-ONNXRUNTIME_API(void, ONNXRuntimeDisableProfiling, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options) {
   options->value.enable_profiling = false;
   options->value.profile_file_prefix.clear();
 }
@@ -64,42 +55,41 @@ ONNXRUNTIME_API(void, ONNXRuntimeDisableProfiling, _In_ ONNXRuntimeSessionOption
 // The idea is if the input shapes are the same, we could trace the internal memory allocation
 // and generate a memory pattern for future request. So next time we could just do one allocation
 // with a big chunk for all the internal memory allocation.
-ONNXRUNTIME_API(void, ONNXRuntimeEnableMemPattern, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = true;
 }
-ONNXRUNTIME_API(void, ONNXRuntimeDisableMemPattern, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = false;
 }
 
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
 // set this option to false if you don't want it.
-ONNXRUNTIME_API(void, ONNXRuntimeEnableCpuMemArena, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtEnableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = true;
 }
 
-ONNXRUNTIME_API(void, ONNXRuntimeDisableCpuMemArena, _In_ ONNXRuntimeSessionOptions* options) {
+ORT_API(void, OrtDisableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = false;
 }
 
 ///< logger id to use for session output
-ONNXRUNTIME_API(void, ONNXRuntimeSetSessionLogId, _In_ ONNXRuntimeSessionOptions* options, const char* logid) {
+ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid) {
   options->value.session_logid = logid;
 }
 
 ///< applies to session load, initialization, etc
-ONNXRUNTIME_API(void, ONNXRuntimeSetSessionLogVerbosityLevel, _In_ ONNXRuntimeSessionOptions* options, uint32_t session_log_verbosity_level) {
+ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level) {
   options->value.session_log_verbosity_level = session_log_verbosity_level;
 }
 
 ///How many threads in the session thread pool.
-ONNXRUNTIME_API(int, ONNXRuntimeSetSessionThreadPoolSize, _In_ ONNXRuntimeSessionOptions* options, int session_thread_pool_size) {
+ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
   if (session_thread_pool_size <= 0) return -1;
   options->value.session_thread_pool_size = session_thread_pool_size;
   return 0;
 }
 
-
-ONNXRUNTIME_API(void, ONNXRuntimeAddCustomOp, _In_ ONNXRuntimeSessionOptions* options, const char* custom_op_path) {
-  options->custom_op_paths.emplace_back(custom_op_path);
+ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path) {
+  options->custom_op_paths.emplace_back(lib_path);
 }

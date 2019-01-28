@@ -23,6 +23,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
 #include "onnxruntime_config.h"
 
@@ -36,6 +37,7 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
+
 // Runtime statistics collected by an allocator.
 struct AllocatorStats {
   int64_t num_allocs;             // Number of allocations.
@@ -103,7 +105,7 @@ class BFCArena : public IArenaAllocator {
     return memory_limit_;
   }
 
-  const ONNXRuntimeAllocatorInfo& Info() const override {
+  const OrtAllocatorInfo& Info() const override {
     return info_;
   }
 
@@ -229,7 +231,7 @@ class BFCArena : public IArenaAllocator {
           memory_size_(memory_size),
           end_ptr_(
               static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)) {
-      ONNXRUNTIME_ENFORCE(0 == memory_size % kMinAllocationSize);
+      ORT_ENFORCE(0 == memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
       handles_ = new ChunkHandle[n_handles];
@@ -269,8 +271,8 @@ class BFCArena : public IArenaAllocator {
     int IndexFor(const void* p) const {
       std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
       std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
-      ONNXRUNTIME_ENFORCE(p_int >= base_int);
-      ONNXRUNTIME_ENFORCE(p_int < base_int + memory_size_);
+      ORT_ENFORCE(p_int >= base_int);
+      ORT_ENFORCE(p_int < base_int + memory_size_);
       return static_cast<int>(((p_int - base_int) >> kMinAllocationBits));
     }
 
@@ -284,7 +286,7 @@ class BFCArena : public IArenaAllocator {
     // for the memory allocation represented by "p"
     ChunkHandle* handles_ = nullptr;
 
-    ONNXRUNTIME_DISALLOW_ASSIGNMENT(AllocationRegion);
+    ORT_DISALLOW_ASSIGNMENT(AllocationRegion);
   };
 
   // RegionManager aggregates one or more "AllocationRegions" and provides
@@ -316,7 +318,7 @@ class BFCArena : public IArenaAllocator {
     const std::vector<AllocationRegion>& regions() const { return regions_; }
 
    private:
-    ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RegionManager);
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RegionManager);
 
     static bool Comparator(const void* ptr, const AllocationRegion& other) {
       return ptr < other.end_ptr();
@@ -461,7 +463,7 @@ class BFCArena : public IArenaAllocator {
 
   std::unique_ptr<IDeviceAllocator> device_allocator_;
 
-  mutable std::mutex lock_;
+  mutable OrtMutex lock_;
 
   RegionManager region_manager_;
   std::vector<Chunk> chunks_;
@@ -474,11 +476,11 @@ class BFCArena : public IArenaAllocator {
 
   AllocatorStats stats_;
 
-  ONNXRuntimeAllocatorInfo info_;
+  OrtAllocatorInfo info_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
 
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

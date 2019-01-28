@@ -4,7 +4,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "core/framework/op_kernel.h"
@@ -14,14 +14,14 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-#define ONNXRUNTIME_DEFINE_GET_ATTR(IMPL_T, T, type)                                                        \
+#define ORT_DEFINE_GET_ATTR(IMPL_T, T, type)                                                        \
   template <>                                                                                               \
   template <>                                                                                               \
   Status OpNodeProtoHelper<IMPL_T>::GetAttr<T>(                                                             \
       const std::string& name, T* value) const {                                                            \
     const AttributeProto* attr = TryGetAttribute(name);                                                     \
     if (!attr) {                                                                                            \
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name:'", name, "'is defined.");  \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name:'", name, "'is defined.");  \
     }                                                                                                       \
     if (!attr->has_##type()) {                                                                              \
       return Status(ONNXRUNTIME, FAIL, "Attibute name and type don't match");                               \
@@ -31,7 +31,7 @@ namespace onnxruntime {
     }                                                                                                       \
   }
 
-#define ONNXRUNTIME_DEFINE_GET_ATTRS(IMPL_T, T, list)                              \
+#define ORT_DEFINE_GET_ATTRS(IMPL_T, T, list)                              \
   template <>                                                                      \
   template <>                                                                      \
   Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                   \
@@ -54,31 +54,31 @@ namespace onnxruntime {
     if (!attr) {                                                                   \
       return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
     }                                                                              \
-    ONNXRUNTIME_ENFORCE(values.size() == attr->list##_size());                     \
+    ORT_ENFORCE(values.size() == attr->list##_size());                     \
     for (int i = 0; i < attr->list##_size(); ++i) {                                \
       values[i] = static_cast<T>(attr->list(i));                                   \
     }                                                                              \
     return Status::OK();                                                           \
   }
 
-#define ONNXRUNTIME_DEFINE_GET_ATTR_SPECIALIZATIONS(type, list)   \
-  ONNXRUNTIME_DEFINE_GET_ATTR(ProtoHelperNodeContext, type, list) \
-  ONNXRUNTIME_DEFINE_GET_ATTR(InferenceContext, type, list)
+#define ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(type, list)   \
+  ORT_DEFINE_GET_ATTR(ProtoHelperNodeContext, type, list) \
+  ORT_DEFINE_GET_ATTR(InferenceContext, type, list)
 
-#define ONNXRUNTIME_DEFINE_GET_ATTRS_SPECIALIZATIONS(type, list)   \
-  ONNXRUNTIME_DEFINE_GET_ATTRS(ProtoHelperNodeContext, type, list) \
-  ONNXRUNTIME_DEFINE_GET_ATTRS(InferenceContext, type, list)
+#define ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(type, list)   \
+  ORT_DEFINE_GET_ATTRS(ProtoHelperNodeContext, type, list) \
+  ORT_DEFINE_GET_ATTRS(InferenceContext, type, list)
 
-ONNXRUNTIME_DEFINE_GET_ATTR_SPECIALIZATIONS(float, f)
-ONNXRUNTIME_DEFINE_GET_ATTR_SPECIALIZATIONS(int64_t, i)
-ONNXRUNTIME_DEFINE_GET_ATTR_SPECIALIZATIONS(std::string, s)
-ONNXRUNTIME_DEFINE_GET_ATTR_SPECIALIZATIONS(TensorProto, t)
-ONNXRUNTIME_DEFINE_GET_ATTR_SPECIALIZATIONS(GraphProto, g)
-ONNXRUNTIME_DEFINE_GET_ATTRS_SPECIALIZATIONS(float, floats)
-ONNXRUNTIME_DEFINE_GET_ATTRS_SPECIALIZATIONS(int64_t, ints)
-ONNXRUNTIME_DEFINE_GET_ATTRS_SPECIALIZATIONS(std::string, strings)
-ONNXRUNTIME_DEFINE_GET_ATTRS_SPECIALIZATIONS(TensorProto, tensors)
-ONNXRUNTIME_DEFINE_GET_ATTRS_SPECIALIZATIONS(GraphProto, graphs)
+ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(float, f)
+ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(int64_t, i)
+ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(std::string, s)
+ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(TensorProto, t)
+ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(GraphProto, g)
+ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(float, floats)
+ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(int64_t, ints)
+ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(std::string, strings)
+ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(TensorProto, tensors)
+ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(GraphProto, graphs)
 
 size_t ProtoHelperNodeContext::getNumInputs() const {
   return node_.InputDefs().size();

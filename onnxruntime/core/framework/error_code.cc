@@ -1,45 +1,43 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/error_code.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/common/status.h"
 #include "core/framework/error_code_helper.h"
 #include <cassert>
 using onnxruntime::common::Status;
 
-ONNXRUNTIME_API(ONNXStatusPtr, CreateONNXStatus, ONNXRuntimeErrorCode code, const char* msg) {
+struct OrtStatus {
+  OrtErrorCode code;
+  char msg[1];  // a null-terminated string
+};
+
+ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, const char* msg) {
   assert(!(code == 0 && msg != nullptr));
   size_t clen = strlen(msg);
-  size_t len = clen + 1 + sizeof(int);
-  char* p = new char[len];
-  char* ret = p;
-  *reinterpret_cast<int*>(p) = static_cast<int>(code);
-  p += sizeof(int);
-  memcpy(p, msg, clen);
-  p += clen;
-  *p = '\0';
-  return ret;
+  OrtStatus* p = reinterpret_cast<OrtStatus*>(new char[sizeof(OrtStatus) + clen]);
+  p->code = code;
+  memcpy(p->msg, msg, clen);
+  p->msg[clen] = '\0';
+  return p;
 }
+
 namespace onnxruntime {
-ONNXStatusPtr ToONNXStatus(const Status& st) {
+OrtStatus* ToOrtStatus(const Status& st) {
   if (st.IsOK())
     return nullptr;
   size_t clen = st.ErrorMessage().length();
-  size_t len = clen + 1 + sizeof(int);
-  char* p = new char[len];
-  char* ret = p;
-  *reinterpret_cast<int*>(p) = static_cast<int>(st.Code());
-  p += sizeof(int);
-  memcpy(p, st.ErrorMessage().c_str(), clen);
-  p += clen;
-  *p = '\0';
-  return ret;
+  OrtStatus* p = reinterpret_cast<OrtStatus*>(new char[sizeof(OrtStatus) + clen]);
+  p->code = static_cast<OrtErrorCode>(st.Code());
+  memcpy(p->msg, st.ErrorMessage().c_str(), clen);
+  p->msg[clen] = '\0';
+  return p;
 }
 }  // namespace onnxruntime
-ONNXRUNTIME_API(ONNXRuntimeErrorCode, ONNXRuntimeGetErrorCode, _In_ const ONNXStatusPtr status) {
-  return *reinterpret_cast<ONNXRuntimeErrorCode*>(status);
+ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status) {
+  return status->code;
 }
 
-ONNXRUNTIME_API(const char*, ONNXRuntimeGetErrorMessage, _In_ const ONNXStatusPtr status) {
-  return reinterpret_cast<const char*>(status) + sizeof(int);
+ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status) {
+  return status->msg;
 }

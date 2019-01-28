@@ -11,7 +11,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"
@@ -22,6 +22,8 @@
 #include <gsl/gsl_byte>
 
 namespace onnxruntime {
+class InferenceSession;
+
 namespace test {
 // unfortunately std::optional is in C++17 so use a miniversion of it
 template <typename T>
@@ -31,7 +33,7 @@ class optional {
   optional() : has_value_(false) {}
   bool has_value() const { return has_value_; }
   const T& value() const {
-    ONNXRUNTIME_ENFORCE(has_value_);
+    ORT_ENFORCE(has_value_);
     return value_;
   }
 
@@ -82,6 +84,9 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<std::string>() { r
 
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<MLFloat16>() { return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16; }
+
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<BFloat16>() { return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16; }
 
 template <typename T>
 struct TTypeProto : ONNX_NAMESPACE::TypeProto {
@@ -149,8 +154,8 @@ class OpTester {
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
-  // should validate. Default is to not add. 
-  // Additionally a symbolic dimension will be added if symbolic_dim matches a dimension in the input. 
+  // should validate. Default is to not add.
+  // Additionally a symbolic dimension will be added if symbolic_dim matches a dimension in the input.
   OpTester& AddShapeToTensorData(bool add_shape = true, int symbolic_dim = -1) {
     add_shape_to_tensor_data_ = add_shape;
     add_symbolic_dim_to_tensor_data_ = symbolic_dim;
@@ -235,7 +240,8 @@ class OpTester {
 
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
-           const RunOptions* run_options = nullptr);
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
   struct Data {
     onnxruntime::NodeArg def_;
@@ -270,8 +276,8 @@ class OpTester {
                int64_t values_count, bool is_initializer = false) {
     try {
       TensorShape shape{dims};
-      ONNXRUNTIME_ENFORCE(shape.Size() == values_count, values_count,
-                          " input values doesn't match tensor size of ", shape.Size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count,
+                  " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       auto size_in_bytes = values_count * sizeof(T);
@@ -303,6 +309,15 @@ class OpTester {
       throw;
     }
   }
+
+  void ExecuteModel(Model& model,
+                    InferenceSession& session_object,
+                    ExpectResult expect_result,
+                    const std::string& expected_failure_string,
+                    const RunOptions* run_options,
+                    std::unordered_map<std::string, MLValue> feeds,
+                    std::vector<std::string> output_names,
+                    const std::string& provider_type);
 
   const char* domain_;
   int opset_version_;

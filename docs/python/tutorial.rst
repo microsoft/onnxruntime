@@ -26,7 +26,10 @@ Step 1: Train a model using your favorite framework
 
 We'll use the famous iris datasets.
 
-::
+.. runpython::
+    :showcode:
+    :store:
+    :warningout: ImportWarning FutureWarning
 
     from sklearn.datasets import load_iris
     from sklearn.model_selection import train_test_split
@@ -37,6 +40,7 @@ We'll use the famous iris datasets.
     from sklearn.linear_model import LogisticRegression
     clr = LogisticRegression()
     clr.fit(X_train, y_train)
+    print(clr)
 
 Step 2: Convert or export the model into ONNX format
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -48,15 +52,19 @@ There are `tools <https://github.com/onnx/tutorials>`_
 to convert other model formats into ONNX. Here we will use
 `ONNXMLTools <https://github.com/onnx/onnxmltools>`_.
 
-::
+.. runpython::
+    :showcode:
+    :restore:
+    :store:
+    :warningout: ImportWarning FutureWarning
 
-    from onnxmltools import convert_sklearn
-    from onnxmltools.utils import save_model
-    from onnxmltools.convert.common.data_types import FloatTensorType
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
 
     initial_type = [('float_input', FloatTensorType([1, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
-    save_model(onx, "logreg_iris.onnx")
+    with open("logreg_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
 
 Step 3: Load and run the model using ONNX Runtime
 +++++++++++++++++++++++++++++++++++++++++++++++++
@@ -64,10 +72,33 @@ Step 3: Load and run the model using ONNX Runtime
 We will use *ONNX Runtime* to compute the predictions 
 for this machine learning model.
 
-::
+.. runpython::
+    :showcode:
+    :restore:
+    :store:
 
+    import numpy
     import onnxruntime as rt
+
     sess = rt.InferenceSession("logreg_iris.onnx")
     input_name = sess.get_inputs()[0].name
-    
+    pred_onx = sess.run(None, {input_name: X_test.astype(numpy.float32)})[0]
+    print(pred_onx)
+
+The code can be changed to get one specific output
+by specifying its name into a list.
+
+.. runpython::
+    :showcode:
+    :restore:
+
+    import numpy
+    import onnxruntime as rt
+
+    sess = rt.InferenceSession("logreg_iris.onnx")
+    input_name = sess.get_inputs()[0].name
+    label_name = sess.get_outputs()[0].name
     pred_onx = sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]
+    print(pred_onx)
+
+

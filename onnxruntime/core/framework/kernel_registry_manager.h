@@ -5,9 +5,9 @@
 #include <memory>
 #include <vector>
 #include <list>
-#include <mutex>
 #include "core/common/status.h"
-#include "core/graph/graph.h"
+#include "core/platform/ort_mutex.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 struct KernelCreateInfo;
@@ -54,10 +54,10 @@ class KernelRegistryManager {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
   // This list stores all kernel registries shared across sessions, including common ones and customized ones.
   std::list<std::shared_ptr<KernelRegistry>> kernel_registries_;
-  mutable std::mutex lock_;
+  mutable OrtMutex lock_;
 };
 }  // namespace onnxruntime

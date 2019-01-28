@@ -64,7 +64,7 @@ Status CastMap::Compute(OpKernelContext* context) const {
   if (input_type == DataTypeImpl::GetType<std::map<int64_t, float>>()) {
     float_input = true;
   } else if (input_type != DataTypeImpl::GetType<std::map<int64_t, std::string>>()) {
-    return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input type of value: ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input type of value: ",
                            input_type,
                            " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
   }
@@ -122,7 +122,7 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
     auto out_end = out.end();
     int64_t cur_idx = 0;
 
-    ONNXRUNTIME_ENFORCE(cur_input == end_input || cur_input->first >= 0,
+    ORT_ENFORCE(cur_input == end_input || cur_input->first >= 0,
                 "Negative index values are not permitted. First entry in map has index value of ", cur_input->first);
 
     // for each output value, see if we have an input value, if not use the pad value

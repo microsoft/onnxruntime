@@ -4,61 +4,9 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
-
-/**
-@class GraphEditor
-The API for Graph rewrite rules.
-*/
-class GraphEditor {
- public:
-  explicit GraphEditor(Graph& graph) noexcept : graph_{graph} {}
-
-  /** Add a node to this Graph */
-  Node& AddNode(const std::string& name,
-                const std::string& op_type,
-                const std::string& description,
-                const std::vector<NodeArg*>& input_args,
-                const std::vector<NodeArg*>& output_args,
-                const std::string& domain = "") {
-    return graph_.AddNode(name, op_type, description,
-                          input_args, output_args, nullptr, domain);
-  }
-
-  /** Copy an existing node into the Graph. */
-  Node& AddNode(const Node& other) {
-    return graph_.AddNode(other);
-  }
-
-  /** Remove a node from the Graph. */
-  bool RemoveNode(NodeIndex node_index) {
-    return graph_.RemoveNode(node_index);
-  }
-
-  /** Add a control edge between two Nodes in the Graph
-  The <dst> node does not consume any data output by <src>, so there is no input/output edge between them, 
-  but dst must executed after src so a control edge is required.
-  @param src NodeIndex from the Graph of the Node which must execute first.
-  @param dst NodeIndex from the Graph of the Node which must execute after src.
-  */
-  bool AddControlEdge(NodeIndex src, NodeIndex dst) {
-    return graph_.AddControlEdge(src, dst);
-  }
-
-  /** Resolve the Graph.
-  @returns Status with success or error information.
-  @remarks Resolve must be called after modifying the Graph is completed. */
-  common::Status Resolve() {
-    return graph_.Resolve();
-  }
-
- private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphEditor);
-
-  Graph& graph_;
-};
 
 /**
 @class RewriteRule 
@@ -94,12 +42,12 @@ class RewriteRule {
   @param[in] node The Node to apply the rewrite to.
   @param[out] modified Set to indicate whether the node was modified or not.
   @returns Status indicating success or providing error information */
-  common::Status CheckConditionAndApply(GraphEditor& graph_editor, Node& node, bool& modified) {
-    return SatisfyCondition(node) ? Apply(graph_editor, node, modified) : Status::OK();
+  common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified) {
+    return SatisfyCondition(node) ? Apply(graph, node, modified) : Status::OK();
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RewriteRule);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RewriteRule);
 
   const std::string name_;
   const std::string desc_;
@@ -115,6 +63,6 @@ class RewriteRule {
   The transformation happens in-place. The return-value of node may be different
   from the input-value due to rewriting.
   The value of "modified" indicates if the graph was modified or not. */
-  virtual common::Status Apply(GraphEditor& graph_editor, Node& node, bool& modified) = 0;
+  virtual common::Status Apply(Graph& graph, Node& node, bool& modified) = 0;
 };
 }  // namespace onnxruntime

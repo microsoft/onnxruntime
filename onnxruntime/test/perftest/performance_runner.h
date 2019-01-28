@@ -81,7 +81,7 @@ class PerformanceRunner {
 
   inline Status RunOneIteration(bool isWarmup = false) {
     auto start = std::chrono::high_resolution_clock::now();
-    ONNXRUNTIME_RETURN_IF_ERROR(session_object_->Run(*io_binding_));
+    ORT_RETURN_IF_ERROR(session_object_->Run(*io_binding_));
     auto end = std::chrono::high_resolution_clock::now();
 
     if (!isWarmup) {
@@ -98,14 +98,14 @@ class PerformanceRunner {
 
   inline Status RunFixDuration() {
     while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
-      ONNXRUNTIME_RETURN_IF_ERROR(RunOneIteration());
+      ORT_RETURN_IF_ERROR(RunOneIteration());
     }
     return Status::OK();
   }
 
   inline Status RunRepeatedTimes() {
     for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
-      ONNXRUNTIME_RETURN_IF_ERROR(RunOneIteration());
+      ORT_RETURN_IF_ERROR(RunOneIteration());
     }
     return Status::OK();
   }

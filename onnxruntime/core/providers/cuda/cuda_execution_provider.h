@@ -3,6 +3,7 @@
 
 #pragma once
 #include "cuda_pch.h"
+#include "core/platform/ort_mutex.h"
 #include "core/graph/graph_transformer.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
@@ -29,7 +30,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, ONNXRuntimeMemType mem_type = ONNXRuntimeMemTypeDefault) const override;
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
 
   std::string Type() const override {
     return onnxruntime::kCudaExecutionProvider;
@@ -66,7 +67,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   cudaStream_t GetStream(int queue_id) const {
-    ONNXRUNTIME_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
+    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
     return streams_[queue_id];
   }
 
@@ -85,12 +86,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(ONNXRuntimeMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  virtual std::vector<std::unique_ptr<ComputationCapacity>>
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
  private:
@@ -102,7 +103,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::vector<void*> cpu_ptrs;
   };
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
-  std::mutex deferred_release_cpu_ptr_mutex_;
+  OrtMutex deferred_release_cpu_ptr_mutex_;
 
   class PerThreadContext final {
    public:
@@ -165,15 +166,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   // reuse thread local GPU memory allocator for memory pattern
   mutable std::deque<AllocatorPtr> default_allocator_pool_;
-  mutable std::mutex default_allocator_pool_mutex_;
+  mutable OrtMutex default_allocator_pool_mutex_;
 
   // reuse thread local context
   mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
-  mutable std::mutex context_pool_mutex_;
+  mutable OrtMutex context_pool_mutex_;
 
   void ReleasePerThreadStuffs() const;
 
   bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
+  bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) const;
 };
 
 }  // namespace onnxruntime

@@ -4,11 +4,12 @@
 #include "core/framework/session_state_initializer.h"
 
 #include <functional>
+#include <limits>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/graph_transformer.h"
 #include "core/graph/graph_transformer_mgr.h"
 
@@ -26,12 +27,6 @@
 
 namespace onnxruntime {
 
-static common::Status TransformGraph(onnxruntime::Graph& graph,
-                                     const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                     const ExecutionProviders& exec_providers,
-                                     KernelRegistryManager& kernel_registry_manager,
-                                     const InsertCastTransformer& insert_cast_transformer);
-
 static common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
                                                   MLValueNameIdxMap& mlvalue_name_idx_map,
                                                   const logging::Logger& logger);
@@ -43,7 +38,7 @@ static common::Status SaveInitializedTensors(const onnxruntime::Graph& graph,
                                              const SequentialExecutionPlan& execution_plan,
                                              const ExecutionProviders& exec_providers,
                                              const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                             std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                             std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                              const SaveTensorFunc& save_tensor_func,
                                              const logging::Logger& logger);
 
@@ -54,35 +49,27 @@ static common::Status SaveKernels(const ExecutionProviders& execution_providers,
 
 static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
                                                         const KernelRegistryManager& custom_registry_manager,
-                                                        SessionState& session_state);
+                                                        SessionState& session_state,
+                                                        const std::vector<NodeArg*>* implicit_inputs);
 
 SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
                                                  SessionState& session_state,
                                                  const ExecutionProviders& providers,
-                                                 KernelRegistryManager& kernel_registry_manager,
-                                                 const logging::Logger& logger)
+                                                 KernelRegistryManager& kernel_registry_manager)
     : graph_{graph},
       session_state_{session_state},
       execution_providers_{providers},
       kernel_registry_manager_{kernel_registry_manager},
-      logger_{logger} {
+      logger_{session_state.Logger()} {
 }
 
-common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTransformerManager& graph_transformation_manager,
-                                                   const InsertCastTransformer& insert_cast_transformer,
-                                                   const std::vector<const NodeArg*>& outer_scope_node_args,
+common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
-  ONNXRUNTIME_RETURN_IF_ERROR(TransformGraph(graph_, graph_transformation_manager,
-                                             execution_providers_, kernel_registry_manager_,
-                                             insert_cast_transformer));
-
-  // After transformation/partitioning, the graph now is fixed and graph viewer is created and set for execution.
   session_state_.SetGraphViewer(std::make_unique<onnxruntime::GraphViewer>(graph_));
 
   auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
-
   // populate the SessionState MLValueNameIdxMap
-  ONNXRUNTIME_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(graph_, mlvalue_name_idx_map, logger_));
+  ORT_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(graph_, mlvalue_name_idx_map, logger_));
 
   // remove any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
@@ -95,20 +82,20 @@ common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTrans
                 });
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-
+  GraphViewer viewer(graph_);
   if (enable_sequential_execution) {
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
-    ONNXRUNTIME_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+    ORT_RETURN_IF_ERROR(
+        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
   } else {
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
-    ONNXRUNTIME_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(graph_, valid_outer_scope_node_args, execution_providers_,
+    ORT_RETURN_IF_ERROR(
+        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -118,9 +105,10 @@ common::Status SessionStateInitializer::CreatePlan(const onnxruntime::GraphTrans
 }
 
 common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pattern,
-                                                          std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers) {
+                                                          std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                                          const std::vector<NodeArg*>* implicit_inputs) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
-  ONNXRUNTIME_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
+  ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
   const auto& exec_plan{*exec_plan_ptr};
   const auto& mlvalue_name_idx_map{session_state_.GetMLValueNameIdxMap()};
@@ -130,56 +118,17 @@ common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pat
     session_state_.AddInitializedTensor(idx, value);
   };
 
-  ONNXRUNTIME_RETURN_IF_ERROR(SaveInitializedTensors(graph_, enable_memory_pattern, exec_plan,
-                                                     execution_providers_, mlvalue_name_idx_map, weights_buffers,
-                                                     add_initialized_tensor, logger_));
+  ORT_RETURN_IF_ERROR(SaveInitializedTensors(graph_, enable_memory_pattern, exec_plan,
+                                             execution_providers_, mlvalue_name_idx_map, weights_buffers,
+                                             add_initialized_tensor, logger_));
 
   graph_.CleanAllInitializedTensors();  // remove weights from the graph now to save memory
 
-  ONNXRUNTIME_RETURN_IF_ERROR(SaveKernels(execution_providers_, session_state_, kernel_registry_manager_, logger_));
-  ONNXRUNTIME_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_));
+  ORT_RETURN_IF_ERROR(SaveKernels(execution_providers_, session_state_, kernel_registry_manager_, logger_));
+  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_,
+                                                        implicit_inputs));
 
   return Status::OK();
-}
-
-common::Status TransformGraph(onnxruntime::Graph& graph,
-                              const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                              const ExecutionProviders& providers,
-                              KernelRegistryManager& kernel_registry_manager,
-                              const InsertCastTransformer& insert_cast_transformer) {
-  // The transformer order:
-  // 1. built-in graph rewriter
-  // 2. each execution provider's transformer
-  // 3. do node placement according to kernel definition
-  // 4. insert copy nodes
-  // 5. insert cast nodes.
-
-  // first apply the default/system/basic graph to graph optimizations.
-  ONNXRUNTIME_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
-
-  auto kernels{kernel_registry_manager.GetAllKernelRegistries()};
-
-  // Do partitioning based on execution providers' capability.
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ONNXRUNTIME_RETURN_IF_ERROR(partitioner.Partition(graph));
-
-  // Insert copy nodes.
-  for (auto& provider : providers) {
-    if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
-        provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
-        provider->Type() != onnxruntime::kNupharExecutionProvider) {
-      TransformerMemcpyImpl copy_impl(graph, provider->Type());
-      copy_impl.ModifyGraph(kernel_registry_manager);
-    }
-  }
-
-  // Insert cast node/s.
-  bool modified = false;
-  ONNXRUNTIME_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
-
-  ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
-
-  return common::Status::OK();
 }
 
 // Build the MLValue name->idx mapping
@@ -237,7 +186,7 @@ common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
 }
 
 common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                      const ONNXRuntimeAllocatorInfo& alloc_info,
+                                      const OrtAllocatorInfo& alloc_info,
                                       const ExecutionProviders& exec_providers,
                                       MLValue& mlvalue, void* preallocated, size_t preallocated_size) {
   auto alloc_ptr = utils::GetAllocator(exec_providers, alloc_info);
@@ -245,7 +194,7 @@ common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_
     return Status(common::ONNXRUNTIME, common::FAIL, "Failed to get allocator for alloc_info: " + alloc_info.ToString());
   }
 
-  if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == ONNXRuntimeMemTypeCPUOutput) {
+  if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(tensor_proto, alloc_ptr, preallocated, preallocated_size, mlvalue);
   }
@@ -254,11 +203,11 @@ common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_
   // deserialize to CPU first for non-CPU allocator, then alloc and copy
   AllocatorPtr deserialize_alloc_ptr;
   std::unique_ptr<Tensor> p_deserialize_tensor;
-  deserialize_alloc_ptr = exec_providers.Get(kCpuExecutionProvider)->GetAllocator(0, ONNXRuntimeMemTypeDefault);
-  ONNXRUNTIME_RETURN_IF_ERROR(utils::GetTensorFromTensorProto(tensor_proto, &p_deserialize_tensor,
-                                                              deserialize_alloc_ptr));
+  deserialize_alloc_ptr = exec_providers.Get(kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
+  ORT_RETURN_IF_ERROR(utils::GetTensorFromTensorProto(tensor_proto, &p_deserialize_tensor,
+                                                      deserialize_alloc_ptr));
   const IExecutionProvider* provider = exec_providers.Get(alloc_info);
-  ONNXRUNTIME_ENFORCE(provider != nullptr);
+  ORT_ENFORCE(provider != nullptr);
   p_tensor = std::make_unique<Tensor>(
       p_deserialize_tensor->DataType(),
       p_deserialize_tensor->Shape(),
@@ -286,7 +235,7 @@ common::Status DeserializeTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_
 
 static common::Status PlanTensor(MLValuePatternPlanner& planner, const MLValueNameIdxMap& mlvalue_name_idx_map, const std::string& name, const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   int mlvalue_index;
-  ONNXRUNTIME_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(name, mlvalue_index));
+  ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(name, mlvalue_index));
   size_t len;
   Status st = utils::GetSizeInBytesFromTensorProto<256>(tensor_proto, &len);
   if (st.Code() == common::NOT_IMPLEMENTED) return Status::OK();
@@ -298,12 +247,12 @@ common::Status SaveInitializedTensorsWithMemPattern(const Graph& graph,
                                                     const SequentialExecutionPlan& execution_plan,
                                                     const ExecutionProviders& exec_providers,
                                                     const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                                    std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                                    std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                                     const SaveTensorFunc& save_tensor_func,
                                                     const logging::Logger& logger) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
 
-  ONNXRUNTIME_ENFORCE(mlvalue_name_idx_map.MaxIdx() > 0, "MLValue indexes should have been populated.");
+  ORT_ENFORCE(mlvalue_name_idx_map.MaxIdx() > 0, "MLValue indexes should have been populated.");
 
   MLValuePatternPlanner planner(execution_plan);
 
@@ -311,16 +260,16 @@ common::Status SaveInitializedTensorsWithMemPattern(const Graph& graph,
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   for (const auto& entry : initialized_tensor_set) {
     //string/complex64/complex128 tensors will be skipped
-    ONNXRUNTIME_RETURN_IF_ERROR(PlanTensor(planner, mlvalue_name_idx_map, entry.first, *entry.second));
+    ORT_RETURN_IF_ERROR(PlanTensor(planner, mlvalue_name_idx_map, entry.first, *entry.second));
   }
 
   //2. allocate weight buffer on different locations
   MemoryPatternGroup mem_patterns;
-  ONNXRUNTIME_RETURN_IF_ERROR(planner.GeneratePatterns(&mem_patterns));
+  ORT_RETURN_IF_ERROR(planner.GeneratePatterns(&mem_patterns));
   for (size_t i = 0; i < mem_patterns.locations.size(); i++) {
     auto& location = mem_patterns.locations[i];
-    ONNXRUNTIME_ENFORCE(weights_buffers.find(location) == weights_buffers.end(),
-                        "Existing entry in weights buffer for ", location.name);
+    ORT_ENFORCE(weights_buffers.find(location) == weights_buffers.end(),
+                "Existing entry in weights buffer for ", location.name);
 
     auto alloc = utils::GetAllocator(exec_providers, location);
     if (!alloc)
@@ -335,7 +284,7 @@ common::Status SaveInitializedTensorsWithMemPattern(const Graph& graph,
   for (const auto& entry : initialized_tensor_set) {
     const std::string& name = entry.first;
     int mlvalue_index;
-    ONNXRUNTIME_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(name, mlvalue_index));
+    ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(name, mlvalue_index));
     const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
     auto& location = execution_plan.allocation_plan[mlvalue_index].location;
@@ -385,17 +334,17 @@ common::Status SaveInitializedTensorsWithSeperateBuffer(const onnxruntime::Graph
                                                         const logging::Logger& logger) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
 
-  ONNXRUNTIME_ENFORCE(mlvalue_name_idx_map.MaxIdx() > 0, "MLValue indexes should have been populated.");
+  ORT_ENFORCE(mlvalue_name_idx_map.MaxIdx() > 0, "MLValue indexes should have been populated.");
 
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   for (const auto& entry : initialized_tensor_set) {
     const std::string& name = entry.first;
     int mlvalue_index;
-    ONNXRUNTIME_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(name, mlvalue_index));
+    ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(name, mlvalue_index));
     VLOGS(logger, 1) << "About to add weight with name: " << name << " and index: " << mlvalue_index;
     auto& location = execution_plan.allocation_plan[mlvalue_index].location;
     MLValue mlvalue;
-    ONNXRUNTIME_RETURN_IF_ERROR(DeserializeTensorProto(*(entry.second), location, exec_providers, mlvalue, nullptr, 0));
+    ORT_RETURN_IF_ERROR(DeserializeTensorProto(*(entry.second), location, exec_providers, mlvalue, nullptr, 0));
     save_tensor_func(mlvalue_index, mlvalue);
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << mlvalue_index;
   }
@@ -409,7 +358,7 @@ common::Status SaveInitializedTensors(const onnxruntime::Graph& graph,
                                       const SequentialExecutionPlan& execution_plan,
                                       const ExecutionProviders& exec_providers,
                                       const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                      std::map<ONNXRuntimeAllocatorInfo, BufferUniquePtr>& weights_buffers,
+                                      std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                       const SaveTensorFunc& save_tensor_func,
                                       const logging::Logger& logger) {
   // if we enable the memory pattern and already have the execution plan
@@ -441,8 +390,8 @@ static common::Status CreateOpKernel(const onnxruntime::Node& node,
 
   const IExecutionProvider* exec_provider = nullptr;
   if (exec_provider_name.empty() || (exec_provider = execution_providers.Get(exec_provider_name)) == nullptr) {
-    auto status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
-                                          " as there's no execution provider allocated.");
+    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
+                                  " as there's no execution provider allocated.");
     LOGS(logger, ERROR) << status.ErrorMessage();
   }
 
@@ -466,7 +415,7 @@ common::Status SaveKernels(const ExecutionProviders& execution_providers,
   for (auto& node : session_state.GetGraphViewer()->Nodes()) {
     // construct and save the kernels
     std::unique_ptr<OpKernel> op_kernel;
-    ONNXRUNTIME_RETURN_IF_ERROR(CreateOpKernel(node, execution_providers, session_state, custom_registry_manager, op_kernel, logger));
+    ORT_RETURN_IF_ERROR(CreateOpKernel(node, execution_providers, session_state, custom_registry_manager, op_kernel, logger));
     session_state.AddKernel(node.Index(), std::move(op_kernel));
   }
 
@@ -475,8 +424,9 @@ common::Status SaveKernels(const ExecutionProviders& execution_providers,
   return Status::OK();
 }
 
+template <typename T>  // T is const NodeArg or NodeArg
 static bool IsArgNameInInputsOutputs(const std::string& name,
-                                     const std::vector<const onnxruntime::NodeArg*>& graph_args) {
+                                     const std::vector<T*>& graph_args) {
   auto it = std::find_if(std::begin(graph_args), std::end(graph_args), [&name](const onnxruntime::NodeArg* arg) {
     return arg->Name() == name;
   });
@@ -485,12 +435,21 @@ static bool IsArgNameInInputsOutputs(const std::string& name,
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
                                                  const KernelRegistryManager& custom_registry_manager,
-                                                 SessionState& session_state) {
+                                                 SessionState& session_state,
+                                                 const std::vector<NodeArg*>* implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 
+  if (implicit_inputs && implicit_inputs->empty()) {
+    implicit_inputs = nullptr;
+  }
+
   for (auto& node : graph.Nodes()) {
-    ONNXRUNTIME_RETURN_IF_ERROR(
+    // note that KernelCreateInfo may not exist for custom kernel
+    const KernelCreateInfo* kci = nullptr;
+    custom_registry_manager.SearchKernelRegistry(node, &kci);
+
+    ORT_RETURN_IF_ERROR(
         onnxruntime::Node::ForEachWithIndex(
             node.InputDefs(),
             [&](const onnxruntime::NodeArg& arg, size_t index) {
@@ -498,15 +457,18 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
                 return Status::OK();
               }
 
-              // note that KernelCreateInfo may not exist for custom kernel
-              const KernelCreateInfo* kci = nullptr;
-              custom_registry_manager.SearchKernelRegistry(node, &kci);
-
               SessionState::NodeInfo node_info(index, &node, kci);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
                 return Status::OK();
+              }
+
+              if (implicit_inputs) {
+                if (IsArgNameInInputsOutputs(arg.Name(), *implicit_inputs)) {
+                  session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
+                  return Status::OK();
+                }
               }
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
@@ -516,6 +478,43 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
 
               return Status::OK();
             }));
+
+    // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
+    const auto& node_implicit_inputs = node.ImplicitInputDefs();
+    if (!node_implicit_inputs.empty()) {
+      // nested subgraph. for now map them to this node (which will be CPU based as all the control flow nodes
+      // are currently CPU based and they're the only ones that have implicit inputs) as the inputs will be passed as a
+      // feed when executing the subgraph and need to be in the mapping.
+      // in the future we want to recurse and find where the implicit input is actually used to try and avoid a
+      // copy to/from CPU to go through the control flow nodes where possible/applicable.
+      // the processing for the subgraph where the implicit input is consumed will do the real check on whether any
+      // copy to a different device is required
+      SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci);
+      for (const auto& input_def : node_implicit_inputs) {
+        session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info);
+      }
+    }
+  }
+
+  // It's possible (although assumably rare) for a graph to have inputs that aren't used. one reasonable occurrence
+  // is in the Loop subgraph where the value of the condition used to decide whether to continue looping is passed in.
+  // The condition evaluated to 'true' given the subgraph is being executed, so it's of dubious value as an input.
+  // Similar is the current iteration number which may or may not be needed by the Loop subgraph.
+  // In order to handle those, create a dummy entry in the input name to node info mapping so that
+  // utils::CopyOneInputAcrossDevices is happy.
+
+  auto& input_map = session_state.GetInputNodeInfoMap();
+  auto end_map = input_map.cend();
+  SessionState::NodeInfo empty_node_info(std::numeric_limits<size_t>::max(), nullptr, nullptr);
+
+  for (const auto& graph_input : graph_inputs) {
+    const auto& name = graph_input->Name();
+    if (input_map.find(name) == end_map) {
+      // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug.
+      // utils::CopyOneInputAcrossDevices will use the input MLValue as is given we don't believe it's used anywhere.
+      LOGS(session_state.Logger(), WARNING) << "Graph input with name " << name << " is not associated with a node. ";
+      session_state.AddInputNameToNodeInfoMapping(name, empty_node_info);
+    }
   }
 
   return Status::OK();

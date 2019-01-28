@@ -68,7 +68,7 @@ class SymbolHelper {
       MaxNameLen = _countof(buffer);
     }
 
-    char buffer[1024];
+    char buffer[1024] = {0};
   };
 
   struct Line : IMAGEHLP_LINE64 {
@@ -83,7 +83,7 @@ class SymbolHelper {
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SymbolHelper);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SymbolHelper);
 
   HANDLE process_ = GetCurrentProcess();
   bool cleanup_ = false;

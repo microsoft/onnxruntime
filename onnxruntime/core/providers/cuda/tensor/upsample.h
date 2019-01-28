@@ -10,8 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-struct TVMState;
-
 template <typename T>
 class Upsample : public UpsampleBase, public CudaKernel {
  public:
@@ -19,6 +17,7 @@ class Upsample : public UpsampleBase, public CudaKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+  Status BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const;
 };
 
 }  // namespace cuda

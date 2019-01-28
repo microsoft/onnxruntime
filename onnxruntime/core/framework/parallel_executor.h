@@ -8,11 +8,12 @@
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/ort_mutex.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 
@@ -30,7 +31,7 @@ class ParallelExecutor : public IExecutor {
                          const logging::Logger& logger) override;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
 
   void RunNodeAsync(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
   void RunNodeAsyncInternal(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
@@ -44,7 +45,13 @@ class ParallelExecutor : public IExecutor {
                      const logging::Logger& logger);
 
   void FinishNodeRun() {
-    if (--out_standings_ == 0) {
+    bool finished = false;
+    {
+      //Because we have a mutex here, it's not possible another thread is doing the test("while (out_standings_ > 0)"
+      std::lock_guard<OrtMutex> lock(complete_mutex_);
+      finished = --out_standings_ == 0;
+    }
+    if (finished) {
       //std::cout << "all out standing nodes are completed." << std::endl;
       complete_cv_.notify_all();
     }
@@ -52,10 +59,10 @@ class ParallelExecutor : public IExecutor {
 
   std::unique_ptr<ExecutionFrame> root_frame_;
   std::vector<size_t> node_refs_;
-  std::mutex ref_mutex_;
-  std::atomic<int> out_standings_;
-  std::mutex complete_mutex_;
-  std::condition_variable complete_cv_;
+  OrtMutex ref_mutex_;
+  int out_standings_;  //protected by complete_mutex_
+  OrtMutex complete_mutex_;
+  OrtCondVar complete_cv_;
 
   const bool& terminate_flag_;
 };

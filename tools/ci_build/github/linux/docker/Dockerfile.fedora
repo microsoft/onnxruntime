@@ -2,5 +2,5 @@ ARG OS_VERSION=27
 FROM fedora:${OS_VERSION}
 ENV PATH="/opt/cmake/bin:${PATH}"
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_fedora.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_fedora.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
 

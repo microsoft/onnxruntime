@@ -4,7 +4,7 @@
 #include "core/session/inference_session.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -26,8 +26,8 @@ class XPUExecutionProvider : public IExecutionProvider {
   }
 
   Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ONNXRUNTIME_UNUSED_PARAMETER(src);
-    ONNXRUNTIME_UNUSED_PARAMETER(dst);
+    ORT_UNUSED_PARAMETER(src);
+    ORT_UNUSED_PARAMETER(dst);
     return Status::OK();
   }
 

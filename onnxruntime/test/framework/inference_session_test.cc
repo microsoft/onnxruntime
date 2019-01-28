@@ -4,19 +4,22 @@
 #include "core/session/inference_session.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <functional>
 #include <iterator>
 #include <thread>
 #include <fstream>
 
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/platform/env.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
-#include "core/framework/computation_capacity.h"
+#include "core/graph/graph_viewer.h"
+#include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -60,23 +63,30 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
-void RegisterOperatorKernels(std::function<void(KernelCreateInfo&&)> fn) {
-  fn(BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
+void RegisterOperatorKernels(KernelRegistry& kernel_registry) {
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
+}
+
+std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  RegisterOperatorKernels(*kernel_registry);
+  return kernel_registry;
 }
 
 class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() {
-    DeviceAllocatorRegistrationInfo device_info({ONNXRuntimeMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
+                                                 [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
         std::make_unique<DummyArena>(device_info.factory(0))));
   }
 
-  std::vector<std::unique_ptr<ComputationCapacity>>
+  std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
-    std::vector<std::unique_ptr<ComputationCapacity>> result;
+    std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
@@ -89,18 +99,18 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputationCapacity>(std::move(sub_graph), nullptr));
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
   }
 
   std::shared_ptr<::onnxruntime::KernelRegistry> GetKernelRegistry() const override {
-    static std::shared_ptr<::onnxruntime::KernelRegistry> kernel_registry = std::make_shared<::onnxruntime::KernelRegistry>(RegisterOperatorKernels);
+    static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
   }
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ONNXRUNTIME_UNUSED_PARAMETER(src);
-    ONNXRUNTIME_UNUSED_PARAMETER(dst);
+    ORT_UNUSED_PARAMETER(src);
+    ORT_UNUSED_PARAMETER(dst);
     return Status::OK();
   }
 
@@ -172,7 +182,7 @@ void RunModel(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   MLValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -184,7 +194,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &elem);
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &elem);
     }
   }
 
@@ -227,7 +237,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   MLValue input_ml_value_B;
   std::vector<int64_t> dims_mul_x_B = {4, 3};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x_B, values_mul_x, &input_ml_value_B);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x_B, values_mul_x, &input_ml_value_B);
 
   io_binding->BindInput("A", input_ml_value_A);
   io_binding->BindInput("B", input_ml_value_B);
@@ -237,13 +247,13 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   MLValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), expected_output_dims, &output_ml_value);
+      AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), expected_output_dims, &output_ml_value);
+      AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
 #endif
     } else {
-      ONNXRUNTIME_THROW("Unsupported provider");
+      ORT_THROW("Unsupported provider");
     }
   }
   io_binding->BindOutput("Y", output_ml_value);
@@ -267,9 +277,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault);
+    auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
     void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-    ONNXRUNTIME_ENFORCE(buffer);
+    ORT_ENFORCE(buffer);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   buffer,
@@ -322,7 +332,7 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunModel(session_object, run_options);
 }
 
-#ifdef ONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
     cout << "Sizes differ: f_arg size: " << f_arg.size() << " s_arg size: " << s_arg.size() << endl;
@@ -703,7 +713,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 
   MLValue ml_value1;
   vector<float> v1{2.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), {1}, v1, &ml_value1);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v1, &ml_value1);
   io_binding->BindOutput("foo", ml_value1);
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   auto span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -714,7 +724,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 
   MLValue ml_value2;
   vector<float> v2{3.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), {1}, v2, &ml_value2);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v2, &ml_value2);
   io_binding->BindOutput("foo", ml_value2);
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
@@ -740,7 +750,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
   MLValue ml_value;
-  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -869,15 +879,15 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   std::vector<float> unknown_input_val = {20.f};
 
   MLValue required_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, required_input_val, &required_input_mlvalue);
 
   MLValue optional_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, optional_input_val, &optional_input_mlvalue);
 
   MLValue unknown_input_mlvalue;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault),
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, unknown_input_val, &unknown_input_mlvalue);
 
   NameMLValMap feeds;
@@ -906,7 +916,7 @@ static common::Status RunOptionalInputTest(bool add_required_input,
     const auto& tensor = output.Get<Tensor>();
     float output_value = *tensor.Data<float>();
     if (output_value != expected_value) {
-      status = ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output of ", output_value, " != ", expected_value);
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output of ", output_value, " != ", expected_value);
     }
   }
 
@@ -981,11 +991,11 @@ TEST(ExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   MLValue ml_value_x;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   MLValue ml_value_y;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
   MLValue ml_value_z;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -1084,11 +1094,11 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
   std::vector<int64_t> dims_mul_x = {2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f};
   MLValue ml_value_x;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   MLValue ml_value_y;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
   MLValue ml_value_z;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -1107,6 +1117,159 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+}
+
+TEST(InferenceSessionTests, TestTruncatedSequence) {
+  // model/data generated by <repo>/onnxruntime/test/testdata/CNTK/gen.py GenScan()
+  static const std::string LSTM_MODEL_URI = "testdata/scan_1.pb";
+  // This model is a 4x forward LSTM. Parse it to find out mapping between init_state input/output
+  ONNX_NAMESPACE::ModelProto model_proto;
+  int model_fd;
+  auto status = Env::Default().FileOpenRd(LSTM_MODEL_URI, model_fd);
+  ASSERT_TRUE(status.IsOK());
+  google::protobuf::io::FileInputStream f(model_fd);
+  f.SetCloseOnDelete(true);
+  ASSERT_TRUE(model_proto.ParseFromZeroCopyStream(&f));
+  GraphProto& graph_proto = *model_proto.mutable_graph();
+
+  auto find_attr = [&](const NodeProto& node, const std::string& attr_name) -> const AttributeProto* {
+    for (int i = 0; i < node.attribute_size(); ++i) {
+      auto& attr = node.attribute(i);
+      if (attr.name() == attr_name)
+        return &attr;
+    }
+    return nullptr;
+  };
+
+  std::unordered_map<std::string, std::string> init_state_map;
+  for (int i_node = 0; i_node < graph_proto.node_size(); ++i_node) {
+    auto& node = *graph_proto.mutable_node(i_node);
+    if (node.op_type() == "Scan") {
+      // only works in forward, and do not allow bidirection
+      auto attr_directions = find_attr(node, "scan_input_directions");
+      if (attr_directions != nullptr) {
+        ASSERT_TRUE(attr_directions->ints_size() == 1);
+
+        if (attr_directions->ints(0) == 1)
+          continue;  // skip backward Scan
+      }
+
+      // input 0 is optional sequence length, 1..N are for initial states
+      // and N+1..N+num_scan_inputs are actual inputs
+      // output 0..N-1 are for output states, and N.. are actual outputs
+      auto attr_num_scan_inputs = find_attr(node, "num_scan_inputs");
+      ASSERT_TRUE(attr_num_scan_inputs != nullptr);
+      int num_scan_inputs = gsl::narrow_cast<int>(attr_num_scan_inputs->i());
+      ASSERT_TRUE(node.input_size() - num_scan_inputs < node.output_size());
+      for (int i = 0; i < node.input_size() - num_scan_inputs; ++i) {
+        init_state_map.insert(std::make_pair(node.output(i), node.input(i)));
+      }
+    }
+  }
+
+  // now run the truncated model
+  SessionOptions so;
+  InferenceSession session_object(so);
+  ASSERT_TRUE(session_object.Load(LSTM_MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+
+  std::vector<int64_t> X_dims = {5, 1, 3};
+  std::vector<float> X = {0.5488135f, 0.71518934f, 0.60276335f,
+                          0.5448832f, 0.4236548f, 0.6458941f,
+                          0.4375872f, 0.891773f, 0.96366274f,
+                          0.3834415f, 0.79172504f, 0.5288949f,
+                          0.56804454f, 0.92559665f, 0.07103606f};
+
+  std::vector<int64_t> Y_dims = {5, 1, 2};
+  std::vector<float> Y_data = {-1.1730184e-04f, -3.1204990e-04f,
+                               -2.9978977e-04f, -1.0602647e-03f,
+                               -3.8115133e-04f, -2.0684483e-03f,
+                               -2.5120965e-04f, -2.9920202e-03f,
+                               3.0980256e-05f, -3.5933927e-03f};
+
+  MLValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &ml_value);
+
+  std::string input_name = "Input13165";
+  NameMLValMap feeds = {{input_name, ml_value}};
+
+  // prepare outputs for whole sequence
+  std::string final_output_name = "";
+  int final_output_index = -1;
+  for (int i = 0; i < graph_proto.output_size(); ++i) {
+    if (init_state_map.find(graph_proto.output(i).name()) == init_state_map.end()) {
+      ASSERT_TRUE(final_output_name.empty());
+      final_output_name = graph_proto.output(i).name();
+      final_output_index = i;
+    }
+  }
+
+  std::vector<std::string> output_names = {final_output_name};
+  std::vector<MLValue> fetches;
+
+  // Now run the full sequence
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  ASSERT_EQ(1, fetches.size());
+  auto& rtensor = fetches.front().Get<Tensor>();
+  TensorShape expected_shape(Y_dims);
+  ASSERT_EQ(expected_shape, rtensor.Shape());
+  for (int i = 0; i < Y_data.size(); ++i)
+    EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
+
+  // run truncated sequence
+  output_names.clear();
+  for (int i = 0; i < graph_proto.output_size(); ++i) {
+    output_names.push_back(graph_proto.output(i).name());
+  }
+  fetches.clear();
+
+  std::vector<int> truncated_lengths = {2, 2, 1};              // sums to non-truncated length
+  auto seq_stride = TensorShape(X_dims).SizeFromDimension(1);  // sequence is the first dimension of input shape
+  int seq_start = 0;
+  for (auto truncated_len : truncated_lengths) {
+    std::vector<int64_t> truncated_input_dims = X_dims;
+    truncated_input_dims[0] = truncated_len;
+    MLValue truncated_ml_value;
+    std::vector<float> truncated_input(X.begin() + seq_start * seq_stride, X.begin() + (seq_start + truncated_len) * seq_stride);
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
+    NameMLValMap truncated_feeds = {{input_name, truncated_ml_value}};
+    if (seq_start > 0) {
+      // continue from truncated sequence
+      ASSERT_TRUE(fetches.size() == output_names.size());
+      for (int i_output = 0; i_output < output_names.size(); ++i_output) {
+        auto iter = init_state_map.find(output_names[i_output]);
+        if (iter != init_state_map.end())
+          truncated_feeds.insert(std::make_pair(iter->second, fetches[i_output]));
+      }
+    }
+    std::vector<MLValue> truncated_fetches;
+    st = session_object.Run(run_options, truncated_feeds, output_names, &truncated_fetches);
+    if (!st.IsOK()) {
+      std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(st.IsOK());
+
+    // check truncated output
+    auto& truncated_rtensor = truncated_fetches[final_output_index].Get<Tensor>();
+    std::vector<int64_t> truncated_output_dims = Y_dims;
+    truncated_output_dims[0] = truncated_len;
+    TensorShape truncated_shape(truncated_output_dims);
+    ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
+    auto seq_output_stride = truncated_shape.SizeFromDimension(1);
+    for (int i = 0; i < truncated_shape.Size(); ++i)
+      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
+
+    // prepare for next truncated input
+    fetches = truncated_fetches;
+    seq_start += truncated_len;
+  }
 }
 
 }  // namespace test

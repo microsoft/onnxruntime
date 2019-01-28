@@ -31,7 +31,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const std::vector<std::string>& output_names,
                                    std::vector<MLValue>& fetches,
                                    const logging::Logger& logger) {
-  auto tp = session_state.Profiler().StartTime();
+  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  TimePoint tp;
+  TimePoint sync_time_begin;
+  TimePoint kernel_begin_time;
+
+  if (f_profiler_enabled) {
+    tp = session_state.Profiler().StartTime();
+  }
 
   ExecutionFrame frame{feeds, output_names, fetches, session_state};
 
@@ -46,7 +53,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
     }
 
     auto node_index = node_exec_plan.node_index;
@@ -54,31 +61,39 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                                     session_state.GetGraphViewer()->GetNode(node_index)->Name());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
+                             session_state.GetGraphViewer()->GetNode(node_index)->Name());
 
-    const std::string& node_name = p_op_kernel->Node().Name();
-    const std::string& op_name = p_op_kernel->KernelDef().OpName();
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(frame, *p_op_kernel, logger, p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
     // TODO: log kernel outputs?
+    if (f_profiler_enabled) {
+      sync_time_begin = session_state.Profiler().StartTime();
+    }
 
-    auto sync_time_begin = session_state.Profiler().StartTime();
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
@@ -89,23 +104,28 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       }
     }
 
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_before",
-                                                   sync_time_begin,
-                                                   std::unordered_map<std::string,
-                                                                      std::string>{{"op_name", op_name}});
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                     p_op_kernel->Node().Name() + "_fence_before",
+                                                     sync_time_begin,
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
-    // call compute on the kernel
-    VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+      // call compute on the kernel
+      VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
-    auto kernel_begin_time = session_state.Profiler().StartTime();
-    ONNXRUNTIME_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_kernel_time",
-                                                   kernel_begin_time,
-                                                   std::unordered_map<std::string, std::string>{{"op_name", op_name}});
+      kernel_begin_time = session_state.Profiler().StartTime();
+    }
+    ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
 
-    sync_time_begin = session_state.Profiler().StartTime();
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                     p_op_kernel->Node().Name() + "_kernel_time",
+                                                     kernel_begin_time,
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+
+      sync_time_begin = session_state.Profiler().StartTime();
+    }
+
     // sync after compute for outputs
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
@@ -127,18 +147,21 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
         fence->AfterUsedAsOutput(queue_id);
       }
     }
-    session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                   node_name + "_fence_after",
-                                                   sync_time_begin,
-                                                   std::unordered_map<std::string, std::string>{{"op_name", op_name}});
+
+    if (f_profiler_enabled) {
+      session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                     p_op_kernel->Node().Name() + "_fence_after",
+                                                     sync_time_begin,
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+    }
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
-    ONNXRUNTIME_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
+    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 
   VLOGS(logger, 1) << "Fetching output.";
-  ONNXRUNTIME_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), frame, output_names, fetches, logger));
+  ORT_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), frame, output_names, fetches, logger));
 
   if (frame.HasPlan()) {
     std::vector<TensorShape> input_shapes;
@@ -154,12 +177,15 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
     if (all_tensors) {
       auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-      ONNXRUNTIME_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
-      ONNXRUNTIME_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }
   }
 
-  session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+  if (f_profiler_enabled) {
+    session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+  }
+
   return Status::OK();
 }
 
@@ -172,9 +198,9 @@ static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
     fetches.resize(output_names.size());
   } else {
     // this should've been checked before already
-    ONNXRUNTIME_ENFORCE(output_names.size() == fetches.size(),
-                        "output_names vector size: " + std::to_string(output_names.size()) +
-                            " does not match that of fetches vector: " + std::to_string(fetches.size()));
+    ORT_ENFORCE(output_names.size() == fetches.size(),
+                "output_names vector size: " + std::to_string(output_names.size()) +
+                    " does not match that of fetches vector: " + std::to_string(fetches.size()));
   }
 
   auto idx = 0;
@@ -182,7 +208,7 @@ static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
   for (const auto& oname : output_names) {
     VLOGS(logger, 1) << "Attempting to fetch output with name: " << oname;
     int mlvalue_index;
-    ONNXRUNTIME_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
+    ORT_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
     const MLValue& output_mlvalue = frame.GetMLValue(mlvalue_index);
     VLOGS(logger, 1) << "Copying fetched MLValue to output vector";
     fetches[idx++] = output_mlvalue;
@@ -199,7 +225,7 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
     auto mlvalue_idx = seq_exec_plan.to_be_freed[i];
     VLOGS(logger, 1) << "Releasing mlvalue with index: " << mlvalue_idx;
-    ONNXRUNTIME_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
   }
 
   return Status::OK();

@@ -13,16 +13,16 @@
 #include "core/common/exceptions.h"
 #include "core/common/status.h"
 #include "core/framework/fence.h"
-#include "core/framework/allocator_info.h"
+#include "core/session/onnxruntime_c_api.h"
 
-struct ONNXRuntimeAllocatorInfo {
+struct OrtAllocatorInfo {
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
   int id;
-  ONNXRuntimeMemType mem_type;
-  ONNXRuntimeAllocatorType type;
+  OrtMemType mem_type;
+  OrtAllocatorType type;
 
-  constexpr ONNXRuntimeAllocatorInfo(const char* name1, ONNXRuntimeAllocatorType type, int id1 = 0, ONNXRuntimeMemType mem_type1 = ONNXRuntimeMemTypeDefault)
+  constexpr OrtAllocatorInfo(const char* name1, OrtAllocatorType type, int id1 = 0, OrtMemType mem_type1 = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
@@ -32,12 +32,12 @@ struct ONNXRuntimeAllocatorInfo {
         type(type) {
   }
 
-  inline bool operator==(const ONNXRuntimeAllocatorInfo& other) const {
+  inline bool operator==(const OrtAllocatorInfo& other) const {
     return mem_type == other.mem_type && type == other.type && id == other.id && strcmp(name, other.name) == 0;
   }
 
-  // To make ONNXRuntimeAllocatorInfo become a valid key in std map
-  inline bool operator<(const ONNXRuntimeAllocatorInfo& other) const {
+  // To make OrtAllocatorInfo become a valid key in std map
+  inline bool operator<(const OrtAllocatorInfo& other) const {
     if (type != other.type)
       return type < other.type;
     if (mem_type != other.mem_type)
@@ -50,7 +50,7 @@ struct ONNXRuntimeAllocatorInfo {
 
   inline std::string ToString() const {
     std::ostringstream ostr;
-    ostr << "ONNXRuntimeAllocatorInfo: ["
+    ostr << "OrtAllocatorInfo: ["
          << " name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
@@ -60,7 +60,7 @@ struct ONNXRuntimeAllocatorInfo {
   }
 };
 
-std::ostream& operator<<(std::ostream& out, const ONNXRuntimeAllocatorInfo& info);
+std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info);
 
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
@@ -76,7 +76,7 @@ class IAllocator {
   virtual ~IAllocator() = default;
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
-  virtual const ONNXRuntimeAllocatorInfo& Info() const = 0;
+  virtual const OrtAllocatorInfo& Info() const = 0;
 
   /**
      optional CreateFence interface, as provider like DML has its own fence
@@ -96,7 +96,7 @@ class IAllocator {
    * \return true, successful. false, overflow
    */
   template <size_t alignment>
-  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ONNX_RUNTIME_MUST_USE_RESULT;
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
   /**
    * allocate memory for an array which has nmemb items of data, each size bytes long
    */
@@ -155,8 +155,9 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   //max_allowed is for avoiding unnecessary DIV.
   if (nmemb >= max_allowed && max_size / nmemb < size) {
     return false;
-  } else if (size >= max_allowed &&
-             nmemb > 0 && max_size / nmemb < size) {
+  }
+  if (size >= max_allowed &&
+      nmemb > 0 && max_size / nmemb < size) {
     return false;
   }
   if (alignment == 0)
@@ -175,7 +176,7 @@ class IDeviceAllocator : public IAllocator {
   ~IDeviceAllocator() override = default;
   void* Alloc(size_t size) override = 0;
   void Free(void* p) override = 0;
-  const ONNXRuntimeAllocatorInfo& Info() const override = 0;
+  const OrtAllocatorInfo& Info() const override = 0;
   virtual bool AllowsArena() const { return true; }
 };
 
@@ -183,7 +184,7 @@ class CPUAllocator : public IDeviceAllocator {
  public:
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  const ONNXRuntimeAllocatorInfo& Info() const override;
+  const OrtAllocatorInfo& Info() const override;
 };
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;

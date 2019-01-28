@@ -12,7 +12,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
-  ONNXRUNTIME_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
+  ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> kernel_shape = kernel_shape_;
@@ -44,7 +44,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -74,7 +76,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -112,7 +116,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -166,14 +172,14 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
   const TensorShape& x_shape = X->Shape();
 
   size_t input_dims = x_shape.NumDimensions();
-  ONNXRUNTIME_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
+  ORT_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
 
   size_t pooling_dims = input_dims - 2;
   if (pooling_dims > 3) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
   }
   if (!global_pooling_) {
-    ONNXRUNTIME_RETURN_IF_NOT(pooling_dims == kernel_shape_.size(), "kernel_shape num_dims is not compatible with X num_dims.");
+    ORT_RETURN_IF_NOT(pooling_dims == kernel_shape_.size(), "kernel_shape num_dims is not compatible with X num_dims.");
   }
 
   std::vector<int64_t> pads = pads_;
@@ -213,7 +219,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
-  ONNXRUNTIME_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
+  ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> kernel_shape = kernel_shape_;
@@ -241,7 +247,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -271,7 +279,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
@@ -313,7 +323,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
 
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
       for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;

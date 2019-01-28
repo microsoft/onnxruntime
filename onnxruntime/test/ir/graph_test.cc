@@ -18,7 +18,7 @@
 #else
 #pragma GCC diagnostic pop
 #endif
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "gtest/gtest.h"
@@ -165,8 +165,8 @@ TEST(GraphTraversalTest, ReverseDFS) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   // Remove/Add edge should not ask for resolving again.
-  graph.RemoveEdge(node_1.Index(), node_3.Index(), *graph.GetNodeArg("node_1_out_1"));
-  graph.AddEdge(node_1.Index(), node_3.Index(), *graph.GetNodeArg("node_1_out_1"));
+  graph.RemoveEdge(node_1.Index(), node_3.Index(), 0, 0);
+  graph.AddEdge(node_1.Index(), node_3.Index(), 0, 0);
 
   std::vector<const Node*> from;
   for (auto& node : graph.Nodes()) {
@@ -557,10 +557,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 // Validate that an unused initializer doesn't break graph loading/resolution
 // and is removed as expected.
 TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
-  OPERATOR_SCHEMA(Identity_Fake)
-      .SetDoc("Identity.")
-      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+  ASSERT_TRUE(kSchemasRegistered);
 
   Model model("UnusedInitializerIsIgnored");
   auto& graph = model.MainGraph();

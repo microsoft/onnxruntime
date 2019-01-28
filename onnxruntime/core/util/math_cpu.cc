@@ -57,7 +57,8 @@ namespace math {
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-#ifdef USE_EIGEN_FOR_BLAS
+// when USE_MKLDNN and USE_MKLML are defined, use cblas APIs for MKLML
+#if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -102,7 +103,7 @@ void Gemm<float, CPUMathUtil>(
                              A, &lda,
                              &beta, C, &N_);
   if (status != mkldnn_success) {
-    ONNXRUNTIME_THROW("mkldnn_sgemm failed with status: ", status);
+    ORT_THROW("mkldnn_sgemm failed with status: ", status);
   }
 #elif defined(USE_MLAS)
   int lda = (int)((TransA == CblasNoTrans) ? K : M);
@@ -127,7 +128,7 @@ void Gemm<float, CPUMathUtil>(
                                       ConstEigenMatrixMap<float>(A, K, M));
           return;
         default:
-          ONNXRUNTIME_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     case CblasTrans: {
@@ -141,11 +142,11 @@ void Gemm<float, CPUMathUtil>(
                                       ConstEigenMatrixMap<float>(A, M, K).transpose());
           return;
         default:
-          ONNXRUNTIME_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     default:
-      ONNXRUNTIME_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
 #endif
 }
@@ -175,7 +176,7 @@ void GemmEx<float, CPUMathUtil>(
                              A, &lda,
                              &beta, C, &ldc);
   if (status != mkldnn_success) {
-    ONNXRUNTIME_THROW("mkldnn_sgemm failed with status: ", status);
+    ORT_THROW("mkldnn_sgemm failed with status: ", status);
   }
 #elif defined(USE_MLAS)
   MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
@@ -203,7 +204,7 @@ void GemmEx<float, CPUMathUtil>(
                        ConstStridedMap(A, K, M, OuterStride(lda)));
           return;
         default:
-          ONNXRUNTIME_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     case CblasTrans: {
@@ -219,11 +220,11 @@ void GemmEx<float, CPUMathUtil>(
                        ConstStridedMap(A, M, K, OuterStride(lda)).transpose());
           return;
         default:
-          ONNXRUNTIME_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
       }
     }
     default:
-      ONNXRUNTIME_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
 #endif
 }
@@ -260,7 +261,7 @@ void Gemv<float, CPUMathUtil>(
       return;
     }
     default:
-      ONNXRUNTIME_THROW("Gemv float found an unexpected CBLAS_TRANSPOSE input of", TransA);
+      ORT_THROW("Gemv float found an unexpected CBLAS_TRANSPOSE input of", TransA);
   }
 }
 
@@ -332,10 +333,14 @@ void Gemm<float, CPUMathUtil>(
     float* C,
     CPUMathUtil* /*context*/,
     MLDataType /*math_type*/) {
-  int lda = (TransA == CblasNoTrans) ? K : M;
-  int ldb = (TransB == CblasNoTrans) ? N : K;
-  cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
-              beta, C, N);
+  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+  cblas_sgemm(CblasRowMajor, TransA, TransB,
+              gsl::narrow_cast<int>(M),
+              gsl::narrow_cast<int>(N),
+              gsl::narrow_cast<int>(K),
+              alpha, A, lda, B, ldb,
+              beta, C, gsl::narrow_cast<int>(N));
 }
 
 template <>
@@ -470,15 +475,15 @@ void GemmBatched<float, CPUMathUtil>(
   }
 }
 
-// MKL will be implmenet as an execution provider
-////////////////////////////////////////////////////////////////////////////////
-// MKL VML alternatives.
-// Depending on whether we are using MKL, we will delegate the Caffe math
-// functions that are VML-related to either the VML call or the Eigen
-// implementation. If you are setting the flags (such as AVX) right for your CPU
-// architecture, usually Eigen will deliver a throughput as fast as the VML
-// functions.
-////////////////////////////////////////////////////////////////////////////////
+  // MKL will be implmenet as an execution provider
+  ////////////////////////////////////////////////////////////////////////////////
+  // MKL VML alternatives.
+  // Depending on whether we are using MKL, we will delegate the Caffe math
+  // functions that are VML-related to either the VML call or the Eigen
+  // implementation. If you are setting the flags (such as AVX) right for your CPU
+  // architecture, usually Eigen will deliver a throughput as fast as the VML
+  // functions.
+  ////////////////////////////////////////////////////////////////////////////////
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
   template <>                                                                  \
@@ -745,9 +750,9 @@ void RandUniform<float, CPUMathUtil>(
     CPUMathUtil* /*provider*/) {
   std::uniform_real_distribution<float> distribution(a, b);
   //todo: need implmenet "RandGenerator()" in execution provider
-  ONNXRUNTIME_UNUSED_PARAMETER(n);
-  ONNXRUNTIME_UNUSED_PARAMETER(r);
-  ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(r);
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
             }*/
@@ -759,9 +764,9 @@ void RandUniform<int, CPUMathUtil>(
     CPUMathUtil* /*provider*/) {
   std::uniform_int_distribution<int> distribution(a, b);
   //todo: need implmenet "RandGenerator()" in execution provider
-  ONNXRUNTIME_UNUSED_PARAMETER(n);
-  ONNXRUNTIME_UNUSED_PARAMETER(r);
-  ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(r);
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
             }*/
@@ -806,9 +811,9 @@ void RandGaussian<float, CPUMathUtil>(
     const int n, const float mean, const float std, float* r,
     CPUMathUtil* /*provider*/) {
   std::normal_distribution<float> distribution(mean, std);
-  ONNXRUNTIME_UNUSED_PARAMETER(n);
-  ONNXRUNTIME_UNUSED_PARAMETER(r);
-  ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(r);
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   /*for (int i = 0; i < n; ++i) {
                 r[i] = distribution(context->RandGenerator());
             }*/
@@ -850,83 +855,9 @@ void Select<float, CPUMathUtil>(
     float* y,
     CPUMathUtil* /*context*/) {
   for (int i = 0; i < N; ++i) {
-    ONNXRUNTIME_ENFORCE(idx[i] < D);
+    ORT_ENFORCE(idx[i] < D);
     y[i] = x[i * D + idx[i]];
   }
-}
-// Ported from caffe 1.
-template <>
-void Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>(
-    const float* data_img,
-    const int64_t* im_shape,
-    const int64_t* col_shape,
-    const int64_t /* img_size*/,
-    const int64_t /* col_size*/,
-    const int64_t* kernel_shape,
-    const int64_t* stride,
-    const int64_t* dilation,
-    const int64_t* pad,
-    const int64_t N,
-    float* data_col,
-    CPUMathUtil* /* context */,
-    bool accumulate_output) {
-  int64_t kernel_size = 1;
-  for (int64_t i = 0; i < N; ++i) {
-    kernel_size *= kernel_shape[i];
-  }
-  const int64_t channels_col = col_shape[0];
-  std::vector<int64_t> d_offset(N, 0);
-  std::vector<int64_t> d_iter(N, 0);
-  for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
-    // Loop over spatial axes in reverse order to compute a per-axis offset.
-    int64_t offset = c_col;
-    for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-      if (d_i < N - 1) {
-        offset /= kernel_shape[d_i + 1];
-      }
-      d_offset[d_i] = offset % kernel_shape[d_i];
-    }
-    for (bool incremented = true; incremented;) {
-      // Loop over spatial axes in forward order to compute the indices in the
-      // image and column, and whether the index lies in the padding.
-      int64_t index_col = c_col;
-      int64_t index_im = c_col / kernel_size;
-      bool is_padding = false;
-      for (int64_t d_i = 0; d_i < N; ++d_i) {
-        const int64_t d = d_iter[d_i];
-        const int64_t d_im =
-            d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
-        is_padding |= d_im < 0 || d_im >= im_shape[d_i + 1];
-        index_col *= col_shape[d_i + 1];
-        index_col += d;
-        index_im *= im_shape[d_i + 1];
-        index_im += d_im;
-      }
-      if (!accumulate_output) {
-        if (is_padding) {
-          data_col[index_col] = 0;
-        } else {
-          data_col[index_col] = data_img[index_im];
-        }
-      } else if (!is_padding) {  // col2im
-        data_col[index_im] += data_img[index_col];
-      }
-      // Loop over spatial axes in reverse order to choose an index,
-      // like counting.
-      incremented = false;
-      for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-        const int64_t d_max = col_shape[d_i + 1];
-        ONNXRUNTIME_ENFORCE(d_iter[d_i] < d_max);
-        if (d_iter[d_i] == d_max - 1) {
-          d_iter[d_i] = 0;
-        } else {  // d_iter[d_i] < d_max - 1
-          ++d_iter[d_i];
-          incremented = true;
-          break;
-        }
-      }
-    }  // while(incremented) {
-  }    // for (int c = 0; c < channels_col; ++c) {
 }
 
 template <>
@@ -944,7 +875,7 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(
     float* data_img,
     CPUMathUtil* context) {
   Set<float, CPUMathUtil>(img_size, 0, data_img, context);
-  Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>(
+  Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
       data_col,
       img_shape,
       col_shape,
@@ -1299,42 +1230,6 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(
   }
 }
 
-template <>
-void CopyMatrix<CPUMathUtil>(
-    const size_t itemsize,
-    const int M,
-    const int N,
-    const void* A,
-    const int lda,
-    void* B,
-    const int ldb,
-    CPUMathUtil*,
-    TypedCopy copy) {
-  if (lda == N && ldb == N) {
-    // can coalese to a single memcpy of size M * N
-    if (copy) {
-      copy(static_cast<const char*>(A), static_cast<char*>(B), N * M);
-    } else {
-      memcpy(
-          static_cast<char*>(B), static_cast<const char*>(A), itemsize * N * M);
-    }
-    return;
-  }
-
-  for (int i = 0; i < M; ++i) {
-    if (copy) {
-      copy(
-          static_cast<const char*>(A) + lda * i * itemsize,
-          static_cast<char*>(B) + ldb * i * itemsize,
-          N);
-    } else {
-      memcpy(
-          static_cast<char*>(B) + ldb * i * itemsize,
-          static_cast<const char*>(A) + lda * i * itemsize,
-          itemsize * N);
-    }
-  }
-}
 
 #define SPECIALIZED_COPYVECTOR(T)                                    \
   template <>                                                        \

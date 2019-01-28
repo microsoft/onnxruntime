@@ -8,7 +8,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
-#include "core/graph/graph_base.h"
+#include "core/graph/graph.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
@@ -19,7 +19,7 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime::logging;
 
-int OnnxRuntimeTensorToNumpyType(const MLDataType& tensor_type) {
+int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
       {DataTypeImpl::GetType<bool>(), NPY_BOOL},
       {DataTypeImpl::GetType<float>(), NPY_FLOAT},
@@ -42,7 +42,7 @@ int OnnxRuntimeTensorToNumpyType(const MLDataType& tensor_type) {
   }
 }
 
-const MLDataType& NumpyToOnnxRuntimeTensorType(int numpy_type) {
+const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
   static std::map<int, MLDataType> type_map{
       {NPY_BOOL, DataTypeImpl::GetType<bool>()},
       {NPY_FLOAT, DataTypeImpl::GetType<float>()},

@@ -9,9 +9,8 @@ extern "C" {
 
 /**
  * \param use_arena zero: false. non-zero: true.
- * \param out Call ONNXRuntimeReleaseObject() method when you no longer need to use it.
  */
-ONNXRUNTIME_API_STATUS(ONNXRuntimeCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ ONNXRuntimeProviderFactoryPtr** out);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena);
 
 #ifdef __cplusplus
 }

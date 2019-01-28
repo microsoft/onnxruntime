@@ -15,7 +15,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
 #include "core/graph/constants.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "gsl/span"
 #include "onnx/defs/schema.h"
 
@@ -43,17 +43,17 @@ class OpKernel {
 
   virtual Status ComputeAsync(OpKernelContext*,
                               DoneCallback) const {
-    ONNXRUNTIME_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const ONNXRuntimeAllocatorInfo& Allocator(int id, ONNXRuntimeMemType mem_type) const {
+  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
     return op_kernel_info_.GetAllocatorInfo(id, mem_type);
   }
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
 };
 
@@ -90,7 +90,7 @@ class OpKernelContext {
       return nullptr;
 
     MLValue* p_ml_value = nullptr;
-    ONNXRUNTIME_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
@@ -116,7 +116,7 @@ class OpKernelContext {
   }
 
   /**
-   * return an allocator on device 0, with memtype of ONNXRuntimeMemTypeDefault
+   * return an allocator on device 0, with memtype of OrtMemTypeDefault
    *
    */
   Status GetTempSpaceAllocator(AllocatorPtr* output) const;
@@ -174,7 +174,7 @@ class OpKernelContext {
 template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   MLValue* p_ml_value = GetOutputMLValue(index);
-  ONNXRUNTIME_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
+  ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
   return p_ml_value->GetMutable<Tensor>();
 }
 
@@ -197,18 +197,18 @@ struct KernelCreateInfo {
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
 
-// Forward declarations for the non-specialized BuildKernel method.
+// Forward declarations for the non-specialized BuildKernelCreateInfo method.
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 
 namespace ml {
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace ml
 
 namespace contrib {
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
 // Naming convention for operator kernel classes
@@ -225,7 +225,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                 \
   template <>                                                                         \
   KernelCreateInfo                                                                    \
-  BuildKernel<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {       \
+  BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>() {       \
     return KernelCreateInfo(                                                          \
         builder.SetName(#name)                                                        \
             .SetDomain(domain)                                                        \
@@ -248,7 +248,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name);           \
   template <>                                                                                          \
   KernelCreateInfo                                                                                     \
-  BuildKernel<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() { \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name)>() { \
     return KernelCreateInfo(                                                                           \
         builder.SetName(#name)                                                                         \
             .SetDomain(domain)                                                                         \
@@ -274,7 +274,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name);           \
   template <>                                                                               \
   KernelCreateInfo                                                                          \
-  BuildKernel<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() { \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name)>() { \
     return KernelCreateInfo(                                                                \
         builder.SetName(#name)                                                              \
             .SetDomain(domain)                                                              \
@@ -300,7 +300,7 @@ KernelCreateInfo BuildKernel();
   class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name);           \
   template <>                                                                                                      \
   KernelCreateInfo                                                                                                 \
-  BuildKernel<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name)>() { \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name)>() { \
     return KernelCreateInfo(                                                                                       \
         builder.SetName(#name)                                                                                     \
             .SetDomain(domain)                                                                                     \

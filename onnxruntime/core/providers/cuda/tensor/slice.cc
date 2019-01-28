@@ -8,17 +8,29 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
-    Slice,
-    kOnnxDomain,
-    1,
-    kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Slice);
+#define REGISTER_TYPED_SLICE(NAME, TIND, DYNAMIC)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
+      NAME,                                                                               \
+      kOnnxDomain,                                                                        \
+      1,                                                                                  \
+      TIND,                                                                               \
+      kCudaExecutionProvider,                                                             \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
+                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
+      Slice<TIND,DYNAMIC>);
 
-Status Slice::ComputeInternal(OpKernelContext* ctx) const {
+REGISTER_TYPED_SLICE(Slice,        int32_t, false) 
+REGISTER_TYPED_SLICE(Slice,        int64_t, false) 
+REGISTER_TYPED_SLICE(DynamicSlice, int32_t, true ) 
+REGISTER_TYPED_SLICE(DynamicSlice, int64_t, true )
+
+template<typename Tind, bool dynamic>
+Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_tensor = ctx->Input<Tensor>(0);
-  ONNXRUNTIME_ENFORCE(nullptr != input_tensor);
+  ORT_ENFORCE(nullptr != input_tensor);
   auto& input_dimensions = input_tensor->Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
@@ -26,7 +38,16 @@ Status Slice::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  ONNXRUNTIME_RETURN_IF_ERROR(PrepareForCompute(dimension_count, input_dimensions, starts, output_dims));
+  if (dynamic) {
+    std::vector<int64_t> input_starts, input_ends, input_axes;
+    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
+    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
+                        dimension_count, input_dimensions, starts, output_dims));
+
+  } else {
+    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
+	                    dimension_count, input_dimensions, starts, output_dims));
+  }
 
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);
@@ -43,7 +64,7 @@ Status Slice::ComputeInternal(OpKernelContext* ctx) const {
   starts_buffer.CopyToGpu();
 
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
-  ONNXRUNTIME_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
+  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
   input_strides.CopyToGpu();
 
   TensorPitches output_pitches(output_dims);
@@ -57,7 +78,7 @@ Status Slice::ComputeInternal(OpKernelContext* ctx) const {
 
   size_t element_size = input_tensor->DataType()->Size();
 
-  ONNXRUNTIME_RETURN_IF_ERROR(SliceImpl(element_size,
+  ORT_RETURN_IF_ERROR(SliceImpl(element_size,
                               gsl::narrow_cast<int32_t>(dimension_count),
                               starts_buffer.GpuPtr(),
                               input_strides.GpuPtr(),

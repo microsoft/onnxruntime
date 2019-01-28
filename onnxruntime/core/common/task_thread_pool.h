@@ -55,6 +55,7 @@ Example of that usage:
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -80,9 +81,9 @@ class TaskThreadPool {
 
   std::queue<task_element_t> tasks_;
   std::vector<std::thread> threads_;
-  std::mutex mutex_;
-  std::condition_variable condition_;
-  std::condition_variable completed_;
+  OrtMutex mutex_;
+  OrtCondVar condition_;
+  OrtCondVar completed_;
   bool running_;
   bool complete_;
   std::size_t available_;
@@ -101,7 +102,7 @@ class TaskThreadPool {
   ~TaskThreadPool() {
     // Set running flag to false then notify all threads.
     {
-      std::unique_lock<std::mutex> lock(mutex_);
+      std::unique_lock<OrtMutex> lock(mutex_);
       running_ = false;
       condition_.notify_all();
     }
@@ -118,7 +119,7 @@ class TaskThreadPool {
   }
 
   void RunTask(std::packaged_task<void()>&& task) {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<OrtMutex> lock(mutex_);
 
     // Set task and signal condition variable so that a worker thread will
     // wake up and use the task.
@@ -128,7 +129,7 @@ class TaskThreadPool {
   }
 
   void RunTaskWithID(std::packaged_task<void(std::size_t)>&& task) {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<OrtMutex> lock(mutex_);
 
     // Set task and signal condition variable so that a worker thread will
     // wake up and use the task.
@@ -139,20 +140,20 @@ class TaskThreadPool {
 
   /// @brief Wait for queue to be empty
   void WaitWorkComplete() {
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<OrtMutex> lock(mutex_);
     while (!complete_)
       completed_.wait(lock);
   }
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TaskThreadPool);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TaskThreadPool);
 
   /// @brief Entry point for pool threads.
   void MainLoop(std::size_t index) {
     while (running_) {
       // Wait on condition variable while the task is empty and
       // the pool is still running.
-      std::unique_lock<std::mutex> lock(mutex_);
+      std::unique_lock<OrtMutex> lock(mutex_);
       while (tasks_.empty() && running_) {
         condition_.wait(lock);
       }

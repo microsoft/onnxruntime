@@ -495,25 +495,28 @@ TrialConv2D(
     int64_t DilationShape[] = { int64_t(DilationHeight), int64_t(DilationWidth) };
     int64_t Padding[] = { int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth) };
     int64_t StrideShape[] = { int64_t(StrideHeight), int64_t(StrideWidth) };
+    int64_t OutputShape[] = { OutputHeight64, OutputWidth64 };
+
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
 
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
 
-    if (!MlasConvPrepare(&Parameters,
-                         2,
-                         BatchCount,
-                         GroupCount,
-                         InputChannels,
-                         InputShape,
-                         KernelShape,
-                         DilationShape,
-                         Padding,
-                         StrideShape,
-                         FilterCount,
-                         &WorkingBufferSize)) {
-        printf("MlasConvPrepare failed!!!\n");
-        return;
-    }
+    MlasConvPrepare(&Parameters,
+                    2,
+                    BatchCount,
+                    GroupCount,
+                    InputChannels,
+                    InputShape,
+                    KernelShape,
+                    DilationShape,
+                    Padding,
+                    StrideShape,
+                    OutputShape,
+                    FilterCount,
+                    &Activation,
+                    &WorkingBufferSize);
 
     size_t OutputHeight = size_t(OutputHeight64);
     size_t OutputWidth = size_t(OutputWidth64);
@@ -1236,9 +1239,9 @@ main(
     )
 {
 //    ExecuteSgemmTests();
-//    ExecuteConvTests();
-    ExecutePool2DTests();
-    ExecutePool3DTests();
+    ExecuteConvTests();
+//    ExecutePool2DTests();
+//    ExecutePool3DTests();
 //    EvaluateThreadingPerformance();
 
     return 0;

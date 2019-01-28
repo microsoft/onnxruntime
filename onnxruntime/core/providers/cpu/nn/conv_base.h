@@ -10,7 +10,6 @@
 #include "core/util/math.h"
 
 namespace onnxruntime {
-namespace {
 
 // helper function
 template <bool ForceSymmetricAutoPadding>
@@ -36,7 +35,7 @@ Status ComputePadAndOutputShape(
         break;
       case AutoPadType::SAME_UPPER:
       case AutoPadType::SAME_LOWER: {
-        ONNXRUNTIME_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
+        ORT_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
         int64_t legacy_target_size = (in_dim + stride - 1) / stride;
         int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
         *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
@@ -58,12 +57,11 @@ Status ComputePadAndOutputShape(
   }
   return Status::OK();
 }
-}  // namespace
 
 // base class used by Conv and ConvTranspose
 class ConvBase {
  protected:
-  ConvBase(const OpKernelInfo& info) {
+  explicit ConvBase(const OpKernelInfo& info) {
     std::string auto_pad;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad);
     auto_pad_ = status.IsOK() ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET;
@@ -93,27 +91,40 @@ class ConvBase {
 #if false
     // TODO: Re-enable when attributes values are guaranteed to be filled.
     std::string auto_pad;
-    ONNXRUNTIME_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_pad).IsOK());
+    ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_pad).IsOK());
     auto_pad_ = StringToAutoPadType(auto_pad);
-    ONNXRUNTIME_ENFORCE(info.GetAttr<int64_t>("group", &group_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("strides", strides_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("pads", pads_).IsOK());
-    ONNXRUNTIME_ENFORCE(info.GetAttrs<int64_t>("dilations", dilations_).IsOK());
+    ORT_ENFORCE(info.GetAttr<int64_t>("group", &group_).IsOK());
+    ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK());
+    ORT_ENFORCE(info.GetAttrs<int64_t>("strides", strides_).IsOK());
+    ORT_ENFORCE(info.GetAttrs<int64_t>("pads", pads_).IsOK());
+    ORT_ENFORCE(info.GetAttrs<int64_t>("dilations", dilations_).IsOK());
 #endif
   }
 
-  ~ConvBase() {}
+  ~ConvBase() = default;
 
  protected:
-  std::vector<int64_t> ComputeKernelShape(const TensorShape& weight_shape) const {
-    if (kernel_shape_specified_)
-      return kernel_shape_;
-    else {
+  Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {
+    if (kernel_shape_specified_) {
+      kernel_shape = kernel_shape_;
+      if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+                               " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                               " W: ", weight_shape.ToString().c_str());
+      }
+      for (size_t i = 0; i < kernel_shape.size(); ++i) {
+        if (kernel_shape[i] != weight_shape[i + 2]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+                                 " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                 " W: ", weight_shape.ToString().c_str());
+        }
+      }
+    } else {
       auto& weight_dims = weight_shape.GetDims();
-      std::vector<int64_t> result(weight_dims.begin() + 2, weight_dims.end());
-      return result;
+      kernel_shape = std::vector<int64_t>(weight_dims.begin() + 2, weight_dims.end());
     }
+
+    return Status::OK();
   }
 
   Status ValidateInputShape(const Tensor* X, const Tensor* W) const {
@@ -121,20 +132,20 @@ class ConvBase {
     const int64_t M = W->Shape()[0];
 
     if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
                              " X: ", X->Shape().ToString().c_str(),
                              " W: ", W->Shape().ToString().c_str());
     }
 
     if (C != W->Shape()[1] * group_) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
                              " kernel channels: ", W->Shape()[1],
                              " group: ", group_);
     }
 
     if (M % group_ != 0) {
-      return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
                              " M: ", M,
                              " group: ", group_);
     }
@@ -153,10 +164,10 @@ class ConvBase {
       if (dim >= strides.size() || dim >= kernel_shape.size() ||
           dim >= dilations.size() || dim >= pads->size() ||
           rank + dim >= pads->size()) {
-        return ONNXRUNTIME_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
       }
       int64_t dim_size = 0;
-      ONNXRUNTIME_RETURN_IF_ERROR(ComputePadAndOutputShape<ForceSymmetricAutoPadding>(
+      ORT_RETURN_IF_ERROR(ComputePadAndOutputShape<ForceSymmetricAutoPadding>(
           input_shape[dim],
           strides[dim],
           kernel_shape[dim],
@@ -179,6 +190,8 @@ class ConvBase {
   std::vector<int64_t> strides_;
   std::vector<int64_t> pads_;
   std::vector<int64_t> dilations_;
+  std::string activation_;
+  float alpha_;
 
  private:
   std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_

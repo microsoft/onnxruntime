@@ -82,22 +82,24 @@ Abstract:
 #if defined(_OPENMP)
 #include <omp.h>
 #define MLAS_USE_OPENMP
+#define MLAS_HAS_THREADING_SUPPORT
 #elif defined(_WIN32)
 #define MLAS_USE_WIN32_THREADPOOL
+#define MLAS_HAS_THREADING_SUPPORT
 #endif
 
 //
 // Define the maximum number of threads supported by this implementation.
 //
 
-#define MLAS_MAXIMUM_THREAD_COUNT           16
+#define MLAS_MAXIMUM_THREAD_COUNT                   16
 
 //
 // Define the default strides to step through slices of the input matrices.
 //
 
-#define MLAS_SGEMM_STRIDEN                  128
-#define MLAS_SGEMM_STRIDEK                  128
+#define MLAS_SGEMM_STRIDEN                          128
+#define MLAS_SGEMM_STRIDEK                          128
 
 //
 // Define the alignment for segmenting a SGEMM operation across multiple
@@ -108,10 +110,10 @@ Abstract:
 // the effort at this time.
 //
 
-#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN     16
+#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 
 //
-// Define the prototypes of the SGEMM platform optimized routines.
+// Define the prototypes of the platform optimized routines.
 //
 
 typedef
@@ -154,6 +156,26 @@ void
 
 typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE;
 
+typedef
+void
+(MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_LOGISTIC_KERNEL_ROUTINE* PMLAS_LOGISTIC_KERNEL_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
+
 extern "C" {
 
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
@@ -181,6 +203,13 @@ extern "C" {
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
 #endif
 
+    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
+    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
+    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
+#endif
+
 }
 
 //
@@ -193,12 +222,12 @@ extern "C" {
 //
 
 #if defined(MLAS_USE_OPENMP)
-#define MLAS_SGEMM_THREAD_COMPLEXITY        (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #else
 #if defined(MLAS_TARGET_AMD64)
-#define MLAS_SGEMM_THREAD_COMPLEXITY        (2 * 1024 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (2 * 1024 * 1024)
 #else
-#define MLAS_SGEMM_THREAD_COMPLEXITY        (1 * 1024 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (1 * 1024 * 1024)
 #endif
 #endif
 
@@ -240,13 +269,15 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
+    PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
+    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
-    uint32_t MaximumThreadCount;
+    int32_t MaximumThreadCount;
 #endif
 
-    uint32_t
+    int32_t
     GetMaximumThreadCount(
         void
         )
@@ -264,8 +295,30 @@ struct MLAS_PLATFORM {
 extern MLAS_PLATFORM MlasPlatform;
 
 //
+// Threading support.
+//
+
+typedef
+void
+(MLAS_THREADED_ROUTINE)(
+    void* Context,
+    int32_t Index
+    );
+
+typedef MLAS_THREADED_ROUTINE* PMLAS_THREADED_ROUTINE;
+
+void
+MlasExecuteThreaded(
+    PMLAS_THREADED_ROUTINE ThreadedRoutine,
+    void* Context,
+    int32_t Iterations
+    );
+
+//
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
 // cross-compiler support.
+//
+// Also define additional standard NEON intrinsics using the MSVC aliases.
 //
 
 #if defined(_M_ARM64)
@@ -286,6 +339,15 @@ extern MLAS_PLATFORM MlasPlatform;
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)
 #define MLAS_SSE2_INTRINSICS
+#if defined(__AVX__)
+#define MLAS_AVX_INTRINSICS
+#endif
+#if defined(__AVX2__)
+#define MLAS_AVX2_INTRINSICS
+#endif
+#if defined(__FMA__) || (defined(_MSC_VER) && defined(__AVX2__))
+#define MLAS_FMA3_INTRINSICS
+#endif
 #else
 #error Unsupported architecture.
 #endif
@@ -365,6 +427,18 @@ MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #endif
 }
 
+template<unsigned Lane>
+inline
+float
+MlasExtractLaneFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vgetq_lane_f32(Vector, Lane);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cvtss_f32(_mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Lane, Lane, Lane, Lane)));
+#endif
+}
+
 #if defined(MLAS_SSE2_INTRINSICS)
 
 template<>
@@ -373,6 +447,14 @@ void
 MlasStoreLaneFloat32x4<0>(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
     _mm_store_ss(Buffer, Vector);
+}
+
+template<>
+inline
+float
+MlasExtractLaneFloat32x4<0>(MLAS_FLOAT32X4 Vector)
+{
+    return _mm_cvtss_f32(Vector);
 }
 
 #endif
@@ -385,6 +467,17 @@ MlasBroadcastFloat32x4(float Value)
     return vdupq_n_f32(Value);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_set_ps1(Value);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasBroadcastFloat32x4(const float* Value)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vld1q_dup_f32(Value);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_load_ps1(Value);
 #endif
 }
 
@@ -418,6 +511,19 @@ MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vmulq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_mul_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FLOAT32X4 Vector3)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vmlaq_f32(Vector3, Vector1, Vector2);
+#elif defined(MLAS_FMA3_INTRINSICS)
+    return _mm_fmadd_ps(Vector1, Vector2, Vector3);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_add_ps(_mm_mul_ps(Vector1, Vector2), Vector3);
 #endif
 }
 

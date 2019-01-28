@@ -11,7 +11,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
@@ -25,7 +25,7 @@ class SequentialExecutor : public IExecutor {
                          const logging::Logger& logger) override;
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
   const bool& terminate_flag_;
 };
 }  // namespace onnxruntime

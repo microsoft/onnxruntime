@@ -9,7 +9,7 @@ common::Status OnnxRuntimeOpSchemaRegistry::SetBaselineAndOpsetVersionForDomain(
     const std::string& domain,
     int baseline_opset_version,
     int opset_version) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<OrtMutex> lock(mutex_);
 
   auto it = domain_version_range_map_.find(domain);
   if (domain_version_range_map_.end() != it) {
@@ -39,9 +39,9 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSet(
     const std::string& domain,
     int baseline_opset_version,
     int opset_version) {
-  ONNXRUNTIME_RETURN_IF_ERROR(SetBaselineAndOpsetVersionForDomain(domain, baseline_opset_version, opset_version));
+  ORT_RETURN_IF_ERROR(SetBaselineAndOpsetVersionForDomain(domain, baseline_opset_version, opset_version));
   for (auto& schema : schemas)
-    ONNXRUNTIME_RETURN_IF_ERROR(RegisterOpSchema(std::move(schema)));
+    ORT_RETURN_IF_ERROR(RegisterOpSchema(std::move(schema)));
   return common::Status::OK();
 }
 

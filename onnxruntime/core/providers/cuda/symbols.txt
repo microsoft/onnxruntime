@@ -1,1 +1,1 @@
-ONNXRuntimeCreateCUDAExecutionProviderFactory
+OrtSessionOptionsAppendExecutionProvider_CUDA

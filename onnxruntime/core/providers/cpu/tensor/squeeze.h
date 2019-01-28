@@ -11,10 +11,10 @@ namespace onnxruntime {
 
 class SqueezeBase {
  protected:
-  SqueezeBase(const OpKernelInfo& info) {
+  explicit SqueezeBase(const OpKernelInfo& info) {
     std::vector<int64_t> axes;
     Status status = info.GetAttrs<int64_t>("axes", axes);
-    ONNXRUNTIME_ENFORCE(status.IsOK(), "Attribute axes is not set.");
+    ORT_ENFORCE(status.IsOK(), "Attribute axes is not set.");
 
     // Handle out of order and repeating dims.
     std::sort(axes.begin(), axes.end());
@@ -23,13 +23,13 @@ class SqueezeBase {
   }
 
   static std::vector<int64_t> ComputeOutputShape(
-      std::vector<int64_t> input_shape,
-      std::vector<int64_t> axes) {
-    int j = 0;
+      const TensorShape& input_shape,
+      const TensorShape& axes) {
+    size_t j = 0;
     std::vector<int64_t> output_shape;
-    for (size_t i = 0; i < input_shape.size(); ++i) {
-      if (j < axes.size() && axes[j] == static_cast<int64_t>(i)) {
-        ONNXRUNTIME_ENFORCE(input_shape[i] == 1, "Dimension of input ", i,
+    for (size_t i = 0; i < input_shape.NumDimensions(); ++i) {
+      if (j < axes.NumDimensions() && axes[j] == static_cast<int64_t>(i)) {
+        ORT_ENFORCE(input_shape[i] == 1, "Dimension of input ", i,
                     " must be 1 instead of ", input_shape[i]);
         ++j;
         continue;
@@ -39,12 +39,12 @@ class SqueezeBase {
     return output_shape;
   }
 
-  std::vector<int64_t> axes_;
+  TensorShape axes_;
 };
 
 class Squeeze final : public OpKernel, public SqueezeBase {
  public:
-  Squeeze(const OpKernelInfo& info) : OpKernel(info), SqueezeBase(info) {}
+  explicit Squeeze(const OpKernelInfo& info) : OpKernel(info), SqueezeBase(info) {}
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);

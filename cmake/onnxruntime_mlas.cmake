@@ -3,10 +3,13 @@
 
 set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/platform.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/threading.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib/bias.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
 )
 
 if (MSVC)
@@ -60,6 +63,8 @@ if (MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/SgemmKernelAvx512F.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/sgemma.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/cvtfp16a.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
     )
 
   endif()
@@ -113,6 +118,8 @@ else()
 
     set(mlas_platform_srcs_avx2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 

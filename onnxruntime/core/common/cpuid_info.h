@@ -14,11 +14,13 @@ public:
 
   bool HasAVX2() const { return has_avx2_; }
   bool HasAVX512f() const { return has_avx512f_; }
+  bool HasF16C() const { return has_f16c_; }
 
 private:
   CPUIDInfo() noexcept;
   bool has_avx2_{false};
   bool has_avx512f_{false};
+  bool has_f16c_{false};
 };
 
-}
+}  // namespace onnxruntime

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/initializer.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/conv_bn_fusion.h"
 
 using namespace onnx;
@@ -11,12 +12,12 @@ namespace onnxruntime {
 Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    if (node.OpType() != "Conv" || node.GetOutputEdgesCount() != 1) {
+    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (next_node.OpType() != "BatchNormalization" ||
+    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
@@ -155,7 +156,7 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
     // Replace the input of the nodes following batch normalization node
     const NodeArg* bn_output_def = bn_node.OutputDefs()[0];
-    const NodeArg* conv_output_def = conv_node.OutputDefs()[0];
+    NodeArg* conv_output_def = conv_node.MutableOutputDefs()[0];
     for (auto it = bn_node.OutputNodesBegin(); it != bn_node.OutputNodesEnd(); ++it) {
       auto output_node = graph.GetNode((*it).Index());
       if (!output_node) {
@@ -165,21 +166,20 @@ Status ConvBNFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
       auto& input_defs = output_node->MutableInputDefs();
       for (auto& def : input_defs) {
         if (def == bn_output_def) {
-          def = const_cast<NodeArg*>(conv_output_def);
+          def = conv_output_def;
         }
       }
     }
-
     removed_nodes.push_back(bn_node.Index());
   }
 
   for (auto i : removed_nodes) {
     graph.RemoveNode(i);
   }
-
+   
   if (!removed_nodes.empty()) {
     modified = true;
-    ONNXRUNTIME_RETURN_IF_ERROR(graph.Resolve());
+    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
   return Status::OK();
 }

@@ -7,7 +7,7 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "gsl/span"
 #include "gsl/gsl_util"
 
@@ -29,7 +29,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   OpKernelInfo(const OpKernelInfo& other);
 
-  const ONNXRuntimeAllocatorInfo& GetAllocatorInfo(int device_id, ONNXRuntimeMemType mem_type) const;
+  const OrtAllocatorInfo& GetAllocatorInfo(int device_id, OrtMemType mem_type) const;
+
+  const AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 
   const KernelDef& GetKernelDef() const;
 
@@ -39,9 +41,11 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
+  common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
+
  private:
-  ONNXRUNTIME_DISALLOW_MOVE(OpKernelInfo);
-  ONNXRUNTIME_DISALLOW_ASSIGNMENT(OpKernelInfo);
+  ORT_DISALLOW_MOVE(OpKernelInfo);
+  ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
 
   const onnxruntime::Node& node_;
   const KernelDef& kernel_def_;

@@ -12,7 +12,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -106,7 +106,7 @@ void RunSession(InferenceSession& session_object,
                 std::vector<MLFloat16>& values_y) {
   // prepare inputs
   MLValue ml_value;
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, ONNXRuntimeMemTypeDefault), dims_x, values_x, &ml_value);
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 

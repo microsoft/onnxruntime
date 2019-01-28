@@ -6,8 +6,11 @@
 #include <limits>
 
 #include "core/framework/op_kernel.h"
-#include "core/common/task_thread_pool.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
+
+#ifndef USE_EIGEN_THREADPOOL
+#include "core/common/task_thread_pool.h"
+#endif
 
 namespace onnxruntime {
 
@@ -18,17 +21,17 @@ class DeepCpuLstmOp final : public OpKernel {
   DeepCpuLstmOp(const OpKernelInfo& info)
       : OpKernel(info), clip_(info.GetAttrOrDefault<float>("clip", std::numeric_limits<float>::max())) {
     std::string direction;
-    ONNXRUNTIME_ENFORCE(info.GetAttr("direction", &direction).IsOK());
+    ORT_ENFORCE(info.GetAttr("direction", &direction).IsOK());
 
     int64_t int64_value;
-    ONNXRUNTIME_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
+    ORT_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
     hidden_size_ = gsl::narrow<int>(int64_value);
 
     // optional attributes
     std::vector<std::string> activation_func_names = info.GetAttrsOrDefault<std::string>("activations");
     std::vector<float> activation_func_alphas = info.GetAttrsOrDefault<float>("activation_alpha");
     std::vector<float> activation_func_betas = info.GetAttrsOrDefault<float>("activation_beta");
-    ONNXRUNTIME_ENFORCE(clip_ > 0.f);
+    ORT_ENFORCE(clip_ > 0.f);
 
     if (info.GetAttr("input_forget", &int64_value).IsOK())
       input_forget_ = int64_value != 0;
@@ -44,7 +47,7 @@ class DeepCpuLstmOp final : public OpKernel {
       }
     }
 
-    ONNXRUNTIME_ENFORCE(activation_func_names.size() == num_directions_ * 3);
+    ORT_ENFORCE(activation_func_names.size() == num_directions_ * 3);
 
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,
@@ -82,7 +85,12 @@ class DeepCpuLstmOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
+
+#ifdef USE_EIGEN_THREADPOOL
+  mutable Eigen::NonBlockingThreadPool ttp_{static_cast<int>(std::thread::hardware_concurrency())};
+#else
   mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
+#endif
 };
 
 }  // namespace onnxruntime

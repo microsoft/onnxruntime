@@ -4,19 +4,24 @@
 #pragma once
 #include <iostream>
 #include <fstream>
+#include <tuple>
+#include <initializer_list>
+#include "core/platform/ort_mutex.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
 namespace profiling {
 
-/*
-Main class for profiling. It continues to accumulate events and produce
-a corresponding "complete event (X)" in "chrome tracing" format.
-*/
+/**
+ * Main class for profiling. It continues to accumulate events and produce
+ * a corresponding "complete event (X)" in "chrome tracing" format.
+ */
 class Profiler {
  public:
-  Profiler() noexcept {};  // turned off by default.
+  /// turned off by default.
+  /// Even this function is marked as noexcept, the code inside it may throw exceptions
+  Profiler() noexcept {};  //NOLINT
 
   /*
   Initializes Profiler with the session logger to log framework specific messages
@@ -38,6 +43,10 @@ class Profiler {
   */
   TimePoint StartTime() const;
 
+  bool FEnabled() const {
+    return enabled_;
+  }
+
   /*
   Record a single event. Time is measured till the call of this function from
   the start_time.
@@ -45,7 +54,7 @@ class Profiler {
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
                              TimePoint& start_time,
-                             std::unordered_map<std::string, std::string>&& event_args = std::unordered_map<std::string, std::string>(),
+                             const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
                              bool sync_gpu = false);
 
   /*
@@ -55,10 +64,10 @@ class Profiler {
   std::string EndProfiling();
 
  private:
-  ONNXRUNTIME_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   // Mutex controlling access to profiler data
-  std::mutex mutex_;
+  OrtMutex mutex_;
   bool enabled_{false};
   std::ofstream profile_stream_;
   std::string profile_stream_file_;

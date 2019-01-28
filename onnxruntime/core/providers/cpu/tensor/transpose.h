@@ -10,6 +10,13 @@
 namespace onnxruntime {
 
 class TransposeBase {
+ public:
+  /**
+  Transpose the input Tensor into the output Tensor using the provided permutations.
+  Both Tensors must have the same data type. 
+  */
+  static Status DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output);
+
  protected:
   TransposeBase(const OpKernelInfo& info) {
     Status status = info.GetAttrs<int64_t>("perm", perm_);
@@ -21,9 +28,9 @@ class TransposeBase {
       // Check that perm_ is a valid permutation of [0,rank-1]
       for (auto i : perm_) {
         if ((i < 0) || (i >= gsl::narrow<int64_t>(rank)))
-          ONNXRUNTIME_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is outside range.");
+          ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is outside range.");
         if (seen[i])
-          ONNXRUNTIME_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is repeated.");
+          ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is repeated.");
         seen[i] = true;
       }
     }
@@ -46,10 +53,7 @@ class TransposeBase {
       p_perm = &default_perm;
     }
 
-    // Determine shape of output, as well as stride to be used:
-    // stride[i] indicates the stride for the input-tensor dimension corresponding
-    // to the i-th dimension of the output
-
+    // Determine shape of output
     output_dims.resize(rank);
     for (int i = 0; i < rank; i++) {
       size_t inpdim = (*p_perm)[i];
