@@ -1,4 +1,3 @@
-OrtAddRefToObject
 OrtAllocatorAlloc
 OrtAllocatorFree
 OrtAllocatorGetInfo
@@ -12,7 +11,6 @@ OrtCloneSessionOptions
 OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
-OrtCreateCpuExecutionProviderFactory
 OrtCreateDefaultAllocator
 OrtCreateRunOptions
 OrtCreateSession
@@ -47,9 +45,12 @@ OrtIsTensor
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseEnv
-OrtReleaseObject
+OrtReleaseRunOptions
 OrtReleaseSession
+OrtReleaseSessionOptions
 OrtReleaseStatus
+OrtReleaseTensorTypeAndShapeInfo
+OrtReleaseTypeInfo
 OrtReleaseValue
 OrtRun
 OrtRunOptionsGetRunLogVerbosityLevel
@@ -63,7 +64,7 @@ OrtSessionGetInputTypeInfo
 OrtSessionGetOutputCount
 OrtSessionGetOutputName
 OrtSessionGetOutputTypeInfo
-OrtSessionOptionsAppendExecutionProvider
+OrtSessionOptionsAppendExecutionProvider_CPU
 OrtSetDims
 OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
