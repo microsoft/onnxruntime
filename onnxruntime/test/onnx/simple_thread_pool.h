@@ -1,5 +1,5 @@
-// This file is part of Eigen, a lightweight C++ template library
-// for linear algebra.
+// This file is part of Eigen, a C++ template library for linear algebra: 
+//matrices, vectors, numerical solvers, and related algorithms.
 //
 // Copyright (C) 2014 Benoit Steiner <benoit.steiner.goog@gmail.com>
 //
