@@ -12,7 +12,7 @@ TestDataChecksum=$5
 set -x
 
 echo "Downloading test data"
-#python3 $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir --test_data_url $TestDataUrl --test_data_checksum $TestDataChecksum
+python3 $SourceRoot/tools/ci_build/build.py --update --download_test_data --build_dir $BuildDir --test_data_url $TestDataUrl --test_data_checksum $TestDataChecksum
 if [ $? -ne 0 ]; then
     echo "Failed to download test data"
     exit 1

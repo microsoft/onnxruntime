@@ -16,7 +16,7 @@ IMAGE="ubuntu16.04-cuda10.0-cudnn7.3"
 PYTHON_VER=3.5
 OldDir=$(pwd)
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
-#docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_gpu .
+docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_gpu .
 
 
 docker rm -f "onnxruntime-gpu-container" || true
