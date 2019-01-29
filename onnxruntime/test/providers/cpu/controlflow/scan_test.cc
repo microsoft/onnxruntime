@@ -382,8 +382,8 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
       if (axis >= -rank && axis < rank) {
         std::vector<int64_t> permutations;
         std::vector<int64_t> new_shape;
-        scan::detail::CalculateTransposedShape(output_shape, HandleNegativeAxis(axis, output_shape.size()),
-                                               permutations, new_shape);
+        scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, output_shape.size()),
+                                                        permutations, new_shape);
         return new_shape;
       }
     }
@@ -842,6 +842,48 @@ TEST(Scan9, TransposeOutput) {
              nullptr, nullptr, nullptr, &output_axes,
              iteration_count_in, input_0, input_1,
              iteration_count_out, output_0, output_1, output_2, output_3);
+}
+
+TEST(Scan9, TransposeOutputDim2) {
+  // Construct scan body subgraph with 1 scan inputs, 1 scan outputs
+  // scan-in-1 => scan-out-1
+  Model model("ScanBody");
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& scan_in_1 = graph.GetOrCreateNodeArg("scan_in_1", &float_tensor);
+  auto& scan_out_1 = graph.GetOrCreateNodeArg("scan_out_1", &float_tensor);
+
+  graph.AddNode("pass_through", "Identity", "Copy scan_in_1 to scan_out_1", {&scan_in_1}, {&scan_out_1});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto& scan_body = graph.ToGraphProto();
+
+  ScanOpTester test{9};
+
+  std::vector<int64_t> input_shape{2, 1, 1};
+
+  // transpose on axis 2, so dim 0 of the output (copied directly from input of {2, 1, 1})
+  // will move to dim 2 of the output giving shape {1, 1, 2}
+  std::vector<int64_t> output_axes{2};
+  std::vector<int64_t> output_shape{1, 1, 2};
+
+  test.AddAttribute("body", scan_body);
+  test.AddAttribute<int64_t>("num_scan_inputs", 1);
+  test.AddAttribute<std::vector<int64_t>>("scan_output_axes", output_axes);
+
+  // the data won't change, but the shape should be transposed from 2, 1, 1 to 1, 1, 2, which
+  // OpTester::Run will validate
+  test.AddInput<float>("scan_input_1", input_shape, {1.0, 2.0});
+  test.AddOutput<float>("scan_output_1", output_shape, {1.0, 2.0});
+
+  test.Run();
 }
 
 static void InvalidInput(bool is_v8) {

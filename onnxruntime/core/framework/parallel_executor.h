@@ -28,6 +28,7 @@ class ParallelExecutor : public IExecutor {
                          const NameMLValMap& feeds,
                          const std::vector<std::string>& output_names,
                          std::vector<MLValue>& fetches,
+                         const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                          const logging::Logger& logger) override;
 
  private:
