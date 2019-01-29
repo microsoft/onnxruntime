@@ -39,15 +39,15 @@ namespace CSharpUsage
                 }
 
                 // Run the inference
-                var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
-
-                // dump the results
-                foreach (var r in results)
+                using (var results = session.Run(container))  // results is an IDisposableReadOnlyCollection<DisposableNamedOnnxValue> container
                 {
-                    Console.WriteLine("Output for {0}", r.Name);
-                    Console.WriteLine(r.AsTensor<float>().GetArrayString());
+                    // dump the results
+                    foreach (var r in results)
+                    {
+                        Console.WriteLine("Output for {0}", r.Name);
+                        Console.WriteLine(r.AsTensor<float>().GetArrayString());
+                    }
                 }
-
             }
         }
 
