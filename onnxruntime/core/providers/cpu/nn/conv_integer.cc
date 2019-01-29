@@ -118,7 +118,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       gemmlowp::MatrixMap<const std::uint8_t, RhsOrder> rhs(
           col_buffer_data, static_cast<int>(kernel_dim), static_cast<int>(output_image_size));
       gemmlowp::MatrixMap<std::int32_t, ResultOrder> result(
-          Ydata, static_cast<int>(M / group_), static_cast<int>(output_image_size));
+          Ydata + group_id * Y_offset, static_cast<int>(M / group_), static_cast<int>(output_image_size));
       const std::tuple<> empty_pipeline = {};
 
       gemmlowp::GemmContext gemm_context;
