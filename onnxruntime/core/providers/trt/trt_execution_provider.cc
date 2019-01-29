@@ -94,18 +94,18 @@ std::vector<std::unique_ptr<ComputeCapability>>
 {
     //Construct modelproto from graph and serialize to string
     ModelProto model_proto;
-    auto graph_proto = ToGraphProto(graph);
+    GraphProto graph_proto = ToGraphProto(graph);
     model_proto.set_allocated_graph(&graph_proto);
     string string_buf;
     model_proto.SerializeToString(&string_buf);
     std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
 
     //Get supported node list
-    int verbosity = (int)nvinfer1::ILogger::Severity::kWARNING;
-    TRT_Logger trt_logger((nvinfer1::ILogger::Severity)verbosity);
-    auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
-    auto trt_network = infer_object(trt_builder->createNetwork());
-    auto trt_parser  = infer_object(nvonnxparser::createParser(trt_network.get(), trt_logger));
+    int verbosity = static_cast<int>(nvinfer1::ILogger::Severity::kWARNING);
+    TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(verbosity));
+    const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
+    const auto& trt_network = InferObject(trt_builder->createNetwork());
+    const auto& trt_parser  = InferObject(nvonnxparser::createParser(trt_network.get(), trt_logger));
 
     SubGraphCollection_t SupportedNodesVector;
     trt_parser->supportsModel(onnx_buf.data(), onnx_buf.size(), SupportedNodesVector);
@@ -120,13 +120,13 @@ std::vector<std::unique_ptr<ComputeCapability>>
         if (!group.empty())
         {
             std::set<const NodeArg*> fused_inputs, fused_outputs, erased;
-            for (auto index : group)
+            for (auto& index : group)
             {
                 sub_graph->nodes.push_back(index);
-                auto node = graph.GetNode(index);
-                for (auto input : node->InputDefs())
+                const auto& node = graph.GetNode(index);
+                for (const auto& input : node->InputDefs())
                 {
-                    auto it = fused_outputs.find(input);
+                    const auto& it = fused_outputs.find(input);
                     if (it != fused_outputs.end())
                     {
                         fused_outputs.erase(it);
@@ -138,9 +138,9 @@ std::vector<std::unique_ptr<ComputeCapability>>
                     }
                 }
 
-                for (auto output : node->OutputDefs())
+                for (const auto& output : node->OutputDefs())
                 {
-                    auto it = fused_inputs.find(output);
+                    const auto& it = fused_inputs.find(output);
                     if (it != fused_inputs.end())
                     {
                         fused_inputs.erase(it);
@@ -154,12 +154,12 @@ std::vector<std::unique_ptr<ComputeCapability>>
             }
 
             //Add node's outputs to subgraph's outputs if their EdgeEnd nodes don't belong to the subgraph
-            for (auto index : node_set)
+            for (auto& index : node_set)
             {
-                auto node = graph.GetNode(index);
+                const auto& node = graph.GetNode(index);
                 for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it)
                 {
-                    auto node_arg = (it->GetNode()).InputDefs();
+                    auto& node_arg = (it->GetNode()).InputDefs();
                     if (node_set.find((it->GetNode()).Index()) == node_set.end())
                     {
                         int arg_index = it->GetDstArgIndex();
@@ -172,11 +172,11 @@ std::vector<std::unique_ptr<ComputeCapability>>
             auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
             meta_def->name = "TRTKernel";
             meta_def->domain = kMSDomain;
-            for (auto input : fused_inputs)
+            for (auto& input : fused_inputs)
             {
                 meta_def->inputs.push_back(input->Name());
             }
-            for (auto output : fused_outputs)
+            for (auto& output : fused_outputs)
             {
                 meta_def->outputs.push_back(output->Name());
             }

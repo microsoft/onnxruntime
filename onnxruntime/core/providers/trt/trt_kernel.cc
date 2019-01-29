@@ -56,13 +56,13 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
             if (stat) //initialized inputs
             {
                 auto& input_tensor = *constant_input_value;
-                auto tensor_type = input_tensor->DataType();
+                const auto& tensor_type = input_tensor->DataType();
                 TensorProto::DataType dtype = TensorProto_DataType_UNDEFINED;
                 TensorProto tensor_proto;
                 if (tensor_type == DataTypeImpl::GetType<float>())
                 {
                     dtype = TensorProto_DataType_FLOAT;
-                    auto input_data = input_tensor->Data<float>();
+                    const auto& input_data = input_tensor->Data<float>();
                     for (int j = 0, end = input_tensor->Shape().Size(); j < end; ++j)
                     {
                         tensor_proto.add_float_data(input_data[j]);
@@ -71,7 +71,7 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
                 else if (tensor_type == DataTypeImpl::GetType<int64_t>())
                 {
                     dtype = TensorProto_DataType_INT64;
-                    auto input_data = input_tensor->Data<int64_t>();
+                    const auto& input_data = input_tensor->Data<int64_t>();
                     for (int j = 0, end = input_tensor->Shape().Size(); j < end; ++j)
                     {
                         tensor_proto.add_int64_data(input_data[j]);
@@ -133,14 +133,14 @@ TRTKernel::TRTKernel(const OpKernelInfo& info) : OpKernel(info)
     std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
 
     int verbosity = static_cast<int>(nvinfer1::ILogger::Severity::kWARNING);
-    TRT_Logger trt_logger((nvinfer1::ILogger::Severity)verbosity);
-    auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
-    auto trt_network = infer_object(trt_builder->createNetwork());
-    auto trt_parser  = infer_object(nvonnxparser::createParser(trt_network.get(), trt_logger));
+    TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(verbosity));
+    const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
+    const auto& trt_network = InferObject(trt_builder->createNetwork());
+    const auto& trt_parser  = InferObject(nvonnxparser::createParser(trt_network.get(), trt_logger));
     trt_parser->parse(onnx_buf.data(), onnx_buf.size());
     trt_builder->setMaxBatchSize(max_batch_size);
     trt_builder->setMaxWorkspaceSize(max_workspace_size);
-    engine_ = infer_object(trt_builder->buildCudaEngine(*trt_network.get()));
+    engine_ = InferObject(trt_builder->buildCudaEngine(*trt_network.get()));
     assert(engine_ != nullptr);
 
     //Build trt context
@@ -204,14 +204,14 @@ Status TRTKernel::Compute(OpKernelContext* context) const
     std::vector<int> batch_size(input_number, 1);
 
     //Get batch size and allocate cuda memory for inputs
-    for (auto i = 0; i < input_number; ++i)
+    for (int i = 0; i < input_number; ++i)
     {
-        auto tensor_input = context->Input<Tensor>(graph_input_index_[i]);
+        const auto& tensor_input = context->Input<Tensor>(graph_input_index_[i]);
         auto& tensor_shape = tensor_input->Shape();
         auto& dim = tensor_shape.GetDims();
         batch_size.push_back(dim[0]);
 
-        auto tensor_type = tensor_input->DataType();
+        const auto& tensor_type = tensor_input->DataType();
         if (tensor_type == DataTypeImpl::GetType<float>())
         {
             const float* input = tensor_input->template Data<float>();
@@ -234,7 +234,7 @@ Status TRTKernel::Compute(OpKernelContext* context) const
     for (int i = 0; i < output_number; ++i)
     {
         onnxruntime::TensorShape shape(vector<int64_t>(output_dimension_[i].begin(), output_dimension_[i].end()));
-        auto tensor_output = context->Output(i, shape);
+        const auto& tensor_output = context->Output(i, shape);
         output.push_back(tensor_output->template MutableData<float>());
     }
     for (int i = 0; i < output_number; ++i)

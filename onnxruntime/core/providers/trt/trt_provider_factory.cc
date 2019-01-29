@@ -24,7 +24,7 @@ OrtStatus* ORT_API_CALL CreateTRT(void* this_, OrtProvider** out)
     TRTProviderFactory* this_ptr = static_cast<TRTProviderFactory*>(this_);
     info.device_id = this_ptr->device_id;
     TRTExecutionProvider* ret = new TRTExecutionProvider();
-    *out = reinterpret_cast<OrtProvider*>ret;
+    *out = reinterpret_cast<OrtProvider*>(ret);
     return nullptr;
 }
 

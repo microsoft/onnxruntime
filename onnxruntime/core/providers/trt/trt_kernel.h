@@ -54,7 +54,7 @@ struct InferDeleter
 };
 
 template<typename T>
-inline std::shared_ptr<T> infer_object(T* obj)
+inline std::shared_ptr<T> InferObject(T* obj)
 {
     if( !obj )
     {
@@ -63,12 +63,12 @@ inline std::shared_ptr<T> infer_object(T* obj)
     return std::shared_ptr<T>(obj, InferDeleter());
 }
 
-class TRT_Logger : public nvinfer1::ILogger
+class TRTLogger : public nvinfer1::ILogger
 {
     nvinfer1::ILogger::Severity _verbosity;
     std::ostream* _ostream;
 public:
-    TRT_Logger(Severity verbosity=Severity::kWARNING,
+    TRTLogger(Severity verbosity=Severity::kWARNING,
                std::ostream& ostream=std::cout)
         : _verbosity(verbosity), _ostream(&ostream) {}
     void log(Severity severity, const char* msg) override
