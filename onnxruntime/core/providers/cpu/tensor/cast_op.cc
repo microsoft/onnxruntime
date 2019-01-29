@@ -36,7 +36,8 @@ const std::vector<MLDataType> castOpTypeConstraints{
   template <>                                                                                                                      \
   Status Cast<in_type>::Compute(OpKernelContext* context) const {                                                                  \
     const Tensor* X = context->Input<Tensor>(0);                                                                                   \
-    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");                                    \
+    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,                                                             \
+      "Input is missing. The operator Cast expects one and only one input");                                          \
     const TensorShape& shape = X->Shape();                                                                                         \
     Tensor* Y = context->Output(0, TensorShape(shape));                                                                            \
                                                                                                                                    \
@@ -116,7 +117,8 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 template <>
 Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
+    "Input is missing. The operator Cast expects one and only one input");
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, TensorShape(shape));
   Status st;
@@ -185,40 +187,41 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 template <>
 Status Cast<std::string>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
+    "Input is missing. The operator Cast expects one and only one input");
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, TensorShape(shape));
   Status st;
   switch (to_) {
     case TensorProto_DataType_INT16:
-      st = CastFromStringData<int16_t>(X, Y, shape, context);
+      st = CastFromStringData<int16_t>(X, Y, shape);
       break;
     case TensorProto_DataType_INT32:
-      st = CastFromStringData<int32_t>(X, Y, shape, context);
+      st = CastFromStringData<int32_t>(X, Y, shape);
       break;
     case TensorProto_DataType_INT64:
-      st = CastFromStringData<int64_t>(X, Y, shape, context);
+      st = CastFromStringData<int64_t>(X, Y, shape);
       break;
     case TensorProto_DataType_UINT8:
-      st = CastFromStringData<uint8_t>(X, Y, shape, context);
+      st = CastFromStringData<uint8_t>(X, Y, shape);
       break;
     case TensorProto_DataType_UINT16:
-      st = CastFromStringData<uint16_t>(X, Y, shape, context);
+      st = CastFromStringData<uint16_t>(X, Y, shape);
       break;
     case TensorProto_DataType_UINT32:
-      st = CastFromStringData<uint32_t>(X, Y, shape, context);
+      st = CastFromStringData<uint32_t>(X, Y, shape);
       break;
     case TensorProto_DataType_UINT64:
-      st = CastFromStringData<uint64_t>(X, Y, shape, context);
+      st = CastFromStringData<uint64_t>(X, Y, shape);
       break;
     case TensorProto_DataType_FLOAT:
-      CastFromStringData<float>(X, Y, shape, context);
+      st = CastFromStringData<float>(X, Y, shape);
       break;
     case TensorProto_DataType_DOUBLE:
-      st = CastFromStringData<double>(X, Y, shape, context);
+      st = CastFromStringData<double>(X, Y, shape);
       break;
     case TensorProto_DataType_INT8:
-      st = CastFromStringData<int8_t>(X, Y, shape, context);
+      st = CastFromStringData<int8_t>(X, Y, shape);
       break;
     case TensorProto_DataType_UNDEFINED:
       ORT_THROW("Cast op must have 'to' argument of type DataType");

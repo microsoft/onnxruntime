@@ -77,31 +77,69 @@ inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& s
       if (in->Data<SrcType>()[i] < std::numeric_limits<SrcType>::lowest()) {
         out->MutableData<std::string>()[i] = "-INF";
       } else {
-		out->MutableData<std::string>()[i] = "INF";
-	  }
+        out->MutableData<std::string>()[i] = "INF";
+      }
     } else {
-	  std::ostringstream convert;
-	  convert << in->Data<SrcType>()[i];
-	  out->MutableData<std::string>()[i] = convert.str();
-	}
+      std::ostringstream convert;
+      convert << in->Data<SrcType>()[i];
+      out->MutableData<std::string>()[i] = convert.str();
+    }
   }
 }
 
 template <typename DstType>
-inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape& shape, const AllocatorPtr& allocator) {
+inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape& shape) {
   if (std::is_same<DstType, std::string>::value) return;
-  ORT_ENFORCE(allocator != nullptr);
   const int64_t len = shape.Size();
   ORT_ENFORCE(len > 0);
-  void* buffer = allocator->AllocArray(sizeof(double), len);
-  ORT_ENFORCE(buffer);
-  Tensor tmp_tensor(DataTypeImpl::GetType<double>(), shape, buffer, allocator->Info(), nullptr);
-  for (int i = 0; i < len; ++i) {
-    tmp_tensor.MutableData<double>()[i] = std::stod(in->Data<std::string>()[i]);
+  if (std::is_same<DstType, float>::value) {
+    for (int i = 0; i < len; ++i) {
+      out->MutableData<float>()[i] = std::stof(in->Data<std::string>()[i]);
+    }
+  } else if (std::is_same<DstType, double>::value) {
+    for (int i = 0; i < len; ++i) {
+      out->MutableData<double>()[i] = std::stod(in->Data<std::string>()[i]);
+    }
+  } else if (std::is_same<DstType, int8_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      int temp_i = std::stoi(in->Data<std::string>()[i]);
+      out->MutableData<int8_t>()[i] = static_cast<int8_t>(temp_i);
+    }
+  } else if (std::is_same<DstType, uint8_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      unsigned long temp_ui = std::stoul(in->Data<std::string>()[i]);
+      out->MutableData<uint8_t>()[i] = static_cast<uint8_t>(temp_ui);
+    }
+  } else if (std::is_same<DstType, int16_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      int temp_i = std::stoi(in->Data<std::string>()[i]);
+      out->MutableData<int16_t>()[i] = static_cast<int16_t>(temp_i);
+    }
+  } else if (std::is_same<DstType, uint16_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      unsigned long temp_ui = std::stoul(in->Data<std::string>()[i]);
+      out->MutableData<uint16_t>()[i] = static_cast<uint16_t>(temp_ui);
+    }
+  } else if (std::is_same<DstType, int32_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      out->MutableData<int32_t>()[i] = std::stol(in->Data<std::string>()[i]);
+    }
+  } else if (std::is_same<DstType, uint32_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      out->MutableData<uint32_t>()[i] = std::stoul(in->Data<std::string>()[i]);
+    }
+  } else if (std::is_same<DstType, int64_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      out->MutableData<int64_t>()[i] = std::stoll(in->Data<std::string>()[i]);
+    }
+  } else if (std::is_same<DstType, uint64_t>::value) {
+    for (int i = 0; i < len; ++i) {
+      out->MutableData<uint64_t>()[i] = std::stoull(in->Data<std::string>()[i]);
+    }
+  } else {
+    return;
   }
-  CastData<double, DstType>(&tmp_tensor, out, shape);
-  allocator->Free(buffer);
-}
+}  // namespace onnxruntime
 
 template <typename T>
 class Cast final : public OpKernel {
@@ -138,10 +176,8 @@ class Cast final : public OpKernel {
   }
 
   template <typename DstType>
-  Status CastFromStringData(const Tensor* in, Tensor* out, const TensorShape& shape, OpKernelContext* context) const {
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-    ::onnxruntime::CastFromStringData<DstType>(in, out, shape, allocator);
+  Status CastFromStringData(const Tensor* in, Tensor* out, const TensorShape& shape) const {
+    ::onnxruntime::CastFromStringData<DstType>(in, out, shape);
     return Status::OK();
   }
 
