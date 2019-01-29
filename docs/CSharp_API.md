@@ -30,6 +30,11 @@ You can load your input data into Tensor<T> objects in several ways. A simple ex
 
 Here is a [complete sample code](https://github.com/Microsoft/onnxruntime/tree/master/csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
 
+## Running on GPU (Optional)
+If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.
+
+   int gpuDeviceId = 0; // The GPU device ID to execute on
+   var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId));
 
 ## API Reference
 ### InferenceSession
