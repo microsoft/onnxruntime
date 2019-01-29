@@ -343,7 +343,7 @@ Status ScanImpl::SetupInputs() {
 
       std::vector<int64_t> permutations;
       std::vector<int64_t> new_shape;
-      CalculateTransposedShape(input_shape, sequence_dim, permutations, new_shape);
+      CalculateTransposedShapeForInput(input_shape, sequence_dim, permutations, new_shape);
 
       if (!alloc) {
         status = context_.GetTempSpaceAllocator(&alloc);
@@ -474,7 +474,7 @@ Status ScanImpl::TransposeOutput() {
 
       std::vector<int64_t> permutations;
       std::vector<int64_t> new_shape;
-      CalculateTransposedShape(temporary_output_tensor.Shape(), axis, permutations, new_shape);
+      CalculateTransposedShapeForOutput(temporary_output_tensor.Shape(), axis, permutations, new_shape);
 
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
