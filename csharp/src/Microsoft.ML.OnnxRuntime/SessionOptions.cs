@@ -49,7 +49,7 @@ namespace Microsoft.ML.OnnxRuntime
         private static SessionOptions MakeSessionOptionWithMklDnnProvider()
         {
             SessionOptions options = new SessionOptions();
-            //            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(_nativePtr, 1);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(_nativePtr, 1);
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }
