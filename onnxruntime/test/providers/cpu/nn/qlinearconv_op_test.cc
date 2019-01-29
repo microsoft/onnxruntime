@@ -29,14 +29,14 @@ void FindScaleAndZeroPoint(float min, float max, float* scale, uint8_t* zero_poi
 }
 
 void Quantize(float scale, uint8_t zero_point,
-              const std::vector<float>& input, std::vector<std::uint8_t>* input_quantized) {
-  for (std::size_t i = 0; i < input.size(); i++) {
+              const std::vector<float>& input, std::vector<uint8_t>* input_quantized) {
+  for (size_t i = 0; i < input.size(); i++) {
     const float clamped_val = std::max(0.f, std::min(255.f, std::round(static_cast<float>(input[i]) / scale) + zero_point));
     (*input_quantized)[i] = static_cast<uint8_t>(clamped_val);
   }
 }
 
-TEST(ConvTest, QLinearConvTest) {
+TEST(ConvTest, QLinearConv2DTest) {
   OpTester test("QLinearConv", 1, onnxruntime::kMSDomain);
 
   vector<float> X = {0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
@@ -105,7 +105,7 @@ TEST(ConvTest, QLinearConvTest) {
   test.Run();
 }
 
-TEST(ConvTest, QLinearConv3D) {
+TEST(ConvTest, QLinearConv3DTest) {
   OpTester test("QLinearConv", 1, onnxruntime::kMSDomain);
 
   vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
