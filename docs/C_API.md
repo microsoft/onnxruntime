@@ -1,7 +1,5 @@
 # C API
 
-**NOTE: The C API is PRE-RELEASE and subject to change.**
-
 ## Features
 
 * Creating an InferenceSession from an on-disk model file and a set of SessionOptions.
@@ -13,14 +11,13 @@
 * Setting the thread pool size for each session.
 * Dynamically loading custom ops.
 
-## How to use it
+## Very simplified outline of how to use it
 
 1. Include [onnxruntime_c_api.h](/include/onnxruntime/core/session/onnxruntime_c_api.h).
-2. Call ONNXRuntimeInitialize
-3. Create Session: ONNXRuntimeCreateInferenceSession(env, model_uri, nullptr,...)
+2. Call OrtCreateEnv
+3. Create Session: OrtCreateSession(env, model_uri, nullptr,...)
 4. Create Tensor
-   1) ONNXRuntimeCreateAllocatorInfo
-   2) ONNXRuntimeCreateTensorWithDataAsONNXValue
-5. ONNXRuntimeRunInference
-
+   1) OrtCreateAllocatorInfo
+   2) OrtCreateTensorWithDataAsONNXValue
+5. OrtRun
 

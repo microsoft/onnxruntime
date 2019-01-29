@@ -1,15 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// =====================================================================================================
-// NOTE: This header is PRE-RELEASE and subject to change. Please do not rely on this file not changing.
-// =====================================================================================================
-
 #pragma once
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
+// This value is used in structures passed to ORT so that a newer version of ORT will still work with
 #define ORT_API_VERSION 1
 
 #ifdef __cplusplus

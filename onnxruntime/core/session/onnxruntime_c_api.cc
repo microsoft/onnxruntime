@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"  //TODO: remove this
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_impl.h"
 #include "core/framework/error_code_helper.h"
