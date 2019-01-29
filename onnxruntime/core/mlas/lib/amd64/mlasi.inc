@@ -41,3 +41,28 @@ save_xmm128_avx MACRO Register, Offset
         .savexmm128 Register, Offset
 
         ENDM
+
+;
+; EmitIfCountGE
+;
+; Macro Description:
+;
+;   This macro conditionally emits the statement if Count is greater than or
+;   equal to Value.
+;
+; Arguments:
+;
+;   Count - Supplies the variable used in the comparison.
+;
+;   Value - Supplies the static used in the comparison.
+;
+;   Statement - Supplies the statement to conditionally emit.
+;
+
+EmitIfCountGE MACRO Count, Value, Statement
+
+IF Count GE Value
+        Statement
+ENDIF
+
+        ENDM
