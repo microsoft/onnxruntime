@@ -365,6 +365,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const NameMLValMap& feeds,
                             const std::vector<std::string>& output_names,
                             std::vector<MLValue>& fetches,
+                            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                             bool sequential_execution,
                             const bool& terminate_flag,
                             const logging::Logger& logger) {
@@ -386,7 +387,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
     p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
   }
 
-  ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, device_feeds, output_names, device_fetches, logger));
+  ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, device_feeds, output_names, device_fetches, fetch_allocators, logger));
   ORT_RETURN_IF_ERROR(utils::CopyOutputsAcrossDevices(session_state, device_fetches, fetches));
 
   return Status::OK();

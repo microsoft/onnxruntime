@@ -579,7 +579,7 @@ class InferenceSession::Impl {
       }
 
       ORT_CHECK_AND_SET_RETVAL(
-          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches,
+          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches, {},
                               session_options_.enable_sequential_execution, run_options.terminate, run_logger));
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());

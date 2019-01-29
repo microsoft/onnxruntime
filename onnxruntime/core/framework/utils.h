@@ -7,6 +7,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 
 namespace onnxruntime {
@@ -60,6 +61,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const NameMLValMap& feeds,
                             const std::vector<std::string>& output_names,
                             std::vector<MLValue>& fetches,
+                            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                             bool sequential_execution,
                             const bool& terminate_flag,
                             const logging::Logger& logger);

@@ -119,7 +119,7 @@ onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
 }
 
 const SessionState& OpKernelContext::GetSessionState() const {
-  return execution_frame_->SessionState();
+  return execution_frame_->GetSessionState();
 }
 
 const MLValue* OpKernelContext::GetInputMLValue(int index) const {

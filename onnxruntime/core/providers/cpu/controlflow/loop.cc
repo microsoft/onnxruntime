@@ -316,8 +316,11 @@ Status LoopImpl::Execute() {
       fetches.clear();
     }
 
-    status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, /*sequential_execution*/ true,
-                                 context_.GetTerminateFlag(), context_.Logger());
+    // loop carried variables can change shape across iterations, and we don't know how many iterations
+    // there will be to allocate loop outputs upfront. due to that we can't use a custom fetch allocator
+    // for any outputs
+    status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, {},
+                                 /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
@@ -325,7 +328,8 @@ Status LoopImpl::Execute() {
     ++iter_num_value;
   }
 
-  // TODO: Task 1913: Improve handling of If and Loop outputs to avoid copy
+  // As the loop carried variables may change shape across iterations there's no way to avoid a copy
+  // as we need the final shape.
   auto copy_tensor_from_mlvalue_to_output = [this](const MLValue& input, int output_idx) {
     auto& data = input.Get<Tensor>();
     Tensor* output = context_.Output(output_idx, data.Shape());

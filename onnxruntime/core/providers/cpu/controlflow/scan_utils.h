@@ -89,6 +89,14 @@ class OutputIterator {
   MLValue& operator*();
   OutputIterator& operator++();
 
+  bool FinalOutputAllocated() const { return is_concrete_shape_; }
+
+  // custom fetch allocator that can be used when the final shape is not concrete.
+  // when the subgraph requests the allocation of the subgraph output, we forward the request to this instance,
+  // allocate the overall output (taking into account the sequence length dimension),
+  // and use a slicer to return the chunk for the subgraph output for this iteration.
+  Status AllocateSubgraphOutput(const TensorShape& shape, MLValue& mlvalue);
+
   // set the output for the current iteration to zeros. used for short sequence lengths
   void ZeroOutCurrent() {
     auto* tensor = (**this).GetMutable<Tensor>();
@@ -112,7 +120,6 @@ class OutputIterator {
 
   Status Initialize();
   Status AllocateFinalBuffer();
-  Status MakeConcrete();
 
   OpKernelContextInternal& context_;
   bool is_v8_;
@@ -130,10 +137,6 @@ class OutputIterator {
   // one or more slicers for writing to the output
   std::vector<MLValueTensorSlicer<MLValue>::Iterator> slicer_iterators_;
   std::vector<MLValueTensorSlicer<MLValue>::Iterator>::iterator cur_slicer_iterator_;
-
-  // if shape is not concrete we need the first output to know the missing dimension before
-  // we can allocate final_output_mlvalue_ and use the slicers.
-  MLValue first_output_;
 
   // if true allocate temporary_final_output_mlvalue_ with data_type_ using the temporary allocator
   // and point final_output_value_ at that.
