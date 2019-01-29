@@ -388,8 +388,8 @@ class InferenceSession::Impl {
       if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
         LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
         CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-        execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
-                                 std::make_unique<CPUExecutionProvider>(epi));
+        ORT_RETURN_IF_ERROR(execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
+                                                     std::make_unique<CPUExecutionProvider>(epi)));
       }
 
       onnxruntime::Graph& graph = model_->MainGraph();
