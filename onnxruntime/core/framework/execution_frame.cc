@@ -338,20 +338,14 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
   }
 
   // 4. Handle non-empty output vector
-  // setup output_indices_, we dont' want to generate mem plan on output tensors.
-  for (const auto& oname : output_names) {
-    int mlvalue_idx;
-    Status status = mlvalue_idx_map.GetIdx(oname, mlvalue_idx);
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    output_indices_.push_back(mlvalue_idx);
-  }
-
   if (!fetches.empty()) {
     // should've already verified this much before when Run() starts
     ORT_ENFORCE(output_names.size() == fetches.size(),
                         "output_names vector size: " + std::to_string(output_names.size()) +
                             " does not match that of fetches vector: " + std::to_string(fetches.size()));
 
+    // setup output_indices_, we dont' want to generate mem plan on output tensors.
+    output_indices_.reserve(output_names.size());
     auto idx = 0;
     for (const auto& oname : output_names) {
       int mlvalue_idx;

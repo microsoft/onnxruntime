@@ -6,14 +6,14 @@
 #include <string>
 #include <vector>
 #include <atomic>
-#include "core/framework/onnx_object_cxx.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/providers/providers.h"
 
-struct OrtSessionOptions : public onnxruntime::ObjectBase<OrtSessionOptions> {
+struct OrtSessionOptions {
   onnxruntime::SessionOptions value;
   std::vector<std::string> custom_op_paths;
-  std::vector<OrtProviderFactoryInterface**> provider_factories;
+  std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories;
   OrtSessionOptions() = default;
   ~OrtSessionOptions();
   OrtSessionOptions(const OrtSessionOptions& other);

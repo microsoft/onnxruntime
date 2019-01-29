@@ -23,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class SessionOptions:IDisposable
     {
-        protected SafeHandle _nativeOption;
+        public IntPtr _nativePtr;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithMklDnnProvider);
         private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public SessionOptions()
         {
-            _nativeOption = new NativeOnnxObjectHandle(NativeMethods.OrtCreateSessionOptions());
+            _nativePtr = NativeMethods.OrtCreateSessionOptions();
         }
 
         /// <summary>
@@ -46,33 +46,11 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        /// <summary>
-        /// Append an execution propvider. When any operator is evaluated, it is executed on the first execution provider that provides it
-        /// </summary>
-        /// <param name="provider"></param>
-        public void AppendExecutionProvider(ExecutionProvider provider)
-        {
-            switch (provider)
-            {
-                case ExecutionProvider.Cpu:
-                    AppendExecutionProvider(CpuExecutionProviderFactory.Default);
-                    break;
-                case ExecutionProvider.MklDnn:
-                    AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
-                    break;
-                case ExecutionProvider.Cuda:
-                    AppendExecutionProvider(CudaExecutionProviderFactory.Default);
-                    break;
-                default:
-                    break;
-            }
-        }
-
         private static SessionOptions MakeSessionOptionWithMklDnnProvider()
         {
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
-            options.AppendExecutionProvider(CpuExecutionProviderFactory.Default);
+            //            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(_nativePtr, 1);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }
 
@@ -94,36 +72,10 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            if (deviceId == 0) //default value
-                options.AppendExecutionProvider(CudaExecutionProviderFactory.Default);
-            else
-                options.AppendExecutionProvider(new CudaExecutionProviderFactory(deviceId));
-            options.AppendExecutionProvider(MklDnnExecutionProviderFactory.Default);
-            options.AppendExecutionProvider(CpuExecutionProviderFactory.Default);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options._nativePtr, deviceId);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(options._nativePtr, 1);
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
-        }
-
-        internal IntPtr NativeHandle
-        {
-            get
-            {
-                return _nativeOption.DangerousGetHandle(); //Note: this is unsafe, and not ref counted, use with caution
-            }
-        }
-
-        private void AppendExecutionProvider(NativeOnnxObjectHandle providerFactory)
-        {
-            unsafe
-            {
-                bool success = false;
-                providerFactory.DangerousAddRef(ref success);
-                if (success)
-                {
-                    NativeMethods.OrtSessionOptionsAppendExecutionProvider(_nativeOption.DangerousGetHandle(), providerFactory.DangerousGetHandle());
-                    providerFactory.DangerousRelease();
-                }
-
-            }
         }
 
         // Declared, but called only if OS = Windows.
@@ -172,7 +124,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 // cleanup managed resources
             }
-            _nativeOption.Dispose();
+            NativeMethods.OrtReleaseSessionOptions(_nativePtr);
         }
 
         #endregion

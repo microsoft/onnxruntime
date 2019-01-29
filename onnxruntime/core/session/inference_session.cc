@@ -299,7 +299,8 @@ class InferenceSession::Impl {
     for (auto& provider : providers) {
       if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
           provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
-          provider->Type() != onnxruntime::kNupharExecutionProvider) {
+          provider->Type() != onnxruntime::kNupharExecutionProvider &&
+          provider->Type() != onnxruntime::kTRTExecutionProvider) {
         TransformerMemcpyImpl copy_impl(graph, provider->Type());
         copy_impl.ModifyGraph(kernel_registry_manager);
       }

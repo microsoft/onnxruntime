@@ -10,6 +10,7 @@
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #include <core/common/common.h>
 #include <core/common/logging/logging.h>
+#include <core/platform/ort_mutex.h>
 #include "onnxruntime_event.h"
 
 using onnxruntime::common::Status;
@@ -29,7 +30,7 @@ Status WaitAndCloseEvent(ORT_EVENT finish_event) {
   if (finish_event == nullptr)
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "");
   {
-    std::unique_lock<std::mutex> lock(finish_event->finish_event_mutex);
+    std::unique_lock<onnxruntime::OrtMutex> lock(finish_event->finish_event_mutex);
     while (!finish_event->finished) {
       finish_event->finish_event_data.wait(lock);
     }
@@ -73,7 +74,7 @@ Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVE
 
   if (pci == nullptr) {
     {
-      std::unique_lock<std::mutex> lock(finish_event->finish_event_mutex);
+      std::unique_lock<onnxruntime::OrtMutex> lock(finish_event->finish_event_mutex);
       finish_event->finished = true;
     }
     finish_event->finish_event_data.notify_all();
@@ -91,7 +92,7 @@ void OnnxRuntimeCallbackInstance::AddEvent(ORT_EVENT event) {
 Status OnnxRuntimeCallbackInstance::SignalAllEvents() {
   for (ORT_EVENT finish_event : events_to_signal_) {
     {
-      std::unique_lock<std::mutex> lock(finish_event->finish_event_mutex);
+      std::unique_lock<onnxruntime::OrtMutex> lock(finish_event->finish_event_mutex);
       finish_event->finished = true;
     }
     finish_event->finish_event_data.notify_all();
