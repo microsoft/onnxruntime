@@ -96,7 +96,7 @@ class LoggingWrapper : public ISink {
   void* logger_param_;
 };
 
-ORT_API_STATUS_IMPL(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_function,
+ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
                     _Out_ OrtEnv** out) {
   API_IMPL_BEGIN
@@ -114,7 +114,7 @@ ORT_API_STATUS_IMPL(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_fu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtInitialize, OrtLoggingLevel default_warning_level,
+ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Out_ OrtEnv** out) {
   API_IMPL_BEGIN
   std::string name = logid;

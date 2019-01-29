@@ -516,7 +516,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return;
             var entryPointNames = new[]{
-            "OrtInitialize","OrtReleaseEnv","OrtGetErrorCode","OrtGetErrorMessage",
+            "OrtCreateEnv","OrtReleaseEnv","OrtGetErrorCode","OrtGetErrorMessage",
             "OrtReleaseStatus","OrtCreateSession","OrtRun","OrtSessionGetInputCount",
             "OrtSessionGetOutputCount","OrtSessionGetInputName","OrtSessionGetOutputName","OrtSessionGetInputTypeInfo",
             "OrtSessionGetOutputTypeInfo","OrtReleaseSession","OrtCreateSessionOptions","OrtCloneSessionOptions",
