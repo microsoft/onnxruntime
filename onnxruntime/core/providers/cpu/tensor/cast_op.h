@@ -83,6 +83,7 @@ inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& s
       std::ostringstream convert;
       convert << in->Data<SrcType>()[i];
       out->MutableData<std::string>()[i] = convert.str();
+      convert.clear();
     }
   }
 }
