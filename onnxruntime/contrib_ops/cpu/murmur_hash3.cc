@@ -2,8 +2,11 @@
 // MurmurHash3 was written by Austin Appleby, and is placed in the public
 // domain. The author hereby disclaims copyright to this source code.
 
-// License from https://github.com/scikit-learn/scikit-learn/blob/master/COPYING
+//scikit-learn is a Python module for machine learning built on top of SciPy and
+//distributed under the 3-Clause BSD license. See https://github.com/scikit-learn/scikit-learn. 
+//This material is licensed under the BSD License (see https://github.com/scikit-learn/scikit-learn/blob/master/COPYING);
 /* Modifications Copyright (c) Microsoft. */
+
 
 #include "contrib_ops/cpu/murmur_hash3.h"
 

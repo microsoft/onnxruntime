@@ -89,6 +89,14 @@ class OutputIterator {
   MLValue& operator*();
   OutputIterator& operator++();
 
+  bool FinalOutputAllocated() const { return is_concrete_shape_; }
+
+  // custom fetch allocator that can be used when the final shape is not concrete.
+  // when the subgraph requests the allocation of the subgraph output, we forward the request to this instance,
+  // allocate the overall output (taking into account the sequence length dimension),
+  // and use a slicer to return the chunk for the subgraph output for this iteration.
+  Status AllocateSubgraphOutput(const TensorShape& shape, MLValue& mlvalue);
+
   // set the output for the current iteration to zeros. used for short sequence lengths
   void ZeroOutCurrent() {
     auto* tensor = (**this).GetMutable<Tensor>();
@@ -112,7 +120,6 @@ class OutputIterator {
 
   Status Initialize();
   Status AllocateFinalBuffer();
-  Status MakeConcrete();
 
   OpKernelContextInternal& context_;
   bool is_v8_;
@@ -130,10 +137,6 @@ class OutputIterator {
   // one or more slicers for writing to the output
   std::vector<MLValueTensorSlicer<MLValue>::Iterator> slicer_iterators_;
   std::vector<MLValueTensorSlicer<MLValue>::Iterator>::iterator cur_slicer_iterator_;
-
-  // if shape is not concrete we need the first output to know the missing dimension before
-  // we can allocate final_output_mlvalue_ and use the slicers.
-  MLValue first_output_;
 
   // if true allocate temporary_final_output_mlvalue_ with data_type_ using the temporary allocator
   // and point final_output_value_ at that.
@@ -170,14 +173,23 @@ Status IterateSequence(OpKernelContextInternal& context,
 MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
 
 /**
-Calculate the transpose permutations and output shape by shifting the chosen axis to the first dimension.
+Calculate the transpose permutations and shape by shifting the chosen axis TO the first dimension.
 The other dimension indexes or values are pushed in order after the chosen axis.
 
 e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 2} and output shape will be {3, 2, 4}
      if axis 2 is chosen the permutations will be {2, 0, 1} and the output shape will be {4, 2, 3}
 */
-void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
-                              std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape);
+void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
+                                      std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape);
+
+/**
+Calculate the transpose permutations and shape by shifting the chosen axis FROM the first dimension.
+
+e.g. if shape is {4, 2, 3} and axis 2 is chosen, dimension 0 will move to dimension 2, 
+     the permutations will be {1, 2, 0} and output shape will be {2, 3, 4}
+*/
+void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
+                                       std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape);
 
 }  // namespace detail
 }  // namespace scan
