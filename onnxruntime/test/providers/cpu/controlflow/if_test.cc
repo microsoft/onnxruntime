@@ -122,6 +122,7 @@ ELSE branch
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options) {
   bool include_dim_values = options.include_dim_values_in_subgraph;
+  bool sym_dim_zero = options.symbolic_dim_value_in_main_graph == 0;
 
   Model model(then_branch ? "If_then" : "If_else");
   auto& graph = model.MainGraph();
@@ -137,6 +138,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
   auto* mutable_dim = input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim();
   if (include_dim_values) {
     mutable_dim->set_dim_value(1);
+  } else if (sym_dim_zero) {
+    mutable_dim->set_dim_param("symbolic");
   }
 
   // outer scope values
@@ -156,6 +159,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
     mutable_dim = add_output_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
     if (include_dim_values) {
       mutable_dim->set_dim_value(1);
+    } else if (sym_dim_zero) {
+      mutable_dim->set_dim_param("symbolic");
     }
 
     auto& add_out = graph.GetOrCreateNodeArg("add_out_" + suffix, &add_output_tensor);
@@ -255,16 +260,10 @@ TEST(If, MixedExecutionProviders) {
 }
 #endif  // USE_CUDA
 
-/*
-These tests require subgraphs with nodes that support symbolic dimensions.
-'Add' does not.
-TODO: Task 1913: Improve handling of If outputs to avoid copy when the shape is not known
-    at subgraph execution time.
-
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
   RunOptions options;
   options.include_dim_values_in_main_graph = true;
-  options.symbolic_dim_values_in_main_graph = true;
+  options.symbolic_dim_value_in_main_graph = 0;
   options.include_dim_values_in_subgraph = false;
 
   RunTest(true, options);
@@ -273,12 +272,11 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   RunOptions options;
   options.include_dim_values_in_main_graph = true;
-  options.symbolic_dim_values_in_main_graph = true;
+  options.symbolic_dim_value_in_main_graph = 0;
   options.include_dim_values_in_subgraph = false;
 
   RunTest(false, options);
 }
-*/
 
 }  // namespace test
 }  // namespace onnxruntime

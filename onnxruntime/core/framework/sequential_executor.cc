@@ -30,6 +30,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const NameMLValMap& feeds,
                                    const std::vector<std::string>& output_names,
                                    std::vector<MLValue>& fetches,
+                                   const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                                    const logging::Logger& logger) {
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
   TimePoint tp;
@@ -40,7 +41,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feeds, output_names, fetches, session_state};
+  ExecutionFrame frame{feeds, output_names, fetches, fetch_allocators, session_state};
 
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
