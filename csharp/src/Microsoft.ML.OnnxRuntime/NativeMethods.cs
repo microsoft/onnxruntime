@@ -17,7 +17,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Runtime/Environment API
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /* OrtStatus* */OrtInitialize(
+        public static extern IntPtr /* OrtStatus* */OrtCreateEnv(
                                                          LogLevel default_warning_level,
                                                          string logId,
                                                          out IntPtr /*(OrtEnv*)*/ env);
