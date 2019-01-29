@@ -52,7 +52,7 @@ source_suffix = ['.rst'] # , '.md']
 # enables markdown output
 try:
     import docfx_markdown
-    extension.extend([
+    extensions.extend([
         "docfx_yaml.extension",
         "docfx_markdown",
     ])
