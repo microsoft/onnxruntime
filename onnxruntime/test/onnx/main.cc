@@ -165,7 +165,7 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<OrtEnv> env;
   {
     OrtEnv* t;
-    OrtStatus* ost = OrtInitialize(logging_level, "Default", &t);
+    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &t);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
       OrtReleaseStatus(ost);

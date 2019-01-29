@@ -12,6 +12,8 @@ OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
 OrtCreateDefaultAllocator
+OrtCreateEnv
+OrtCreateEnvWithCustomLogger
 OrtCreateRunOptions
 OrtCreateSession
 OrtCreateSessionOptions
@@ -39,8 +41,6 @@ OrtGetTensorShapeAndType
 OrtGetTensorShapeElementCount
 OrtGetTypeInfo
 OrtGetValueType
-OrtInitialize
-OrtInitializeWithCustomLogger
 OrtIsTensor
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
