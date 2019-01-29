@@ -211,22 +211,44 @@ MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& s
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 };
 
-void CalculateTransposedShape(const TensorShape& input_shape, int64_t axis,
-                              std::vector<int64_t>& permutations, std::vector<int64_t>& output_shape) {
-  int64_t rank = input_shape.NumDimensions();
-  const auto& dims = input_shape.GetDims();
+void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
+                                      std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape) {
+  int64_t rank = original_shape.NumDimensions();
+  const auto& dims = original_shape.GetDims();
 
   permutations.reserve(rank);
   permutations.push_back(axis);
 
-  output_shape.reserve(rank);
-  output_shape.push_back(dims[axis]);
+  transposed_shape.reserve(rank);
+  transposed_shape.push_back(dims[axis]);
 
   for (int64_t i = 0; i < rank; ++i) {
     if (i != axis) {
       permutations.push_back(i);
-      output_shape.push_back(dims[i]);
+      transposed_shape.push_back(dims[i]);
     }
+  }
+}
+
+void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
+                                       std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape) {
+  int64_t rank = original_shape.NumDimensions();
+  const auto& dims = original_shape.GetDims();
+
+  permutations.reserve(rank);
+  transposed_shape.reserve(rank);
+
+  for (int64_t i = 1; i <= axis; ++i) {
+    permutations.push_back(i);
+    transposed_shape.push_back(dims[i]);
+  }
+
+  permutations.push_back(0);
+  transposed_shape.push_back(dims[0]);
+
+  for (int64_t i = axis + 1; i < rank; ++i) {
+    permutations.push_back(i);
+    transposed_shape.push_back(dims[i]);
   }
 }
 
