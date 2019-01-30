@@ -7,7 +7,7 @@
 namespace onnxruntime {
 
 Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified) {
-  if (utils::RemoveNodeFromPath(graph, node)) {
+  if (utils::RemoveSingleInSingleOutNode(graph, node)) {
     modified = true;
   }
 

@@ -38,7 +38,7 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 }
 
 /** Remove the given single-input-single-output Node from the Graph. */
-bool RemoveNodeFromPath(Graph& graph, Node& node);
+bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
 
 }  // namespace utils
 }  // namespace onnxruntime
