@@ -522,7 +522,29 @@ activation and leaky_relu_alpha.)DOC")
       .SetDoc(R"DOC(
 The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
 The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
- rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC");
+ rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto y_scale_type = ctx.getInputType(1);
+        auto y_zeropoint_type = ctx.getInputType(2);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == x_type || nullptr == y_scale_type ||
+            nullptr == y_zeropoint_type || nullptr == y_type ||
+            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            y_scale_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            y_zeropoint_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference(
+              "inputs are expected to have tensor type and output type should not be null.");
+        }
+
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
       .SetDomain(kMSDomain)
@@ -543,7 +565,30 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
       .SetDoc(R"DOC(
 The linear de-quantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
 The dequantization formula is y = (x - x_zero_point) * x_scale.
- Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC");
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto x_scale_type = ctx.getInputType(1);
+        auto x_zeropoint_type = ctx.getInputType(2);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == x_type || nullptr == x_scale_type || 
+            nullptr == x_zeropoint_type || nullptr == y_type ||
+            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            x_scale_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            x_zeropoint_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference(
+              "inputs are expected to have tensor type and output type should not be null.");
+        }
+
+        // only float is supported
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMatMul)
       .SetDomain(kMSDomain)
