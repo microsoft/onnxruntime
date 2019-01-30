@@ -23,7 +23,7 @@ ONNX Runtime continuously strives to provide top performance for a broad and gro
 ### Alignment with ONNX Releases
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See ONNX version release details [here](https://github.com/onnx/onnx/releases).
 
-As of November 2018, ONNX Runtime supports the latest released version of ONNX (1.3). Once 1.4 is released, ONNX Runtime will align with the updated spec, adding support for new operators and other capabilities.
+As of November 2018, ONNX Runtime supports the latest released version of ONNX (1.3). We will soon add support for the recently released ONNX 1.4.
 
 ### Traditional ML support
 ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios. 
@@ -39,15 +39,13 @@ We are continuously working to integrate new execution providers to provide impr
 
 ## Cross Platform 
 ONNX Runtime offers:
-* APIs for Python, C#, and C (experimental)
+* APIs for Python, C#, and C
 * Available for Linux, Windows, and Mac 
 
 See API documentation and package installation instructions [below](#Installation). 
 
 Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. These include but are not limited to:
-* C# for Linux, Mac
-* C# supporting GPU
-* C packages
+* C# for Mac
 * [ARM](BUILD.md##arm-builds)
 
 # Getting Started 
