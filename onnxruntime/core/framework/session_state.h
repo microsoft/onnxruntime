@@ -18,6 +18,7 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/mlvalue_name_idx_map.h"
+#include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
 
@@ -30,6 +31,7 @@ namespace onnxruntime {
 class ExecutionProviders;
 class KernelDef;
 class OpKernel;
+class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
 
@@ -165,6 +167,9 @@ class SessionState {
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
   const FuncManager* GetFuncMgr() const { return &fused_funcs_mgr_; }
 
+  void CalculateNodeIndexInfo();
+  const NodeIndexInfo& GetNodeIndexInfo() const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -208,5 +213,7 @@ class SessionState {
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
+
+  std::unique_ptr<NodeIndexInfo> node_index_info_;
 };
 }  // namespace onnxruntime

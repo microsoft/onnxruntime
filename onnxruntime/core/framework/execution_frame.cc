@@ -7,6 +7,7 @@
 
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
@@ -20,7 +21,8 @@ ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& f
                                const std::vector<MLValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
-    : session_state_(session_state),
+    : node_index_info_(session_state.GetNodeIndexInfo()),
+      session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
   auto* graph = session_state.GetGraphViewer();
@@ -171,8 +173,8 @@ Status ExecutionFrame::AllocateTensorWithSelfOwnBuffer(const int index,
                                                        const OrtAllocatorInfo& location,
                                                        const TensorShape& shape,
                                                        bool create_fence) {
-  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < node_values_.size());
-  return AllocateMLValueTensorSelfOwnBufferHelper(node_values_[index], element_type, location, shape, create_fence);
+  int mlvalue_idx = node_index_info_.GetMLValueIndex(index);
+  return AllocateMLValueTensorSelfOwnBufferHelper(mlvalue_idx, element_type, location, shape, create_fence);
 }
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_to_allocate,
@@ -226,19 +228,12 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBuffer(const int offset,
                                                            const DataTypeImpl* element_type,
                                                            const OrtAllocatorInfo& location,
                                                            const TensorShape& shape) {
-  ORT_ENFORCE(offset >= 0 && offset < node_values_.size());
-  if (node_values_[offset] < 0)
+  int mlvalue_idx = node_index_info_.GetMLValueIndex(offset);
+  if (mlvalue_idx < 0)
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
-  auto value = &all_values_[node_values_[offset]];
-  return AllocateTensorWithPreAllocateBufferHelper(value, pBuffer, element_type, location, shape);
-}
 
-void ExecutionFrame::Release(const int offset) {
-  ORT_ENFORCE(offset >= 0 && offset < node_offsets_.size());
-  if (node_values_[offset] >= 0 && node_values_[offset] < all_values_.size()) {
-    all_values_[node_values_[offset]] = MLValue();
-    TraceFree(node_values_[offset]);
-  }
+  auto value = &all_values_[mlvalue_idx];
+  return AllocateTensorWithPreAllocateBufferHelper(value, pBuffer, element_type, location, shape);
 }
 
 Status AllocateTraditionalMLValue(MLValue* p_mlvalue,
@@ -324,14 +319,9 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
                           const std::vector<std::string>& output_names,
                           const std::vector<MLValue>& fetches,
                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators) {
-  // 1. resize the node_offsets and all_value_ vector
-  // We need to use the max index rather than number of nodes as we use Node.Index()
-  // when inserting into node_offsets_
-  auto max_node_index = graph.MaxNodeIndex();
-  node_offsets_.resize(max_node_index);
-
   auto& mlvalue_idx_map = session_state_.GetMLValueNameIdxMap();
 
+  // 1. resize the all_value_ vector
   all_values_.resize(mlvalue_idx_map.MaxIdx() + 1);
 
   // 2. handle the weights.
@@ -374,47 +364,6 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
       ++idx;
     }
   }
-
-  // 5. set node args
-  std::size_t total_def_count{};
-  for (const auto& node : graph.Nodes()) {
-    node.ForEachDef([&](const onnxruntime::NodeArg& /*arg*/, bool /*is_input*/) {
-      ++total_def_count;
-    });
-  }
-  node_values_.reserve(total_def_count);
-
-  for (auto& node : graph.Nodes()) {
-    ORT_ENFORCE(node.Index() < node_offsets_.size());
-    node_offsets_[node.Index()] = static_cast<int>(node_values_.size());
-
-    for (auto input_def : node.InputDefs()) {
-      SetupNodeArg(input_def);
-    }
-
-    for (auto input_def : node.ImplicitInputDefs()) {
-      SetupNodeArg(input_def);
-    }
-
-    for (auto output_def : node.OutputDefs()) {
-      SetupNodeArg(output_def);
-    }
-  }
-}
-
-void ExecutionFrame::SetupNodeArg(const onnxruntime::NodeArg* arg) {
-  ORT_ENFORCE(arg);
-  auto& name = arg->Name();
-  //if the arg's name is empty, it is an not needed optional input/output
-  //set index to -1
-  if (name.empty()) {
-    node_values_.push_back(-1);
-  } else {
-    int index;
-    Status status = session_state_.GetMLValueNameIdxMap().GetIdx(name, index);
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    node_values_.push_back(index);
-  }
 }
 
 void ExecutionFrame::TraceFree(int mlvalue_idx) {
@@ -452,10 +401,14 @@ Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup* out) const {
   return planner_->GeneratePatterns(out);
 }
 
+int ExecutionFrame::GetNodeOffset(onnxruntime::NodeIndex node_index) const {
+  return node_index_info_.GetNodeOffset(node_index);
+}
+
 // Return nullptr if index map to an value that is an unused optional input/output
 const MLValue* ExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
-  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < node_values_.size());
-  return node_values_[index] >= 0 ? &all_values_[node_values_[index]] : nullptr;
+  int mlvalue_idx = node_index_info_.GetMLValueIndex(index);
+  return mlvalue_idx >= 0 ? &all_values_[mlvalue_idx] : nullptr;
 }
 
 // Return nullptr if index map to an value that is an unused optional input/output
@@ -483,18 +436,15 @@ static inline void VerifyShape(const MLValue* p_mlvalue,
 Status ExecutionFrame::GetOrCreateNodeOutputMLValue(int index,
                                                     const MLValueAllocationParameters& parameters,
                                                     MLValue*& p_mlvalue) {
-  if (index < 0 || static_cast<size_t>(index) >= node_values_.size()) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Try to access with invalid node value index: " + std::to_string(index));
-  }
+  int mlvalue_idx = node_index_info_.GetMLValueIndex(index);
 
   // return nullptr if it is optional
-  if (node_values_[index] < 0) {
+  if (mlvalue_idx < 0) {
     p_mlvalue = nullptr;
     return Status::OK();
   }
 
-  p_mlvalue = &all_values_.at(node_values_[index]);
+  p_mlvalue = &all_values_.at(mlvalue_idx);
 
   if (p_mlvalue->IsAllocated()) {
     // The ml has already been allocated.
@@ -505,7 +455,7 @@ Status ExecutionFrame::GetOrCreateNodeOutputMLValue(int index,
 
   // It's not allocated, then allocate it with given shape and return.
   // Perform allocation based on the allocation plan
-  ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(node_values_[index], parameters));
+  ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(mlvalue_idx, parameters));
   return Status::OK();
 }
 

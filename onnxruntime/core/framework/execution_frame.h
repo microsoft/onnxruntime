@@ -19,20 +19,19 @@ namespace onnxruntime {
 class SessionState;
 class MLValuePatternPlanner;
 struct MemoryPatternGroup;
+class NodeIndexInfo;
 
 struct MLValueAllocationParameters {
   MLValueAllocationParameters() = default;
   MLValueAllocationParameters(const TensorShape* shape)
-    : tensor_shape{ shape }
-  {}
+      : tensor_shape{shape} {}
 
-  const TensorShape& GetTensorShape() const
-  {
+  const TensorShape& GetTensorShape() const {
     static const TensorShape s_empty_tensor_shape;
     return tensor_shape != nullptr ? *tensor_shape : s_empty_tensor_shape;
   }
 
-private:
+ private:
   const TensorShape* tensor_shape{};
   // todo: is there any parameter needed for ml types?
 };
@@ -94,11 +93,8 @@ class ExecutionFrame {
     return all_values_[mlvalue_index];
   }
 
-  // Index to the first argument of the given node.
-  int GetFirstArgIndex(onnxruntime::NodeIndex index) const {
-    ORT_ENFORCE(index < node_offsets_.size());
-    return node_offsets_[index];
-  }
+  // Get the index for the first entry of the given node.
+  int GetNodeOffset(onnxruntime::NodeIndex index) const;
 
   // Return nullptr if index map to an value that is an unused optional input/output
   const MLValue* GetNodeInputOrOutputMLValue(int index) const;
@@ -127,9 +123,6 @@ class ExecutionFrame {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
-
-  // This method is not thread safe!
-  void Release(int offset);
 
   common::Status AllocateAsPerAllocationPlan(int mlvalue_index,
                                              const MLValueAllocationParameters& parameters);
@@ -162,21 +155,14 @@ class ExecutionFrame {
 
   Status status_;
 
-  // The values for the inputs and outputs of the nodes.
-  // This vector contains the indices into the all_values_ vector.
-  std::vector<int> node_values_;
+  const NodeIndexInfo& node_index_info_;
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
   std::vector<MLValue> all_values_;
 
-  // The start index into node_values_ for all the nodes.
-  std::vector<int> node_offsets_;
-
   // i-th kernel is still waiting for pending_counts_[i] inputs.
   std::vector<int> pending_counts_;  // not used currently
-
-  std::unordered_map<std::string, int> value_name_to_index_;
 
   // map of index to custom allocator
   std::unordered_map<int, IExecutor::CustomAllocator> custom_allocators_;

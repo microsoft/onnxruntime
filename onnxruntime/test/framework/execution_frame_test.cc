@@ -70,10 +70,12 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
+  state.CalculateNodeIndexInfo();
+
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{}, std::vector<std::string>{}, outputs, {}, state);
 
-  int start_index = frame.GetFirstArgIndex(node->Index());
+  int start_index = frame.GetNodeOffset(node->Index());
   EXPECT_EQ(start_index, 0);
 
   TensorShape shape(std::vector<int64_t>{2, 3});
@@ -143,6 +145,8 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
   mlvalue_name_idx_map.Add("X");
   mlvalue_name_idx_map.Add("Y");
+
+  state.CalculateNodeIndexInfo();
 
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X", value}},
@@ -221,6 +225,8 @@ TEST(ExecutionFrameTest, MemPatternTest) {
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
+  state.CalculateNodeIndexInfo();
+
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X1", v1}, {"X2", v2}, {"X3", v3}},
                        std::vector<std::string>{"T3"}, outputs, {}, state);
@@ -250,7 +256,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(pattern.patterns.size(), pattern.locations.size());
   EXPECT_EQ(pattern.patterns.size(), 1);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  EXPECT_EQ(p->PeakSize(), 2 * 64); // each allocation is 64-byte aligned
+  EXPECT_EQ(p->PeakSize(), 2 * 64);  // each allocation is 64-byte aligned
   EXPECT_EQ(p->GetBlock(3)->offset_, 0);
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
