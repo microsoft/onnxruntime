@@ -29,17 +29,16 @@ namespace onnxruntime {
 template <typename T>
 class BatchNorm : public OpKernel {
  public:
-  BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-    float tmp_eplison;
-    if (op_kernel_info.GetAttr<float>("epsilon", &tmp_eplison).IsOK()) {
-      epsilon_ = tmp_eplison;
-    }
+  explicit BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+    auto st = op_kernel_info.GetAttr<float>("epsilon", &epsilon_);
+    ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
+    //TODO: momentum
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
   protected:
-  float epsilon_ = 1e-5f;
-  int64_t is_test_;  // ignored in this implementation since we're doing inferencing only.
+   float epsilon_;
+   //int64_t is_test_;   ignored in this implementation since we're doing inferencing only.
 };
 }  // namespace onnxruntime
