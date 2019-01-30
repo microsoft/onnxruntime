@@ -43,14 +43,16 @@ TEST(WhereOpTest, BasicNumeric) {
   WhereBasicNumericTest<float>();
 }
 
-TEST(WhereOpTest, DISABLED_BasicString) {
+TEST(WhereOpTest, BasicString) {
   OpTester test = MakeOpTester();
 
   test.AddInput<bool>("condition", {2}, {false, true});
-  test.AddInput<std::string>("X", {2}, {"hello", "world"});
-  test.AddInput<std::string>("Y", {2}, {"hi", "earth"});
+  const std::vector<std::string> X{"small0", "small1"};
+  test.AddInput<std::string>("X", {2}, X);
+  const std::vector<std::string> Y{std::string(1024, 'a'), std::string(1024, 'b')};
+  test.AddInput<std::string>("Y", {2}, Y);
 
-  test.AddOutput<std::string>("output", {2}, {"hi", "world"});
+  test.AddOutput<std::string>("output", {2}, {Y[0], X[1]});
 
   test.Run();
 }

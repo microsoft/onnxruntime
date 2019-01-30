@@ -29,7 +29,7 @@ namespace onnxruntime {
 //WHERE_TYPED_KERNEL(BFloat16)
 WHERE_TYPED_KERNEL(float)
 //WHERE_TYPED_KERNEL(double)
-//WHERE_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
+WHERE_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
 //WHERE_TYPED_KERNEL(bool)
 
 #undef WHERE_TYPED_KERNEL_WITH_TYPE_NAME
@@ -54,7 +54,7 @@ std::unique_ptr<Tensor> WhereSelection(bool target, const Tensor& condition_tens
           output = EigenVectorMap<T>::PlainObject::Constant(value.size(), T{});
         }
       },
-      [target](EigenVectorMap<T> output, ConstEigenVectorMap<bool> condition, T value) {
+      [target](EigenVectorMap<T> output, ConstEigenVectorMap<bool> condition, const T& value) {
         output = (condition.array() == target)
                      .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
       },
@@ -93,14 +93,14 @@ Status Where<T>::Compute(OpKernelContext* context) const {
 
   BroadcastLoop(
       merge_broadcaster, merge_broadcast_output,
-      [](EigenVectorMap<T> output, T X_selection, ConstEigenVectorMap<T> Y_selection) {
+      [](EigenVectorMap<T> output, const T& X_selection, ConstEigenVectorMap<T> Y_selection) {
         if (X_selection != T{}) {
           output = EigenVectorMap<T>::PlainObject::Constant(Y_selection.size(), X_selection);
         } else {
           output = Y_selection;
         }
       },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, T Y_selection) {
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, const T& Y_selection) {
         if (Y_selection != T{}) {
           output = EigenVectorMap<T>::PlainObject::Constant(X_selection.size(), Y_selection);
         } else {

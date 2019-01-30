@@ -495,8 +495,8 @@ struct TBroadcaster {
   bool IsInput0Scalar() const { return broadcaster_.iterator1_.deltas_.front() == 0; }
   bool IsInput1Scalar() const { return broadcaster_.iterator2_.deltas_.front() == 0; }
 
-  T0 NextScalar0() { return *Next0(); }
-  T1 NextScalar1() { return *Next1(); }
+  const T0& NextScalar0() { return *Next0(); }
+  const T1& NextScalar1() { return *Next1(); }
 
   gsl::span<const T0> NextSpan0() { return gsl::span<const T0>(Next0(), span_size_); }
   gsl::span<const T1> NextSpan1() { return gsl::span<const T1>(Next1(), span_size_); }
@@ -572,6 +572,7 @@ struct TensorAllocator {
 // Input1Scalar: [](EigenVectorMap<TOutput> output, ConstEigenVectorMap<TInput0> input0, TInput1 input1)
 // General     : [](EigenVectorMap<TOutput> output, ConstEigenVectorMap<TInput0> input0,
 //                  ConstEigenVectorMap<TInput1> input1)
+// Scalar parameters can also be of type const TX&.
 template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
 void BroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   if (bc.IsInput0Scalar()) {
