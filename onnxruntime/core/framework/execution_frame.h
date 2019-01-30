@@ -133,8 +133,7 @@ class ExecutionFrame {
                                                   const TensorShape& shape,
                                                   bool create_fence);
 
-  void Init(const onnxruntime::GraphViewer& graph,
-            const std::unordered_map<std::string, MLValue>& feeds,
+  void Init(const std::unordered_map<std::string, MLValue>& feeds,
             const std::vector<std::string>& output_names,
             const std::vector<MLValue>& fetches,
             const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators);

@@ -25,9 +25,7 @@ ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& f
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
-  auto* graph = session_state.GetGraphViewer();
-  ORT_ENFORCE(graph);
-  Init(*graph, feeds, output_names, fetches, fetch_allocators);
+  Init(feeds, output_names, fetches, fetch_allocators);
 
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
@@ -314,8 +312,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
   return Status::OK();
 }
 
-void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
-                          const std::unordered_map<std::string, MLValue>& feeds,
+void ExecutionFrame::Init(const std::unordered_map<std::string, MLValue>& feeds,
                           const std::vector<std::string>& output_names,
                           const std::vector<MLValue>& fetches,
                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators) {

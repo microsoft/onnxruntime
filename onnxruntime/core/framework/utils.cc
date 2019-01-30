@@ -369,16 +369,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             bool sequential_execution,
                             const bool& terminate_flag,
                             const logging::Logger& logger) {
-  // TODO: Would be better to check upfront whether there was a need to copy inputs/outputs across devices,
-  // especially when a subgraph is repeatedly executed in a Scan or Loop node. If we checked once and no copy was
-  // needed we can skip everything here apart from the Execute call.
-
-  NameMLValMap device_feeds;
-  ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
-
-  std::vector<MLValue> device_fetches;
-  ORT_RETURN_IF_ERROR(utils::MatchOutputsWithProviders(session_state, output_names, fetches, device_fetches));
-
   std::unique_ptr<IExecutor> p_exec;
 
   if (sequential_execution) {
@@ -387,9 +377,28 @@ common::Status ExecuteGraph(const SessionState& session_state,
     p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
   }
 
-  ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, device_feeds, output_names, device_fetches, fetch_allocators, logger));
-  ORT_RETURN_IF_ERROR(utils::CopyOutputsAcrossDevices(session_state, device_fetches, fetches));
+  // If we only have one provider it's the CPU provider as that is always automatically registered. If that's the
+  // case, assume no copy to/from other devices is required.
 
+  // TODO: Next step: If there is more than one provider we could add an in/out param to track whether any
+  // copy to/from devices was needed, and set that on the first execution. That way when a subgraph is repeatedly
+  // executed in a Scan or Loop node we can skip unnecessary checks for copies.
+
+  if (session_state.GetExecutionProviders().NumProviders() == 1) {
+    // no device copies are needed so simple execute
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, feeds, output_names, fetches, fetch_allocators, logger));
+  } else {
+    NameMLValMap device_feeds;
+    ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
+
+    std::vector<MLValue> device_fetches;
+    ORT_RETURN_IF_ERROR(utils::MatchOutputsWithProviders(session_state, output_names, fetches, device_fetches));
+
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, device_feeds, output_names, device_fetches, fetch_allocators,
+                                        logger));
+
+    ORT_RETURN_IF_ERROR(utils::CopyOutputsAcrossDevices(session_state, device_fetches, fetches));
+  }
   return Status::OK();
 }
 
