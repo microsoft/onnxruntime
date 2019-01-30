@@ -1,14 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// =====================================================================================================
-// NOTE: This header is PRE-RELEASE and subject to change. Please do not rely on this file not changing.
-// =====================================================================================================
-
 #pragma once
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+
+// This value is used in structures passed to ORT so that a newer version of ORT will still work with
+#define ORT_API_VERSION 1
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,6 +146,7 @@ ORT_RUNTIME_CLASS(SessionOptions);
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
 typedef struct OrtAllocator {
+  uint32_t version;  // Initialize to ORT_API_VERSION
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
   const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
@@ -157,17 +157,15 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 /**
- * OrtEnv is process-wide. For each process, only one OrtEnv can be created.
  * \param out Should be freed by `OrtReleaseEnv` after use
  */
-ORT_API_STATUS(OrtInitialize, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Out_ OrtEnv** out)
+ORT_API_STATUS(OrtCreateEnv, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Out_ OrtEnv** out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
- * OrtEnv is process-wise. For each process, only one OrtEnv can be created. Don't do it multiple times
  * \param out Should be freed by `OrtReleaseEnv` after use
  */
-ORT_API_STATUS(OrtInitializeWithCustomLogger, OrtLoggingFunction logging_function,
+ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
                _In_ const char* logid,
                _Out_ OrtEnv** out);

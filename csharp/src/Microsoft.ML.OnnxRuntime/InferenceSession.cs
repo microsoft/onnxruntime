@@ -105,7 +105,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputs"></param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
-        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs)
         {
             string[] outputNames = new string[_outputMetadata.Count];
             _outputMetadata.Keys.CopyTo(outputNames, 0);
@@ -118,7 +118,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="inputs"></param>
         /// <param name="outputNames"></param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
-        public IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
         {
             return Run(inputs, outputNames, RunOptions.Default);
         }
@@ -129,9 +129,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="inputs"></param>
         /// <param name="outputNames"></param>
         /// <param name="options"></param>
-        /// <returns>Output Tensors in a Dictionary</returns>
+        /// <returns>Output Tensors in a Collection of NamedOnnxValue</returns>
         //TODO: kept internal until RunOptions is made public
-        internal IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
+        internal IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
         {
             var inputNames = new string[inputs.Count];
             var inputTensors = new IntPtr[inputs.Count];
@@ -166,10 +166,10 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 NativeApiStatus.VerifySuccess(status);
-                var result = new List<NamedOnnxValue>();
+                var result = new DisposableList<DisposableNamedOnnxValue>();
                 for (uint i = 0; i < outputValueArray.Length; i++)
                 {
-                    result.Add(NamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValueArray[i]));  
+                    result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValueArray[i]));  
                 }
 
                 return result;

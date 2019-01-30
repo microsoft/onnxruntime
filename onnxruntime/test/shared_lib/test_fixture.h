@@ -22,9 +22,9 @@ class CApiTestImpl : public ::testing::Test {
 
   void SetUp() override {
     if (use_customer_logger) {
-      ORT_THROW_ON_ERROR(OrtInitializeWithCustomLogger(MyLoggingFunction, nullptr, ORT_LOGGING_LEVEL_INFO, "Default", &env));
+      ORT_THROW_ON_ERROR(OrtCreateEnvWithCustomLogger(MyLoggingFunction, nullptr, ORT_LOGGING_LEVEL_INFO, "Default", &env));
     } else {
-      ORT_THROW_ON_ERROR(OrtInitialize(ORT_LOGGING_LEVEL_INFO, "Default", &env));
+      ORT_THROW_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_INFO, "Default", &env));
     }
   }
 

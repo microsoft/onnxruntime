@@ -12,27 +12,27 @@ set -x
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
-IMAGE="ubuntu16.04"
+IMAGE="ubuntu16.04-cuda10.0-cudnn7.3"
 PYTHON_VER=3.5
 OldDir=$(pwd)
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
-docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_gpu .
 
 
-docker rm -f "onnxruntime-cpu" || true
+docker rm -f "onnxruntime-gpu-container" || true
 
 set +e
 
 docker run -h $HOSTNAME \
         --rm \
-        --name "onnxruntime-cpu" \
+        --name "onnxruntime-gpu-container" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
         -e "IsReleaseBuild=$IsReleaseBuild" \
         "onnxruntime-$IMAGE" \
-        /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
+        /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-gpu.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $TestDataUrl $TestDataChecksum &
 
 wait -n
