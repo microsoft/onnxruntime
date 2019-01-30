@@ -17,16 +17,21 @@ class OnnxTransformer(BaseEstimator, TransformerMixin):
     so that it can be included in a *scikit-learn* pipeline.
     """
 
-    def __init__(self, onnx_bytes, output_name=None):
+    def __init__(self, onnx_bytes, output_name=None, enforce_float32=True):
         """
         :param onnx_bytes: bytes 
         :param output_name: requested output name or None to request all and
             have method *transform* to store all of them in a dataframe
+        :param enforce_float32: *onnxruntime* only supports *float32*,
+            *scikit-learn* usually uses double floats, this parameter
+            ensures that every array of double floats is converted into
+            single floats
         """
         BaseEstimator.__init__(self)
         TransformerMixin.__init__(self)
         self.onnx_bytes = onnx_bytes
         self.output_name = output_name
+        self.enforce_float32 = enforce_float32
         if not isinstance(onnx_bytes, bytes):
             raise TypeError("onnx_bytes must be bytes to be pickled.")        
 
@@ -46,6 +51,20 @@ class OnnxTransformer(BaseEstimator, TransformerMixin):
         self.onnxrt_ = InferenceSession(self.onnx_bytes)
         self.inputs_ = [_.name for _ in self.onnxrt_.get_inputs()]
         return self
+
+    def _check_arrays(self, inputs):
+        """
+        Ensures that double floats are converted into single floats
+        if *enforce_float32* is True or raises an exception.
+        """
+        for k in inputs:
+            v = inputs[k]
+            if isinstance(v, numpy.ndarray):
+                if v.dtype == numpy.float64:
+                    if self.enforce_float32:
+                        inputs[k] = v.astype(numpy.float32)
+                    else:
+                        raise TypeError("onnxunruntime only supports floats. Input '{0}' should be converted.".format(k))
 
     def transform(self, X, y=None, **inputs):
         """
@@ -77,15 +96,17 @@ class OnnxTransformer(BaseEstimator, TransformerMixin):
             rt_inputs[k] = v
 
         names = [self.output_name] if self.output_name else None
+        self._check_arrays(rt_inputs)
         outputs = self.onnxrt_.run(names, rt_inputs)
 
-        if self.output_name:
-            return outputs[0]
-        else:
-            if len(outputs) == 1:
-                return outputs[0]
+        if self.output_name or len(outputs) == 1:
+            if isinstance(outputs[0], list):
+                return pandas.DataFrame(outputs[0])
             else:
-                return pandas.DataFrame({k: v for k, v in zip(self.output_name, outputs)})
+                return outputs[0]
+        else:
+            names = self.output_name if self.output_name else [o.name for o in self.onnxrt_.get_outputs()]
+            return pandas.DataFrame({k: v for k, v in zip(names, outputs)})
 
     def fit_transform(self, X, y=None, **inputs):
         """
