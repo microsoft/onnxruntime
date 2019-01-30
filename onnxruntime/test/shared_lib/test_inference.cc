@@ -17,7 +17,8 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
                 const std::vector<size_t>& dims_x,
                 const std::vector<float>& values_x,
                 const std::vector<int64_t>& dims_y,
-                const std::vector<float>& values_y) {
+                const std::vector<float>& values_y,
+                OrtValue* output_tensor) {
   std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> value_x(nullptr, OrtReleaseValue);
   std::vector<OrtValue*> inputs(1);
   inputs[0] = OrtCreateTensorAsOrtValue(env, dims_x, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
@@ -26,10 +27,13 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], &raw_data));
   memcpy(raw_data, values_x.data(), values_x.size() * sizeof(values_x[0]));
   std::vector<const char*> input_names{"X"};
-  OrtValue* output_tensor = nullptr;
   const char* output_names[] = {"Y"};
+  bool is_output_allocated_by_ort = output_tensor == nullptr;
+  OrtValue* old_output_ptr = output_tensor;
   ORT_THROW_ON_ERROR(OrtRun(session_object, NULL, input_names.data(), inputs.data(), inputs.size(), output_names, 1, &output_tensor));
   ASSERT_NE(output_tensor, nullptr);
+  if (!is_output_allocated_by_ort)
+    ASSERT_EQ(output_tensor, old_output_ptr);
   std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
   {
     OrtTensorTypeAndShapeInfo* shape_info_ptr;
@@ -50,7 +54,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   for (size_t i = 0; i != total_len; ++i) {
     ASSERT_EQ(values_y[i], f[i]);
   }
-  OrtReleaseValue(output_tensor);
+  if (is_output_allocated_by_ort) OrtReleaseValue(output_tensor);
 }
 
 template <typename T>
@@ -89,10 +93,40 @@ void TestInference(OrtEnv* env, T model_uri,
   if (custom_op) {
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
-  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
+  std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
+      inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   // Now run
-  RunSession(default_allocator.get(), inference_session.get(), dims_x, values_x, expected_dims_y, expected_values_y);
+  //without preallocated output tensor
+  RunSession(default_allocator.get(),
+             inference_session.get(),
+             dims_x,
+             values_x,
+             expected_dims_y,
+             expected_values_y,
+             nullptr);
+  //with preallocated output tensor
+  std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> value_y(nullptr, OrtReleaseValue);
+  {
+    std::vector<OrtValue*> allocated_outputs(1);
+    std::vector<size_t> dims_y(expected_dims_y.size());
+    for (size_t i = 0; i != expected_dims_y.size(); ++i) {
+      dims_y[i] = static_cast<size_t>(expected_dims_y[i]);
+    }
+
+    allocated_outputs[0] =
+        OrtCreateTensorAsOrtValue(default_allocator.get(), dims_y, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    value_y.reset(allocated_outputs[0]);
+  }
+  //test it twice
+  for (int i = 0; i != 2; ++i)
+    RunSession(default_allocator.get(),
+               inference_session.get(),
+               dims_x,
+               values_x,
+               expected_dims_y,
+               expected_values_y,
+               value_y.get());
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.pb");
