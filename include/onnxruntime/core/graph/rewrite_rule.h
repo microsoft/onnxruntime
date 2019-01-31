@@ -38,7 +38,7 @@ class RewriteRule {
   }
 
   /** Checks if the condition of the rule is satisfied, and if so applies the rule.
-  @param[in] graph_editor The GraphEditor.
+  @param[in] graph The Graph.
   @param[in] node The Node to apply the rewrite to.
   @param[out] modified Set to indicate whether the node was modified or not.
   @returns Status indicating success or providing error information */

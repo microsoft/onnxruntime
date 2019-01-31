@@ -7,10 +7,10 @@
 
 namespace onnxruntime {
 
-// Rewrite rule that eliminates the identity node.
-class EliminateIdentity : public RewriteRule {
+// Rewrite rule that eliminates a slice operator if it is redundant (does not lead to data reduction).
+class EliminateSlice : public RewriteRule {
  public:
-  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node") {}
+  EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node") {}
 
  private:
   bool SatisfyCondition(const Node& node) override;
