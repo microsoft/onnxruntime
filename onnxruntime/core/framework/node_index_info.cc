@@ -16,33 +16,35 @@ NodeIndexInfo::NodeIndexInfo(const GraphViewer& graph_viewer, const MLValueNameI
   bool include_missing_optional_defs = true;
 
   for (const auto& node : graph_viewer.Nodes()) {
-    node.ForEachDef([&](const onnxruntime::NodeArg& /*arg*/, bool /*is_input*/) {
-      ++total_def_count;
-    },
-                    include_missing_optional_defs);
+    node.ForEachDef(
+        [&](const onnxruntime::NodeArg& /*arg*/, bool /*is_input*/) {
+          ++total_def_count;
+        },
+        include_missing_optional_defs);
   }
 
-  // init all to -1
-  node_offsets_.resize(graph_viewer.MaxNodeIndex(), -1);
-  node_values_.resize(total_def_count, -1);
+  // init all to kInvalidEntry
+  node_offsets_.resize(graph_viewer.MaxNodeIndex(), kInvalidEntry);
+  node_values_.resize(total_def_count, kInvalidEntry);
   int cur_idx = 0;
 
   for (auto& node : graph_viewer.Nodes()) {
     node_offsets_[node.Index()] = cur_idx;
 
-    node.ForEachDef([&](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
-      auto& name = node_arg.Name();
-      if (node_arg.Exists()) {
-        int index;
-        Status status = mlvalue_idx_map.GetIdx(name, index);
-        ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-        node_values_[cur_idx] = index;
-      }
-      // else it's a missing optional input or output so leave the -1
+    node.ForEachDef(
+        [&](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
+          auto& name = node_arg.Name();
+          if (node_arg.Exists()) {
+            int index;
+            Status status = mlvalue_idx_map.GetIdx(name, index);
+            ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+            node_values_[cur_idx] = index;
+          }
+          // else it's a missing optional input or output so leave the -1
 
-      ++cur_idx;
-    },
-                    include_missing_optional_defs);
+          ++cur_idx;
+        },
+        include_missing_optional_defs);
   }
 }
 

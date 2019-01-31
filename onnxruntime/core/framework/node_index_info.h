@@ -12,17 +12,23 @@ namespace onnxruntime {
 class GraphViewer;
 class MLValueNameIdxMap;
 
-class NodeIndexInfo {
+class NodeIndexInfo final {
  public:
   NodeIndexInfo(const GraphViewer& graph_viewer, const MLValueNameIdxMap& mlvalue_idx_map);
 
-  // Index to the first argument of the given node.
+  static const int kInvalidEntry = -1;
+
+  // Index to the first argument of the given Node.
+  // The Node will have (num inputs + num implicit inputs + num outputs) entries, in that order, starting at the
+  // offset that is returned. Use the offset in calls to GetMLValueIndex.
+  // Returns kInvalidEntry if the Node with the given node_index did not exist when the NodeIndexInfo was created.
   int GetNodeOffset(onnxruntime::NodeIndex node_index) const {
     ORT_ENFORCE(node_index < node_offsets_.size());
     return node_offsets_[node_index];
   }
 
-  // Get the mlvalue index value
+  // Get the mlvalue index value.
+  // Returns kInvalidEntry for optional inputs/outputs that do not exist in this graph.
   int GetMLValueIndex(int offset) const {
     ORT_ENFORCE(offset >= 0 && static_cast<size_t>(offset) < node_values_.size());
     return node_values_[offset];

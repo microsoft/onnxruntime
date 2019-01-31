@@ -218,7 +218,6 @@ common::Status MatchOutputsWithProviders(const SessionState& session_state,
 
     for (auto* arg : node.OutputDefs()) {
       if (!arg->Exists() ||
-          arg->Name().empty() ||
           !(found = Contains(output_names, arg->Name())).first) {
         continue;
       }
@@ -257,44 +256,6 @@ common::Status MatchOutputsWithProviders(const SessionState& session_state,
       }
     }
   }
-
-  // If we've already seen all the outputs requested just return.
-  if (seen_outputs.size() == output_names.size()) {
-    return Status::OK();
-  }
-
-  // Handle the case when a constant is an output but has been folded into a weight
-  // and hence it doesn't show up in any of the OutputDefs before.
-  // assume that the weight has already been placed in the appropriate device before
-  auto& defs = p_graph->GetOutputs();
-  auto& mlvalue_name_idx_map{session_state.GetMLValueNameIdxMap()};
-  auto& weights = session_state.GetInitializedTensors();
-
-  for (auto& one_def : defs) {
-    if (!one_def->Exists() ||
-        one_def->Name().empty() ||
-        seen_outputs.count(one_def->Name()) ||
-        !(found = Contains(output_names, one_def->Name())).first) {
-      continue;
-    }
-
-    auto& def_name = one_def->Name();
-    size_t idx = found.second;
-    int mlvalue_idx;
-    ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
-    if (!weights.count(mlvalue_idx)) {
-      LOGS(session_state.Logger(), INFO) << "Output with name " << def_name << " is not a weight.";
-      continue;
-    }
-
-    seen_outputs.insert(def_name);
-    const auto& weight = weights.at(mlvalue_idx);
-    new_fetches[idx] = weight;
-  }
-
-  if (seen_outputs.size() != output_names.size())  // make sure we've seen all outputs
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
-                           " got ", seen_outputs.size());
 
   return Status::OK();
 }

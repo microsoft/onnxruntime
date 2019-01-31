@@ -79,8 +79,8 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_EQ(start_index, 0);
 
   TensorShape shape(std::vector<int64_t>{2, 3});
-  status = frame.AllocateTensorWithSelfOwnBuffer(start_index, DataTypeImpl::GetType<float>(),
-                                                 execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
+  status = frame.AllocateMLValueTensorSelfOwnBuffer(start_index, DataTypeImpl::GetType<float>(),
+                                                    execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
@@ -91,12 +91,11 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   //test share memory from tensor
   TensorShape shape2(std::vector<int64_t>{3, 2});
-  status = frame.AllocateTensorWithPreAllocateBuffer(
-      start_index + 1,
-      p_tensor->template MutableData<float>(),
-      DataTypeImpl::GetType<float>(),
-      p_tensor->Location(),
-      shape2);
+  status = frame.AllocateMLValueTensorPreAllocateBuffer(start_index + 1,
+                                                        start_index,
+                                                        DataTypeImpl::GetType<float>(),
+                                                        p_tensor->Location(),
+                                                        shape2);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   const MLValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
