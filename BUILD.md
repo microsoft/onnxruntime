@@ -50,7 +50,7 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run `./build.sh --config RelWithDebInfo --build\_wheel` for Linux (or `./build.bat --config RelWithDebInfo --build\_wheel` for Windows)
+5. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows)
 
 The build script runs all unit tests by default.
 
