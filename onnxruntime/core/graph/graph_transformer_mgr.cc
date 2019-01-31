@@ -13,7 +13,9 @@ Status GraphTransformerManager::ApplyAll(Graph& graph) const {
     for (auto& transformer : transformers_) {
       bool t_changed = false;
       Status s = transformer->Apply(graph, t_changed);
-      if (!s.IsOK()) return s;
+      if (!s.IsOK()) {
+        return s;
+      }
       changed = changed || t_changed;
     }
     if (!changed) break;
