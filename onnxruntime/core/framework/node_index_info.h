@@ -16,7 +16,7 @@ class NodeIndexInfo final {
  public:
   NodeIndexInfo(const GraphViewer& graph_viewer, const MLValueNameIdxMap& mlvalue_idx_map);
 
-  static const int kInvalidEntry = -1;
+  enum { kInvalidEntry = -1 };
 
   // Index to the first argument of the given Node.
   // The Node will have (num inputs + num implicit inputs + num outputs) entries, in that order, starting at the
