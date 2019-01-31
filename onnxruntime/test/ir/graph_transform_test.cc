@@ -5,7 +5,9 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_transformer.h"
+#include "core/graph/graph_transformer_mgr.h"
 #include "core/graph/identity_elimination.h"
+#include "core/graph/slice_elimination.h"
 #include "core/graph/unsqueeze_elimination.h"
 #include "core/graph/conv_bn_fusion.h"
 #include "core/graph/conv_mul_fusion.h"
@@ -29,26 +31,53 @@ namespace test {
 
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
+// Return a map with the number of occurrences of each operator in the graph.
+// Helper function to check that the graph transformations have been successfully applied.
+std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
+  std::map<std::string, int> op_to_count;
+  for (auto& node : graph.Nodes()) {
+    op_to_count[node.OpType()] =
+        op_to_count.count(node.OpType()) == 0 ? 1 : ++op_to_count[node.OpType()];
+  }
+  return op_to_count;
+}
+
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
-
-  SessionOptions so;
-  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  //Graph& p_graph = p_model->MainGraph();
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
 
   std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
-
   rule_transformer->Register("Identity", std::make_unique<EliminateIdentity>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer));
+  ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
 
-  session_object.RegisterGraphTransformer(std::move(rule_transformer));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
 
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+TEST(GraphTransformationTests, SliceElimination) {
+  string model_uri = MODEL_FOLDER + "slice-elim.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Slice"] == 5);
+
+  std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
+      std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register("Slice", std::make_unique<EliminateSlice>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer));
+  ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Slice"] == 3);
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
