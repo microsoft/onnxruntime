@@ -542,24 +542,5 @@ TEST(ConvTest, Conv2D_group) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTest, Conv2D_group_tobedel) {
-  ConvOpAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{2, 2},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1}         // strides
-  };
-  vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
-  vector<int64_t> X_shape = {1, 1, 3, 3};
-  vector<float> W = {1.0f, 0.f, 0.f, 1.0f};
-  vector<int64_t> W_shape = {1, 1, 2, 2};
-  vector<int64_t> Y_shape = {1, 1, 2, 2};
-  auto expected_vals = {6.0f, 8.0f, 12.0f, 14.0f};
-
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-}
-
 }  // namespace test
 }  // namespace onnxruntime
