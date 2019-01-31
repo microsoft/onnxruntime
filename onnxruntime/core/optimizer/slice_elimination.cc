@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/slice_elimination.h"
+#include "core/optimizer/slice_elimination.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/op.h"

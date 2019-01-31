@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/graph/rewrite_rule.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
