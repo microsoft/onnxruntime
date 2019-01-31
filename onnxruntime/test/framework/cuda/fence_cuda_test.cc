@@ -62,7 +62,8 @@ static common::Status LoadInferenceSessionFromModel(InferenceSession& session, o
 
 CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)
 CREATE_INITIALIZER_FUNC(int64_t, TensorProto_DataType_INT64, add_int64_data)
-TEST(CUDAFenceTests, PartOnCPU) {
+// TO DO: Figure out a way to enable it again
+TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test");
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
@@ -70,8 +71,7 @@ TEST(CUDAFenceTests, PartOnCPU) {
   onnxruntime::NodeArg x1_def("X1", &tensor_float);
   onnxruntime::NodeArg y_def("Y", &tensor_float);
   onnxruntime::NodeArg z_def("Z", &tensor_float);
-  onnxruntime::NodeArg out1_def("Out1", &tensor_float);
-  onnxruntime::NodeArg out2_def("Out2", &tensor_float);
+  onnxruntime::NodeArg out_def("Out", &tensor_float);
 
   auto& w_def = CreateInitializer(graph, "W", std::vector<int64_t>({2, 2}), std::vector<float>({-1, 2, 3, -4}));
 
@@ -79,13 +79,11 @@ TEST(CUDAFenceTests, PartOnCPU) {
       .SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
   graph.AddNode("node2", "Add", "Add operator", ArgMap{&y_def, &w_def}, ArgMap{&z_def})
       .SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  graph.AddNode("node3", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out1_def})
-      .SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  graph.AddNode("node4", "Add", "Add operator", ArgMap{&y_def, &x1_def}, ArgMap{&out2_def})
+  graph.AddNode("node3", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out_def})
       .SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
 
   // add and then delete a node to test node iteration against nullptr
-  auto& node = graph.AddNode("node_to_delete", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out1_def});
+  auto& node = graph.AddNode("node_to_delete", "Add", "Add operator", ArgMap{&y_def, &z_def}, ArgMap{&out_def});
   graph.RemoveNode(node.Index());
 
   ASSERT_TRUE(graph.Resolve().IsOK());
@@ -115,31 +113,20 @@ TEST(CUDAFenceTests, PartOnCPU) {
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   ASSERT_TRUE(session.Initialize().IsOK());
+  ASSERT_TRUE(1 == CountCopyNodes(graph));
 
   vector<MLValue> outputs;
   session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Out1", "Out2"},
+              std::vector<std::string>{"Out"},
               &outputs);
-  ASSERT_TRUE(2 == outputs.size());
-  {
-    const Tensor& output = outputs[0].Get<Tensor>();
-    EXPECT_EQ(output.Shape(), shape);
-    EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
+  ASSERT_TRUE(1 == outputs.size());
+  const Tensor& output = outputs[0].Get<Tensor>();
+  EXPECT_EQ(output.Shape(), shape);
+  EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
-    float expected_output[4] = {13.0f, -18.0f, -27.0f, 40.0f};
-    for (int i = 0; i < 4; ++i) {
-      EXPECT_EQ(output.template Data<float>()[i], expected_output[i]);
-    }
-  }
-  {
-    const Tensor& output = outputs[1].Get<Tensor>();
-    EXPECT_EQ(output.Shape(), shape);
-    EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
-
-    float expected_output[4] = {6.0f, -8.0f, -12.0f, 18.0f};
-    for (int i = 0; i < 4; ++i) {
-      EXPECT_EQ(output.template Data<float>()[i], expected_output[i]);
-    }
+  float expected_output[4] = {13.0f, -18.0f, -27.0f, 40.0f};
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(output.template Data<float>()[i], expected_output[i]);
   }
 }
 
