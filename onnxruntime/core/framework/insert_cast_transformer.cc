@@ -81,12 +81,14 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   if (graph.NumberOfNodes() <= 1) {
     return Status::OK();
   }
+
   for (auto& node : graph.Nodes()) {
     if (IsSingleInputNodeFloat16Node(node)) {
       node.SetExecutionProviderType("");
     }
   }
-  return graph.Resolve();
+
+  return Status::OK();
 }
 
 class RemoveDuplicateCastTransformer : public GraphTransformer {
@@ -223,6 +225,10 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
   // if this is the main graph we've recursed into all the subgraphs and added Cast nodes.
   // run the duplicate remover now, which will call Graph::Resolve from Apply(...) and handle the main and subgraphs.
   if (graph_level == 0) {
+    if (modified) {
+      ORT_RETURN_IF_ERROR(graph.Resolve());
+    }
+    
     RemoveDuplicateCastTransformer remover;
     status = remover.Apply(graph, modified);
   }
