@@ -274,10 +274,7 @@ int real_main(int argc, char* argv[]) {
       {"PoissonNLLLLoss_no_reduce", "disable reason"},
       {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},
-      {"eyelike_populate_off_main_diagonal", "disable reason"},
-      {"eyelike_with_dtype", "disable reason"},
-      {"eyelike_without_dtype", "disable reason"},
+      {"convtranspose_3d", "disable reason"},      
       {"flatten_axis0", "disable reason"},
       {"flatten_axis1", "disable reason"},
       {"flatten_axis2", "disable reason"},
@@ -325,8 +322,6 @@ int real_main(int argc, char* argv[]) {
       {"shrink_soft", "opset 9 not supported yet"},
       {"where_example", "opset 9 not supported yet"},
       {"constantofshape_float_ones", "opset 9 not supported yet"},
-      {"batchnorm_example", "opset 9 not supported yet"},
-      {"batchnorm_epsilon", "opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -335,7 +330,9 @@ int real_main(int argc, char* argv[]) {
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
-      {"nonzero_example", "NonZero opset 9 not supported yet"}};
+      {"nonzero_example", "NonZero opset 9 not supported yet"},
+      {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
+      {"tf_inception_v4", "Cast opset 9 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
