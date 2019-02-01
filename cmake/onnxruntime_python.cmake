@@ -65,7 +65,8 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
-    onnxruntime_mlas
+    onnxruntime_mlas	
+    onnxruntime_optimizer
 )
 
 set(onnxruntime_pybind11_state_dependencies
