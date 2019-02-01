@@ -10,7 +10,7 @@ namespace onnxruntime {
 template <typename T>
 class Where final : public OpKernel {
  public:
-  Where(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Where(const OpKernelInfo& info) : OpKernel{info} {
   }
 
   Status Compute(OpKernelContext* context) const override;

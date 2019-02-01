@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/cpu/tensor/where_op.h"
 
 #include "core/providers/cpu/math/element_wise_ops.h"  // for broadcast utilities
