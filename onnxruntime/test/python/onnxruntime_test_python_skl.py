@@ -6,6 +6,7 @@ import unittest
 import os
 import sys
 import numpy as np
+import pandas
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import onnxruntime_ostream_redirect
 from onnxruntime.sklapi import OnnxTransformer
@@ -26,7 +27,7 @@ class TestInferenceSessionSklearn(unittest.TestCase):
             return res
         raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
 
-    def test_transform(self):
+    def test_transform_numpy(self):
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         name = self.get_name("mul_1.pb")
         with open(name, "rb") as f:
@@ -36,8 +37,7 @@ class TestInferenceSessionSklearn(unittest.TestCase):
         tr.fit()
         res = tr.transform(x)
         exp = np.array([[ 1.,  4.], [ 9., 16.], [25., 36.]], dtype=np.float32)
-        assert list(res.ravel()) == list(exp.ravel())
-        
+        assert list(res.ravel()) == list(exp.ravel())        
 
         
 if __name__ == '__main__':
