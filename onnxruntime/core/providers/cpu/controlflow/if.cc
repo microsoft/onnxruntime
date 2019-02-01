@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/controlflow/if.h"
 
+#include "core/framework/execution_frame.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
@@ -78,7 +79,7 @@ class IfImpl {
   std::unordered_map<std::string, const MLValue*> implicit_inputs_;
 
   enum class AllocationType {
-    Temporary,
+    Delayed,  // allocation of If output will be done by subgraph execution
     IfOutput
   };
 
@@ -150,12 +151,10 @@ Status IfImpl::AllocateOutputTensors() {
 
     TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
 
-    // TODO: Task 1913: Improve handling of If outputs to avoid copy when the shape is not known
-    //       at subgraph execution time.
-    //
     // if size < 0 we have a symbolic dimension and need to use a temporary MLValue in the subgraph execution
     if (output_shape.Size() < 0) {
-      outputs_.push_back({AllocationType::Temporary, {}});
+      // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
+      outputs_.push_back({AllocationType::Delayed, {}});
     } else {
       auto* tensor = context_.Output(index, output_shape);
 
@@ -193,26 +192,33 @@ Status IfImpl::Execute() {
     }
   }
   std::vector<MLValue> fetches;
+  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
   fetches.reserve(num_outputs_);
 
   for (int i = 0; i < num_outputs_; ++i) {
     fetches.push_back(outputs_[i].second);
-  }
 
-  status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, /*sequential_execution*/ true,
-                               context_.GetTerminateFlag(), context_.Logger());
-  ORT_RETURN_IF_ERROR(status);
+    if (outputs_[i].first == AllocationType::Delayed) {
+      // functor to forward the allocation request from the subgraph to the If node's context so that the
+      // allocation plan for the If node's output is used.
+      fetch_allocators[i] =
+          [this, i](const TensorShape& shape, MLValue& mlvalue) {
+            // allocate
+            auto* tensor = context_.Output(i, shape);
 
-  for (int i = 0; i < num_outputs_; ++i) {
-    // TODO: Task 1913: Improve handling of If outputs to avoid copy when the shape is not known
-    //       at subgraph execution time.
-    if (outputs_[i].first == AllocationType::Temporary) {
-      // need to allocate If output and copy MLValue from fetches
-      auto& data = fetches[i].Get<Tensor>();
-      Tensor* output = context_.Output(i, data.Shape());
-      memcpy(output->MutableDataRaw(), data.DataRaw(), data.Size());
+            if (!tensor)
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
+
+            // return MLValue for allocated tensor
+            mlvalue = *context_.GetOutputMLValue(i);
+            return Status::OK();
+          };
     }
   }
+
+  status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, fetch_allocators,
+                               /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
+  ORT_RETURN_IF_ERROR(status);
 
   return status;
 }

@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "core/common/logging/logging.h"
+#include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/utils.h"
 
@@ -210,4 +211,21 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
                                                           const std::string& attribute_name) const {
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
+
+void SessionState::CalculateNodeIndexInfo() {
+  ORT_ENFORCE(graph_viewer_);
+  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, mlvalue_name_idx_map_);
+
+  for (auto& node_to_map_pair : subgraph_session_states_) {
+    for (auto& attr_name_to_subgraph : node_to_map_pair.second) {
+      attr_name_to_subgraph.second->CalculateNodeIndexInfo();
+    }
+  }
+}
+
+const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
+  ORT_ENFORCE(node_index_info_, "CalculateNodeIndexInfo must be called prior to GetExecutionInfo.");
+  return *node_index_info_;
+}
+
 }  // namespace onnxruntime

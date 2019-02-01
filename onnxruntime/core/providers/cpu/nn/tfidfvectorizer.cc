@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ngram.h"
+#include "tfidfvectorizer.h"
 #include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -12,34 +12,33 @@
 #include <iterator>
 
 namespace onnxruntime {
-namespace contrib {
 
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    Ngram,
-    1,
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    TfIdfVectorizer,
+    9,
     string,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
-    contrib::Ngram);
+    TfIdfVectorizer);
 
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    Ngram,
-    1,
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    TfIdfVectorizer,
+    9,
     int32_t,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
-    contrib::Ngram);
+    TfIdfVectorizer);
 
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
-    Ngram,
-    1,
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    TfIdfVectorizer,
+    9,
     int64_t,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
-    contrib::Ngram);
+    TfIdfVectorizer);
 
 namespace ngram_details {
 
@@ -169,10 +168,9 @@ inline void Emplace(ForwardIter first, size_t ngrams, size_t ngram_size, size_t&
 }
 
 }  // namespace ngram_details
-}  // namespace contrib
 }  // namespace onnxruntime
 
-using namespace onnxruntime::contrib::ngram_details;
+using namespace onnxruntime::ngram_details;
 
 namespace std {
 template <typename T>
@@ -186,7 +184,6 @@ struct hash<NgramEntry<T>> {
 }  // namespace std
 
 namespace onnxruntime {
-namespace contrib {
 
 // The weighting criteria.
 // "TF"(term frequency),
@@ -206,7 +203,7 @@ enum WeightingCriteria {
   kTFIDF = 3
 };
 
-struct Ngram::Impl {
+struct TfIdfVectorizer::Impl {
   WeightingCriteria weighting_criteria_ = kNone;
   int64_t max_gram_length_ = 0;
   int64_t min_gram_length_ = 0;
@@ -251,36 +248,36 @@ struct Ngram::Impl {
 };
 
 template <>
-inline auto Ngram::Impl::PoolEnd<int64_t>() const {
+inline auto TfIdfVectorizer::Impl::PoolEnd<int64_t>() const {
   return int64_set_.cend();
 }
 
 template <>
-inline auto Ngram::Impl::PoolEnd<int32_t>() const {
+inline auto TfIdfVectorizer::Impl::PoolEnd<int32_t>() const {
   return PoolEnd<int64_t>();
 }
 
 template <>
-inline auto Ngram::Impl::PoolEnd<std::string>() const {
+inline auto TfIdfVectorizer::Impl::PoolEnd<std::string>() const {
   return str_set_.cend();
 }
 
 template <>
-inline auto Ngram::Impl::PoolFind<int64_t>(const NgramEntry<int64_t>& i) const {
+inline auto TfIdfVectorizer::Impl::PoolFind<int64_t>(const NgramEntry<int64_t>& i) const {
   return int64_set_.find(i);
 }
 
 template <>
-inline auto Ngram::Impl::PoolFind<int32_t>(const NgramEntry<int32_t>& i) const {
+inline auto TfIdfVectorizer::Impl::PoolFind<int32_t>(const NgramEntry<int32_t>& i) const {
   return int64_set_.find(i);
 }
 
 template <>
-inline auto Ngram::Impl::PoolFind<std::string>(const NgramEntry<std::string>& i) const {
+inline auto TfIdfVectorizer::Impl::PoolFind<std::string>(const NgramEntry<std::string>& i) const {
   return str_set_.find(i);
 }
 
-Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
+TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   std::string mode;
   Status status = info.GetAttr("mode", &mode);
   ORT_ENFORCE(status.IsOK(), "mode is required");
@@ -381,10 +378,10 @@ Ngram::Ngram(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
   }
 }
 
-Ngram::~Ngram() {
+TfIdfVectorizer::~TfIdfVectorizer() {
 }
 
-void Ngram::OutputResult(OpKernelContext* ctx, size_t B, const std::vector<uint32_t>& frequences) const {
+void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::vector<uint32_t>& frequences) const {
   const Impl& impl = *impl_;
   std::vector<int64_t> output_dims;
   if (B == 0) {
@@ -437,7 +434,7 @@ void Ngram::OutputResult(OpKernelContext* ctx, size_t B, const std::vector<uint3
 }
 
 template <typename T>
-Status Ngram::ComputeImpl(OpKernelContext* ctx) const {
+Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
   const auto& impl = *impl_;
   auto const set_end = impl.PoolEnd<T>();
 
@@ -559,7 +556,7 @@ Status Ngram::ComputeImpl(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-Status Ngram::Compute(OpKernelContext* ctx) const {
+Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   Status s;
 
   auto X = ctx->Input<Tensor>(0);
@@ -578,5 +575,4 @@ Status Ngram::Compute(OpKernelContext* ctx) const {
   return s;
 }
 
-}  // namespace contrib
 }  // namespace onnxruntime

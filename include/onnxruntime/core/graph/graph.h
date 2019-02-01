@@ -283,8 +283,12 @@ class Node {
   void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
-      If the NodeArg is an explicit or implicit input, is_input will be true when func is called. */
-  void ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const;
+      If the NodeArg is an explicit or implicit input, is_input will be true when func is called. 
+      @param include_missing_optional_defs Include NodeArgs that are optional and were not provided 
+                                           i.e. NodeArg::Exists() == false.
+      */
+  void ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
+                  bool include_missing_optional_defs = false) const;
 
   /** Replaces any matching definitions in the Node's explicit inputs or explicit outputs. 
   @param replacements Map of current NodeArg to replacement NodeArg.

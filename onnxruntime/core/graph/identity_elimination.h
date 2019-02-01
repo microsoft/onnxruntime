@@ -15,7 +15,7 @@ class EliminateIdentity : public RewriteRule {
  private:
   bool SatisfyCondition(const Node& node) override;
 
-  Status Apply(Graph& graph_editor, Node& node, bool& modified, bool& deleted) override;
+  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 };
 
 }  // namespace onnxruntime

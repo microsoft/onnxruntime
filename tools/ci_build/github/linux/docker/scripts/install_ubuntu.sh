@@ -14,7 +14,7 @@ add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
         autotools-dev \
         build-essential \
-        git ca-certificates \
+        git apt-transport-https \
         ca-certificates \
         pkg-config \
         wget \
@@ -47,8 +47,9 @@ OS_VER=`lsb_release -r -s`
 mkdir -p /tmp/dotnet
 aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
 dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
-apt-get update && apt-get install -y apt-transport-https \
-        dotnet-sdk-2.2
+apt-get install -y apt-transport-https
+apt-get update
+apt-get install -y dotnet-sdk-2.2
 rm -rf /tmp/dotnet || true
 
 if [ $PYTHON_VER != "3.5" ]; then

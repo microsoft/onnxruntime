@@ -39,6 +39,10 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${SYMBOL_FILE}")
 endif()
 
+if (NOT WIN32)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
+endif()
+
 #The BEGIN_WHOLE_ARCHIVE/END_WHOLE_ARCHIVE part should contain the implementations of all the C API functions
 target_link_libraries(onnxruntime PRIVATE
     ${BEGIN_WHOLE_ARCHIVE}
