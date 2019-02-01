@@ -16,13 +16,15 @@ void WordConvEmbedding::CharEmbeddingLookup(
     size_t seq_len,
     size_t word_len,
     size_t char_embedding_size,
+    size_t filter_width,
     const int* words_len_ptr,
     float* dst) const {
   for (size_t word_inx = 0; word_inx < seq_len; word_inx++) {
     if (words_len_ptr[word_inx] > 0) {
       const int* cur_seq_ptr = seq_ptr + word_inx * word_len;
       float* cur_dst_ptr = dst + word_inx * word_len * char_embedding_size;
-      for (size_t char_inx = 0; char_inx < word_len; char_inx++) {
+      size_t char_length_to_lookup = std::max<size_t>(words_len_ptr[word_inx], filter_width);
+      for (size_t char_inx = 0; char_inx < char_length_to_lookup; char_inx++) {
         memcpy(cur_dst_ptr, char_embedding_weight_p + (*cur_seq_ptr) * char_embedding_size, sizeof(float) * char_embedding_size);
         cur_dst_ptr += char_embedding_size;
         cur_seq_ptr++;
@@ -51,53 +53,65 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
   int64_t conv_res_segment_size = unfolded_width * num_filters;
   int64_t memcpy_size = unfolded_kernal_size * sizeof(float);
 
-  auto input_unfolded_buffer_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * unfolded_segment_size);
+  auto unfolded_buffer_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * unfolded_segment_size);
   auto conv_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
   auto conv_activation_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
 
-  for (int64_t word_inx = 0; word_inx < seq_len; word_inx++) {
-    if (words_len_ptr[word_inx] <= 0) continue;
+  int64_t word_inx = 0;
+  while (word_inx < seq_len) {
+    if (words_len_ptr[word_inx] <= 0) {
+      word_inx++;
+      continue;
+    }
 
-    const float* current_word_input = input + word_inx * input_word_size;
-    float* current_word_unfolded_buffer_p = input_unfolded_buffer_p.get() + word_inx * unfolded_segment_size;
-    float* conv_buf_p = conv_result_p.get() + word_inx * conv_res_segment_size;
-    float* pactivationbuf = conv_activation_result_p.get() + word_inx * conv_res_segment_size;
-    float* pres = output + word_inx * num_filters;
+    float* words_unfolded_buffer_p = unfolded_buffer_p.get();
+    int64_t words_unfolded_width = 0;
+    int64_t tmp_word_inx = word_inx;
+    float* conv_buf_p = conv_result_p.get();
+    float* pactivationbuf = conv_activation_result_p.get();
 
-    // Unfolding from pin to pufbuf.
-    float* tmp_unfolded_buffer_ptr = current_word_unfolded_buffer_p;
-    for (int64_t unfolded_inx = 0; unfolded_inx < unfolded_width; unfolded_inx++) {
-      memcpy(tmp_unfolded_buffer_ptr, current_word_input, memcpy_size);
-      current_word_input += char_embedding_size;
-      tmp_unfolded_buffer_ptr += unfolded_kernal_size;
+    // unfolding buffer
+    while (tmp_word_inx < seq_len && words_len_ptr[tmp_word_inx] > 0) {
+      const float* current_word_input = input + tmp_word_inx * input_word_size;
+      int64_t word_unfolded_width = std::max<int64_t>(words_len_ptr[tmp_word_inx], filter_width) - filter_width + 1;
+      words_unfolded_width += word_unfolded_width;
+      for (int64_t unfolded_inx = 0; unfolded_inx < word_unfolded_width; unfolded_inx++) {
+        memcpy(words_unfolded_buffer_p, current_word_input, memcpy_size);
+        current_word_input += char_embedding_size;
+        words_unfolded_buffer_p += unfolded_kernal_size;
+      }
+      tmp_word_inx++;
     }
 
     math::GemmEx<float, CPUMathUtil>(
         CblasNoTrans, CblasTrans,
-        static_cast<int>(unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
-        current_word_unfolded_buffer_p, static_cast<int>(unfolded_kernal_size),
+        static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
+        unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size),
         weights, static_cast<int>(unfolded_kernal_size), 0.0f,
         conv_buf_p, static_cast<int>(num_filters), &CPUMathUtil::Instance());
 
-    for (int64_t unfolded_inx = 0; unfolded_inx < unfolded_width; unfolded_inx++)
+    for (int64_t unfolded_inx = 0; unfolded_inx < words_unfolded_width; unfolded_inx++)
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
         conv_buf_p[unfolded_inx * num_filters + filter_inx] += bias[filter_inx];
       }
+    MlasComputeTanh(conv_buf_p, pactivationbuf, words_unfolded_width * num_filters);
 
-    MlasComputeTanh(conv_buf_p, pactivationbuf, unfolded_width * num_filters);
-
-    // Max pooling.
-    for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
-      pres[filter_inx] = -1.0f * 1e12f;
-    }
-
-    for (int64_t unfolded_inx = 0; unfolded_inx < unfolded_width; unfolded_inx++) {
-      if (unfolded_inx > 0 && unfolded_inx > (words_len_ptr[word_inx] - filter_width)) break;
-      float* pcur = pactivationbuf + unfolded_inx * num_filters;
+    float* activationbuf_cur_ptr = pactivationbuf;
+    for (int64_t pool_word_inx = word_inx; pool_word_inx < tmp_word_inx; pool_word_inx++) {
+      float* result_ptr = output + pool_word_inx * num_filters;
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
-        pres[filter_inx] = std::max(pcur[filter_inx], pres[filter_inx]);
+        result_ptr[filter_inx] = -1.0f * 1e12f;
+      }
+
+      int64_t word_unfolded_width = std::max<int64_t>(words_len_ptr[pool_word_inx], filter_width) - filter_width + 1;
+      for (int64_t unfolded_inx = 0; unfolded_inx < word_unfolded_width; unfolded_inx++) {
+        for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
+          result_ptr[filter_inx] = std::max(activationbuf_cur_ptr[filter_inx], result_ptr[filter_inx]);
+        }
+        activationbuf_cur_ptr += num_filters;
       }
     }
+    word_inx = tmp_word_inx;
   }
 }
 void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
@@ -187,6 +201,7 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
                       seq_len,
                       word_len,
                       char_embedding_size,
+                      filter_width,
                       words_length_ptr.get(),
                       chars_embeddings_ptr.get());
 

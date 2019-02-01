@@ -76,6 +76,8 @@ class ExecutionProviders {
 
   bool Empty() const { return exec_providers_.empty(); }
 
+  size_t NumProviders() const { return exec_providers_.size(); }
+
   using const_iterator = typename std::vector<std::unique_ptr<IExecutionProvider>>::const_iterator;
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }
   const_iterator end() const noexcept { return exec_providers_.cend(); }

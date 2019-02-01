@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtInitialize(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
             }
             catch (OnnxRuntimeException e)
             {

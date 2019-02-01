@@ -5,6 +5,7 @@
 # build docker image for CPU
 
 #TODO: Get this working, not tested yet
+set -x
 
 
 
@@ -28,6 +29,8 @@ docker run -h $HOSTNAME \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
+        -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
+        -e "IsReleaseBuild=$IsReleaseBuild" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $TestDataUrl $TestDataChecksum &

@@ -52,6 +52,16 @@ replaces *scikit-learn* to compute the predictions.
 Changes
 -------
 
+0.2.1
+^^^^^
+
+C-API, Linux support for Dotnet Nuget package, Cuda 10.0 support (patch to 0.2.0).
+
+0.2.0
+^^^^^
+
+C-API, Linux support for Dotnet Nuget package, Cuda 10.0 support
+
 0.1.5
 ^^^^^
 

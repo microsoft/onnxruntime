@@ -4,51 +4,35 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include <atomic>
 #include "cuda_execution_provider.h"
+#include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
 
-namespace {
-struct CUDAProviderFactory {
-  const OrtProviderFactoryInterface* const cls;
-  std::atomic_int ref_count;
-  int device_id;
-  CUDAProviderFactory();
+namespace onnxruntime {
+
+struct CUDAProviderFactory : IExecutionProviderFactory {
+  CUDAProviderFactory(int device_id) : device_id_(device_id) {}
+  ~CUDAProviderFactory() override {}
+
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+
+ private:
+  int device_id_;
 };
 
-OrtStatus* ORT_API_CALL CreateCuda(void* this_, OrtProvider** out) {
+std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   CUDAExecutionProviderInfo info;
-  CUDAProviderFactory* this_ptr = (CUDAProviderFactory*)this_;
-  info.device_id = this_ptr->device_id;
-  CUDAExecutionProvider* ret = new CUDAExecutionProvider(info);
-  *out = (OrtProvider*)ret;
-  return nullptr;
+  info.device_id = device_id_;
+  return std::make_unique<CUDAExecutionProvider>(info);
 }
 
-uint32_t ORT_API_CALL ReleaseCuda(void* this_) {
-  CUDAProviderFactory* this_ptr = (CUDAProviderFactory*)this_;
-  if (--this_ptr->ref_count == 0)
-    delete this_ptr;
-  return 0;
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id) {
+  return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id);
 }
 
-uint32_t ORT_API_CALL AddRefCuda(void* this_) {
-  CUDAProviderFactory* this_ptr = (CUDAProviderFactory*)this_;
-  ++this_ptr->ref_count;
-  return 0;
-}
+}  // namespace onnxruntime
 
-constexpr OrtProviderFactoryInterface cuda_cls = {
-    AddRefCuda,
-    ReleaseCuda,
-    CreateCuda,
-};
-
-CUDAProviderFactory::CUDAProviderFactory() : cls(&cuda_cls), ref_count(1), device_id(0) {}
-}  // namespace
-
-ORT_API_STATUS_IMPL(OrtCreateCUDAExecutionProviderFactory, int device_id, _Out_ OrtProviderFactoryInterface*** out) {
-  CUDAProviderFactory* ret = new CUDAProviderFactory();
-  ret->device_id = device_id;
-  *out = (OrtProviderFactoryInterface**)ret;
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id));
   return nullptr;
 }

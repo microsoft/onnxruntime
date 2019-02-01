@@ -75,29 +75,6 @@ SgemmKernelM1Frame STRUCT
 SgemmKernelM1Frame ENDS
 
 ;
-; save_xmm128_avx
-;
-; Macro Description:
-;
-;   This macro uses AVX instructions to save a vector register as part of a
-;   function prologue as an alternative to save_xmm128.
-;
-; Arguments:
-;
-;   Register - Supplies the vector register to be saved.
-;
-;   Offset - Supplies the stack frame offset to store the contents of the
-;       vector register.
-;
-
-save_xmm128_avx MACRO Register, Offset
-
-        vmovaps Offset[rsp], Register
-        .savexmm128 Register, Offset
-
-        ENDM
-
-;
 ; SgemmKernelAvxEntry
 ;
 ; Macro Description:
@@ -212,7 +189,7 @@ ENDIF
         ENDM
 
 ;
-; ComputeBlockCommonLoop
+; ComputeBlockLoop
 ;
 ;   This macro generates code to execute the block compute macro multiple
 ;   times and advancing the matrix A and matrix B data pointers.
@@ -240,7 +217,7 @@ ENDIF
 ;   ymm4-ymm15 - Supplies the block accumulators.
 ;
 
-ComputeBlockCommonLoop MACRO ComputeBlock, Count, AdvanceMatrixAPlusRows
+ComputeBlockLoop MACRO ComputeBlock, Count, AdvanceMatrixAPlusRows
 
         LOCAL   ComputeBlockBy4Loop
         LOCAL   ProcessRemainingBlocks
@@ -252,11 +229,11 @@ ComputeBlockCommonLoop MACRO ComputeBlock, Count, AdvanceMatrixAPlusRows
         jb      ProcessRemainingBlocks
 
 ComputeBlockBy4Loop:
-        ComputeBlock Count, 0, 0
-        ComputeBlock Count, 16*4, 4
+        ComputeBlock Count, 0, 0, 64*4
+        ComputeBlock Count, 16*4, 4, 64*4
         sub     rdx,-32*4                   ; advance matrix B by 32 columns
-        ComputeBlock Count, 0, 8
-        ComputeBlock Count, 16*4, 12
+        ComputeBlock Count, 0, 8, 64*4
+        ComputeBlock Count, 16*4, 12, 64*4
         sub     rdx,-32*4                   ; advance matrix B by 32 columns
         add     rcx,4*4                     ; advance matrix A by 4 columns
 IF AdvanceMatrixAPlusRows
@@ -288,29 +265,5 @@ ENDIF
         jne     ComputeBlockBy1Loop
 
 OutputBlock:
-
-        ENDM
-
-ComputeBlockAvxLoop MACRO ComputeBlock, Count
-
-        ComputeBlockCommonLoop ComputeBlock, Count, <Count GT 2>
-
-        ENDM
-
-ComputeBlockFma3Loop MACRO ComputeBlock, Count
-
-;
-; Reload the alpha value which is lost after each vzeroall instruction.
-;
-
-        vbroadcastss ymm2,DWORD PTR SgemmKernelFrame.Alpha[rsp]
-
-        ComputeBlockCommonLoop ComputeBlock, Count, <Count GT 3>
-
-        ENDM
-
-ComputeBlockAvx512FLoop MACRO ComputeBlock, Count
-
-        ComputeBlockCommonLoop ComputeBlock, Count, <Count GT 3>
 
         ENDM

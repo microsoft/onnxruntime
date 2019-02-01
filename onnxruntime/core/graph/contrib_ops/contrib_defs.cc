@@ -91,6 +91,134 @@ void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, 
   *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
 }
 
+void convPoolShapeInference(
+    ONNX_NAMESPACE::InferenceContext& ctx,
+    bool use_dilation,
+    bool require_kernel_shape,
+    int input1Idx, int input2Idx) {
+  if (!hasInputShape(ctx, input1Idx)) {
+    return;
+  }
+
+  // if kernel shape is an input (and not attribute)
+  // we need the shape of the second input.
+  if (!require_kernel_shape && !hasNInputShapes(ctx, input2Idx)) {
+    return;
+  }
+
+  // don't bother with legacy auto_pad for now
+  if (ctx.getAttribute("auto_pad")) {
+    return;
+  }
+
+  auto input_shape = ctx.getInputType(input1Idx)->tensor_type().shape();
+  if (input_shape.dim_size() < 2) {
+    fail_shape_inference("Input tensor must have atleast 2 dimensions");
+  }
+
+  // first dim is the batch axis and the next is the number of channels.
+  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+
+  // Pooling operations don't support dilation, only Conv. For
+  // simplicity of the code, we just treat them as having all-1s
+  // dilation.
+  std::vector<int64_t> dilations;
+  if (use_dilation && getRepeatedAttribute(ctx, "dilations", dilations)) {
+    if (dilations.size() != n_input_dims) {
+      fail_shape_inference("Attribute dilations has incorrect size");
+    }
+  } else {
+    dilations.assign(n_input_dims, 1);
+  }
+
+  int64_t groups = getAttribute(ctx, "group", 1);
+  if (groups != 1) {
+    return;  // we don't handle the group case.
+  }
+
+  std::vector<int64_t> pads;
+  if (getRepeatedAttribute(ctx, "pads", pads)) {
+    if (pads.size() != n_input_dims * 2) {
+      fail_shape_inference("Attribute pads has incorrect size");
+    }
+  } else {
+    pads.assign(n_input_dims * 2, 0);
+  }
+
+  std::vector<int64_t> strides;
+  if (getRepeatedAttribute(ctx, "strides", strides)) {
+    if (strides.size() != n_input_dims) {
+      fail_shape_inference("Attribute strides has incorrect size");
+    }
+  } else {
+    strides.assign(n_input_dims, 1);
+  }
+
+  std::vector<int64_t> kernel_shape;
+  if (getRepeatedAttribute(ctx, "kernel_shape", kernel_shape)) {
+    if (kernel_shape.size() != n_input_dims) {
+      fail_shape_inference("Attribute kernel_shape has incorrect size");
+    }
+  } else if (require_kernel_shape) {
+    fail_shape_inference("Attribute kernel_shape must be specified");
+  } else {
+    auto second_input_shape = ctx.getInputType(input2Idx)->tensor_type().shape();
+    for (int i = 2; i < second_input_shape.dim_size(); ++i) {
+      if (!second_input_shape.dim(i).has_dim_value()) {
+        return;
+      }
+      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+    }
+  }
+
+  auto output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  if (require_kernel_shape) {
+    // add the first two dimensions from the input.
+    *output_shape->add_dim() = input_shape.dim(0);
+    *output_shape->add_dim() = input_shape.dim(1);
+  } else {
+    *output_shape->add_dim() = input_shape.dim(0);
+    auto& second_input_shape = getInputShape(ctx, 1);
+    if (second_input_shape.dim_size() < 1) {
+      fail_shape_inference("Second input tensor has wrong dimension");
+    }
+    *output_shape->add_dim() = second_input_shape.dim(0);
+  }
+
+  int kernel_shape_size = static_cast<int>(kernel_shape.size());
+  for (int i = 0; i < kernel_shape_size; ++i) {
+    auto newdim = output_shape->add_dim();
+    if (!input_shape.dim(2 + i).has_dim_value()) {
+      continue;
+    }
+    // how big is the input, including padding
+    int64_t effective_input_size = input_shape.dim(2 + i).dim_value();
+    effective_input_size += pads[i];
+    effective_input_size += pads[i + kernel_shape_size];
+
+    int64_t effective_kernel_size = kernel_shape[i];
+    // accounting for dilation, how big is the kernel in this dimension
+    effective_kernel_size = (effective_kernel_size - 1) * dilations[i] + 1;
+
+    // how many times we can move the kernel from it's initial position, based
+    // on the stride
+    int64_t strided_kernel_positions =
+        (effective_input_size - effective_kernel_size) / strides[i];
+
+    // add in the initial position
+    newdim->set_dim_value(1 + strided_kernel_positions);
+  }
+
+  if (ctx.getNumOutputs() > 1) {
+    // MaxPool with two outputs case.
+    auto second_output_shape =
+        ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+    second_output_shape->CopyFrom(*output_shape);
+  }
+}
+
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
       .SetDomain(kMSDomain)
@@ -394,7 +522,16 @@ activation and leaky_relu_alpha.)DOC")
       .SetDoc(R"DOC(
 The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
 The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
- rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC");
+ rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
       .SetDomain(kMSDomain)
@@ -415,7 +552,18 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
       .SetDoc(R"DOC(
 The linear de-quantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
 The dequantization formula is y = (x - x_zero_point) * x_scale.
- Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC");
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto y_type = ctx.getOutputType(0);
+        // only float is supported
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMatMul)
       .SetDomain(kMSDomain)
@@ -567,7 +715,31 @@ if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
           "group",
           "number of groups input channels and output channels are divided into. default is 1.",
           AttributeProto::INT,
-          static_cast<int64_t>(1));
+          static_cast<int64_t>(1))
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto w_type = ctx.getInputType(3);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == x_type || nullptr == w_type || nullptr == y_type ||
+            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference(
+              "inputs are expected to have tensor type and output type should not be null.");
+        }
+
+        if (ONNX_NAMESPACE::TensorProto::UINT8 == x_type->tensor_type().elem_type() &&
+            ONNX_NAMESPACE::TensorProto::UINT8 == w_type->tensor_type().elem_type()) {
+          y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::UINT8);
+        } else {
+          y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT8);
+        }
+
+        convPoolShapeInference(ctx, true, false, 0, 3);
+      });
+      
+    
+          
+
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvInteger)
       .SetDomain(kMSDomain)
@@ -660,7 +832,23 @@ The integer convolution operator consumes an input tensor, a filter, and a paddi
           "group",
           "number of groups input channels and output channels are divided into. default is 1.",
           AttributeProto::INT,
-          static_cast<int64_t>(1));
+          static_cast<int64_t>(1))
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto w_type = ctx.getInputType(1);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == x_type || nullptr == w_type || nullptr == y_type ||
+            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference(
+              "inputs are expected to have tensor type and output type should not be null.");
+        }
+
+        // Right now we only support int32
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
+
+        convPoolShapeInference(ctx, true, false, 0, 1);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulInteger)
       .SetDomain(kMSDomain)

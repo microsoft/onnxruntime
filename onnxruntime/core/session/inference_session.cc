@@ -133,140 +133,81 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  template <typename T>
-  common::Status Load(const T& model_uri) {
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader, const std::string& event_name) {
+    Status status = Status::OK();
     auto tp = session_profiler_.StartTime();
     try {
       std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (is_model_loaded_) {  // already loaded
         LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED,
+                              "This session already contains a loaded model.");
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_uri, p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      status = loader(p_tmp_model);
+      ORT_RETURN_IF_ERROR(status);
+
       model_ = p_tmp_model;
 
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      status = DoPostLoadProcessing(*model_);
+      ORT_RETURN_IF_ERROR(status);
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
     } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
     } catch (...) {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
+      status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
+    
     if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_uri", tp);
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
     }
-    return common::Status::OK();
+    
+    return status;
+  }
+
+  template <typename T>
+  common::Status Load(const T& model_uri) {
+    auto loader = [this, &model_uri](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(model_uri, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
+
+    return Load(loader, "model_loading_uri");
   }
 
   common::Status Load(const ModelProto& model_proto) {
-    auto tp = session_profiler_.StartTime();
-    try {
-      LOGS(*session_logger_, INFO) << "Loading model using model_proto";
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_model_loaded_) {  // already loaded
-        LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      }
+    auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
 
-      std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
-      model_ = p_tmp_model;
-
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
-
-      // all steps complete, mark the model as loaded.
-      is_model_loaded_ = true;
-
-      LOGS(*session_logger_, INFO) << "Model successfully loaded.";
-    } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-    } catch (...) {
-      LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
-    }
-    if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
-    }
-    return Status::OK();
+    return Load(loader, "model_loading_proto");
   }
 
   common::Status Load(std::unique_ptr<ModelProto> p_model_proto) {
-    auto tp = session_profiler_.StartTime();
-    try {
-      LOGS(*session_logger_, INFO) << "Loading model using model_proto";
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_model_loaded_) {  // already loaded
-        LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      }
+    auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(std::move(p_model_proto), model,
+                                      HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
 
-      std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(std::move(p_model_proto), p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
-      model_ = p_tmp_model;
-
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
-
-      // all steps complete, mark the model as loaded.
-      is_model_loaded_ = true;
-
-      LOGS(*session_logger_, INFO) << "Model successfully loaded.";
-    } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-    } catch (...) {
-      LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
-    }
-    if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
-    }
-    return Status::OK();
+    return Load(loader, "model_loading_proto");
   }
 
   common::Status Load(std::istream& model_istream) {
-    auto tp = session_profiler_.StartTime();
-    try {
-      LOGS(*session_logger_, INFO) << "Loading model using istream";
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_model_loaded_) {  // already loaded
-        LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      }
-
+    auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
       ModelProto model_proto;
       const bool result = model_proto.ParseFromIstream(&model_istream);
       if (!result) {
-        return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
+        return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                      "Failed to load model because protobuf parsing failed.");
       }
 
-      std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
-      model_ = p_tmp_model;
+      return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
 
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
-
-      // all steps complete, mark the model as loaded.
-      is_model_loaded_ = true;
-
-      LOGS(*session_logger_, INFO) << "Model successfully loaded.";
-    } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-    } catch (...) {
-      LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
-    }
-    if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_istream", tp);
-    }
-    return common::Status::OK();
+    return Load(loader, "model_loading_istream");
   }
 
   static common::Status TransformGraph(onnxruntime::Graph& graph,
@@ -431,6 +372,8 @@ class InferenceSession::Impl {
 
       // handle any subgraphs
       ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
+
+      session_state_.CalculateNodeIndexInfo();
 
       is_inited_ = true;
 
@@ -638,7 +581,7 @@ class InferenceSession::Impl {
       }
 
       ORT_CHECK_AND_SET_RETVAL(
-          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches,
+          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches, {},
                               session_options_.enable_sequential_execution, run_options.terminate, run_logger));
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
