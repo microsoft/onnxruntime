@@ -11,7 +11,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace mkldnn {
 struct memory;
