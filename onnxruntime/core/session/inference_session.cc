@@ -373,6 +373,8 @@ class InferenceSession::Impl {
       // handle any subgraphs
       ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
 
+      session_state_.CalculateNodeIndexInfo();
+
       is_inited_ = true;
 
       LOGS(*session_logger_, INFO) << "Session successfully initialized.";
