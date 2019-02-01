@@ -53,7 +53,9 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
     BuildDefsMapping(arg, kernel_registries);
 
   for (auto arg : graph_.GetInputs())
-    if (provider_input_defs_.count(arg)) {
+    // For inputs we need to create a copy node only when the input is connected to both provider
+    // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
+    if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
       AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
       modified = true;
     }
