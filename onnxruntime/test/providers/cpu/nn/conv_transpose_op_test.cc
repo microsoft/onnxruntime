@@ -440,5 +440,35 @@ TEST(ConvTransposeTest, ConvTranspose3D_group_dilation3) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+TEST(ConvTransposeTest, ConvTranspose3D_group2_dilation2) {
+  ConvTransposeOpAttributes attrs = {
+    vector<int64_t>{2, 2},
+    {}, {},
+    vector<int64_t>{0,0,0,0,0,0,0,0,0},
+    vector<int64_t>{1,1,1},
+    {2,2},
+    2
+  };
+
+  vector<float> X = {3.0f,8.0f,1.0f,9.0f,5.0f,7.0f,3.0f,2.0f,3.0f,7.0f,9.0f,1.0f,5.0f,2.0f,3.0f,9.0f,0.0f,2.0f};
+  vector<int64_t> X_shape = {1,2,3,3};
+  vector<float> W = {9.0f,3.0f,1.0f,2.0f,3.0f,7.0f,0.0f,8.0f};
+  vector<int64_t> W_shape = {2,1,2,2};
+  vector<int64_t> Y_shape = {1,2,5,5};
+  auto expected_vals = {27.0f,  72.0f,  18.0f,   24.0f,   3.0f,
+                        81.0f,  45.0f,  90.0f,   15.0f,   21.0f,
+                        30.0f,  26.0f,  43.0f,   22.0f,   11.0f,
+                        9.0f,   5.0f,   25.0f,   10.0f,   14.0f,
+                        3.0f,   2.0f,   9.0f,    4.0f,    6.0f,
+                        21.0f,  27.0f,  52.0f,   63.0f,   7.0f,
+                        15.0f,  6.0f,   44.0f,   14.0f,   21.0f,
+                        27.0f,  0.0f,   125.0f,  72.0f,   22.0f,
+                        0.0f,   0.0f,   40.0f,   16.0f,   24.0f,
+                        0.0f,   0.0f,   72.0f,   0.0f,    16.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+
 }  // namespace test
 }  // namespace onnxruntime
