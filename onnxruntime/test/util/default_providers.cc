@@ -12,7 +12,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int id, bool f, const char*, const char*, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t id, bool f, const char*, const char*, const char*);
 
 namespace test {
 
@@ -47,7 +47,7 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #ifdef USE_BRAINSLICE
-  return CreateExecutionProviderFactory_BrainSlice(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin", &f));
+  return CreateExecutionProviderFactory_BrainSlice(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin")->CreateProvider();
 #else
   return nullptr;
 #endif
