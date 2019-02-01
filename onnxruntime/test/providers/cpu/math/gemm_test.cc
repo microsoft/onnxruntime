@@ -161,5 +161,22 @@ TEST(MathOpTest, GemmFalseBroadcast) {
   test.Run();
 }
 
+TEST(MathOpTest, GemmEmptyTensor) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<float>("A", {0, 4},
+                       {});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
+  test.AddOutput<float>("Y", {0, 3},
+                        {});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

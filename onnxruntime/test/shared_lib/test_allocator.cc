@@ -29,6 +29,6 @@ TEST_F(CApiTest, DefaultAllocator) {
   memset(p, 0, 100);
   OrtAllocatorFree(default_allocator.get(), p);
   const OrtAllocatorInfo* info1 = OrtAllocatorGetInfo(default_allocator.get());
-  const OrtAllocatorInfo* info2 = (*default_allocator)->Info(default_allocator.get());
+  const OrtAllocatorInfo* info2 = default_allocator->Info(default_allocator.get());
   ASSERT_EQ(0, OrtCompareAllocatorInfo(info1, info2));
 }

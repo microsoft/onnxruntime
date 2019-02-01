@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Numerics.Tensors;
 using System.Threading.Tasks;
 using Xunit;
@@ -13,10 +14,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 {
     public class InferenceTest
     {
+        private const string module = "onnxruntime.dll";
+
         [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             using (var session = new InferenceSession(modelPath))
             {
                 Assert.NotNull(session);
@@ -49,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void CanRunInferenceOnAModel()
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             using (var session = new InferenceSession(modelPath))
             {
@@ -67,29 +70,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 // Run the inference
-                var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
-
-                Assert.Equal(1, results.Count);
-
-                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-                // validate the results
-                foreach (var r in results)
+                using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
                 {
-                    Assert.Equal("softmaxout_1", r.Name);
+                    Assert.Equal(1, results.Count);
 
-                    var resultTensor = r.AsTensor<float>();
-                    int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
-                    Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
-
-                    var resultDimensions = resultTensor.Dimensions;
-                    for (int i = 0; i < expectedDimensions.Length; i++)
+                    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                    // validate the results
+                    foreach (var r in results)
                     {
-                        Assert.Equal(expectedDimensions[i], resultDimensions[i]);
-                    }
+                        Assert.Equal("softmaxout_1", r.Name);
 
-                    var resultArray = r.AsTensor<float>().ToArray();
-                    Assert.Equal(expectedOutput.Length, resultArray.Length);
-                    Assert.Equal(expectedOutput, resultArray, new floatComparer());
+                        var resultTensor = r.AsTensor<float>();
+                        int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                        Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+                        var resultDimensions = resultTensor.Dimensions;
+                        for (int i = 0; i < expectedDimensions.Length; i++)
+                        {
+                            Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+                        }
+
+                        var resultArray = r.AsTensor<float>().ToArray();
+                        Assert.Equal(expectedOutput.Length, resultArray.Length);
+                        Assert.Equal(expectedOutput, resultArray, new floatComparer());
+                    }
                 }
             }
         }
@@ -121,7 +125,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] Unexpected input data type. Actual: (class onnxruntime::NonOnnxType<int>) , expected: (class onnxruntime::NonOnnxType<float>)", ex.Message);
+            var msg = ex.ToString().Substring(0, 101);
+            // TODO: message is diff in LInux. Use substring match
+            Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
             session.Dispose();
         }
 
@@ -208,17 +214,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestPreTrainedModelsOpset7And8()
         {
+            // 16-bit float not supported type in C#.
+            var skipModels = new[] {
+                "fp16_inception_v1",
+                "fp16_shufflenet",
+                "fp16_tiny_yolov2" };
+
             var opsets = new[] { "opset7", "opset8" };
             foreach (var opset in opsets)
             {
                 var modelRoot = new DirectoryInfo(opset);
+                var cwd = Directory.GetCurrentDirectory();
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
-                    // TODO: dims contains 'None'. Session throws error.
-                    if (modelDir.Name== "test_tiny_yolov2")
+                    String onnxModelFileName = null;
+
+                    if (skipModels.Contains(modelDir.Name))
                         continue;
 
-                    String onnxModelFileName = null;
                     try
                     {
                         var onnxModelNames = modelDir.GetFiles("*.onnx");
@@ -234,21 +247,32 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                         }
 
-                        onnxModelFileName = $"{opset}\\{modelDir.Name}\\{onnxModelNames[0].Name}";
-                        var session = new InferenceSession(onnxModelFileName);
-                        var inMeta = session.InputMetadata;
-                        var innodepair = inMeta.First();
-                        var innodename = innodepair.Key;
-                        var innodedims = innodepair.Value.Dimensions;
-                        var dataIn = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\input_0.pb");
-                        var dataOut = LoadTensorFromFilePb($"{opset}\\{modelDir.Name}\\test_data_set_0\\output_0.pb");
-                        var tensorIn = new DenseTensor<float>(dataIn, innodedims);
-                        var nov = new List<NamedOnnxValue>();
-                        nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
-                        var resnov = session.Run(nov);
-                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
-                        Assert.Equal(res, dataOut, new floatComparer());
-                        session.Dispose();
+                        onnxModelFileName = Path.Combine(cwd, opset, modelDir.Name, onnxModelNames[0].Name);
+                        using (var session = new InferenceSession(onnxModelFileName))
+                        {
+                            var inMeta = session.InputMetadata;
+                            var innodepair = inMeta.First();
+                            var innodename = innodepair.Key;
+                            var innodedims = innodepair.Value.Dimensions;
+                            for (int i = 0; i < innodedims.Length; i++)
+                            {
+                                if (innodedims[i] < 0)
+                                    innodedims[i] = -1 * innodedims[i];
+                            }
+
+                            var testRoot = new DirectoryInfo(Path.Combine(cwd, opset, modelDir.Name));
+                            var testData = testRoot.EnumerateDirectories("test_data*").First();
+                            var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
+                            var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
+                            var tensorIn = new DenseTensor<float>(dataIn, innodedims);
+                            var nov = new List<NamedOnnxValue>();
+                            nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
+                            using (var resnov = session.Run(nov))
+                            {
+                                var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
+                                Assert.Equal(res, dataOut, new floatComparer());
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -263,207 +287,300 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputFloat()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_FLOAT.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<float>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT.pb");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<float>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact(Skip = "Boolean tensor not supported yet")]
         private void TestModelInputBOOL()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_BOOL.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<bool>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_BOOL.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<bool>(new bool[] { true, false, true, false, true }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<bool>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT32.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<int>(new int[] { 1, -2, -3, int.MinValue, int.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<int>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT32.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<int>(new int[] { 1, -2, -3, int.MinValue, int.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<int>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputDOUBLE()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_DOUBLE.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<double>(new double[] { 1.0, 2.0, -3.0, 5, 5 }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<double>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_DOUBLE.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<double>(new double[] { 1.0, 2.0, -3.0, 5, 5 }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<double>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+            
         }
 
         [Fact(Skip = "String tensor not supported yet")]
         private void TestModelInputSTRING()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_STRING.onnx";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<string>(new string[] { "a", "c", "d", "z", "f" }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<string>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.onnx");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<string>(new string[] { "a", "c", "d", "z", "f" }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<string>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact(Skip = "Int8 not supported yet")]
         private void TestModelInputINT8()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT8.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<sbyte>(new sbyte[] { 1, 2, -3, sbyte.MinValue, sbyte.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<sbyte>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT8.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<sbyte>(new sbyte[] { 1, 2, -3, sbyte.MinValue, sbyte.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<sbyte>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputUINT8()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT8.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<byte>(new byte[] { 1, 2, 3, byte.MinValue, byte.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<byte>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT8.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<byte>(new byte[] { 1, 2, 3, byte.MinValue, byte.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<byte>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputUINT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT16.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<UInt16>(new UInt16[] { 1, 2, 3, UInt16.MinValue, UInt16.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<UInt16>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT16.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<UInt16>(new UInt16[] { 1, 2, 3, UInt16.MinValue, UInt16.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<UInt16>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputINT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT16.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<Int16>(new Int16[] { 1, 2, 3, Int16.MinValue, Int16.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<Int16>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT16.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<Int16>(new Int16[] { 1, 2, 3, Int16.MinValue, Int16.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<Int16>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputINT64()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_INT64.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<Int64>(new Int64[] { 1, 2, -3, Int64.MinValue, Int64.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<Int64>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_INT64.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<Int64>(new Int64[] { 1, 2, -3, Int64.MinValue, Int64.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<Int64>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
         [Fact]
         private void TestModelInputUINT32()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT32.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<UInt32>(new UInt32[] { 1, 2, 3, UInt32.MinValue, UInt32.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<UInt32>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT32.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<UInt32>(new UInt32[] { 1, 2, 3, UInt32.MinValue, UInt32.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<UInt32>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
         [Fact]
         private void TestModelInputUINT64()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_UINT64.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<UInt64>(new UInt64[] { 1, 2, 3, UInt64.MinValue, UInt64.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<UInt64>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_UINT64.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<UInt64>(new UInt64[] { 1, 2, 3, UInt64.MinValue, UInt64.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<UInt64>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
         }
 
-        [Fact(Skip = "Boolean FLOAT16 not available in C#")]
+        [Fact(Skip = "FLOAT16 not available in C#")]
         private void TestModelInputFLOAT16()
         {
             // model takes 1x5 input of fixed type, echoes back
-            string modelPath = Directory.GetCurrentDirectory() + @"\test_types_FLOAT16.pb";
-            var session = new InferenceSession(modelPath);
-            var container = new List<NamedOnnxValue>();
-            var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
-            var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
-            container.Add(nov);
-            var res = session.Run(container);
-            var tensorOut = res.First().AsTensor<float>();
-            Assert.True(tensorOut.SequenceEqual(tensorIn));
-            session.Dispose();
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_FLOAT16.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 1.0f, 2.0f, -3.0f, float.MinValue, float.MaxValue }, new int[] { 1, 5 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+                using (var res = session.Run(container))
+                {
+                    var tensorOut = res.First().AsTensor<float>();
+                    Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+        }
+
+        [Fact]
+        private void TestGpu()
+        {
+            // TODO: execute based on test pool directly (cpu or gpu)
+            var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
+            var tuple = (gpu != null) ? OpenSessionSqueezeNet(Int32.Parse(gpu)) : OpenSessionSqueezeNet();
+            using (var session = tuple.Item1)
+            {
+                var inputData = tuple.Item2;
+                var tensor = tuple.Item3;
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
+                var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
+                Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
+            }
+        }
+
+        [DllImport("kernel32", SetLastError = true)]
+        static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32", CharSet = CharSet.Ansi)]
+        static extern UIntPtr GetProcAddress(IntPtr hModule, string procName);
+
+        [Fact]
+        private void VerifyNativeMethodsExist()
+        {
+            // Check for  external API changes
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return;
+            var entryPointNames = new[]{
+            "OrtCreateEnv","OrtReleaseEnv","OrtGetErrorCode","OrtGetErrorMessage",
+            "OrtReleaseStatus","OrtCreateSession","OrtRun","OrtSessionGetInputCount",
+            "OrtSessionGetOutputCount","OrtSessionGetInputName","OrtSessionGetOutputName","OrtSessionGetInputTypeInfo",
+            "OrtSessionGetOutputTypeInfo","OrtReleaseSession","OrtCreateSessionOptions","OrtCloneSessionOptions",
+            "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
+            "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSessionOptionsAppendExecutionProvider_CPU",
+            "OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
+            "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
+            "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetNumOfDimensions",
+            "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
+
+            var hModule = LoadLibrary(module);
+            foreach (var ep in entryPointNames)
+            {
+                var x = GetProcAddress(hModule, ep);
+                Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
+            }
         }
 
         static float[] LoadTensorFromFile(string filename, bool skipheader = true)
@@ -496,10 +613,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return floatArr;
         }
 
-        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet()
+        static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
-            var session = new InferenceSession(modelPath);
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            var session = (cudaDeviceId.HasValue)
+                ? new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value)) 
+                : new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
             var inputMeta = session.InputMetadata;

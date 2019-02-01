@@ -58,7 +58,7 @@ struct ort_endian {
   union q {
     uint16_t v_;
     uint8_t b_[2];
-    constexpr q(uint16_t v) noexcept : v_(v) {}
+    constexpr explicit q(uint16_t v) noexcept : v_(v) {}
   };
   static constexpr bool is_little() {
     return q(0x200).b_[0] == 0x0;
@@ -70,8 +70,8 @@ struct ort_endian {
 
 //BFloat16
 struct BFloat16 {
-  uint16_t val;
-  explicit BFloat16() : val(0) {}
+  uint16_t val{0};
+  explicit BFloat16() {}
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
     uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
@@ -332,7 +332,7 @@ class TensorTypeBase : public DataTypeImpl {
   ONNX_NAMESPACE::TypeProto& mutable_type_proto();
 
   TensorTypeBase();
-  ~TensorTypeBase();
+  ~TensorTypeBase() override;
 
  private:
   struct Impl;
@@ -390,7 +390,7 @@ class NonTensorTypeBase : public DataTypeImpl {
 
  protected:
   NonTensorTypeBase();
-  ~NonTensorTypeBase();
+  ~NonTensorTypeBase() override;
 
   ONNX_NAMESPACE::TypeProto& mutable_type_proto();
 
@@ -533,7 +533,7 @@ class NonOnnxType : public DataTypeImpl {
     return &Delete;
   }
 
-  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override final {
+  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const final {
     return nullptr;
   }
 

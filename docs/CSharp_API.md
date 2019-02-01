@@ -2,7 +2,7 @@
 The ONNX runtime provides a C# .Net binding for running inference on ONNX models in any of the .Net standard platforms. The API is .Net standard 1.1 compliant for maximum portability. This document describes the API. 
 
 ## NuGet Package
-The Microsoft.ML.OnnxRuntime Nuget package includes the precompiled binaries for ONNX runtime, and includes libraries for Windows 10 platform and X64 CPUs. The APIs conform to .Net Standard 1.1.
+The Microsoft.ML.OnnxRuntime Nuget package includes the precompiled binaries for ONNX runtime, and includes libraries for Windows and Linux platforms with X64 CPUs. The APIs conform to .Net Standard 1.1.
 
 ## Getting Started
 Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data. The model is typically trained using any of the well-known training frameworks and exported into the ONNX format. To start scoring using the model, open a session using the `InferenceSession` class, passing in the file path to the model as a parameter.
@@ -17,7 +17,10 @@ Once a session is created, you can execute queries using the `Run` method of the
                     NamedOnnxValue.CreateFromTensor<float>("name1", t1),
                     NamedOnnxValue.CreateFromTensor<float>("name2", t2)
                  };
-    IReadOnlyCollection<NamedOnnxValue> results = session.Run(inputs);
+    using (var results = session.Run(inputs))
+    {
+        // manipulate the results
+    }
 
 You can load your input data into Tensor<T> objects in several ways. A simple example is to create the Tensor from arrays.
 
@@ -27,6 +30,11 @@ You can load your input data into Tensor<T> objects in several ways. A simple ex
 
 Here is a [complete sample code](https://github.com/Microsoft/onnxruntime/tree/master/csharp/sample/Microsoft.ML.OnnxRuntime.InferenceSample) that runs inference on a pretrained model.
 
+## Running on GPU (Optional)
+If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.
+
+   int gpuDeviceId = 0; // The GPU device ID to execute on
+   var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId));
 
 ## API Reference
 ### InferenceSession
@@ -44,10 +52,10 @@ Data types and shapes of the input nodes of the model.
 Data types and shapes of the output nodes of the model.
 
 #### Methods
-    IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs);
-Runs the model with the given input data to compute all the output nodes and returns the output node values. Both input and output are collection of NamedOnnxValue, which in turn is a name-value pair of string names and Tensor values.
+    IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs);
+Runs the model with the given input data to compute all the output nodes and returns the output node values. Both input and output are collection of NamedOnnxValue, which in turn is a name-value pair of string names and Tensor values. The outputs are IDisposable variant of NamedOnnxValue, since they wrap some unmanaged objects.
 
-    IReadOnlyCollection<NamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> desiredOutputNodes);
+    IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> desiredOutputNodes);
 Runs the model on given inputs for the given output nodes only.
 
 ### System.Numerics.Tensor
@@ -70,6 +78,13 @@ Creates a NamedOnnxValue from a name and a Tensor<T> object.
     Tensor<T> AsTensor<T>();
 Accesses the value as a Tensor<T>. Returns null if the value is not a Tensor<T>.     
 
+### DisposableNamedOnnxValue
+    class DisposableNamedOnnxValue: NamedOnnxValue, IDisposable;
+This is a disposable variant of NamedOnnxValue, used for holding output values which contains objects allocated in unmanaged memory. 
+
+### IDisposableReadOnlyCollection
+    interface IDisposableReadOnlyCollection: IReadOnlyCollection, IDisposable
+Collection interface to hold disposable values. Used for output of Run method.
 
 ### SessionOptions
     class SessionOptions: IDisposable;

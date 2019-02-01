@@ -65,16 +65,13 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
-  status = SequentialPlanner::CreatePlan(graph, {}, execution_providers, kernel_registry_manager, mlvalue_name_idx_map,
+  status = SequentialPlanner::CreatePlan(GraphViewer(graph), {}, execution_providers, kernel_registry_manager, mlvalue_name_idx_map,
                                          p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
   vector<MLValue> outputs;
-  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{},
-                       std::vector<std::string>{},
-                       outputs,
-                       state);
+  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{}, std::vector<std::string>{}, outputs, {}, state);
 
   int start_index = frame.GetFirstArgIndex(node->Index());
   EXPECT_EQ(start_index, 0);
@@ -149,9 +146,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
 
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X", value}},
-                       std::vector<std::string>{},
-                       outputs,
-                       state);
+                       std::vector<std::string>{}, outputs, {}, state);
 
   MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -220,7 +215,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
                        std::vector<float>(6, 1.0f), &v3);
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = std::make_unique<SequentialExecutionPlan>();
-  status = SequentialPlanner::CreatePlan(graph, {}, execution_providers, kernel_registry_manager, mlvalue_name_idx_map,
+  status = SequentialPlanner::CreatePlan(GraphViewer(graph), {}, execution_providers, kernel_registry_manager, mlvalue_name_idx_map,
                                          p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -228,9 +223,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
 
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X1", v1}, {"X2", v2}, {"X3", v3}},
-                       std::vector<std::string>{"T3"},
-                       outputs,
-                       state);
+                       std::vector<std::string>{"T3"}, outputs, {}, state);
 
   status = frame.AllocateMLValueTensorSelfOwnBuffer(3,
                                                     DataTypeImpl::GetType<float>(),

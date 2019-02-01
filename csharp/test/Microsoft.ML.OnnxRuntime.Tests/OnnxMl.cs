@@ -53,39 +53,43 @@ namespace Onnx {
             "b3RvEhIKCmRvY19zdHJpbmcYCiABKAkSIwoFaW5wdXQYCyADKAsyFC5vbm54",
             "LlZhbHVlSW5mb1Byb3RvEiQKBm91dHB1dBgMIAMoCzIULm9ubnguVmFsdWVJ",
             "bmZvUHJvdG8SKAoKdmFsdWVfaW5mbxgNIAMoCzIULm9ubnguVmFsdWVJbmZv",
-            "UHJvdG8ioQQKC1RlbnNvclByb3RvEgwKBGRpbXMYASADKAMSEQoJZGF0YV90",
+            "UHJvdG8iuAUKC1RlbnNvclByb3RvEgwKBGRpbXMYASADKAMSEQoJZGF0YV90",
             "eXBlGAIgASgFEioKB3NlZ21lbnQYAyABKAsyGS5vbm54LlRlbnNvclByb3Rv",
             "LlNlZ21lbnQSFgoKZmxvYXRfZGF0YRgEIAMoAkICEAESFgoKaW50MzJfZGF0",
             "YRgFIAMoBUICEAESEwoLc3RyaW5nX2RhdGEYBiADKAwSFgoKaW50NjRfZGF0",
             "YRgHIAMoA0ICEAESDAoEbmFtZRgIIAEoCRISCgpkb2Nfc3RyaW5nGAwgASgJ",
-            "EhAKCHJhd19kYXRhGAkgASgMEhcKC2RvdWJsZV9kYXRhGAogAygBQgIQARIX",
-            "Cgt1aW50NjRfZGF0YRgLIAMoBEICEAEaJQoHU2VnbWVudBINCgViZWdpbhgB",
-            "IAEoAxILCgNlbmQYAiABKAMi2gEKCERhdGFUeXBlEg0KCVVOREVGSU5FRBAA",
-            "EgkKBUZMT0FUEAESCQoFVUlOVDgQAhIICgRJTlQ4EAMSCgoGVUlOVDE2EAQS",
-            "CQoFSU5UMTYQBRIJCgVJTlQzMhAGEgkKBUlOVDY0EAcSCgoGU1RSSU5HEAgS",
-            "CAoEQk9PTBAJEgsKB0ZMT0FUMTYQChIKCgZET1VCTEUQCxIKCgZVSU5UMzIQ",
-            "DBIKCgZVSU5UNjQQDRINCglDT01QTEVYNjQQDhIOCgpDT01QTEVYMTI4EA8S",
-            "DAoIQkZMT0FUMTYQECKVAQoQVGVuc29yU2hhcGVQcm90bxItCgNkaW0YASAD",
-            "KAsyIC5vbm54LlRlbnNvclNoYXBlUHJvdG8uRGltZW5zaW9uGlIKCURpbWVu",
-            "c2lvbhITCglkaW1fdmFsdWUYASABKANIABITCglkaW1fcGFyYW0YAiABKAlI",
-            "ABISCgpkZW5vdGF0aW9uGAMgASgJQgcKBXZhbHVlIsIECglUeXBlUHJvdG8S",
-            "LQoLdGVuc29yX3R5cGUYASABKAsyFi5vbm54LlR5cGVQcm90by5UZW5zb3JI",
-            "ABIxCg1zZXF1ZW5jZV90eXBlGAQgASgLMhgub25ueC5UeXBlUHJvdG8uU2Vx",
-            "dWVuY2VIABInCghtYXBfdHlwZRgFIAEoCzITLm9ubnguVHlwZVByb3RvLk1h",
-            "cEgAEi0KC29wYXF1ZV90eXBlGAcgASgLMhYub25ueC5UeXBlUHJvdG8uT3Bh",
-            "cXVlSAASOgoSc3BhcnNlX3RlbnNvcl90eXBlGAggASgLMhwub25ueC5UeXBl",
-            "UHJvdG8uU3BhcnNlVGVuc29ySAASEgoKZGVub3RhdGlvbhgGIAEoCRpCCgZU",
-            "ZW5zb3ISEQoJZWxlbV90eXBlGAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25u",
-            "eC5UZW5zb3JTaGFwZVByb3RvGi4KCFNlcXVlbmNlEiIKCWVsZW1fdHlwZRgB",
-            "IAEoCzIPLm9ubnguVHlwZVByb3RvGjwKA01hcBIQCghrZXlfdHlwZRgBIAEo",
-            "BRIjCgp2YWx1ZV90eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8aJgoGT3Bh",
-            "cXVlEg4KBmRvbWFpbhgBIAEoCRIMCgRuYW1lGAIgASgJGkgKDFNwYXJzZVRl",
-            "bnNvchIRCgllbGVtX3R5cGUYASABKAUSJQoFc2hhcGUYAiABKAsyFi5vbm54",
-            "LlRlbnNvclNoYXBlUHJvdG9CBwoFdmFsdWUiNQoST3BlcmF0b3JTZXRJZFBy",
-            "b3RvEg4KBmRvbWFpbhgBIAEoCRIPCgd2ZXJzaW9uGAIgASgDKmMKB1ZlcnNp",
-            "b24SEgoOX1NUQVJUX1ZFUlNJT04QABIZChVJUl9WRVJTSU9OXzIwMTdfMTBf",
-            "MTAQARIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMzAQAhIOCgpJUl9WRVJTSU9O",
-            "EANiBnByb3RvMw=="));
+            "EhAKCHJhd19kYXRhGAkgASgMEjMKDWV4dGVybmFsX2RhdGEYDSADKAsyHC5v",
+            "bm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8SNQoNZGF0YV9sb2NhdGlvbhgO",
+            "IAEoDjIeLm9ubnguVGVuc29yUHJvdG8uRGF0YUxvY2F0aW9uEhcKC2RvdWJs",
+            "ZV9kYXRhGAogAygBQgIQARIXCgt1aW50NjRfZGF0YRgLIAMoBEICEAEaJQoH",
+            "U2VnbWVudBINCgViZWdpbhgBIAEoAxILCgNlbmQYAiABKAMi2gEKCERhdGFU",
+            "eXBlEg0KCVVOREVGSU5FRBAAEgkKBUZMT0FUEAESCQoFVUlOVDgQAhIICgRJ",
+            "TlQ4EAMSCgoGVUlOVDE2EAQSCQoFSU5UMTYQBRIJCgVJTlQzMhAGEgkKBUlO",
+            "VDY0EAcSCgoGU1RSSU5HEAgSCAoEQk9PTBAJEgsKB0ZMT0FUMTYQChIKCgZE",
+            "T1VCTEUQCxIKCgZVSU5UMzIQDBIKCgZVSU5UNjQQDRINCglDT01QTEVYNjQQ",
+            "DhIOCgpDT01QTEVYMTI4EA8SDAoIQkZMT0FUMTYQECIpCgxEYXRhTG9jYXRp",
+            "b24SCwoHREVGQVVMVBAAEgwKCEVYVEVSTkFMEAEilQEKEFRlbnNvclNoYXBl",
+            "UHJvdG8SLQoDZGltGAEgAygLMiAub25ueC5UZW5zb3JTaGFwZVByb3RvLkRp",
+            "bWVuc2lvbhpSCglEaW1lbnNpb24SEwoJZGltX3ZhbHVlGAEgASgDSAASEwoJ",
+            "ZGltX3BhcmFtGAIgASgJSAASEgoKZGVub3RhdGlvbhgDIAEoCUIHCgV2YWx1",
+            "ZSLCBAoJVHlwZVByb3RvEi0KC3RlbnNvcl90eXBlGAEgASgLMhYub25ueC5U",
+            "eXBlUHJvdG8uVGVuc29ySAASMQoNc2VxdWVuY2VfdHlwZRgEIAEoCzIYLm9u",
+            "bnguVHlwZVByb3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5cGUYBSABKAsyEy5v",
+            "bm54LlR5cGVQcm90by5NYXBIABItCgtvcGFxdWVfdHlwZRgHIAEoCzIWLm9u",
+            "bnguVHlwZVByb3RvLk9wYXF1ZUgAEjoKEnNwYXJzZV90ZW5zb3JfdHlwZRgI",
+            "IAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRlbnNvckgAEhIKCmRlbm90",
+            "YXRpb24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVz",
+            "aGFwZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90bxouCghTZXF1ZW5j",
+            "ZRIiCgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQcm90bxo8CgNNYXAS",
+            "EAoIa2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgCIAEoCzIPLm9ubngu",
+            "VHlwZVByb3RvGiYKBk9wYXF1ZRIOCgZkb21haW4YASABKAkSDAoEbmFtZRgC",
+            "IAEoCRpICgxTcGFyc2VUZW5zb3ISEQoJZWxlbV90eXBlGAEgASgFEiUKBXNo",
+            "YXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFwZVByb3RvQgcKBXZhbHVlIjUK",
+            "Ek9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASABKAkSDwoHdmVyc2lv",
+            "bhgCIAEoAyp9CgdWZXJzaW9uEhIKDl9TVEFSVF9WRVJTSU9OEAASGQoVSVJf",
+            "VkVSU0lPTl8yMDE3XzEwXzEwEAESGQoVSVJfVkVSU0lPTl8yMDE3XzEwXzMw",
+            "EAISGAoUSVJfVkVSU0lPTl8yMDE3XzExXzMQAxIOCgpJUl9WRVJTSU9OEARi",
+            "BnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), }, new pbr::GeneratedClrTypeInfo[] {
@@ -95,7 +99,7 @@ namespace Onnx {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "MetadataProps" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "DocString", "Input", "Output", "ValueInfo" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType) }, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null)}),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "OpaqueType", "SparseTensorType", "Denotation" }, new[]{ "Value" }, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Sequence), global::Onnx.TypeProto.Types.Sequence.Parser, new[]{ "ElemType" }, null, null, null),
@@ -143,7 +147,13 @@ namespace Onnx {
     ///    - Added opset_import in ModelProto
     /// - For vendor extensions, added domain in NodeProto
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 3,
+    [pbr::OriginalName("IR_VERSION_2017_11_3")] IrVersion2017113 = 3,
+    /// <summary>
+    /// IR VERSION 4 published on Jan 22, 2019
+    /// - Relax constraint that initializers should be a subset of graph inputs
+    /// - Add type BFLOAT16
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 4,
   }
 
   #endregion
@@ -1846,7 +1856,7 @@ namespace Onnx {
     /// <summary>
     /// A list of named tensor values, used to specify constant inputs of the graph.
     /// Each TensorProto entry must have a distinct name (within the list) that
-    /// also appears in the input list.
+    /// MAY also appear in the input list.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Onnx.TensorProto> Initializer {
@@ -2089,6 +2099,8 @@ namespace Onnx {
       name_ = other.name_;
       docString_ = other.docString_;
       rawData_ = other.rawData_;
+      externalData_ = other.externalData_.Clone();
+      dataLocation_ = other.dataLocation_;
       doubleData_ = other.doubleData_.Clone();
       uint64Data_ = other.uint64Data_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
@@ -2261,6 +2273,41 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "external_data" field.</summary>
+    public const int ExternalDataFieldNumber = 13;
+    private static readonly pb::FieldCodec<global::Onnx.StringStringEntryProto> _repeated_externalData_codec
+        = pb::FieldCodec.ForMessage(106, global::Onnx.StringStringEntryProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> externalData_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
+    /// <summary>
+    /// Data can be stored inside the protobuf file using type-specific fields or raw_data.
+    /// Alternatively, raw bytes data can be stored in an external file, using the external_data field.
+    /// external_data stores key-value pairs describing data location. Recognized keys are:
+    /// - "location" (required) - POSIX filesystem path relative to the directory where the ONNX
+    ///                           protobuf model was stored
+    /// - "offset" (optional) - position of byte at which stored data begins. Integer stored as string.
+    ///                         Offset values SHOULD be multiples 4096 (page size) to enable mmap support.
+    /// - "length" (optional) - number of bytes containing data. Integer stored as string.
+    /// - "checksum" (optional) - SHA1 digest of file specified in under 'location' key.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.StringStringEntryProto> ExternalData {
+      get { return externalData_; }
+    }
+
+    /// <summary>Field number for the "data_location" field.</summary>
+    public const int DataLocationFieldNumber = 14;
+    private global::Onnx.TensorProto.Types.DataLocation dataLocation_ = 0;
+    /// <summary>
+    /// If value not set, data is stored in raw_data (if set) otherwise in type-specified field.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.TensorProto.Types.DataLocation DataLocation {
+      get { return dataLocation_; }
+      set {
+        dataLocation_ = value;
+      }
+    }
+
     /// <summary>Field number for the "double_data" field.</summary>
     public const int DoubleDataFieldNumber = 10;
     private static readonly pb::FieldCodec<double> _repeated_doubleData_codec
@@ -2318,6 +2365,8 @@ namespace Onnx {
       if (Name != other.Name) return false;
       if (DocString != other.DocString) return false;
       if (RawData != other.RawData) return false;
+      if(!externalData_.Equals(other.externalData_)) return false;
+      if (DataLocation != other.DataLocation) return false;
       if(!doubleData_.Equals(other.doubleData_)) return false;
       if(!uint64Data_.Equals(other.uint64Data_)) return false;
       return Equals(_unknownFields, other._unknownFields);
@@ -2336,6 +2385,8 @@ namespace Onnx {
       if (Name.Length != 0) hash ^= Name.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
       if (RawData.Length != 0) hash ^= RawData.GetHashCode();
+      hash ^= externalData_.GetHashCode();
+      if (DataLocation != 0) hash ^= DataLocation.GetHashCode();
       hash ^= doubleData_.GetHashCode();
       hash ^= uint64Data_.GetHashCode();
       if (_unknownFields != null) {
@@ -2378,6 +2429,11 @@ namespace Onnx {
         output.WriteRawTag(98);
         output.WriteString(DocString);
       }
+      externalData_.WriteTo(output, _repeated_externalData_codec);
+      if (DataLocation != 0) {
+        output.WriteRawTag(112);
+        output.WriteEnum((int) DataLocation);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -2405,6 +2461,10 @@ namespace Onnx {
       }
       if (RawData.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeBytesSize(RawData);
+      }
+      size += externalData_.CalculateSize(_repeated_externalData_codec);
+      if (DataLocation != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) DataLocation);
       }
       size += doubleData_.CalculateSize(_repeated_doubleData_codec);
       size += uint64Data_.CalculateSize(_repeated_uint64Data_codec);
@@ -2441,6 +2501,10 @@ namespace Onnx {
       }
       if (other.RawData.Length != 0) {
         RawData = other.RawData;
+      }
+      externalData_.Add(other.externalData_);
+      if (other.DataLocation != 0) {
+        DataLocation = other.DataLocation;
       }
       doubleData_.Add(other.doubleData_);
       uint64Data_.Add(other.uint64Data_);
@@ -2512,6 +2576,14 @@ namespace Onnx {
             DocString = input.ReadString();
             break;
           }
+          case 106: {
+            externalData_.AddEntriesFrom(input, _repeated_externalData_codec);
+            break;
+          }
+          case 112: {
+            dataLocation_ = (global::Onnx.TensorProto.Types.DataLocation) input.ReadEnum();
+            break;
+          }
         }
       }
     }
@@ -2580,6 +2652,16 @@ namespace Onnx {
         /// This format has 1 sign bit, 8 exponent bits, and 7 mantissa bits.
         /// </summary>
         [pbr::OriginalName("BFLOAT16")] Bfloat16 = 16,
+      }
+
+      /// <summary>
+      /// Location of the data for this tensor. MUST be one of:
+      /// - DEFAULT - data stored inside the protobuf message. Data is stored in raw_data (if set) otherwise in type-specified field.
+      /// - EXTERNAL - data stored in an external location as described by external_data field.
+      /// </summary>
+      public enum DataLocation {
+        [pbr::OriginalName("DEFAULT")] Default = 0,
+        [pbr::OriginalName("EXTERNAL")] External = 1,
       }
 
       /// <summary>

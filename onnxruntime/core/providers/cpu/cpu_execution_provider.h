@@ -25,8 +25,7 @@ using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vect
 class CPUExecutionProvider : public IExecutionProvider {
  public:
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {
-          return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
 #ifdef USE_JEMALLOC
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.

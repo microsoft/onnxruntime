@@ -9,7 +9,11 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+
+#ifndef USE_EIGEN_THREADPOOL
 #include "core/common/task_thread_pool.h"
+#endif
+
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
@@ -30,6 +34,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
                                  const NameMLValMap& feeds,
                                  const std::vector<std::string>& output_names,
                                  std::vector<MLValue>& fetches,
+                                 const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                                  const logging::Logger& logger) {
   TimePoint tp;
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
@@ -37,7 +42,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
     tp = session_state.Profiler().StartTime();
   }
 
-  root_frame_ = std::make_unique<ExecutionFrame>(feeds, output_names, fetches, session_state);
+  root_frame_ = std::make_unique<ExecutionFrame>(feeds, output_names, fetches, fetch_allocators, session_state);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
     auto p_op_kernel = session_state.GetKernel(node_index);
@@ -50,12 +55,13 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
 
   // Wait for finish.
   {
-    std::unique_lock<std::mutex> lock(complete_mutex_);
+    std::unique_lock<OrtMutex> lock(complete_mutex_);
     while (out_standings_ > 0) complete_cv_.wait(lock);
   }
 
   VLOGS(logger, 1) << "Fetching output.";
-  ORT_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), *root_frame_, output_names, fetches, logger));
+  ORT_RETURN_IF_ERROR(
+      FetchOutput(session_state.GetMLValueNameIdxMap(), *root_frame_, output_names, fetches, logger));
 
   if (root_frame_->HasPlan()) {
     std::vector<TensorShape> input_shapes;
@@ -134,14 +140,22 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
@@ -213,7 +227,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       auto begin = p_op_kernel->Node().OutputEdgesBegin();
       auto end = p_op_kernel->Node().OutputEdgesEnd();
 
-      std::lock_guard<std::mutex> lock(ref_mutex_);
+      std::lock_guard<OrtMutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
         auto idx = (*it).GetNode().Index();
         if ((--node_refs_[idx]) == 0) {
@@ -225,7 +239,9 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
           }
         }
 
-        //std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: " << p_node_index << ", output name: " << (*it)->GetNode().Name() << ", output index: " << (*it)->GetNode().Index() << ", after -- output ref: " << node_refs_[idx] << std::endl;
+        // std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: "
+        // << p_node_index << ", output name: " << (*it)->GetNode().Name() << ", output index: "
+        // << (*it)->GetNode().Index() << ", after -- output ref: " << node_refs_[idx] << std::endl;
       }
     }
   }
@@ -235,12 +251,22 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
 
 void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger) {
   {
-    std::unique_lock<std::mutex> lock(complete_mutex_);
+    std::unique_lock<OrtMutex> lock(complete_mutex_);
     out_standings_++;
   }
-  //std::cout << "Enqueue async node: " << p_node_index << ", out_standings: " << out_standings_ << std::endl;
+
+#ifdef USE_EIGEN_THREADPOOL
+  session_state.GetThreadPool()->Schedule([this, p_node_index, &session_state, &logger]() {
+    try {
+      ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
+    } catch (...) {
+      // catch node processing failure exceptions here to prevent app crash.
+    }
+  });
+#else
   std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
   session_state.GetThreadPool()->RunTask(std::move(task));
+#endif
 }
 
 Status ParallelExecutor::FetchOutput(const MLValueNameIdxMap& name_idx_map,

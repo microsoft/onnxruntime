@@ -8,20 +8,21 @@
 import os
 import sys
 import shutil
+import warnings
 # Check these extensions were installed.
 import sphinx_gallery.gen_gallery
 # The package should be installed in a virtual environment.
 import onnxruntime
-# The documentation requires two extensions available at:
+# markdown output: it requires two extensions available at:
 # https://github.com/xadupre/sphinx-docfx-yaml
 # https://github.com/xadupre/sphinx-docfx-markdown
 import sphinx_modern_theme
-
+import recommonmark
 
 # -- Project information -----------------------------------------------------
 
 project = 'ONNX Runtime'
-copyright = '2018, Microsoft'
+copyright = '2018-2019, Microsoft'
 author = 'Microsoft'
 version = onnxruntime.__version__
 release = version
@@ -37,8 +38,6 @@ extensions = [
     'sphinx.ext.githubpages',
     "sphinx_gallery.gen_gallery",
     'sphinx.ext.autodoc',
-    "docfx_yaml.extension",
-    "docfx_markdown",
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
 ]
 
@@ -48,9 +47,20 @@ source_parsers = {
    '.md': 'recommonmark.parser.CommonMarkParser',
 }
 
-source_suffix = ['.rst', '.md']
+source_suffix = ['.rst'] # , '.md']
 
-master_doc = 'intro'
+# enables markdown output
+try:
+    import docfx_markdown
+    extensions.extend([
+        "docfx_yaml.extension",
+        "docfx_markdown",
+    ])
+    source_suffix.append('md')
+except ImportError:
+    warnings.warn("markdown output is not available")
+
+master_doc = 'index'
 language = "en"
 exclude_patterns = []
 pygments_style = 'sphinx'
@@ -59,7 +69,7 @@ pygments_style = 'sphinx'
 
 html_theme = "sphinx_modern_theme"
 html_theme_path = [sphinx_modern_theme.get_html_theme_path()]
-html_logo = "../MSFT-Onnx-Runtime-11282019-Logo.png"
+html_logo = "../ONNX_Runtime_icon.png"
 html_static_path = ['_static']
 
 # -- Options for intersphinx extension ---------------------------------------

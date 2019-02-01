@@ -64,7 +64,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void Delete(IntPtr nativePtr)
         {
-            NativeMethods.ReleaseOrtAllocatorInfo(nativePtr);
+            NativeMethods.OrtReleaseAllocatorInfo(nativePtr);
         }
 
         protected override bool ReleaseHandle()
@@ -141,7 +141,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected static void Delete(IntPtr allocator)
         {
-            NativeMethods.OrtReleaseObject(allocator);
+            NativeMethods.OrtReleaseAllocator(allocator);
         }
 
         protected override bool ReleaseHandle()

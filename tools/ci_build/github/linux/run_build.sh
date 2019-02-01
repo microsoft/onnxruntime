@@ -19,7 +19,7 @@ if [ $BUILD_DEVICE = "gpu" ]; then
         --config Debug Release \
         --skip_submodule_sync --enable_onnx_tests \
         --parallel --build_shared_lib \
-        --use_cuda \
+        --use_cuda --use_openmp \
         --cuda_home /usr/local/cuda \
         --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda --build_shared_lib $BUILD_EXTR_PAR
     /home/onnxruntimedev/Release/onnx_test_runner -e cuda /data/onnx
@@ -28,6 +28,6 @@ else
         --config Debug Release --build_shared_lib \
         --skip_submodule_sync --enable_onnx_tests \
         --enable_pybind \
-        --parallel --use_mkldnn --build_shared_lib $BUILD_EXTR_PAR
+        --parallel --use_openmp --use_mkldnn --build_shared_lib $BUILD_EXTR_PAR
     /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
 fi

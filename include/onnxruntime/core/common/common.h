@@ -150,8 +150,8 @@ std::vector<std::string> GetStackTrace();
     }                                  \
   } while (0)
 
-// C++ Core Guideline check suppression
-#ifdef _MSC_VER
+// C++ Core Guideline check suppression.
+#if defined(_MSC_VER) && !defined(__NVCC__)
 #define GSL_SUPPRESS(tag) [[gsl::suppress(tag)]]
 #else
 #define GSL_SUPPRESS(tag)

@@ -48,7 +48,6 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   }
 
-
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
