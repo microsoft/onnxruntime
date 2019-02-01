@@ -44,7 +44,7 @@ if (WIN32 AND onnxruntime_USE_OPENMP)
     if (onnxruntime_USE_MKLML)
       foreach(type EXE SHARED)
         #use Intel OpenMP instead of MSVC OpenMP    
-        #set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /nodefaultlib:vcomp libiomp5md.lib")
+        set(CMAKE_${type}_LINKER_FLAGS "${CMAKE_${type}_LINKER_FLAGS} /nodefaultlib:vcomp libiomp5md.lib")
       endforeach()
     endif()
   endif()

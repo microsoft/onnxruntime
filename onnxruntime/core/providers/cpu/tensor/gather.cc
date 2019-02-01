@@ -47,11 +47,12 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
                              " data_dim=", input_data_shape[axis]);
     }
   }
-  omp_set_num_threads(24);
-  // int thread_num;
+
+
+#ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
   for (int64_t index = 0; index < M * N; ++index) {
-    // thread_num = omp_get_num_threads();
     int64_t batch = index / N, i = index % N;
 
     const int64_t src_offset_batch = batch * data_batch_bytes;
