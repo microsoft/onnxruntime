@@ -116,11 +116,22 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   // for initializers shared by different providers, create dups
   ProcessInitializers();
 
+  for (auto arg : graph_.GetInputs())
+    BuildDefsMapping(arg, kernel_registries);
+
   for (auto arg : non_provider_input_defs_)
     BuildDefsMapping(arg, kernel_registries);
 
   for (auto arg : non_provider_output_defs_)
     BuildDefsMapping(arg, kernel_registries);
+
+  for (auto arg : graph_.GetInputs())
+    // For inputs we need to create a copy node only when the input is connected to both provider
+    // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
+    if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
+      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
+      modified = true;
+    }
 
   for (auto arg : non_provider_output_defs_)
     if (provider_input_defs_.count(arg)) {

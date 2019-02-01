@@ -1000,17 +1000,17 @@ TEST(ExecutionProviderTest, FunctionTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
+  CPUExecutionProviderInfo epi;
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   MLValue ml_value_x;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
   MLValue ml_value_y;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_y);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
   MLValue ml_value_z;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_z);
+  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -1031,7 +1031,8 @@ TEST(ExecutionProviderTest, FunctionTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 
   InferenceSession session_object_2{so};
-  session_object_2.RegisterExecutionProvider(std::make_unique<FuseExecutionProvider>());
+  session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider));
+  session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>());
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
