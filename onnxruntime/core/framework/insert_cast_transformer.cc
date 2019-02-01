@@ -81,16 +81,72 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   if (graph.NumberOfNodes() <= 1) {
     return Status::OK();
   }
+
   for (auto& node : graph.Nodes()) {
     if (IsSingleInputNodeFloat16Node(node)) {
       node.SetExecutionProviderType("");
     }
   }
-  return graph.Resolve();
+
+  return Status::OK();
 }
 
-Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) const {
-  ORT_RETURN_IF_ERROR(graph.Resolve());
+class RemoveDuplicateCastTransformer : public GraphTransformer {
+ public:
+  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer",
+                                                      "Transformer to remove duplicate Cast nodes.") {
+  }
+
+ private:
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override {
+    std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
+    std::vector<onnxruntime::NodeIndex> removed_nodes;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Cast") {
+        // if cast's next node is also cast and next cast's output type equal to cast's input type
+        // remove those two cast.
+        auto src_type = node.InputDefs()[0]->Type();
+        auto dst_type = node.OutputDefs()[0]->Type();
+        auto input = node.MutableInputDefs()[0];
+        int child_removed = 0;
+        int num_child = 0;
+        for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+          const Node& output_node{*it};
+          if (output_node.OpType() == "Cast") {
+            auto src_type1 = output_node.InputDefs()[0]->Type();
+            auto dst_type1 = output_node.OutputDefs()[0]->Type();
+            if (src_type == dst_type1 && src_type1 == dst_type) {
+              //node *it's output's follower could be linked with node's input.
+              replacement_defs.clear();
+              replacement_defs[const_cast<onnxruntime::NodeArg*>(output_node.OutputDefs()[0])] = input;
+              for (auto next_it = output_node.OutputNodesBegin(); next_it != output_node.OutputNodesEnd(); ++next_it) {
+                const_cast<onnxruntime::Node*>(&(*next_it))->ReplaceDefs(replacement_defs);
+              }
+              removed_nodes.push_back(output_node.Index());
+              child_removed++;
+            }
+          }
+          num_child++;
+        }
+
+        if (child_removed == num_child && child_removed > 0) {
+          removed_nodes.push_back(node.Index());
+        }
+      }
+
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    }
+
+    for (auto i : removed_nodes) {
+      graph.RemoveNode(i);
+    }
+
+    modified = modified || !removed_nodes.empty();
+    return Status::OK();
+  }
+};
+
+Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
 
@@ -160,50 +216,23 @@ Status InsertCastTransformer::Apply(onnxruntime::Graph& graph, bool& modified) c
 
     node->ReplaceDefs(replacement_defs);
     modified = modified || casted;
+
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
   }
 
-  //Resolve it to build the edges.
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-  std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
-  std::vector<onnxruntime::NodeIndex> removed_nodes;
-  for (auto& node : graph.Nodes()) {
-    if (node.OpType() == "Cast") {
-      // if cast's next node is also cast and next cast's output type equal to cast's input type
-      // remove those two cast.
-      auto src_type = node.InputDefs()[0]->Type();
-      auto dst_type = node.OutputDefs()[0]->Type();
-      auto input = node.MutableInputDefs()[0];
-      int child_removed = 0;
-      int num_child = 0;
-      for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-        const Node& output_node{*it};
-        if (output_node.OpType() == "Cast") {
-          auto src_type1 = output_node.InputDefs()[0]->Type();
-          auto dst_type1 = output_node.OutputDefs()[0]->Type();
-          if (src_type == dst_type1 && src_type1 == dst_type) {
-            //node *it's output's follower could be linked with node's input.
-            replacement_defs.clear();
-            replacement_defs[const_cast<onnxruntime::NodeArg*>(output_node.OutputDefs()[0])] = input;
-            for (auto next_it = output_node.OutputNodesBegin(); next_it != output_node.OutputNodesEnd(); ++next_it) {
-              const_cast<onnxruntime::Node*>(&(*next_it))->ReplaceDefs(replacement_defs);
-            }
-            removed_nodes.push_back(output_node.Index());
-            child_removed++;
-          }
-        }
-        num_child++;
-      }
-      if (child_removed == num_child && child_removed > 0) {
-        removed_nodes.push_back(node.Index());
-      }
+  auto status = Status::OK();
+
+  // if this is the main graph we've recursed into all the subgraphs and added Cast nodes.
+  // run the duplicate remover now, which will call Graph::Resolve from Apply(...) and handle the main and subgraphs.
+  if (graph_level == 0) {
+    if (modified) {
+      ORT_RETURN_IF_ERROR(graph.Resolve());
     }
+    
+    RemoveDuplicateCastTransformer remover;
+    status = remover.Apply(graph, modified);
   }
 
-  for (auto i : removed_nodes) {
-    graph.RemoveNode(i);
-  }
-
-  modified = modified || !removed_nodes.empty();
-  return Status::OK();
+  return status;
 }
 }  // namespace onnxruntime

@@ -150,10 +150,12 @@ class SessionState {
   /// @param attribute_name Name of attribute containing the subgraph GraphProto
   /// @param session_state SessionState for subgraph execution
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
-                               const SessionState& session_state);
+                               std::unique_ptr<SessionState> session_state);
 
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
+
+  SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
 #ifdef USE_EIGEN_THREADPOOL
   Eigen::NonBlockingThreadPool* GetThreadPool() const { return thread_pool_; }
@@ -165,7 +167,11 @@ class SessionState {
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
-  const FuncManager* GetFuncMgr() const { return &fused_funcs_mgr_; }
+
+  const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
+  FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
+
+  std::map<OrtAllocatorInfo, BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
 
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -183,6 +189,7 @@ class SessionState {
 
   // initialized tensorset
   std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
+  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_;
@@ -201,8 +208,7 @@ class SessionState {
   // subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
   // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
   using SubgraphSessionStateMap =
-      std::unordered_map<onnxruntime::NodeIndex,
-                         std::unordered_map<std::string, gsl::not_null<const SessionState*>>>;
+      std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
 #ifdef USE_EIGEN_THREADPOOL

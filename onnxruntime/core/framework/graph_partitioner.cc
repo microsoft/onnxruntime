@@ -11,7 +11,6 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
-#include "core/framework/session_state.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -56,16 +55,29 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
   return builder;
 }
 
-Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, FuncManager* func_mgr) const {
+Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
+  //    NOTE: A 'sub-graph' is a subset of nodes within the current Graph instance.
+  //          The control flow nodes have nested Graph instance/s which are also called subgraphs,
+  //          but are completely separate Graph instances and not a subset of nodes within a single Graph instance.
   // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider preference.
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
-  //fused_kernel_registry is prepareing the kernels created on the fly for fused sub graph.
-  //It is only visiable for current session.
+
+  // recurse into nested graphs first so we partition bottom up.
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      // we pass through the export_dll value and FuncManager from the top level graph
+      ORT_RETURN_IF_ERROR(Partition(*subgraph, export_dll, func_mgr));
+    }
+  }
+
+  // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
+  // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
   // Partitioning <graph> based on provider preference and their capabilities.
   auto kernel_registries = kernel_registry_mgr_.GetAllKernelRegistries();
@@ -94,6 +106,7 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
       }
+
       if (nullptr == capability->sub_graph->GetMetaDef()) {
         // The <provider> can run a single node in the <graph> if not using meta-defs.
         // A fused kernel is not supported in this case.
@@ -136,18 +149,19 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
         }
       }
     }
+
     if (nodes_need_compile.size() > 0) {
       if (export_dll) {
         std::string dll_path;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, dll_path));
         for (auto* node : nodes_need_compile)
-          ORT_RETURN_IF_ERROR(func_mgr->AddFuncInfo(node->Name(), dll_path));
+          ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), dll_path));
       } else {
         std::vector<NodeComputeInfo> node_compute_funcs;
         ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, node_compute_funcs));
         ORT_ENFORCE(node_compute_funcs.size() == nodes_need_compile.size(), "Provider doesn't return correct number of compiled functions");
         for (auto j = 0; j < nodes_need_compile.size(); j++)
-          ORT_RETURN_IF_ERROR(func_mgr->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
+          ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
       }
       for (auto* node : nodes_need_compile) {
         //prepare the func kernel
@@ -178,10 +192,11 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, F
       break;
     }
   }
+
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    this->Partition(graph, export_dll, func_mgr);
+    Partition(graph, export_dll, func_mgr);
   }
 
   //For some cases, like fp16 on cpu, right now we don't have any kernel support that.

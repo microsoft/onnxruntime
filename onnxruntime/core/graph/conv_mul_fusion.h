@@ -9,7 +9,9 @@ namespace onnxruntime {
 class ConvMulFusion : public onnxruntime::GraphTransformer {
  public:
   ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion", "Fusing Mul into Conv") {}
-  Status Apply(onnxruntime::Graph& graph, bool& modified) const override;
+
+ private:
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

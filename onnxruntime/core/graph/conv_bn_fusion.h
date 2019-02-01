@@ -10,6 +10,8 @@ namespace onnxruntime {
 class ConvBNFusion : public onnxruntime::GraphTransformer {
  public:
   ConvBNFusion() noexcept : onnxruntime::GraphTransformer("ConvBNFusion", "Fusing BN into Conv") {}
-  Status Apply(onnxruntime::Graph& graph, bool& modified) const override;
+
+ private:
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 }  // namespace onnxruntime

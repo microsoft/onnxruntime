@@ -8,9 +8,9 @@
 
 namespace onnxruntime {
 
-Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified) {
+Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
   if (utils::RemoveSingleInSingleOutNode(graph, node)) {
-    modified = true;
+    removed = modified = true;
   }
 
   return Status::OK();
