@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include <iterator>
-#include "core/framework/transformer_memcpy.h"
+
 #include "core/framework/execution_providers.h"
+#include "core/optimizer/transformer_memcpy.h"
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"

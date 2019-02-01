@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/graph/graph_viewer.h"
-#include "core/optimizer/graph_transformer.h"
 #include "core/common/common.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 class InsertCastTransformer : public onnxruntime::GraphTransformer {
