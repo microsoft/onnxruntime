@@ -41,9 +41,10 @@ class RewriteRule {
   @param[in] graph The Graph.
   @param[in] node The Node to apply the rewrite to.
   @param[out] modified Set to indicate whether the node was modified or not.
+  @param[out] deleted Set to indicate if the node was deleted. 
   @returns Status indicating success or providing error information */
-  common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified) {
-    return SatisfyCondition(node) ? Apply(graph, node, modified) : Status::OK();
+  common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified, bool& deleted) {
+    return SatisfyCondition(node) ? Apply(graph, node, modified, deleted) : Status::OK();
   }
 
  private:
@@ -62,7 +63,8 @@ class RewriteRule {
   Apply the rewrite rule to a specific node.
   The transformation happens in-place. The return-value of node may be different
   from the input-value due to rewriting.
-  The value of "modified" indicates if the graph was modified or not. */
-  virtual common::Status Apply(Graph& graph, Node& node, bool& modified) = 0;
+  The value of "modified" indicates if the graph was modified or not. 
+  The value of "deleted" indicates if the node was deleted or not. */
+  virtual common::Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) = 0;
 };
 }  // namespace onnxruntime

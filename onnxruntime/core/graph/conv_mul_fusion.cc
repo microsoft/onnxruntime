@@ -9,9 +9,11 @@ using namespace onnx;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
+Status ConvMulFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+
     if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
@@ -41,7 +43,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
         conv_W_tensor_proto->dims_size() < 4 ||
         !(mul_B_tensor_proto->dims_size() == 0 ||
           (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1 &&
-          conv_W_tensor_proto->dims(0) == mul_B_tensor_proto->dims(0)))) {
+           conv_W_tensor_proto->dims(0) == mul_B_tensor_proto->dims(0)))) {
       continue;
     }
 
@@ -72,8 +74,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
         return Status(ONNXRUNTIME, FAIL, "Internal error in ConvMulFusion. conv_B_tensor_proto is NULL");
       if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
           conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
-          conv_B_tensor_proto->dims_size() != 1 || (mul_B_tensor_proto->dims_size() != 0 &&
-          conv_B_tensor_proto->dims(0) != mul_B_tensor_proto->dims(0))) {
+          conv_B_tensor_proto->dims_size() != 1 || (mul_B_tensor_proto->dims_size() != 0 && conv_B_tensor_proto->dims(0) != mul_B_tensor_proto->dims(0))) {
         continue;
       }
       conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
@@ -121,7 +122,7 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
         }
       }
     }
-    
+
     removed_nodes.push_back(mul_node.Index());
   }
 
@@ -131,8 +132,8 @@ Status ConvMulFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
+
   return Status::OK();
 }
 

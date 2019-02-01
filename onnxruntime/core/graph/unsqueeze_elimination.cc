@@ -8,10 +8,13 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) const {
+Status UnsqueezeElimination::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto& node : graph.Nodes()) {
+    // recurse first as there are early exits in the processing here
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+
     if (node.OpType() != "Unsqueeze" || node.GetInputEdgesCount() != 0 || graph.IsNodeOutputsInGraphOutputs(node)) {
       continue;
     }
@@ -95,8 +98,8 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
+
   return Status::OK();
 }
 }  // namespace onnxruntime

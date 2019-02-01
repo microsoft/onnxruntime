@@ -15,7 +15,7 @@ class EliminateSlice : public RewriteRule {
  private:
   bool SatisfyCondition(const Node& node) override;
 
-  Status Apply(Graph& graph, Node& node, bool& modified) override;
+  Status Apply(Graph& graph, Node& node, bool& modified, bool& removed) override;
 };
 
 }  // namespace onnxruntime

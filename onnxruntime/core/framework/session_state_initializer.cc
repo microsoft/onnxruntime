@@ -105,7 +105,6 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
 }
 
 common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pattern,
-                                                          std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                                           const std::vector<NodeArg*>* implicit_inputs) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
@@ -118,8 +117,8 @@ common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pat
     session_state_.AddInitializedTensor(idx, value);
   };
 
-  ORT_RETURN_IF_ERROR(SaveInitializedTensors(graph_, enable_memory_pattern, exec_plan,
-                                             execution_providers_, mlvalue_name_idx_map, weights_buffers,
+  ORT_RETURN_IF_ERROR(SaveInitializedTensors(graph_, enable_memory_pattern, exec_plan, execution_providers_,
+                                             mlvalue_name_idx_map, session_state_.GetMutableWeightsBuffers(),
                                              add_initialized_tensor, logger_));
 
   graph_.CleanAllInitializedTensors();  // remove weights from the graph now to save memory

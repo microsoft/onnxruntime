@@ -6,9 +6,9 @@
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified) {
+Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
   if (utils::RemoveSingleInSingleOutNode(graph, node)) {
-    modified = true;
+    modified = deleted = true;
   }
 
   return Status::OK();
