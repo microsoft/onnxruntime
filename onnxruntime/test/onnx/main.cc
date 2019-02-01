@@ -332,7 +332,6 @@ int real_main(int argc, char* argv[]) {
       {"constantofshape_int_zeros", "opset 9 not supported yet"},
       {"shrink_hard", "opset 9 not supported yet"},
       {"shrink_soft", "opset 9 not supported yet"},
-      {"where_example", "opset 9 not supported yet"},
       {"constantofshape_float_ones", "opset 9 not supported yet"},
       {"batchnorm_example", "opset 9 not supported yet"},
       {"batchnorm_epsilon", "opset 9 not supported yet"},
