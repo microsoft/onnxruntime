@@ -550,19 +550,20 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
-void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const {
+void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
+                      bool include_missing_optional_defs) const {
   for (const auto* arg : InputDefs()) {
-    if (arg->Exists())
+    if (include_missing_optional_defs || arg->Exists())
       func(*arg, true);
   }
 
   for (const auto* arg : ImplicitInputDefs()) {
-    if (arg->Exists())
+    if (include_missing_optional_defs || arg->Exists())
       func(*arg, true);
   }
 
   for (const auto* arg : OutputDefs()) {
-    if (arg->Exists())
+    if (include_missing_optional_defs || arg->Exists())
       func(*arg, false);
   }
 };
