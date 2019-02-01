@@ -526,13 +526,9 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto x_type = ctx.getInputType(0);
         auto y_scale_type = ctx.getInputType(1);
-        auto y_zeropoint_type = ctx.getInputType(2);
-        auto y_type = ctx.getOutputType(0);
         if (nullptr == x_type || nullptr == y_scale_type ||
-            nullptr == y_zeropoint_type || nullptr == y_type ||
             x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
-            y_scale_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
-            y_zeropoint_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+            y_scale_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
           fail_type_inference(
               "inputs are expected to have tensor type and output type should not be null.");
         }
