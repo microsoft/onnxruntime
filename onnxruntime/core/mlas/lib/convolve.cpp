@@ -598,12 +598,11 @@ Return Value:
         }
 
         //
-        // Add the optional bias vector.
+        // Apply the activation with optional bias.
         //
 
-        if (Bias != nullptr) {
-            MlasBiasAdd(Bias, FilterCount, SegmentOutput, CountN, OutputSize);
-        }
+        MlasActivation(Parameters->Activation, SegmentOutput, Bias, FilterCount,
+            SegmentOutput, CountN, OutputSize);
     }
 }
 
@@ -723,12 +722,17 @@ Return Value:
             output, OutputSize);
 
         //
-        // Add the optional bias vector.
+        // Apply the activation with optional bias.
         //
 
-        if (WorkBlock->Bias != nullptr) {
-            MlasBiasAdd(WorkBlock->Bias + group * FilterCount, FilterCount, output, OutputSize, OutputSize);
+        const float* bias = WorkBlock->Bias;
+
+        if (bias != nullptr) {
+            bias += group * FilterCount;
         }
+
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, output,
+            OutputSize, OutputSize);
     }
 }
 
@@ -951,12 +955,11 @@ Return Value:
                         Output, OutputSize);
 
                     //
-                    // Add the optional bias vector.
+                    // Apply the activation with optional bias.
                     //
 
-                    if (bias != nullptr) {
-                        MlasBiasAdd(bias, FilterCount, Output, OutputSize, OutputSize);
-                    }
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, Output,
+                        OutputSize, OutputSize);
 
                     break;
                 }
@@ -978,12 +981,11 @@ Return Value:
                         K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize);
 
                     //
-                    // Add the optional bias vector.
+                    // Apply the activation with optional bias.
                     //
 
-                    if (bias != nullptr) {
-                        MlasBiasAdd(bias, FilterCount, Output, OutputSize, OutputSize);
-                    }
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, Output,
+                        OutputSize, OutputSize);
 
                     break;
                 }
@@ -1035,6 +1037,7 @@ MlasConvPrepare(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize
     )
 /*++
@@ -1073,6 +1076,9 @@ Arguments:
 
     FilterCount - Supplies the number of rows of the filter matrix per group.
 
+    Activation - Supplies the parameters for the activation to apply to the
+        convolution output.
+
     WorkingBufferSize - Receives the number of elements to allocate for the
         working buffer for intermediate results.
 
@@ -1086,6 +1092,7 @@ Return Value:
     // Save the convolution parameters.
     //
 
+    Parameters->Activation = Activation;
     Parameters->Dimensions = Dimensions;
     Parameters->BatchCount = BatchCount;
     Parameters->GroupCount = GroupCount;

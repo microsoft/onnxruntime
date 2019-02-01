@@ -3,6 +3,10 @@
 
 #pragma once
 
+#ifdef _WIN32
+#pragma warning(disable : 4267)
+#endif
+
 #include <algorithm>
 #include <functional>
 #include <future>
@@ -13,11 +17,16 @@
 #include "gsl/gsl_algorithm"
 
 #include "core/common/common.h"
-#include "core/common/task_thread_pool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+
+#ifdef USE_EIGEN_THREADPOOL
+#include <unsupported/Eigen/CXX11/ThreadPool>
+#else
+#include "core/common/task_thread_pool.h"
+#endif
 
 namespace onnxruntime {
 class Tensor;
@@ -113,9 +122,10 @@ void ReverseSequence(gsl::span<const T> inputs,
 
     if (seq_len == 0)
       continue;
-
-    // Parallel execute the loop.
-    #pragma omp for
+#ifdef USE_OPENMP
+// Parallel execute the loop.
+#pragma omp parallel for
+#endif
     for (int j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
@@ -124,7 +134,10 @@ void ReverseSequence(gsl::span<const T> inputs,
       gsl::copy(src, dest);
     }
 
-    #pragma omp for
+#ifdef USE_OPENMP
+// Parallel execute the loop.
+#pragma omp parallel for
+#endif
     for (int j = seq_len; j < max_sequence_length; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * j * batch_size * input_size + i * input_size, input_size);
@@ -205,7 +218,12 @@ T* SafeRawPointer(typename gsl::span<T> span, size_t offset, size_t size) {
 
 template <typename TLambda>
 void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, int step,
-                             TaskThreadPool& ttp, const ::onnxruntime::logging::Logger& logger) {
+#ifdef USE_EIGEN_THREADPOOL
+                             Eigen::NonBlockingThreadPool& ttp,
+#else
+                             TaskThreadPool& ttp,
+#endif
+                             const ::onnxruntime::logging::Logger& logger) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
 #ifdef NOTHREADS
@@ -217,6 +235,23 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     std::bind(lambda, i)();
   }
 #else
+
+#ifdef USE_EIGEN_THREADPOOL
+  ORT_UNUSED_PARAMETER(name);
+  ORT_UNUSED_PARAMETER(logger);
+
+  std::atomic<int> done(0);
+  for (int i = 0; i < max; i += step) {
+    ttp.Schedule([lambda, i, &done]() {
+      lambda(i);
+      ++done;
+    });
+  }
+
+  int totalTasks = (int)max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
+  while (done != totalTasks) {
+  }
+#else
   std::vector<std::future<void> > task_results{};
   task_results.reserve(static_cast<size_t>(std::ceil(max / step)));
 
@@ -225,7 +260,6 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     task_results.emplace_back(task.get_future());
     ttp.RunTask(std::move(task));
   }
-
   try {
     // wait for all and propagate any exceptions
     for (auto& future : task_results)
@@ -234,7 +268,8 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     LOGS(logger, ERROR) << name << " - exception running tasks: " << ex.what();
     throw;
   }
-#endif
+#endif  // else part of #ifdef USE_EIGEN_THREADPOOLs
+#endif  // else part of #ifdef NOTHREADS
 }
 
 void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,

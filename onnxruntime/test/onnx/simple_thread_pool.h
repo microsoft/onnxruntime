@@ -1,5 +1,7 @@
-// This file is part of Eigen, a lightweight C++ template library
-// for linear algebra.
+// Eigen is "a C++ template library for linear algebra: 
+//matrices, vectors, numerical solvers, and related algorithms." 
+//See http://eigen.tuxfamily.org/index.php?title=Main_Page. 
+//This material is licensed under the MPL v2.0. 
 //
 // Copyright (C) 2014 Benoit Steiner <benoit.steiner.goog@gmail.com>
 //
@@ -8,6 +10,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #pragma once
+#include <core/platform/ort_mutex.h>
 #include <unsupported/Eigen/CXX11/ThreadPool>
 
 //: copied from Eigen, with just one tiny modification: remove the default vaule of the constructor of SimpleThreadPoolTempl
@@ -34,7 +37,7 @@ class SimpleThreadPoolTempl : public Eigen::ThreadPoolInterface {
   ~SimpleThreadPoolTempl() {
     {
       // Wait for all work to get done.
-      std::unique_lock<std::mutex> l(mu_);
+      std::unique_lock<OrtMutex> l(mu_);
       while (!pending_.empty()) {
         empty_.wait(l);
       }
@@ -58,7 +61,7 @@ class SimpleThreadPoolTempl : public Eigen::ThreadPoolInterface {
   // executed in the order in which they are scheduled.
   void Schedule(std::function<void()> fn) final {
     Task t = env_.CreateTask(std::move(fn));
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<OrtMutex> l(mu_);
     if (waiters_.empty()) {
       pending_.push_back(std::move(t));
     } else {
@@ -85,7 +88,7 @@ class SimpleThreadPoolTempl : public Eigen::ThreadPoolInterface {
 
  protected:
   void WorkerLoop(int thread_id) {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<OrtMutex> l(mu_);
     PerThread* pt = GetPerThread();
     pt->pool = this;
     pt->thread_id = thread_id;
@@ -123,7 +126,7 @@ class SimpleThreadPoolTempl : public Eigen::ThreadPoolInterface {
   typedef typename Environment::EnvThread Thread;
 
   struct Waiter {
-    std::condition_variable cv;
+    onnxruntime::OrtCondVar cv;
     Task task;
     bool ready;
   };
@@ -135,11 +138,11 @@ class SimpleThreadPoolTempl : public Eigen::ThreadPoolInterface {
   };
 
   const Environment& env_;
-  std::mutex mu_;
+  onnxruntime::OrtMutex mu_;
   Eigen::MaxSizeVector<Thread*> threads_;  // All threads
   Eigen::MaxSizeVector<Waiter*> waiters_;  // Stack of waiting threads.
   std::deque<Task> pending_;               // Queue of pending work
-  std::condition_variable empty_;          // Signaled on pending_.empty()
+  onnxruntime::OrtCondVar empty_;          // Signaled on pending_.empty()
   bool exiting_ = false;
 
   PerThread* GetPerThread() const {

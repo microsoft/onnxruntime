@@ -34,12 +34,12 @@ replaces *scikit-learn* to compute the predictions.
     clr.fit(X_train, y_train)
 
     # Convert into ONNX format with onnxmltools
-    from onnxmltools import convert_sklearn
-    from onnxmltools.utils import save_model
-    from onnxmltools.convert.common.data_types import FloatTensorType
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
     initial_type = [('float_input', FloatTensorType([1, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
-    save_model(onx, "rf_iris.onnx")
+    with open("rf_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
 
     # Compute the prediction with ONNX Runtime
     import onnxruntime as rt
@@ -51,6 +51,11 @@ replaces *scikit-learn* to compute the predictions.
 
 Changes
 -------
+
+0.2.0
+^^^^^
+
+C-API, Linux support for Dotnet Nuget package, Cuda 10.0 support
 
 0.1.5
 ^^^^^

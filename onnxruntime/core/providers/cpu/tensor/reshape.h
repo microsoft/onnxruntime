@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
 #include "gsl/gsl_util"
 #include "reshape_helper.h"
 #include "utils.h"
@@ -13,7 +14,7 @@ namespace onnxruntime {
 
 class Reshape final : public OpKernel {
  public:
-  Reshape(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Reshape(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -40,7 +41,7 @@ class Reshape final : public OpKernel {
 
 class Reshape_1 final : public OpKernel {
  public:
-  Reshape_1(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Reshape_1(const OpKernelInfo& info) : OpKernel(info) {
     Status status = info.GetAttrs<int64_t>("shape", shape_);
     ORT_ENFORCE(status.IsOK(), "Attribute shape is not set.");
   }

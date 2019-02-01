@@ -36,6 +36,8 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
       continue;
     }
     std::vector<int64_t> new_dims(axes.size() + tensor_proto->dims().size(), 0);
+    if (new_dims.size() >= std::numeric_limits<int>::max())
+      return Status(ONNXRUNTIME, FAIL, "index out of range");
 
     for (int64_t axis : axes) {
       new_dims[axis] = 1;
@@ -50,7 +52,8 @@ Status UnsqueezeElimination::Apply(onnxruntime::Graph& graph, bool& modified) co
 
     // Update shape of tensor proto
     ONNX_NAMESPACE::TensorProto new_tensor_proto(*tensor_proto);
-    for (int i = 0; i < new_dims.size(); i++) {
+
+    for (int i = 0; i < static_cast<int>(new_dims.size()); i++) {
       if (i < tensor_proto->dims().size()) {
         new_tensor_proto.set_dims(i, new_dims[i]);
       } else {

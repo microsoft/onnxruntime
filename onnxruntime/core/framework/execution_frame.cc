@@ -11,17 +11,21 @@
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
 
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
+
 namespace onnxruntime {
 
 ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& feeds,
                                const std::vector<std::string>& output_names,
                                const std::vector<MLValue>& fetches,
-                               const ::onnxruntime::SessionState& session_state)
-    : session_state_(session_state), mem_patterns_(nullptr), planner_(nullptr) {
+                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                               const SessionState& session_state)
+    : session_state_(session_state),
+      mem_patterns_(nullptr),
+      planner_(nullptr) {
   auto* graph = session_state.GetGraphViewer();
   ORT_ENFORCE(graph);
-  Init(*graph, feeds, output_names, fetches);
+  Init(*graph, feeds, output_names, fetches, fetch_allocators);
 
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
@@ -96,7 +100,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_inde
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(p_mlvalue->Fence() == nullptr);
-    FencePtr f = alloc->CreateFence(&SessionState());
+    FencePtr f = alloc->CreateFence(&GetSessionState());
     // it is OK to have fence been nullptr if the execution provider has no async execution,
     // and allocator::CreateFence returns nullptr
     p_mlvalue->SetFence(f);
@@ -189,7 +193,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_
   // create fence on reused mlvalue if needed
   // TODO: differentiate reuse and alias, by add AllocKind::kAlias?
   if (create_fence && p_mlvalue_reuse->Fence() == nullptr) {
-    FencePtr f = GetAllocator(location)->CreateFence(&SessionState());
+    FencePtr f = GetAllocator(location)->CreateFence(&GetSessionState());
     p_mlvalue_reuse->SetFence(f);
   }
 
@@ -256,6 +260,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
   if (mlvalue_index < 0 || mlvalue_index >= all_values_.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Tried to allocated with invalid mlvalue index: " + std::to_string(mlvalue_index));
+
+  // if there is a custom allocator for this mlvalue_index, call it to do the allocation
+  auto custom_alloc_entry = custom_allocators_.find(mlvalue_index);
+  if (custom_alloc_entry != custom_allocators_.cend()) {
+    return (custom_alloc_entry->second)(parameters.GetTensorShape(), all_values_[mlvalue_index]);
+  }
+
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
   ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index < alloc_plan.size());
@@ -282,20 +293,20 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
     case AllocKind::kAllocateOutput:
     case AllocKind::kAllocate: {
       ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(mlvalue_index,
-                                                                     ml_data_type,
-                                                                     alloc_info,
-                                                                     parameters.GetTensorShape(),
-                                                                     per_alloc_plan.create_fence_if_async));
+                                                             ml_data_type,
+                                                             alloc_info,
+                                                             parameters.GetTensorShape(),
+                                                             per_alloc_plan.create_fence_if_async));
       break;
     }
     case AllocKind::kReuse: {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
       ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(mlvalue_index,
-                                                                         reuse_mlvalue_index,
-                                                                         ml_data_type,
-                                                                         alloc_info,
-                                                                         parameters.GetTensorShape(),
-                                                                         per_alloc_plan.create_fence_if_async));
+                                                                 reuse_mlvalue_index,
+                                                                 ml_data_type,
+                                                                 alloc_info,
+                                                                 parameters.GetTensorShape(),
+                                                                 per_alloc_plan.create_fence_if_async));
       break;
     }
     default: {
@@ -311,7 +322,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
 void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
                           const std::unordered_map<std::string, MLValue>& feeds,
                           const std::vector<std::string>& output_names,
-                          const std::vector<MLValue>& fetches) {
+                          const std::vector<MLValue>& fetches,
+                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators) {
   // 1. resize the node_offsets and all_value_ vector
   // We need to use the max index rather than number of nodes as we use Node.Index()
   // when inserting into node_offsets_
@@ -338,34 +350,34 @@ void ExecutionFrame::Init(const onnxruntime::GraphViewer& graph,
   }
 
   // 4. Handle non-empty output vector
-  // setup output_indices_, we dont' want to generate mem plan on output tensors.
-  for (const auto& oname : output_names) {
-    int mlvalue_idx;
-    Status status = mlvalue_idx_map.GetIdx(oname, mlvalue_idx);
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    output_indices_.push_back(mlvalue_idx);
-  }
-
   if (!fetches.empty()) {
     // should've already verified this much before when Run() starts
     ORT_ENFORCE(output_names.size() == fetches.size(),
-                        "output_names vector size: " + std::to_string(output_names.size()) +
-                            " does not match that of fetches vector: " + std::to_string(fetches.size()));
+                "output_names vector size: " + std::to_string(output_names.size()) +
+                    " does not match that of fetches vector: " + std::to_string(fetches.size()));
 
+    // setup output_indices_, we dont' want to generate mem plan on output tensors.
+    output_indices_.reserve(output_names.size());
     auto idx = 0;
     for (const auto& oname : output_names) {
       int mlvalue_idx;
       Status status = mlvalue_idx_map.GetIdx(oname, mlvalue_idx);
       ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-      all_values_[mlvalue_idx] = fetches.at(idx++);
+      all_values_[mlvalue_idx] = fetches.at(idx);
       output_indices_.push_back(mlvalue_idx);
+
+      auto custom_alloc_entry = fetch_allocators.find(idx);
+      if (custom_alloc_entry != fetch_allocators.cend()) {
+        custom_allocators_[mlvalue_idx] = custom_alloc_entry->second;
+      }
+
+      ++idx;
     }
   }
 
   // 5. set node args
   std::size_t total_def_count{};
-  for (const auto& node : graph.Nodes())
-  {
+  for (const auto& node : graph.Nodes()) {
     node.ForEachDef([&](const onnxruntime::NodeArg& /*arg*/, bool /*is_input*/) {
       ++total_def_count;
     });
@@ -461,8 +473,8 @@ static inline void VerifyShape(const MLValue* p_mlvalue,
     const Tensor* tensor = &p_mlvalue->Get<Tensor>();
 
     ORT_ENFORCE(tensor->Shape() == parameters.GetTensorShape(),
-                        "MLValue shape verification failed. Current shape:", tensor->Shape(),
-                        " Requested shape:", parameters.GetTensorShape());
+                "MLValue shape verification failed. Current shape:", tensor->Shape(),
+                " Requested shape:", parameters.GetTensorShape());
   }
 }
 
@@ -490,10 +502,11 @@ Status ExecutionFrame::GetOrCreateNodeOutputMLValue(int index,
     VerifyShape(p_mlvalue, parameters);  // TODO find a better way to do this
     return Status::OK();
   }
-    // It's not allocated, then allocate it with given shape and return.
-    // Perform allocation based on the allocation plan
-    ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(node_values_[index], parameters));
-    return Status::OK();
+
+  // It's not allocated, then allocate it with given shape and return.
+  // Perform allocation based on the allocation plan
+  ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(node_values_[index], parameters));
+  return Status::OK();
 }
 
 Status ExecutionFrame::ReleaseMLValue(int mlvalue_idx) {

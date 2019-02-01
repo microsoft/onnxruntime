@@ -4,7 +4,6 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
-#include <omp.h>
 
 namespace onnxruntime {
 
@@ -48,7 +47,6 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   }
 
-
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
@@ -69,7 +67,6 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   }
 
-  // std::cout << "Thread No. = " << thread_num << std::endl;
   return Status::OK();
 }
 

@@ -30,6 +30,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                    const NameMLValMap& feeds,
                                    const std::vector<std::string>& output_names,
                                    std::vector<MLValue>& fetches,
+                                   const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                                    const logging::Logger& logger) {
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
   TimePoint tp;
@@ -40,7 +41,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feeds, output_names, fetches, session_state};
+  ExecutionFrame frame{feeds, output_names, fetches, fetch_allocators, session_state};
 
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
@@ -78,14 +79,22 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
       if (fence) {
-        fence->BeforeUsingAsInput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
+        auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          execution_provider_type = kCpuExecutionProvider;
+        }
+        fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }
 

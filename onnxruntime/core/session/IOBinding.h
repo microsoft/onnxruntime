@@ -86,11 +86,6 @@ class IOBinding {
   std::vector<std::string> output_names_;
   std::vector<MLValue> outputs_;
 
-  static common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
-                                                  const std::string& input_name,
-                                                  const MLValue& orig_mlvalue,
-                                                  MLValue& new_mlvalue);
-
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
 };
 }  // namespace onnxruntime

@@ -828,6 +828,102 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cosh<float>);
 
+template <typename T>
+class Asinh final : public OpKernel {
+ public:
+  explicit Asinh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+
+    auto X_data = X.template Data<float>();
+    auto Y_data = Y.template MutableData<float>();
+
+    auto in = gsl::make_span(X_data, X.Shape().Size());
+    auto out = gsl::make_span(Y_data, Y.Shape().Size());
+
+    for (int64_t index = 0; index < in.size(); ++index) {
+      out[index] = std::asinh(in[index]);
+    }
+    return Status::OK();
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Asinh);
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Asinh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Asinh<float>);
+
+template <typename T>
+class Acosh final : public OpKernel {
+ public:
+  explicit Acosh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+
+    auto X_data = X.template Data<float>();
+    auto Y_data = Y.template MutableData<float>();
+
+    auto in = gsl::make_span(X_data, X.Shape().Size());
+    auto out = gsl::make_span(Y_data, Y.Shape().Size());
+
+    for (int64_t index = 0; index < in.size(); ++index) {
+      out[index] = std::acosh(in[index]);
+    }
+    return Status::OK();
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Acosh);
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Acosh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Acosh<float>);
+
+template <typename T>
+class Atanh final : public OpKernel {
+ public:
+  explicit Atanh(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    auto& X = *context->Input<Tensor>(0);
+    auto& Y = *context->Output(0, X.Shape());
+
+    auto X_data = X.template Data<float>();
+    auto Y_data = Y.template MutableData<float>();
+
+    auto in = gsl::make_span(X_data, X.Shape().Size());
+    auto out = gsl::make_span(Y_data, Y.Shape().Size());
+
+    for (int64_t index = 0; index < in.size(); ++index) {
+      out[index] = std::atanh(in[index]);
+    }
+    return Status::OK();
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Atanh);
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Atanh,
+    9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Atanh<float>);
+
 template <>
 Status PRelu<float>::Compute(OpKernelContext* context) const {
   return BroadcastTwo<float, float>(
@@ -905,12 +1001,26 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Expand,
-    8,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Expand_8<float>);
+#define REG_EXPAND_KERNEL(TYPE)                                                     \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                   \
+      Expand,                                                                       \
+      8,                                                                            \
+      TYPE,                                                                         \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),  \
+      Expand_8<TYPE>);
+
+REG_EXPAND_KERNEL(float)
+REG_EXPAND_KERNEL(double)
+REG_EXPAND_KERNEL(int8_t)
+REG_EXPAND_KERNEL(int16_t)
+REG_EXPAND_KERNEL(int32_t)
+REG_EXPAND_KERNEL(int64_t)
+REG_EXPAND_KERNEL(uint8_t)
+REG_EXPAND_KERNEL(uint16_t)
+REG_EXPAND_KERNEL(uint32_t)
+REG_EXPAND_KERNEL(uint64_t)
+REG_EXPAND_KERNEL(bool)
+REG_EXPAND_KERNEL(MLFloat16)
 
 template <>
 Status Scale<float>::Compute(OpKernelContext* ctx) const {

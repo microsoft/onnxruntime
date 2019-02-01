@@ -10,6 +10,8 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/func_kernel.h"
+#include "core/framework/session_state.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -54,12 +56,11 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
   return builder;
 }
 
-Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
+Status GraphPartitioner::Partition(onnxruntime::Graph& graph, bool export_dll, FuncManager* func_mgr) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
   // 3. CPU execution provider is expected to be able to run any node and is the last one in execution provider preference.
-
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
@@ -75,9 +76,20 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
     capabilities_of_all_providers.push_back(provider->GetCapability(graph_viewer, kernel_registries));
   }
 
+  // If an execution provider return the capability that he could run a sub-graph,
+  // onnxruntime will fuse the sub-graph into a function node. if the execution provider
+  // says he need to compile the graph at runtime (by need_compile flag),
+  // onnxruntime will invoke the "Compile" method to get compiled binary.
+  // There are two mode of compile, one is return the entry point to the compiled binary
+  // directly, another is export the compiled binary to shared library for future reuse.
+
+  // TODO: when the graph contain a function node, and user pass in the dll which could
+  // run the function by SessionOption, we should create a function kernel for it and
+  // delegate the compute to the functions inside the dlls.
   int i = 0;
   for (auto& provider : providers_) {
     int count = 0;
+    std::vector<Node*> nodes_need_compile;
     for (auto& capability : capabilities_of_all_providers[i++]) {
       if (nullptr == capability || nullptr == capability->sub_graph) {
         continue;
@@ -86,7 +98,6 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
         // The <provider> can run a single node in the <graph> if not using meta-defs.
         // A fused kernel is not supported in this case.
         ORT_ENFORCE(1 == capability->sub_graph->nodes.size());
-        ORT_ENFORCE(capability->fuse_kernel_function == nullptr);
 
         auto node = graph.GetNode(capability->sub_graph->nodes[0]);
         if (nullptr != node && node->GetExecutionProviderType().empty()) {
@@ -96,7 +107,6 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
       } else {
         // The <provider> can run a fused <sub_graph> in the <graph>.
         ORT_ENFORCE(nullptr != capability->sub_graph->GetMetaDef());
-
         // Check whether any node in the <sub_graph> was already assigned.
         bool sub_graph_available_for_assignment = true;
         for (auto node_index : capability->sub_graph->nodes) {
@@ -108,20 +118,42 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
             break;
           }
         }
-
         if (sub_graph_available_for_assignment) {
-          // Add fused node into <graph>
           std::string node_name = provider->Type() + "_" + capability->sub_graph->GetMetaDef()->name + "_" + std::to_string(count++);
           auto& fused_node = graph.FuseSubGraph(std::move(capability->sub_graph), node_name);
           fused_node.SetExecutionProviderType(provider->Type());
-          auto fused_kernel_func = capability->fuse_kernel_function;
-          if (fused_kernel_func != nullptr) {
-            // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
-            KernelDefBuilder builder;
-            BuildFusedKernelDef(builder, fused_node);
-            fused_kernel_registry->Register(builder, fused_kernel_func);
+          // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
+          bool need_compile = true;
+          for (auto* kernel_registry : kernel_registries) {
+            if (kernel_registry->TryFindKernel(fused_node, provider->Type())) {
+              need_compile = false;
+              break;
+            }
           }
+
+          if (need_compile)
+            nodes_need_compile.push_back(&fused_node);
         }
+      }
+    }
+    if (nodes_need_compile.size() > 0) {
+      if (export_dll) {
+        std::string dll_path;
+        ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, dll_path));
+        for (auto* node : nodes_need_compile)
+          ORT_RETURN_IF_ERROR(func_mgr->AddFuncInfo(node->Name(), dll_path));
+      } else {
+        std::vector<NodeComputeInfo> node_compute_funcs;
+        ORT_RETURN_IF_ERROR(provider->Compile(nodes_need_compile, node_compute_funcs));
+        ORT_ENFORCE(node_compute_funcs.size() == nodes_need_compile.size(), "Provider doesn't return correct number of compiled functions");
+        for (auto j = 0; j < nodes_need_compile.size(); j++)
+          ORT_RETURN_IF_ERROR(func_mgr->AddFuncInfo(nodes_need_compile[j]->Name(), node_compute_funcs[j].compute_func, node_compute_funcs[j].create_state_func, node_compute_funcs[j].release_state_func));
+      }
+      for (auto* node : nodes_need_compile) {
+        //prepare the func kernel
+        KernelDefBuilder builder;
+        BuildFusedKernelDef(builder, *node);
+        fused_kernel_registry->Register(builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); });
       }
     }
   }
@@ -149,13 +181,13 @@ Status GraphPartitioner::Partition(onnxruntime::Graph& graph) const {
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    this->Partition(graph);
+    this->Partition(graph, export_dll, func_mgr);
   }
 
-    //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
-    //But we will insert cast op to run the model, so skip the error checking here.
-    //If after graph transform phase, the node still not assigned, we will report error
-    //during kernel creation phase.
+  //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
+  //But we will insert cast op to run the model, so skip the error checking here.
+  //If after graph transform phase, the node still not assigned, we will report error
+  //during kernel creation phase.
 #ifdef COUNT_NON_CUDA_OPS
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType() != kCudaExecutionProvider &&
