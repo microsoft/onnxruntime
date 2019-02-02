@@ -4,20 +4,26 @@
 
 # build docker image for CPU
 
-#TODO: Get this working, not tested yet
 set -x
-
-
 
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
-IMAGE="ubuntu16.04-cuda10.0-cudnn7.3"
+#CUDA_VER=cuda10.0-cudnn7.3, cuda9.1-cudnn7.1
+CUDA_VER=${4:-cuda9.1-cudnn7.1}
+
+IMAGE="ubuntu16.04-$CUDA_VER"
 PYTHON_VER=3.5
 OldDir=$(pwd)
-cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
-docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_gpu .
 
+cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
+
+DOCKER_FILE=Dockerfile.ubuntu_gpu9
+if [ $CUDA_VER = "cuda10.0-cudnn7.3" ]; then
+DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda
+fi
+
+docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 
 docker rm -f "onnxruntime-gpu-container" || true
 
@@ -40,7 +46,5 @@ wait -n
 EXIT_CODE=$?
 
 set -e
-exit $EXIT_CODE
-
-
 cd $OldDir
+exit $EXIT_CODE
