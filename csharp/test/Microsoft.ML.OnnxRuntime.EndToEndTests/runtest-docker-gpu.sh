@@ -18,7 +18,7 @@ OldDir=$(pwd)
 
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
 
-DOCKER_FILE=Dockerfile.ubuntu_gpu9
+DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
 if [ $CUDA_VER = "cuda10.0-cudnn7.3" ]; then
 DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda
 fi
