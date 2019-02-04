@@ -21,7 +21,6 @@
 #include "gtest/gtest.h"
 #include <gsl/gsl_byte>
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 class InferenceSession;
@@ -356,17 +355,13 @@ inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int
   auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(h_data)), input_size);
   output_vector = in_vector.template cast<Eigen::half>();
 }
+#endif
 
 inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int input_size) {
-#if defined(USE_MLAS) && defined(_M_AMD64)
-  MlasConvertHalfToFloatBuffer(&h_data[0].val, f_data, input_size);
-#else
   auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);
   auto output_vector = EigenVectorMap<float>(f_data, input_size);
   output_vector = in_vector.template cast<float>();
-#endif
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
