@@ -5,6 +5,8 @@
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
+#include "batch_norm_impl.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace cuda {
@@ -45,6 +47,22 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
   auto mean_data = reinterpret_cast<const CudaT*>(mean->template Data<T>());
   auto var_data = reinterpret_cast<const CudaT*>(var->template Data<T>());
+
+  if (X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
+    const int64_t C = x_shape.GetDims()[1];
+    auto input_count = x_shape.Size();              // N * C * H * W * D...
+    auto stats_count = x_shape.SizeToDimension(2);  // N * C
+    auto image_size = input_count / stats_count;
+    fast_divmod fdm_HWD(gsl::narrow_cast<int>(image_size));
+    fast_divmod fdm_C(gsl::narrow_cast<int>(C));
+
+    auto fused_alpha = GetScratchBuffer<CudaT>(C);
+    auto fused_bias = GetScratchBuffer<CudaT>(C);
+    const CudaT epsilon = ToCudaType<T>::FromFloat(static_cast<float>(epsilon_));
+    BatchNormImpl(x_data, scale_data, b_data, mean_data, var_data, epsilon, fdm_HWD,
+                  fdm_C, fused_alpha.get(), fused_bias.get(), y_data, input_count);
+    return Status::OK();
+  }
 
   CudnnTensor data_desc;
   vector<int64_t> new_dims;

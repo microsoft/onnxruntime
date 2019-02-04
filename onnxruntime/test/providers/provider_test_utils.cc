@@ -13,6 +13,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
+#include "core/mlas/inc/mlas.h"
 
 using namespace ::onnxruntime::logging;
 
@@ -64,6 +65,29 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
           EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i])) << "provider_type: " << provider_type;
         }
       }
+    }
+  }
+}
+
+template <>
+void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<MLFloat16>();
+  auto* output = output_tensor.template Data<MLFloat16>();
+  auto size = output_tensor.Shape().Size();
+
+  std::vector<float> f_expected(size);
+  std::vector<float> f_output(size);
+  MlasConvertHalfToFloatBuffer(&expected[0].val, f_expected.data(), size);
+  MlasConvertHalfToFloatBuffer(&output[0].val, f_output.data(), size);
+
+  float threshold = 0.001f;
+  for (int i = 0; i < size; ++i) {
+    if (std::isinf(f_expected[i]))  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]);
+    else {
+      // the default for existing tests
+      EXPECT_NEAR(f_expected[i], f_output[i], threshold) << "provider_type: " << provider_type;
     }
   }
 }

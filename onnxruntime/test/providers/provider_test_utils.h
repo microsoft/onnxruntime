@@ -20,6 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl_byte>
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 class InferenceSession;
@@ -249,6 +250,13 @@ class OpTester {
     optional<float> relative_error_;
     optional<float> absolute_error_;
   };
+
+  void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int input_size)
+  {
+    auto in_vector = ConstEigenVectorMap<float>(f_datat, input_size);
+    auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(h_data)), input_size);
+    output_vector = in_vector.template cast<Eigen::half>();
+  }
 
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph,
