@@ -7,7 +7,6 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
-#include "core/util/math_cpuonly.h"
 
 using namespace std;
 
@@ -589,12 +588,12 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   vector<MLFloat16> f_mean(3);
   vector<MLFloat16> f_var(3);
 
-  test.ConvertFloatToMLFloat16(X.data(), f_X.data(), input_size);
-  test.ConvertFloatToMLFloat16(scale.data(), f_scale.data(), 3);
-  test.ConvertFloatToMLFloat16(B.data(), f_B.data(), 3);
-  test.ConvertFloatToMLFloat16(mean.data(), f_mean.data(), 3);
-  test.ConvertFloatToMLFloat16(var.data(), f_var.data(), 3);
-  test.ConvertFloatToMLFloat16(expected_output.data(), f_output.data(), input_size);
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), input_size);
+  ConvertFloatToMLFloat16(scale.data(), f_scale.data(), 3);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 3);
+  ConvertFloatToMLFloat16(mean.data(), f_mean.data(), 3);
+  ConvertFloatToMLFloat16(var.data(), f_var.data(), 3);
+  ConvertFloatToMLFloat16(expected_output.data(), f_output.data(), input_size);
 
   test.AddInput<MLFloat16>("X", input_shape, f_X);
   test.AddInput<MLFloat16>("scale", {3}, f_scale);

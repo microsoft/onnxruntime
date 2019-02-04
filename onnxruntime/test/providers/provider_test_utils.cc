@@ -13,7 +13,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
-#include "core/mlas/inc/mlas.h"
 
 using namespace ::onnxruntime::logging;
 
@@ -78,8 +77,8 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
 
   std::vector<float> f_expected(size);
   std::vector<float> f_output(size);
-  MlasConvertHalfToFloatBuffer(&expected[0].val, f_expected.data(), size);
-  MlasConvertHalfToFloatBuffer(&output[0].val, f_output.data(), size);
+  ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
+  ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
 
   float threshold = 0.001f;
   for (int i = 0; i < size; ++i) {

@@ -47,10 +47,10 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   std::vector<MLFloat16> f_B(12);
   std::vector<MLFloat16> f_C(6);
   std::vector<MLFloat16> f_Y(6);
-  test.ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
-  test.ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
-  test.ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
-  test.ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
   test.AddInput<MLFloat16>("A", {2, 4}, f_A);
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
