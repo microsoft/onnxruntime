@@ -135,6 +135,7 @@ set(onnxruntime_test_ir_libs
 
 set(onnxruntime_test_framework_libs
   onnxruntime_test_utils_for_framework
+  onnxruntime_optimizer
   onnxruntime_framework
   onnxruntime_util
   onnxruntime_graph
@@ -175,6 +176,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}

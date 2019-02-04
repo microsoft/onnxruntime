@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/insert_cast_transformer.h"
+#include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/data_types.h"
 
 using namespace ONNX_NAMESPACE;

@@ -10,11 +10,7 @@
 #include "core/common/logging/logging.h"
 
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_transformer.h"
-#include "core/graph/graph_transformer_mgr.h"
-
 #include "core/framework/graph_partitioner.h"
-#include "core/framework/insert_cast_transformer.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/mlvalue_name_idx_map.h"
@@ -22,7 +18,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorutils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/transformer_memcpy.h"
 #include "core/framework/utils.h"
 
 namespace onnxruntime {

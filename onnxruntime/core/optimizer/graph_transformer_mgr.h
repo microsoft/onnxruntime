@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 // Manages a list of graph transformers. It is initialized with a list of graph
