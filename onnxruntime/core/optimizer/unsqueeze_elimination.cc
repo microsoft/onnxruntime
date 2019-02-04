@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/unsqueeze_elimination.h"
+#include "core/optimizer/unsqueeze_elimination.h"
 
 using namespace onnx;
 using namespace ::onnxruntime::common;

@@ -3,13 +3,14 @@
 
 #pragma once
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
-class MatMulAddFusion : public onnxruntime::GraphTransformer {
+class GemmActivationFusion : public onnxruntime::GraphTransformer {
  public:
-  MatMulAddFusion() noexcept : onnxruntime::GraphTransformer("MatMulAddFusion", "Fusing MatMul and Add into Gemm") {}
+  GemmActivationFusion() noexcept
+      : onnxruntime::GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm") {}
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 

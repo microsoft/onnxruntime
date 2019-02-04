@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry_manager.h"
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 

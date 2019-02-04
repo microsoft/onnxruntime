@@ -3,15 +3,13 @@
 
 #pragma once
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
-class UnsqueezeElimination : public onnxruntime::GraphTransformer {
+class MatMulAddFusion : public onnxruntime::GraphTransformer {
  public:
-  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
-
- private:
+  MatMulAddFusion() noexcept : onnxruntime::GraphTransformer("MatMulAddFusion", "Fusing MatMul and Add into Gemm") {}
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 

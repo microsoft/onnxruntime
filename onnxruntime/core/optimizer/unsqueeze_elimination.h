@@ -3,14 +3,15 @@
 
 #pragma once
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
-class GemmActivationFusion : public onnxruntime::GraphTransformer {
+class UnsqueezeElimination : public onnxruntime::GraphTransformer {
  public:
-  GemmActivationFusion() noexcept
-      : onnxruntime::GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm") {}
+  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
+
+ private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 

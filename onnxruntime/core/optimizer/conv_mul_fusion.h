@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
-class ConvBNFusion : public onnxruntime::GraphTransformer {
+class ConvMulFusion : public onnxruntime::GraphTransformer {
  public:
-  ConvBNFusion() noexcept : onnxruntime::GraphTransformer("ConvBNFusion", "Fusing BN into Conv") {}
+  ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion", "Fusing Mul into Conv") {}
 
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
+
 }  // namespace onnxruntime
