@@ -10,9 +10,6 @@
 #include "core/common/logging/logging.h"
 
 #include "core/graph/graph_viewer.h"
-#include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/graph_transformer_mgr.h"
-
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ml_value_patterns_planner.h"
