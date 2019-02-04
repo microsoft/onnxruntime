@@ -349,13 +349,15 @@ void DebugTrap();
 
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type);
 
-static void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int input_size) {
+// Only used for CUDA test since no toher kernel has float 16 support
+#ifdef USE_CUDA
+inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int input_size) {
   auto in_vector = ConstEigenVectorMap<float>(f_datat, input_size);
   auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(h_data)), input_size);
   output_vector = in_vector.template cast<Eigen::half>();
 }
 
-static void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int input_size) {
+inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int input_size) {
 #if defined(USE_MLAS) && defined(_M_AMD64)
   MlasConvertHalfToFloatBuffer(&h_data[0].val, f_data, input_size);
 #else
@@ -364,6 +366,7 @@ static void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int 
   output_vector = in_vector.template cast<float>();
 #endif
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
