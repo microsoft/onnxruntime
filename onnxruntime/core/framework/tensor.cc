@@ -79,17 +79,6 @@ Tensor& Tensor::operator=(Tensor&& other) {
   return *this;
 }
 
-Tensor::Tensor(const Tensor& src)
-    : shape_(src.shape_), dtype_(src.dtype_), alloc_info_(src.alloc_info_), byte_offset_(src.byte_offset_) {
-  // it may be better to refactor it a little bit to make it a compile error
-  // but right now just keep it simple first.
-  ORT_ENFORCE(src.buffer_deleter_ == nullptr,
-              "Can't copy tensor with its owned buffer. Please transfer ownership by move.");
-
-  p_data_ = src.p_data_;
-  buffer_deleter_ = nullptr;
-}
-
 Tensor::~Tensor() {
   ReleaseBuffer();
 }
