@@ -27,6 +27,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(int32_t)
+REGISTER_KERNEL_TYPED(uint8_t)
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const {
