@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/graph/rewrite_rule.h"
+#include "core/optimizer/rewrite_rule.h"
 #include "core/framework/ml_value.h"
 
 namespace onnxruntime {
@@ -22,7 +22,7 @@ class ConstantFolding : public RewriteRule {
  private:
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
-  Status Apply(Graph& graph, Node& node, bool& modified) override;
+  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 
   /** Create a TensorProto that has the same value as the given MLValue 
   and the same type and dimensions as the given NodeArg. */

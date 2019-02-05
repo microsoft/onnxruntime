@@ -44,7 +44,7 @@ class RewriteRule {
   @param[out] deleted Set to indicate if the node was deleted. 
   @returns Status indicating success or providing error information */
   common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-    return SatisfyCondition(node) ? Apply(graph, node, modified, deleted) : Status::OK();
+    return SatisfyCondition(graph, node) ? Apply(graph, node, modified, deleted) : Status::OK();
   }
 
  private:

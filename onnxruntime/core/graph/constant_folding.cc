@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
+Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
   // TODO Can we reuse the model across calls of the constant folding rule?
   // TODO Instead of computing one node at a time, we can traverse the whole graph and
   // find constant parts of it. Then we can create bigger subgraphs to compute directly.
@@ -71,7 +71,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified) {
   // The output nodes already have the right input arg, since we used the same name in the initializer.
   // We could remove unused graph initializers here, but Graph::Resolve() will take care of it.
 
-  modified = true;
+  modified = deleted = true;
 
   return Status::OK();
 }  // namespace onnxruntime

@@ -13,7 +13,7 @@ class EliminateSlice : public RewriteRule {
   EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node") {}
 
  private:
-  bool SatisfyCondition(const Node& node) override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& removed) override;
 };

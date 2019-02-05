@@ -11,15 +11,15 @@
 namespace onnxruntime {
 
 Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  if (utils::RemoveSingleInSingleOutNode(graph, node)) {
+  if (graph_edit_utils::RemoveSingleInSingleOutNode(graph, node)) {
     modified = deleted = true;
   }
 
   return Status::OK();
 }
 
-bool EliminateIdentity::SatisfyCondition(const Node& node) {
-  return utils::IsSingleInSingleOutNode(node);
+bool EliminateIdentity::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
+  return graph_edit_utils::IsSingleInSingleOutNode(node);
 }
 
 }  // namespace onnxruntime

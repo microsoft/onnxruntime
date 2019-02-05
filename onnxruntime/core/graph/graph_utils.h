@@ -28,7 +28,7 @@ template <typename T>
 bool GetRepeatedNodeAttributeValues(const Node& node,
                                     const std::string& attr_name,
                                     std::vector<T>& values) {
-  const auto* attr = utils::GetNodeAttribute(node, attr_name);
+  const auto* attr = graph_edit_utils::GetNodeAttribute(node, attr_name);
   if (attr) {
     values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
     return true;
