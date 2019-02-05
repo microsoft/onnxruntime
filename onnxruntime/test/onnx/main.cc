@@ -330,7 +330,6 @@ int real_main(int argc, char* argv[]) {
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
-      {"nonzero_example", "NonZero opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
       {"tf_inception_v4", "Cast opset 9 not supported yet"}};
 
