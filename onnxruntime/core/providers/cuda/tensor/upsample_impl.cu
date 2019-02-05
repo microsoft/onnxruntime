@@ -127,6 +127,7 @@ SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
 SPECIALIZED_IMPL(half)
 SPECIALIZED_IMPL(int32_t)
+SPECIALIZED_IMPL(uint8_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime
