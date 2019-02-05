@@ -5,7 +5,6 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
-#include "core/graph/graph_transformer.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {

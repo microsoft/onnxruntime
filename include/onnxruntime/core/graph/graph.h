@@ -55,7 +55,7 @@ class Node {
     @param node The source node if this is an input edge to the current node, 
     or the destination node if this is an output edge from the current node.
     @param src_arg_index The node arg index of source node of the edge.
-	@param dst_arg_index The node arg index of destination node of the edge.
+    @param dst_arg_index The node arg index of destination node of the edge.
     */
     EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept;
 
@@ -68,11 +68,11 @@ class Node {
     const Node& GetNode() const noexcept;
 
     /** Gets the source arg index.
-	@returns the source arg index of <*this> edge.*/
+    @returns the source arg index of <*this> edge.*/
     int GetSrcArgIndex() const;
 
     /** Gets the destination arg index.
-	@returns the destination arg index of <*this> edge.*/
+    @returns the destination arg index of <*this> edge.*/
     int GetDstArgIndex() const;
 
    private:
@@ -283,8 +283,12 @@ class Node {
   void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
-      If the NodeArg is an explicit or implicit input, is_input will be true when func is called. */
-  void ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func) const;
+      If the NodeArg is an explicit or implicit input, is_input will be true when func is called. 
+      @param include_missing_optional_defs Include NodeArgs that are optional and were not provided 
+                                           i.e. NodeArg::Exists() == false.
+      */
+  void ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
+                  bool include_missing_optional_defs = false) const;
 
   /** Replaces any matching definitions in the Node's explicit inputs or explicit outputs. 
   @param replacements Map of current NodeArg to replacement NodeArg.

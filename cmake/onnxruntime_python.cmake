@@ -49,6 +49,8 @@ if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined")
+else()
+  set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
 set(onnxruntime_pybind11_state_libs
@@ -56,6 +58,7 @@ set(onnxruntime_pybind11_state_libs
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
@@ -115,6 +118,9 @@ file(GLOB onnxruntime_python_datasets_data
     "${ONNXRUNTIME_ROOT}/python/datasets/*.pb"
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
+file(GLOB onnxruntime_python_sklapi_srcs
+    "${ONNXRUNTIME_ROOT}/python/sklapi/*.py"
+)
 
 # adjust based on what target/s onnxruntime_unittests.cmake created
 if (SingleUnitTestProject)
@@ -129,6 +135,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/sklapi
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -156,6 +163,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_datasets_data}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_sklapi_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/sklapi/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
