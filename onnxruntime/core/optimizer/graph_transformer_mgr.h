@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
-#include "core/graph/constant_folding.h"
+#include "core/optimizer/constant_folding.h"
 
 namespace onnxruntime {
 // Manages a list of graph transformers. It is initialized with a list of graph

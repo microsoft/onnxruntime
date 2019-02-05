@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  if (graph_edit_utils::RemoveSingleInSingleOutNode(graph, node)) {
+  if (graph_utils::RemoveSingleInSingleOutNode(graph, node)) {
     modified = deleted = true;
   }
 
@@ -19,7 +19,7 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& 
 }
 
 bool EliminateIdentity::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
-  return graph_edit_utils::IsSingleInSingleOutNode(node);
+  return graph_utils::IsSingleInSingleOutNode(node);
 }
 
 }  // namespace onnxruntime

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/constant_folding.h"
+#include "core/optimizer/constant_folding.h"
 #include "core/graph/graph_utils.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
@@ -24,7 +24,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   subgraph_nodes.push_back(node.Index());
 
   // Build the subgraph.
-  graph_edit_utils::BuildSubgraph(graph, subgraph_nodes, subgraph);
+  graph_utils::BuildSubgraph(graph, subgraph_nodes, subgraph);
 
   SessionOptions so;
   so.session_logid = "ConstantFoldingSession";
@@ -65,7 +65,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   }
 
   // Remove the output edges of the constant node and then remove the node itself.
-  graph_edit_utils::RemoveNodeOutputEdges(graph, node);
+  graph_utils::RemoveNodeOutputEdges(graph, node);
   graph.RemoveNode(node.Index());
 
   // The output nodes already have the right input arg, since we used the same name in the initializer.
@@ -77,7 +77,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 }  // namespace onnxruntime
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
-  return graph_edit_utils::IsConstantInputsNode(graph, node);
+  return graph_utils::IsConstantInputsNode(graph, node);
 }
 
 void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,

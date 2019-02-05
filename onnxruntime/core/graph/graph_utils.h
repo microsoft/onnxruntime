@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 
-namespace graph_edit_utils {
+namespace graph_utils {
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
@@ -28,7 +28,7 @@ template <typename T>
 bool GetRepeatedNodeAttributeValues(const Node& node,
                                     const std::string& attr_name,
                                     std::vector<T>& values) {
-  const auto* attr = graph_edit_utils::GetNodeAttribute(node, attr_name);
+  const auto* attr = graph_utils::GetNodeAttribute(node, attr_name);
   if (attr) {
     values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
     return true;
@@ -52,6 +52,6 @@ Status BuildSubgraph(const Graph& graph,
 /** Remove all output edges from the given Node of the Graph. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-}  // namespace graph_edit_utils
+}  // namespace graph_utils
 
 }  // namespace onnxruntime

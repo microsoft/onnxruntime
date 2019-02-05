@@ -9,7 +9,7 @@
 namespace onnxruntime {
 
 Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
-  if (graph_edit_utils::RemoveSingleInSingleOutNode(graph, node)) {
+  if (graph_utils::RemoveSingleInSingleOutNode(graph, node)) {
     removed = modified = true;
   }
 
@@ -18,19 +18,19 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 
 bool EliminateSlice::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
   // At the moment, we eliminate a slice operator only if it has a single input and a single output.
-  if (!graph_edit_utils::IsSingleInSingleOutNode(node)) {
+  if (!graph_utils::IsSingleInSingleOutNode(node)) {
     return false;
   }
 
   std::vector<int64_t> starts;
   std::vector<int64_t> ends;
-  if (!graph_edit_utils::GetRepeatedNodeAttributeValues(node, "starts", starts) ||
-      !graph_edit_utils::GetRepeatedNodeAttributeValues(node, "ends", ends) ||
+  if (!graph_utils::GetRepeatedNodeAttributeValues(node, "starts", starts) ||
+      !graph_utils::GetRepeatedNodeAttributeValues(node, "ends", ends) ||
       starts.size() != ends.size()) {
     return false;
   }
   std::vector<int64_t> axes;
-  if (!graph_edit_utils::GetRepeatedNodeAttributeValues(node, "axes", axes)) {
+  if (!graph_utils::GetRepeatedNodeAttributeValues(node, "axes", axes)) {
     for (int i = 0; (size_t)i < starts.size(); ++i) {
       axes.push_back(i);
     }
