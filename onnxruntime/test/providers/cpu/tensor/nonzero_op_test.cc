@@ -14,7 +14,7 @@ constexpr int kOpVersion = 9;
 
 template <typename TTarget, typename TNarrow = int8_t>
 void NonZeroBasicNumericTest() {
-  auto test = OpTester{kOpName, kOpVersion};
+  OpTester test{kOpName, kOpVersion};
 
   std::vector<int64_t> X_dims{1, 2, 3};
   std::vector<TNarrow> X{0, 1, 2,
@@ -36,7 +36,7 @@ TEST(NonZeroOpTest, BasicNumeric) {
 }
 
 TEST(NonZeroOpTest, BasicBool) {
-  auto test = OpTester{kOpName, kOpVersion};
+  OpTester test{kOpName, kOpVersion};
   test.AddInput<bool>(
       "X", {2, 3},
       {true, false, false,
@@ -50,13 +50,13 @@ TEST(NonZeroOpTest, BasicBool) {
 
 TEST(NonZeroOpTest, Scalar) {
   {
-    auto test = OpTester{kOpName, kOpVersion};
+    OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {0});
     test.AddOutput<int64_t>("Y", {1, 0}, {});
     test.Run();
   }
   {
-    auto test = OpTester{kOpName, kOpVersion};
+    OpTester test{kOpName, kOpVersion};
     test.AddInput<int32_t>("X", {}, {1});
     test.AddOutput<int64_t>("Y", {1, 1}, {0});
     test.Run();
@@ -64,7 +64,7 @@ TEST(NonZeroOpTest, Scalar) {
 }
 
 TEST(NonZeroOpTest, EmptyInput) {
-  auto test = OpTester{kOpName, kOpVersion};
+  OpTester test{kOpName, kOpVersion};
   test.AddInput<int32_t>(
       "X", {1, 0, 2},
       {});
