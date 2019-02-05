@@ -52,6 +52,7 @@ class ConvTransposeBase : public ConvBase {
       const int64_t output_channel,
       const std::vector<int64_t>& kernel_shape,
       const std::vector<int64_t>& strides,
+      const std::vector<int64_t>& dilations,
       const std::vector<int64_t>& output_padding,
       std::vector<int64_t>* pads,
       std::vector<int64_t>* output_shape) const;
