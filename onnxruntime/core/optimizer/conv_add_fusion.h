@@ -3,14 +3,16 @@
 
 #pragma once
 
-#include "core/graph/graph_transformer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
 class ConvAddFusion : public onnxruntime::GraphTransformer {
-public:
+ public:
   ConvAddFusion() noexcept : onnxruntime::GraphTransformer("ConvAddFusion", "Fusing Add into Conv") {}
-  Status Apply(onnxruntime::Graph& graph, bool& modified) const override;
+
+ private:
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

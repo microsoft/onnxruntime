@@ -3,7 +3,7 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/allocator.h"
-#include "core/framework/insert_cast_transformer.h"
+#include "core/optimizer/insert_cast_transformer.h"
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"

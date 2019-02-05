@@ -3,9 +3,82 @@
 
 #include "transformer_memcpy.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/execution_providers.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+
+// implements MemCpy node insertion in graph transform
+// note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTranformer
+class TransformerMemcpyImpl {
+ public:
+  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider)
+      : graph_(graph), provider_(provider) {}
+
+  bool ModifyGraph(const KernelRegistryManager& schema_registries);
+
+ private:
+  void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries);
+  void BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries);
+  void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
+  void ProcessInitializers();
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
+
+  // use value-based compare to make sure transformer output order is consistent
+  struct NodeCompare {
+    bool operator()(const onnxruntime::Node* lhs, const onnxruntime::Node* rhs) const {
+      return lhs->Index() < rhs->Index();
+    }
+  };
+
+  // use value-based compare to make sure transformer output order is consistent
+  struct NodeArgCompare {
+    bool operator()(const onnxruntime::NodeArg* lhs, const onnxruntime::NodeArg* rhs) const {
+      return lhs->Name() < rhs->Name();
+    }
+  };
+
+  std::set<onnxruntime::Node*, NodeCompare> provider_nodes_;
+  std::set<const onnxruntime::NodeArg*, NodeArgCompare> non_provider_input_defs_;  // all input defs of non-provider nodes
+  std::set<onnxruntime::NodeArg*, NodeArgCompare> non_provider_output_defs_;       // all output defs of non-provider nodes
+  std::set<const onnxruntime::NodeArg*, NodeArgCompare> provider_input_defs_;      // all input defs of provider nodes that should be in provider allocator
+  std::set<onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;           // all output defs of provider nodes that should be in provider allocator
+  std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_input_nodes_;
+  std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_output_nodes_;
+
+  onnxruntime::Graph& graph_;
+  std::string provider_;
+};
+
+// very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
+// and mainly provides the subgraph recursion functionality
+common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+  for (auto& provider : provider_types_) {
+    if (provider != onnxruntime::kCpuExecutionProvider &&
+        provider != onnxruntime::kMklDnnExecutionProvider &&
+        provider != onnxruntime::kNupharExecutionProvider &&
+        provider != onnxruntime::kTRTExecutionProvider) {
+      TransformerMemcpyImpl copy_impl(graph, provider);
+      modified = copy_impl.ModifyGraph(registry_manager_);
+    }
+  }
+
+  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximise efficiency.
+  // e.g. data on GPU prior to an 'If' node. The 'If' must run on CPU, but if the subgraph is GPU based it could
+  // consume the data from GPU and we shouldn't insert a memcpy from GPU to CPU prior to the If node, and one from
+  // CPU back to GPU when beginning execution of the subgraph. To do that requires inspecting the subgraph (and any
+  // nested subgraphs) when deciding whether to insert a memcpy in the parent graph, and may need to be fully done
+  // within TransformerMemcpyImpl instead of via this simple GraphTransformer.
+
+  // handle any subgraphs in nodes
+  for (auto& node : graph.Nodes()) {
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+  }
+
+  return Status::OK();
+}
 
 /*
 
@@ -43,11 +116,22 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   // for initializers shared by different providers, create dups
   ProcessInitializers();
 
+  for (auto arg : graph_.GetInputs())
+    BuildDefsMapping(arg, kernel_registries);
+
   for (auto arg : non_provider_input_defs_)
     BuildDefsMapping(arg, kernel_registries);
 
   for (auto arg : non_provider_output_defs_)
     BuildDefsMapping(arg, kernel_registries);
+
+  for (auto arg : graph_.GetInputs())
+    // For inputs we need to create a copy node only when the input is connected to both provider
+    // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
+    if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
+      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
+      modified = true;
+    }
 
   for (auto arg : non_provider_output_defs_)
     if (provider_input_defs_.count(arg)) {

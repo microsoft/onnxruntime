@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/initializer.h"
-#include "core/graph/gemm_activation_fusion.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/gemm_activation_fusion.h"
 #include "core/graph/graph_utils.h"
 #include <deque>
 
@@ -34,29 +34,35 @@ void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_gemm) {
 
 }  // namespace
 
-Status GemmActivationFusion::Apply(Graph& graph, bool& modified) const {
+Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
-    auto node = graph.GetNode(index);
-    if (!(utils::IsSupportedOptypeVersionAndDomain(*node, "Gemm", 7) || utils::IsSupportedOptypeVersionAndDomain(*node, "Gemm", 9)) || node->GetOutputEdgesCount() != 1) {
+    auto& node = *graph.GetNode(index);
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+
+    if (!(utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 7) ||
+          utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 9)) ||
+        node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    const Node& next_node = *(node->OutputNodesBegin());
+    const Node& next_node = *(node.OutputNodesBegin());
     if (!IsFusableActivation(next_node)) {
       continue;
     }
 
-    Node* gemm_node = node;
+    Node& gemm_node = node;
     const Node& act_node = next_node;
 
-    Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node->Name()), "FusedGemm",
-                                     "fused Gemm " + gemm_node->Name() + "with activation " + act_node.OpType(),
-                                     gemm_node->MutableInputDefs(),
-                                     graph.IsNodeOutputsInGraphOutputs(next_node) ? const_cast<Node&>(act_node).MutableOutputDefs() : gemm_node->MutableOutputDefs(),
-                                     &gemm_node->GetAttributes(),
+    Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm",
+                                     "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(),
+                                     gemm_node.MutableInputDefs(),
+                                     graph.IsNodeOutputsInGraphOutputs(next_node)
+                                         ? const_cast<Node&>(act_node).MutableOutputDefs()
+                                         : gemm_node.MutableOutputDefs(),
+                                     &gemm_node.GetAttributes(),
                                      "com.microsoft");
 
     //Add a new attribute to specify the activation type
@@ -91,7 +97,7 @@ Status GemmActivationFusion::Apply(Graph& graph, bool& modified) const {
       }
     }
 
-    removed_nodes.push_front(gemm_node->Index());
+    removed_nodes.push_front(gemm_node.Index());
     removed_nodes.push_front(act_node.Index());
   }
 
@@ -101,8 +107,8 @@ Status GemmActivationFusion::Apply(Graph& graph, bool& modified) const {
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
+
   return Status::OK();
 }
 }  // namespace onnxruntime

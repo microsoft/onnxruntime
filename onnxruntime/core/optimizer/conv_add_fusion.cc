@@ -1,17 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/initializer.h"
 #include "core/graph/graph_utils.h"
-#include "core/graph/conv_add_fusion.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/conv_add_fusion.h"
 
 using namespace onnx;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
+Status ConvAddFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+
     if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
@@ -132,7 +134,6 @@ Status ConvAddFusion::Apply(onnxruntime::Graph& graph, bool& modified) const {
 
   if (!removed_nodes.empty()) {
     modified = true;
-    ORT_RETURN_IF_ERROR(graph.Resolve());
   }
 
   return Status::OK();

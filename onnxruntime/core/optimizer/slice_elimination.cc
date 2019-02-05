@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/slice_elimination.h"
+#include "core/optimizer/slice_elimination.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/op.h"
 
 namespace onnxruntime {
 
-Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified) {
+Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
   if (utils::RemoveSingleInSingleOutNode(graph, node)) {
-    modified = true;
+    removed = modified = true;
   }
 
   return Status::OK();

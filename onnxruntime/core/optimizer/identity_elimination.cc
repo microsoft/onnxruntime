@@ -1,14 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/identity_elimination.h"
+#include "core/common/logging/logging.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/op.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/rewrite_rule.h"
+#include "core/optimizer/identity_elimination.h"
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified) {
+Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
   if (utils::RemoveSingleInSingleOutNode(graph, node)) {
-    modified = true;
+    modified = deleted = true;
   }
 
   return Status::OK();
