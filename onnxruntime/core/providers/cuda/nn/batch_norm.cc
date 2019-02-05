@@ -6,6 +6,7 @@
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 #include "batch_norm_impl.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -48,32 +49,53 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   auto mean_data = reinterpret_cast<const CudaT*>(mean->template Data<T>());
   auto var_data = reinterpret_cast<const CudaT*>(var->template Data<T>());
 
-  if (X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
-    const int64_t C = x_shape.GetDims()[1];
-    auto input_count = x_shape.Size();              // N * C * H * W * D...
-    auto stats_count = x_shape.SizeToDimension(2);  // N * C
-    auto image_size = input_count / stats_count;
-    fast_divmod fdm_HWD(gsl::narrow_cast<int>(image_size));
-    fast_divmod fdm_C(gsl::narrow_cast<int>(C));
-
-    auto fused_alpha = GetScratchBuffer<CudaT>(C);
-    auto fused_bias = GetScratchBuffer<CudaT>(C);
-    const CudaT epsilon = ToCudaType<T>::FromFloat(static_cast<float>(epsilon_));
-    BatchNormImpl(x_data, scale_data, b_data, mean_data, var_data, epsilon, fdm_HWD,
-                  fdm_C, fused_alpha.get(), fused_bias.get(), y_data, input_count);
-    return Status::OK();
-  }
+  const auto alpha = Consts<CudaT>::One;
+  const auto beta = Consts<CudaT>::Zero;
 
   CudnnTensor data_desc;
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(x_shape, new_dims);
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
 
+  // For half data type, the alpha, beta, scale, B, mean, var need to be float type
+  if (X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
+    CudnnTensor scale_desc;
+    ORT_RETURN_IF_ERROR(scale_desc.Set(new_dims, CudnnTensor::GetDataType<float>()));
+    CudnnTensor bn_tensor_desc;
+    ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
+
+    // Convert the scale, B, mean, var to float
+    const int64_t C = x_shape.GetDims()[1];
+    auto f_scale = GetScratchBuffer<float>(C);
+    auto f_B = GetScratchBuffer<float>(C);
+    auto f_mean = GetScratchBuffer<float>(C);
+    auto f_var = GetScratchBuffer<float>(C);
+    Impl_Cast<CudaT, float>(scale_data, f_scale.get(), C);
+    Impl_Cast<CudaT, float>(b_data, f_B.get(), C);
+    Impl_Cast<CudaT, float>(mean_data, f_mean.get(), C);
+    Impl_Cast<CudaT, float>(var_data, f_var.get(), C);
+
+    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
+        CudnnHandle(),
+        cudnn_batch_norm_mode_,
+        &alpha,
+        &beta,
+        data_desc,
+        x_data,
+        data_desc,
+        y_data,
+        bn_tensor_desc,
+        f_scale.get(),
+        f_B.get(),
+        f_mean.get(),
+        f_var.get(),
+        epsilon_));
+
+    return Status::OK();
+  }
+
   CudnnTensor bn_tensor_desc;
   ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
-
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
 
   CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
       CudnnHandle(),

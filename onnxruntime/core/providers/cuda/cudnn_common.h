@@ -49,8 +49,8 @@ struct Consts {
 
 template <>
 struct Consts<half> {
-  static const half Zero;
-  static const half One;
+  static const float Zero;
+  static const float One;
 };
 
 inline double ClampCudnnBatchNormEpsilon(double epsilon) {
