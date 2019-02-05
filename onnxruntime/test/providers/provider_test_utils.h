@@ -150,8 +150,7 @@ class OpTester {
  public:
   explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
       : op_(op), domain_(domain), opset_version_(opset_version) {}
-  OpTester(OpTester&& other) = default;
-  OpTester& operator=(OpTester&& other) = default;
+
   ~OpTester();
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information

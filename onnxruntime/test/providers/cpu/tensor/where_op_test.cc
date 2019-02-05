@@ -9,9 +9,8 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-OpTester MakeOpTester() {
-  return OpTester{"Where", 9};
-}
+constexpr char kOpName[] = "Where";
+constexpr int kOpVersion = 9;
 
 template <typename TDest, typename TSrc>
 std::vector<TDest> CastVector(const std::vector<TSrc>& source) {
@@ -24,7 +23,7 @@ std::vector<TDest> CastVector(const std::vector<TSrc>& source) {
 
 template <typename TNumeric>
 void WhereBasicNumericTest() {
-  OpTester test = MakeOpTester();
+  OpTester test = OpTester{kOpName, kOpVersion};
 
   const std::vector<int64_t> dims{2, 2};
 
@@ -47,7 +46,7 @@ TEST(WhereOpTest, BasicNumeric) {
 }
 
 TEST(WhereOpTest, BasicString) {
-  OpTester test = MakeOpTester();
+  OpTester test = OpTester{kOpName, kOpVersion};
 
   test.AddInput<bool>("condition", {2}, {false, true});
   const std::vector<std::string> X{"small0", "small1"};
@@ -61,7 +60,7 @@ TEST(WhereOpTest, BasicString) {
 }
 
 TEST(WhereOpTest, Broadcast) {
-  OpTester test = MakeOpTester();
+  OpTester test = OpTester{kOpName, kOpVersion};
 
   test.AddInput<bool>("condition", {1, 1, 3}, {true, false, true});
   test.AddInput<float>("X", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
