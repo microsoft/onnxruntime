@@ -5,7 +5,6 @@
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
-#include "batch_norm_impl.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace std;
