@@ -73,10 +73,11 @@ inline void ComputeTransposePadAndOutputShape(
   }
 }
 
-Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* F = context->Input<Tensor>(1);
-  const Tensor* B = has_bias ? context->Input<Tensor>(2) : nullptr;
+Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p, 
+    int input_idx, int filter_idx, int bias_idx) const {
+  const Tensor* X = context->Input<Tensor>(input_idx);
+  const Tensor* F = context->Input<Tensor>(filter_idx);
+  const Tensor* B = has_bias ? context->Input<Tensor>(bias_idx) : nullptr;
   const TensorShape& input_shape = X->Shape();
 
   // input validations

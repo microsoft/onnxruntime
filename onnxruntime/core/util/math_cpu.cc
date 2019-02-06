@@ -475,15 +475,15 @@ void GemmBatched<float, CPUMathUtil>(
   }
 }
 
-  // MKL will be implmenet as an execution provider
-  ////////////////////////////////////////////////////////////////////////////////
-  // MKL VML alternatives.
-  // Depending on whether we are using MKL, we will delegate the Caffe math
-  // functions that are VML-related to either the VML call or the Eigen
-  // implementation. If you are setting the flags (such as AVX) right for your CPU
-  // architecture, usually Eigen will deliver a throughput as fast as the VML
-  // functions.
-  ////////////////////////////////////////////////////////////////////////////////
+// MKL will be implmenet as an execution provider
+////////////////////////////////////////////////////////////////////////////////
+// MKL VML alternatives.
+// Depending on whether we are using MKL, we will delegate the Caffe math
+// functions that are VML-related to either the VML call or the Eigen
+// implementation. If you are setting the flags (such as AVX) right for your CPU
+// architecture, usually Eigen will deliver a throughput as fast as the VML
+// functions.
+////////////////////////////////////////////////////////////////////////////////
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
   template <>                                                                  \
@@ -1186,6 +1186,161 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(
   }
 }
 
+void QuantizeAcc32ToUint8(const int32_t* out_acc32, uint8_t* data, int64_t channel_size,
+                                std::function<uint8_t(const int32_t input)> quantizeDownAndCast_func) { 
+    for (int i = 0; i < channel_size; i++) {        
+        data[i] = quantizeDownAndCast_func(out_acc32[i]);
+    }
+}
+
+template <>
+void Col2im<int32_t, uint8_t, CPUMathUtil, StorageOrder::NCHW>(
+    const int32_t* data_col,
+    const int32_t* bias,
+    const int64_t channels,
+    const int64_t height,
+    const int64_t width,
+    const int64_t kernel_h,
+    const int64_t kernel_w,
+    const int64_t dilation_h,
+    const int64_t dilation_w,
+    const int64_t pad_t,
+    const int64_t pad_l,
+    const int64_t pad_b,
+    const int64_t pad_r,
+    const int64_t stride_h,
+    const int64_t stride_w,
+    uint8_t* data_im,
+    int32_t* out_acc32,
+    CPUMathUtil* context,
+    std::function<uint8_t(const int32_t input)> quantizeDownAndCast_func) {
+  const int64_t output_h =
+      (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h +
+      1;
+  const int64_t output_w =
+      (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w +
+      1;
+
+  Set<uint8_t, CPUMathUtil>(height * width * channels, 0, data_im, context);
+  
+  // Fast path for zero padding and no dilation
+  // From Torch, modified THNN_(unfolded_acc)
+  if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 &&
+      pad_t == 0 && pad_b == 0) {
+    for (auto k = 0; k < channels * kernel_h * kernel_w; k++) {
+      const auto nip = k / (kernel_h * kernel_w);
+      const auto next_nip = (k + 1) / (kernel_h * kernel_w);
+      const auto last_nip = (k - 1) / (kernel_h * kernel_w);
+      const auto rest = k % (kernel_h * kernel_w);
+      const auto kh = rest / kernel_w;
+      const auto kw = rest % kernel_w;
+      const auto* dst = data_col +
+                        nip * (kernel_h * kernel_w * output_h * output_w) +
+                        kh * (kernel_w * output_h * output_w) + kw * (output_h * output_w);
+      if (last_nip != nip) {
+        // Beginning of new channel. Init out_acc32
+        auto bias_value = bias == nullptr ? 0 : bias[nip];
+        Set<int32_t, CPUMathUtil>(height * width, bias_value, out_acc32, context);
+      }
+      for (auto y = 0; y < output_h; y++) {
+        const auto iy = y * stride_h + kh;
+        const auto ix = kw;
+        if (stride_w == 1) {
+          auto offsrc = out_acc32 + (iy * width + ix);
+          const auto offdst = dst + (y * output_w);
+          for (auto i = 0; i < output_w; ++i) {
+            offsrc[i] += offdst[i];
+          }
+        } else {
+          for (auto x = 0; x < output_w; x++) {
+            auto offsrc = out_acc32 + (iy * width + ix + x * stride_w);
+            const auto offdst = dst + (y * output_w + x);
+            *offsrc += *offdst;
+          }
+        }
+      }
+      if (next_nip != nip) {
+        // this channel completed, quantize the int32 accumalated output
+        QuantizeAcc32ToUint8(out_acc32, data_im, height * width, quantizeDownAndCast_func);
+        data_im = data_im + next_nip * (height * width);
+      }
+    }
+    return;
+  }
+
+  // Fast path for equal padding
+  if (pad_l == pad_r && pad_t == pad_b) {
+    // From Intel, https://github.com/BVLC/caffe/pull/3536
+    const int64_t pad_h = pad_t;
+    const int64_t pad_w = pad_l;
+    const int64_t channel_size = height * width;
+    for (int64_t channel = 0; channel < channels; channel++, data_im += channel_size) {
+      // initialize out_acc32 for this channel
+      auto bias_value = bias == nullptr ? 0 : bias[channel];
+      Set<int32_t, CPUMathUtil>(height * width, bias_value, out_acc32, context);
+
+      for (int64_t kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
+        for (int64_t kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
+          int64_t input_row = -pad_h + kernel_row * dilation_h;
+          for (int64_t output_rows = output_h; output_rows; output_rows--) {
+            if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
+              data_col += output_w;
+            } else {
+              int64_t input_col = -pad_w + kernel_col * dilation_w;
+              for (int64_t output_col = output_w; output_col; output_col--) {
+                if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
+                  out_acc32[input_row * width + input_col] += *data_col;
+                }
+                data_col++;
+                input_col += stride_w;
+              }
+            }
+            input_row += stride_h;
+          }
+        }
+      }
+
+      // quantize the int32 accumalated output to T2
+      QuantizeAcc32ToUint8(out_acc32, data_im, channel_size, quantizeDownAndCast_func);
+    }
+    return;
+  }
+
+  // Fallback
+  const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
+  const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
+
+  int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
+  int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
+  int64_t channels_col = channels * kernel_h * kernel_w;
+  for (int64_t c = 0; c < channels_col; ++c) {
+    int64_t w_offset = c % kernel_w;
+    int64_t h_offset = (c / kernel_w) % kernel_h;
+    int64_t c_im = c / kernel_h / kernel_w;
+    int64_t last_channel = (c-1) / kernel_h / kernel_w;
+    int64_t next_channel = (c+1) / kernel_h / kernel_w;
+    if (last_channel != c_im) {
+      // Beginning of new channel. Init out_acc32
+      auto bias_value = bias == nullptr ? 0 : bias[c_im];
+      Set<int32_t, CPUMathUtil>(height * width, bias_value, out_acc32, context);
+    }
+    for (int64_t h = 0; h < height_col; ++h) {
+      for (int64_t w = 0; w < width_col; ++w) {
+        int64_t h_pad = h * stride_h - pad_t + h_offset * dilation_h;
+        int64_t w_pad = w * stride_w - pad_l + w_offset * dilation_w;
+        if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width) {
+          data_im[(c_im * height + h_pad) * width + w_pad] +=
+              static_cast<uint8_t>(data_col[(c * height_col + h) * width_col + w]);
+        }
+      }
+    }
+    if (next_channel != c_im) {
+      // this channel completed, quantize the int32 accumalated output
+      QuantizeAcc32ToUint8(out_acc32, data_im, height * width, quantizeDownAndCast_func);
+    }
+  }
+}
+
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(
     const float* data_col,
@@ -1229,7 +1384,6 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(
     h_pad += stride_h;
   }
 }
-
 
 #define SPECIALIZED_COPYVECTOR(T)                                    \
   template <>                                                        \

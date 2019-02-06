@@ -736,10 +736,113 @@ if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
 
         convPoolShapeInference(ctx, true, false, 0, 3);
       });
-      
-    
-          
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearConvTranspose)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+The convolution transpose operator consumes a quantized input tensor, its scale and zero point, a filter, 
+its scale and zero point, output’s scale and zero point, and computes the quantized output. 
+Each scale and zero point pair must have same shape. It means they must be either scalars (per tensor) 
+or 1-D tensors (per channel))DOC")
+      .Input(
+          0,
+          "x",
+          "Input data tensor from previous layer; "
+          "has size (N x C x H x W), where N is the batch size, "
+          "C is the number of channels, and H and W are the "
+          "height and width. Note that this is for the 2D image. "
+          "Otherwise the size is (N x C x D1 x D2 ... x Dn). "
+          "Optionally, if dimension denotation is "
+          "in effect, the operation expects input data tensor "
+          "to arrive with the dimension denotation of [DATA_BATCH, "
+          "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
+          "T1")
+      .Input(1, "x_scale", "Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "tensor(float)")
+      .Input(2, "x_zero_point", "Zero point tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.", "T1")
+      .Input(
+          3,
+          "w",
+          "The weight tensor that will be used in the "
+          "convolutions; has size (M x C/group x kH x kW), where C "
+          "is the number of channels, and kH and kW are the "
+          "height and width of the kernel, and M is the number "
+          "of feature maps. For more than 2 dimensions, the "
+          "kernel shape will be (M x C/group x k1 x k2 x ... x kn), "
+          "where (k1 x k2 x ... kn) is the dimension of the kernel. "
+          "Optionally, if dimension denotation is in effect, "
+          "the operation expects the weight tensor to arrive "
+          "with the dimension denotation of [FILTER_OUT_CHANNEL, "
+          "FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. "
+          "X.shape[1] == (W.shape[1] * group) == C "
+          "(assuming zero based indices for the shape array). "
+          "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
+          "T2")
+      .Input(4, "w_scale", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "tensor(float)")
+      .Input(5, "w_zero_point", "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.", "T2")
+      .Input(6, "y_scale", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "tensor(float)")
+      .Input(7, "y_zero_point", "Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.", "T3")
+      .Input(8, "B", "Optional 1D bias to be added to the convolution, has size of M.", "T4", OpSchema::Optional)
+      .Output(
+          0,
+          "y",
+          "Output data tensor that contains the result of the "
+          "convolution. The output dimensions are functions "
+          "of the kernel size, stride size, and pad lengths.",
+          "T3")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain input types to 8-bit or 16-bit integer tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain filter types to 8-bit or 16-bit integer tensors.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+          "Constrain output types to 8-bit or 16-bit integer tensors.")
+      .TypeConstraint("T4", {"tensor(int32)", "tensor(uint32)"}, "Constrain bias type to 32-bit integer tensor.")      
+      .Attr(
+          "kernel_shape",
+          "The shape of the convolution kernel. If not present, should be inferred from input 'w'.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "output_shape",
+          "The shape of the output can be explicitly set which will cause pads values to be auto generated. If output_shape is specified "
+          "pads values are ignored. See doc for details for equations to generate pads",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "output_padding",
+          "The zero-padding added to one side of the output."
+          "This is also called adjs/adjustment in some frameworks.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "dilation value along each axis of the filter.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides", 
+          "Stride along each axis. If not present, the stride defaults to 1 along each axis.", 
+          AttributeProto::INTS, 
+          OPTIONAL)
+      .Attr("pads",
+            "Padding for the beginning and ending along each axis, it can take any value greater than or equal to 0."
+            "The value represent the number of pixels added to the beginning and end part of the corresponding axis."
+            "`pads` format should be as follow [x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of"
+            "pixels added at the beginning of axis `i` and xi_end, the number of pixels added at the end of axis `i`."
+            "This attribute cannot be used simultaneously with auto_pad attribute. If not present, the padding defaults"
+            "to 0 along start and end of each axis.",
+            AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "group",
+          "number of groups input channels and output channels are divided into. default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvInteger)
       .SetDomain(kMSDomain)

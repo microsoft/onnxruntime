@@ -45,7 +45,8 @@ class ConvTransposeBase : public ConvBase {
     std::vector<int64_t> strides;
   };
 
-  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p) const;
+  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p,
+                           int input_idx = 0, int filter_idx = 1, int bias_idx = 2) const;
 
   void ComputePadsAndOutputShape(
       const TensorShape input_shape,

@@ -475,6 +475,28 @@ void Col2im(
     T* data_im,
     Provider* provider);
 
+template <typename T1, typename T2, class Provider, int order>
+void Col2im(
+    const T1* data_col,
+    const int32_t* bias,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int64_t patch_h,
+    int64_t patch_w,
+    int64_t dilation_h,
+    int64_t dilation_w,
+    int64_t pad_t,
+    int64_t pad_l,
+    int64_t pad_b,
+    int64_t pad_r,
+    int64_t stride_h,
+    int64_t stride_w,
+    T2* data_im,
+    int32_t* int32accum,
+    Provider* provider,
+    std::function<uint8_t(const int32_t input)>);
+
 template <typename T, typename TypedCopy>
 void CopyMatrix(
     int M,
