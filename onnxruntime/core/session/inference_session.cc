@@ -341,9 +341,7 @@ class InferenceSession::Impl {
       // The 1st ones should have already been registered via session-level API into KernelRegistryManager.
       //
       // Register 2nd registries into KernelRegistryManager.
-      kernel_registry_manager_.RegisterKernels(execution_providers_);
-
-      insert_cast_transformer_.AddKernelRegistries(kernel_registry_manager_.GetAllKernelRegistries());
+      kernel_registry_manager_.RegisterKernels(execution_providers_, KernelRegistryPriority::LowPriority);
 
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_};
