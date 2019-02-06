@@ -19,6 +19,12 @@ indicates the chosen option:
 
 .. autofunction:: onnxruntime.get_device
 
+*onnxruntime* is compiled with a specific version of
+`numpy <http://www.numpy.org/>`_. The following function
+returns which version was used.
+
+.. autofunction:: onnxruntime.compiled_with_numpy
+
 Examples and datasets
 =====================
 

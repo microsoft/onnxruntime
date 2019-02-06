@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_pybind_mlvalue.h"
-
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
+#include <numpy/ufuncobject.h>
 
 #include "core/graph/graph_viewer.h"
 
@@ -219,9 +217,15 @@ void InitializeSession(InferenceSession* sess) {
 
 void addGlobalMethods(py::module& m) {
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
-  m.def(
-      "get_device", []() -> std::string { return BACKEND_DEVICE; },
-      "Return the device used to compute the prediction (CPU, MKL, ...)");
+  m.def("get_device", []() -> std::string { return BACKEND_DEVICE; },
+        "Return the device used to compute the prediction (CPU, MKL, ...)");
+  m.def("compiled_with_numpy", []() -> int { return NPY_API_VERSION; },
+        R"pbdoc(Python bindings for onnxruntime is built with numpy. This function
+returns the constant ``NPY_API_VERSION`` which tells which version of
+numpy was used to compile this bindings. The following error
+``ModuleNotFoundError: No module named 'numpy.core._multiarray_umath'``
+is raised when onnxruntime is built with *numpy 1.16+* but only *numpy<1.16*
+is installed. See alos issue `12825 <https://github.com/numpy/numpy/issues/12825>`_.)pbdoc");
 }
 
 void addObjectMethods(py::module& m) {
@@ -279,52 +283,50 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
-            } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (shape->dim(i).has_dim_value()) {
-                  res << shape->dim(i).dim_value();
-                } else if (shape->dim(i).has_dim_param()) {
-                  res << "None";
-                }
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (shape->dim(i).has_dim_value()) {
+              res << shape->dim(i).dim_value();
+            } else if (shape->dim(i).has_dim_param()) {
+              res << "None";
             }
-            res << ")";
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
+            }
+          }
+          res << "]";
+        }
+        res << ")";
 
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
-            }
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (shape->dim(i).has_dim_value()) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (shape->dim(i).has_dim_param()) {
-                arr[i] = py::none();
-              }
-            }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (shape->dim(i).has_dim_value()) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (shape->dim(i).has_dim_param()) {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -339,16 +341,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
-            std::istringstream buffer(serializedModel);
-            auto status = sess->Load(buffer);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
-            InitializeSession(sess);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
+        std::istringstream buffer(serializedModel);
+        auto status = sess->Load(buffer);
+        if (!status.IsOK()) {
+          throw std::runtime_error(status.ToString().c_str());
+        }
+        InitializeSession(sess);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -432,6 +433,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     ([]() -> void {
       // import_array1() forces a void return value.
       import_array1();
+      import_umath1();
     })();
 
     static std::unique_ptr<Environment> env;

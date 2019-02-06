@@ -3,6 +3,10 @@
 
 #pragma once
 
+#define NPY_NO_DEPRECATED_API NPY_1_15_API_VERSION
+#define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
+#define PY_UFUNC_UNIQUE_SYMBOL onnxruntime_python_UFUNC_API
+
 #include <pybind11/iostream.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -14,7 +18,6 @@
 #include "core/framework/environment.h"
 #include "core/framework/ml_value.h"
 #include "core/session/inference_session.h"
-
 
 using namespace std;
 namespace onnxruntime {

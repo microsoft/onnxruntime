@@ -4,8 +4,7 @@
 #include "onnxruntime_pybind_mlvalue.h"
 
 #define NO_IMPORT_ARRAY
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
+#define NO_IMPORT_UFUNC
 #include <numpy/arrayobject.h>
 
 #include "core/graph/graph.h"

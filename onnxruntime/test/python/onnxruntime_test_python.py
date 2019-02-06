@@ -457,6 +457,11 @@ class TestInferenceSession(unittest.TestCase):
         total = mat.sum()
         self.assertEqual(total, 0)
 
+    def test_compiled_with_numpy(self):
+        res = onnxrt.compiled_with_numpy()
+        assert isinstance(res, int)
+        assert res > 7
+
         
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
