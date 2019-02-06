@@ -395,7 +395,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
         return rfetch;
-      })
+      }, R"pbdoc(Computes the predictions
+for the given inputs.
+:param names: output_name if the list of desired outputs or None to get all of them
+:param pyfeeds: dictionary ``{input_name: input array}``
+:param run_options: see :class:`RunOptions <onnxruntime.RunOptions>`
+:return: list of outputs, one of each requested output name
+
+Investigate is easier when *run_log_verbosity_level* is set to a value strictly positive.)pbdoc")
       .def("end_profiling", [](InferenceSession* sess) -> std::string {
         return sess->EndProfiling();
       })
