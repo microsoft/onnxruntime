@@ -94,51 +94,61 @@ inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape&
   const int64_t len = shape.Size();
   ORT_ENFORCE(len > 0);
   if (std::is_same<DstType, float>::value) {
+    float* mutable_data = out->MutableData<float>();
     for (int i = 0; i < len; ++i) {
-      out->MutableData<float>()[i] = std::stof(in->Data<std::string>()[i]);
+      mutable_data[i] = std::stof(in->Data<std::string>()[i]);
     }
   } else if (std::is_same<DstType, double>::value) {
+    double* mutable_data = out->MutableData<double>();
     for (int i = 0; i < len; ++i) {
-      out->MutableData<double>()[i] = std::stod(in->Data<std::string>()[i]);
+      mutable_data[i] = std::stod(in->Data<std::string>()[i]);
     }
   } else if (std::is_same<DstType, int8_t>::value) {
+    int8_t* mutable_data = out->MutableData<int8_t>();
     for (int i = 0; i < len; ++i) {
       int temp_i = std::stoi(in->Data<std::string>()[i]);
-      out->MutableData<int8_t>()[i] = static_cast<int8_t>(temp_i);
+      mutable_data[i] = static_cast<int8_t>(temp_i);
     }
   } else if (std::is_same<DstType, uint8_t>::value) {
+    uint8_t* mutable_data = out->MutableData<uint8_t>();
     for (int i = 0; i < len; ++i) {
       unsigned long temp_ui = std::stoul(in->Data<std::string>()[i]);
-      out->MutableData<uint8_t>()[i] = static_cast<uint8_t>(temp_ui);
+      mutable_data[i] = static_cast<uint8_t>(temp_ui);
     }
   } else if (std::is_same<DstType, int16_t>::value) {
+    int16_t* mutable_data = out->MutableData<int16_t>();
     for (int i = 0; i < len; ++i) {
       int temp_i = std::stoi(in->Data<std::string>()[i]);
-      out->MutableData<int16_t>()[i] = static_cast<int16_t>(temp_i);
+      mutable_data[i] = static_cast<int16_t>(temp_i);
     }
   } else if (std::is_same<DstType, uint16_t>::value) {
+    uint16_t* mutable_data = out->MutableData<uint16_t>();
     for (int i = 0; i < len; ++i) {
       unsigned long temp_ui = std::stoul(in->Data<std::string>()[i]);
-      out->MutableData<uint16_t>()[i] = static_cast<uint16_t>(temp_ui);
+      mutable_data[i] = static_cast<uint16_t>(temp_ui);
     }
   } else if (std::is_same<DstType, int32_t>::value) {
+    int32_t* mutable_data = out->MutableData<int32_t>();
     for (int i = 0; i < len; ++i) {
-      out->MutableData<int32_t>()[i] = std::stol(in->Data<std::string>()[i]);
+      mutable_data[i] = std::stol(in->Data<std::string>()[i]);
     }
   } else if (std::is_same<DstType, uint32_t>::value) {
+    uint32_t* mutable_data = out->MutableData<uint32_t>();
     for (int i = 0; i < len; ++i) {
-      out->MutableData<uint32_t>()[i] = std::stoul(in->Data<std::string>()[i]);
+      mutable_data[i] = std::stoul(in->Data<std::string>()[i]);
     }
   } else if (std::is_same<DstType, int64_t>::value) {
+    int64_t* mutable_data = out->MutableData<int64_t>();
     for (int i = 0; i < len; ++i) {
-      out->MutableData<int64_t>()[i] = std::stoll(in->Data<std::string>()[i]);
+      mutable_data[i] = std::stoll(in->Data<std::string>()[i]);
     }
   } else if (std::is_same<DstType, uint64_t>::value) {
+    uint64_t* mutable_data = out->MutableData<uint64_t>();
     for (int i = 0; i < len; ++i) {
-      out->MutableData<uint64_t>()[i] = std::stoull(in->Data<std::string>()[i]);
+      mutable_data[i] = std::stoull(in->Data<std::string>()[i]);
     }
   } else {
-    return;
+    ORT_THROW("Unsupported type in cast op: from String to ", typeid(DstType).name());
   }
 }  // namespace onnxruntime
 
