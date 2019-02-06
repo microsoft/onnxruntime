@@ -72,6 +72,7 @@ TEST(ConstantOfShape, DefaultValue) {
 }
 
 // Our infrastructure does not allow for empty input.
+// But the spec makes a provision for it
 //TEST(ConstantOfShape, EmptyInput) {
 //  // Output must contain a scalar
 //  OpTester test("ConstantOfShape", 9);
@@ -93,36 +94,39 @@ TEST(ConstantOfShape, DefaultValue) {
 //  test.Run(OpTester::ExpectResult::kExpectSuccess);
 //}
 
-void SetValue(TensorProto& t_proto, float value) {
+inline void SetValue(TensorProto& t_proto, float value) {
   t_proto.mutable_float_data()->Add(value);
 }
 
-void SetValue(TensorProto& t_proto, double value) {
+inline void SetValue(TensorProto& t_proto, double value) {
   t_proto.mutable_double_data()->Add(value);
 }
 
-void SetValue(TensorProto& t_proto, MLFloat16 value) {
+inline void SetValue(TensorProto& t_proto, MLFloat16 value) {
   t_proto.mutable_int32_data()->Add(value.val);
 }
 
-// This works for uint32_t and uint64_t
+// This works for int64_t
 template <class T>
-void SetValue(TensorProto& t_proto, T value, std::enable_if_t<std::is_same_v<T, int64_t>>* = nullptr) {
+inline void SetValue(TensorProto& t_proto, T value,
+                     typename std::enable_if<std::is_same<T, int64_t>::value>::type* = nullptr) {
   t_proto.mutable_int64_data()->Add(value);
 }
 
+// For uint32 and uint64
 template <class T>
-void SetValue(TensorProto& t_proto, T value,
-              std::enable_if_t<std::is_same_v<T, uint64_t> ||
-                               std::is_same_v<T, uint32_t>>* = nullptr) {
+inline void SetValue(TensorProto& t_proto, T value,
+                     typename std::enable_if<std::is_same<T, uint64_t>::value ||
+                                             std::is_same<T, uint32_t>::value>::type* = nullptr) {
   t_proto.mutable_uint64_data()->Add(value);
 }
 
+// For everything else except float, double and MLFloat16
 template <class T>
-void SetValue(TensorProto& t_proto, T value,
-              std::enable_if_t<!std::is_same_v<T, int64_t> &&
-                               !std::is_same_v<T, uint32_t> &&
-                               !std::is_same_v<T, uint64_t>>* = nullptr) {
+inline void SetValue(TensorProto& t_proto, T value,
+                     typename std::enable_if<!std::is_same<T, int64_t>::value &&
+                                             !std::is_same<T, uint32_t>::value &&
+                                             !std::is_same<T, uint64_t>::value>::type* = nullptr) {
   t_proto.mutable_int32_data()->Add(value);
 }
 
