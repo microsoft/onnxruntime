@@ -192,7 +192,7 @@ struct KernelCreateInfo {
 
   KernelCreateInfo(KernelCreateInfo&& other)
       : kernel_def(std::move(other.kernel_def)),
-        kernel_create_func(other.kernel_create_func) {}
+        kernel_create_func(std::move(other.kernel_create_func)) {}
 };
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
