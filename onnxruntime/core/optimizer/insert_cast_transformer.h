@@ -15,23 +15,11 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
         force_cpu_fp32_(true) {
   }
 
-  void AddKernelRegistries(const std::vector<const KernelRegistry*>& kernels) {
-    for (auto* kernel : kernels) {
-      if (kernel)
-        kernels_registries_.push_back(kernel);
-    }
-  }
-
-  void AddKernelRegistry(const KernelRegistry& kernel) {
-    kernels_registries_.push_back(&kernel);
-  }
-
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
 
   bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const;
 
-  std::vector<const KernelRegistry*> kernels_registries_;
   // Currently because we only have very few cpu kernels support float16, place those nodes on float16
   // will introduce many cast between fp32 and fp16, which will slow the execution.
   // A better solution is to have a cost model to evaluate does it works to place the node on float16.
