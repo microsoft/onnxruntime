@@ -69,5 +69,42 @@ Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> f
   return status;
 }
 
+bool IsSingleInSingleOutNode(const Node& node) {
+  return node.GetInputEdgesCount() == 1 && node.GetOutputEdgesCount() == 1;
+}
+
+const onnx::AttributeProto* GetNodeAttribute(
+    const Node& node, const std::string& attr_name) {
+  const auto& attrs = node.GetAttributes();
+  const auto iter = attrs.find(attr_name);
+  return iter == attrs.end() ? nullptr : &iter->second;
+}
+
+bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
+  if (!IsSingleInSingleOutNode(node)) {
+    return false;
+  }
+  // Get input/output edges, nodes, and node args.
+  const Node::EdgeEnd& input_edge = *node.InputEdgesBegin();
+  const NodeIndex input_edge_node = input_edge.GetNode().Index();
+  const int input_edge_dst_arg = input_edge.GetSrcArgIndex();
+  const Node::EdgeEnd& output_edge = *node.OutputEdgesBegin();
+  const NodeIndex output_edge_node = output_edge.GetNode().Index();
+  const int output_edge_dst_arg = output_edge.GetDstArgIndex();
+
+  // Remove output edge.
+  graph.RemoveEdge(node.Index(), output_edge.GetNode().Index(),
+                   output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+
+  // Remove node (this will remove the input edge too).
+  graph.RemoveNode(node.Index());
+
+  // Add new edge connecting the input with the output nodes directly.
+  graph.AddEdge(input_edge_node, output_edge_node,
+                input_edge_dst_arg, output_edge_dst_arg);
+
+  return true;
+}
+
 }  // namespace utils
 }  // namespace onnxruntime

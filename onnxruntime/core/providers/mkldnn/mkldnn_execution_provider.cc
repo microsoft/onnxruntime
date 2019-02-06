@@ -4,7 +4,6 @@
 #include "mkldnn_allocator.h"
 #include "mkldnn_execution_provider.h"
 #include "core/framework/allocator.h"
-#include "core/framework/transformer_memcpy.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
 #include "mkldnn_fwd.h"

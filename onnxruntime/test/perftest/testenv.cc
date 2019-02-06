@@ -55,7 +55,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
 #endif
     } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultBrainsliceExecutionProvider());
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultBrainSliceExecutionProvider());
 #else
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
