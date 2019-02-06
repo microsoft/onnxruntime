@@ -225,7 +225,7 @@ returns the constant ``NPY_API_VERSION`` which tells which version of
 numpy was used to compile this bindings. The following error
 ``ModuleNotFoundError: No module named 'numpy.core._multiarray_umath'``
 is raised when onnxruntime is built with *numpy 1.16+* but only *numpy<1.16*
-is installed. See alos issue `12825 <https://github.com/numpy/numpy/issues/12825>`_.)pbdoc");
+is installed. See also issue `12825 <https://github.com/numpy/numpy/issues/12825>`_.)pbdoc");
 }
 
 void addObjectMethods(py::module& m) {
