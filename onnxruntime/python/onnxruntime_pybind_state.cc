@@ -216,11 +216,11 @@ void InitializeSession(InferenceSession* sess) {
 }  // namespace python
 
 void addGlobalMethods(py::module& m) {
-  m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
+  m.def("get_session_initializer", &SessionObjectInitializer::Get, "Returns a default session object initializer.");
   m.def("get_device", []() -> std::string { return BACKEND_DEVICE; },
-        "Return the device used to compute the prediction (CPU, MKL, ...)");
+        "Returns the device used to compute the prediction (CPU, MKL, ...)");
   m.def("compiled_with_numpy", []() -> int { return NPY_API_VERSION; },
-        R"pbdoc(Python bindings for onnxruntime is built with numpy. This function
+        R"pbdoc(Python bindings for onnxruntime is built with *numpy*. This function
 returns the constant ``NPY_API_VERSION`` which tells which version of
 numpy was used to compile this bindings. The following error
 ``ModuleNotFoundError: No module named 'numpy.core._multiarray_umath'``
@@ -242,7 +242,7 @@ with a big chunk for all the internal memory allocation. Default is true.)pbdoc"
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &SessionOptions::enable_profiling,
-                     R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+                     R"pbdoc(Enables profiling for this session. Default is false.)pbdoc")
       .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
                      R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
       .def_readwrite("max_num_graph_transformation_steps", &SessionOptions::max_num_graph_transformation_steps,
@@ -308,7 +308,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return std::string(res.str());
       },
-           "converts the node into a readable string")
+           "Converts the node into a readable string.")
       .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
         auto shape = na.Shape();
         std::vector<py::object> arr;
@@ -349,7 +349,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
         InitializeSession(sess);
       },
-           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+           R"pbdoc(Loads a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -382,7 +382,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         if (!status.IsOK()) {
           auto mes = status.ToString();
-          throw std::runtime_error(std::string("Method run failed due to: ") + std::string(mes.c_str()));
+          throw std::runtime_error(std::string("Method 'run' failed due to: ") + std::string(mes.c_str()));
         }
 
         std::vector<py::object> rfetch;
