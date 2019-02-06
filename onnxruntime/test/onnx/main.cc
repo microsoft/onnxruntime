@@ -227,10 +227,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_trt) {
 #ifdef USE_TRT
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
-      sf.AppendExecutionProvider(f);
-      OrtReleaseObject(f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
