@@ -13,6 +13,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t id, bool f, const char*, const char*, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_TRT();
 
 namespace test {
 
@@ -55,12 +56,7 @@ std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultTRTExecutionProvider() {
 #ifdef USE_TRT
-  OrtProviderFactoryInterface** f;
-  ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
-  FACTORY_PTR_HOLDER;
-  OrtProvider* out;
-  ORT_THROW_ON_ERROR((*f)->CreateProvider(f, &out));
-  return std::unique_ptr<IExecutionProvider>((IExecutionProvider*)out);
+  return CreateExecutionProviderFactory_TRT()->CreateProvider();
 #else
   return nullptr;
 #endif
