@@ -78,8 +78,8 @@ ONNX Runtime is built with an extensible design that makes it versatile to suppo
 * [Add a custom operator/kernel](docs/AddingCustomOp.md)
 * [Add an execution provider](docs/AddingExecutionProvider.md)
 * [Add a new graph
-transform](include/onnxruntime/core/graph/graph_transformer.h)
-* [Add a new rewrite rule](include/onnxruntime/core/graph/rewrite_rule.h)
+transform](include/onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
 
 # Contribute
 We welcome your contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
