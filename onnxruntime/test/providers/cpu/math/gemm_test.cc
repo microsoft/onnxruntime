@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(MathOpTest, GemmNoTrans) {
+TEST(GemmOpTest, GemmNoTrans) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -26,7 +26,41 @@ TEST(MathOpTest, GemmNoTrans) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmBroadcast) {
+// Only CUDA kernel has float 16 support
+#ifdef USE_CUDA
+TEST(GemmOpTest, GemmNoTrans_f16) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
+                      -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> B(12, 1.0f);
+  std::vector<float> C(6, 1.0f);
+  std::vector<float> Y{11.0f, 11.0f, 11.0f,
+                       -9.0f, -9.0f, -9.0f};
+
+  std::vector<MLFloat16> f_A(8);
+  std::vector<MLFloat16> f_B(12);
+  std::vector<MLFloat16> f_C(6);
+  std::vector<MLFloat16> f_Y(6);
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+  test.AddInput<MLFloat16>("C", {2, 3}, f_C);
+  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+  test.Run();
+}
+#endif
+
+TEST(GemmOpTest, GemmBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -45,7 +79,7 @@ TEST(MathOpTest, GemmBroadcast) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmTrans) {
+TEST(GemmOpTest, GemmTrans) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)1);
@@ -66,7 +100,7 @@ TEST(MathOpTest, GemmTrans) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmAlphaBeta) {
+TEST(GemmOpTest, GemmAlphaBeta) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -85,7 +119,7 @@ TEST(MathOpTest, GemmAlphaBeta) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmNaN) {
+TEST(GemmOpTest, GemmNaN) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -104,7 +138,7 @@ TEST(MathOpTest, GemmNaN) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmScalarBroadcast) {
+TEST(GemmOpTest, GemmScalarBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -142,7 +176,7 @@ TEST(MathOpTest, Gemm2DBroadcast) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmFalseBroadcast) {
+TEST(GemmOpTest, GemmFalseBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -161,7 +195,7 @@ TEST(MathOpTest, GemmFalseBroadcast) {
   test.Run();
 }
 
-TEST(MathOpTest, GemmEmptyTensor) {
+TEST(GemmOpTest, GemmEmptyTensor) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", static_cast<int64_t>(0));
