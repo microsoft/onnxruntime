@@ -5,7 +5,7 @@ jobs:
   steps:
     - script: |
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --skip_submodule_sync --parallel
+        ./build.sh --skip_submodule_sync --parallel --build_shared_lib
       displayName: 'Command Line Script'
 
     - template: templates/clean-agent-build-directory-step.yml
