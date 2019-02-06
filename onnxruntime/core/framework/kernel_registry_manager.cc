@@ -5,6 +5,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/session_state.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -20,7 +21,12 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
 
   Status status;
   for (auto& registry : kernel_registries_) {
-    status = registry->CreateKernel(node, execution_provider, session_state, op_kernel);
+    status = registry->CreateKernel(node,
+                                    execution_provider,
+                                    session_state.GetInitializedTensors(),
+                                    session_state.GetMLValueNameIdxMap(),
+                                    session_state.GetFuncMgr(),
+                                    op_kernel);
     if (status.IsOK()) {
       return status;
     }
