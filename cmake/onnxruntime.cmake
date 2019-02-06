@@ -32,7 +32,7 @@ target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime gsl)
 
 if(UNIX)
-  set(BEGIN_WHOLE_ARCHIVE -Xlinker -all_oad)
+  set(BEGIN_WHOLE_ARCHIVE -Xlinker -all_load)
   set(END_WHOLE_ARCHIVE -Xlinker -noall_load)
 #  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined")
 else()
