@@ -20,6 +20,11 @@ class ConstantFolding : public RewriteRule {
   ConstantFolding() noexcept : RewriteRule("ConstantFolding", "Constant folding") {}
 
  private:
+  /** Constant folding will not be applied to nodes whose op_type is included in this set.
+      All non-deterministic operators should be included in this set. */
+  const std::unordered_set<std::string> excluded_op_types_ =
+      {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
+
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;

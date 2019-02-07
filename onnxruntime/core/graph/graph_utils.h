@@ -49,7 +49,8 @@ Status BuildSubgraph(const Graph& graph,
                      const std::vector<NodeIndex>& subgraph_nodes,
                      Graph& subgraph);
 
-/** Remove all output edges from the given Node of the Graph. */
+/** Remove all output edges from the given Node of the Graph. 
+    This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
 }  // namespace graph_utils

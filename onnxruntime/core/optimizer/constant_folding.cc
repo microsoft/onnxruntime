@@ -77,7 +77,8 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 }  // namespace onnxruntime
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
-  return graph_utils::IsConstantInputsNode(graph, node);
+  return (excluded_op_types_.find(node.OpType()) == excluded_op_types_.end()) &&
+	  graph_utils::IsConstantInputsNode(graph, node);
 }
 
 void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,
