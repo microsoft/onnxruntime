@@ -80,12 +80,10 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
   // Partitioning <graph> based on provider preference and their capabilities.
-  auto kernel_registries = kernel_registry_mgr_.GetAllKernelRegistries();
-
   std::vector<std::vector<std::unique_ptr<ComputeCapability>>> capabilities_of_all_providers;
   GraphViewer graph_viewer(graph);
   for (auto& provider : providers_) {
-    capabilities_of_all_providers.push_back(provider->GetCapability(graph_viewer, kernel_registries));
+    capabilities_of_all_providers.push_back(provider->GetCapability(graph_viewer, kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type())));
   }
 
   // If an execution provider return the capability that he could run a sub-graph,
@@ -137,6 +135,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
           fused_node.SetExecutionProviderType(provider->Type());
           // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
           bool need_compile = true;
+          auto kernel_registries = kernel_registry_mgr_.GetKernelRegistriesByProviderType(provider->Type());
           for (auto* kernel_registry : kernel_registries) {
             if (kernel_registry->TryFindKernel(fused_node, provider->Type())) {
               need_compile = false;
@@ -167,12 +166,12 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         //prepare the func kernel
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
-        fused_kernel_registry->Register(builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); });
+        ORT_RETURN_IF_ERROR(fused_kernel_registry->Register(builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); }));
       }
     }
   }
 
-  ORT_ENFORCE(graph.Resolve().IsOK());
+  ORT_RETURN_IF_ERROR(graph.Resolve());
 
   // To see if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
@@ -183,10 +182,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       if (nullptr == node_func) {
         continue;
       }
-      Status inliner_status = graph.InlineFunction(node);
       // If the node has a functionbody with no kernel and cannot be inlined
       // it is a invalid function
-      if (!inliner_status.IsOK()) return inliner_status;
+      ORT_RETURN_IF_ERROR(graph.InlineFunction(node));
       // Set the flag for re-run graph partition after successful inlining
       inline_flag = true;
       break;
@@ -212,7 +210,8 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   }
 #endif
 
-  kernel_registry_mgr_.RegisterKernelRegistry(fused_kernel_registry, KernelRegistryPriority::HighPriority);
+  if (!fused_kernel_registry->IsEmpty())
+    kernel_registry_mgr_.RegisterKernelRegistry(fused_kernel_registry);
 
   return Status::OK();
 }

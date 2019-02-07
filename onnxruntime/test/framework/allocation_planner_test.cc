@@ -232,10 +232,9 @@ class PlannerTest : public ::testing::Test {
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     KernelRegistryManager kernel_registry_manager;
-    kernel_registry_manager.RegisterKernelRegistry(cpu_execution_provider->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
-
     ExecutionProviders execution_providers;
     execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::move(cpu_execution_provider));
+    kernel_registry_manager.RegisterKernels(execution_providers);
 
     SequentialPlannerTestContext test_context(&shape_map_);
     auto status = SequentialPlanner::CreatePlan(

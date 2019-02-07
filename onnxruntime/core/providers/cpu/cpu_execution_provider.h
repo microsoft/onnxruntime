@@ -45,7 +45,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     return onnxruntime::kCpuExecutionProvider;
   }
 
-  virtual std::vector<std::unique_ptr<ComputeCapability>>
+  std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
@@ -69,7 +69,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   void InsertFusedRules(FuseRuleFn rule);
 

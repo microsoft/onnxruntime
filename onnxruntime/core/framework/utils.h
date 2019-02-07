@@ -25,8 +25,6 @@ class Logger;
 }
 
 namespace utils {
-const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
-                              const onnxruntime::Node& node);
 
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info);
 

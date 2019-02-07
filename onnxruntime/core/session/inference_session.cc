@@ -128,7 +128,7 @@ class InferenceSession::Impl {
     }
 
     // Insert session-level customized kernel registry.
-    kernel_registry_manager_.RegisterKernelRegistry(custom_registry, KernelRegistryPriority::HighPriority);
+    kernel_registry_manager_.RegisterKernelRegistry(custom_registry);
     custom_schema_registries_.push_back(custom_registry);
     return Status::OK();
   }
@@ -234,6 +234,21 @@ class InferenceSession::Impl {
 
     // Insert cast node/s.
     ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
+
+    //Now every node should be already assigned to an execution provider
+    for (auto& node : graph.Nodes()) {
+      if (node.GetExecutionProviderType().empty()) {
+        std::ostringstream oss;
+        oss << "Could not find an implementation for the node ";
+        if (!node.Name().empty())
+          oss << node.Name() << ":";
+        oss << node.OpType();
+        if (node.Op()) {
+          oss << "(" << node.Op()->since_version() << ")";
+        }
+        return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
+      }
+    }
 
     std::vector<std::string> provider_types;
     for (auto& provider_ptr : providers) {
@@ -341,7 +356,7 @@ class InferenceSession::Impl {
       // The 1st ones should have already been registered via session-level API into KernelRegistryManager.
       //
       // Register 2nd registries into KernelRegistryManager.
-      kernel_registry_manager_.RegisterKernels(execution_providers_, KernelRegistryPriority::LowPriority);
+      kernel_registry_manager_.RegisterKernels(execution_providers_);
 
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_};

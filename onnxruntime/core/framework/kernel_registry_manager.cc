@@ -14,63 +14,105 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
                                            const IExecutionProvider& execution_provider,
                                            const SessionState& session_state,
                                            /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  std::lock_guard<OrtMutex> lock(lock_);
-  if (kernel_registries_.empty()) {
-    return Status(ONNXRUNTIME, FAIL, "Kernel not found.");
+  const std::string& ptype = node.GetExecutionProviderType();
+  if (ptype.empty()) {
+    return Status(ONNXRUNTIME, FAIL, "The node is not placed on any Execution Provider, therefore, can't find a suitable kernel for it");
+  }
+  Status status;
+  {
+    std::lock_guard<OrtMutex> lock(lock_);
+    for (auto& registry : kernel_registries_) {
+      status = registry->CreateKernel(node,
+                                      execution_provider,
+                                      session_state.GetInitializedTensors(),
+                                      session_state.GetMLValueNameIdxMap(),
+                                      session_state.GetFuncMgr(),
+                                      op_kernel);
+      if (status.IsOK()) {
+        return status;
+      }
+    }
   }
 
-  Status status;
-  for (auto& registry : kernel_registries_) {
-    status = registry->CreateKernel(node,
-                                    execution_provider,
-                                    session_state.GetInitializedTensors(),
-                                    session_state.GetMLValueNameIdxMap(),
-                                    session_state.GetFuncMgr(),
-                                    op_kernel);
+  KernelRegistry* p = nullptr;
+  {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto iter = provider_type_to_registry_.find(ptype);
+    if (iter != provider_type_to_registry_.end()) p = iter->second.get();
+  }
+  if (p != nullptr) {
+    status = p->CreateKernel(node,
+                             execution_provider,
+                             session_state.GetInitializedTensors(),
+                             session_state.GetMLValueNameIdxMap(),
+                             session_state.GetFuncMgr(),
+                             op_kernel);
     if (status.IsOK()) {
       return status;
     }
   }
 
-  return status;
+  std::ostringstream errormsg;
+  errormsg << "Failed to find kernel for " << node.OpType();
+  if (node.Op() != nullptr)
+    errormsg << "(" << node.Op()->since_version() << ")";
+  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
+  return Status(ONNXRUNTIME, FAIL, errormsg.str());
 }
 
-void KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers,
-                                            KernelRegistryPriority priority) {
-  for (auto& provider : execution_providers)
-    RegisterKernelRegistry(provider->GetKernelRegistry(), priority);
+void KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
+  for (auto& provider : execution_providers) {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto iter = provider_type_to_registry_.find(provider->Type());
+    ORT_ENFORCE(iter == provider_type_to_registry_.end());
+    provider_type_to_registry_.insert(std::make_pair(provider->Type(), provider->GetKernelRegistry()));
+  }
 }
 
-void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry,
-                                                   KernelRegistryPriority priority) {
-  std::lock_guard<OrtMutex> lock(lock_);
+void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry) {
   if (nullptr == kernel_registry) {
     return;
   }
-
-  if (priority == KernelRegistryPriority::HighPriority) {
-    kernel_registries_.push_front(kernel_registry);
-  } else {
-    kernel_registries_.push_back(kernel_registry);
-  }
+  std::lock_guard<OrtMutex> lock(lock_);
+  kernel_registries_.push_front(kernel_registry);
 }
 
 Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
-  std::lock_guard<OrtMutex> lock(lock_);
-  if (kernel_registries_.empty()) {
-    return Status(ONNXRUNTIME, FAIL, "Kernel def not found.");
+  const std::string& ptype = node.GetExecutionProviderType();
+  if (ptype.empty()) {
+    return Status(ONNXRUNTIME, FAIL, "The node is not placed on any Execution Provider");
+  }
+  Status status;
+  {
+    std::lock_guard<OrtMutex> lock(lock_);
+    for (auto& registry : kernel_registries_) {
+      *kernel_create_info = registry->TryFindKernel(node, "");  //the last argument is ignored
+      if (*kernel_create_info != nullptr) {
+        return Status::OK();
+      }
+    }
   }
 
-  Status status;
-  for (auto& registry : kernel_registries_) {
-    *kernel_create_info = registry->TryFindKernel(node, "");
+  KernelRegistry* p = nullptr;
+  {
+    std::lock_guard<OrtMutex> lock(lock_);
+    auto iter = provider_type_to_registry_.find(ptype);
+    if (iter != provider_type_to_registry_.end()) p = iter->second.get();
+  }
+  if (p != nullptr) {
+    *kernel_create_info = p->TryFindKernel(node, "");  //the last argument is ignored
     if (*kernel_create_info != nullptr) {
       return Status::OK();
     }
   }
 
-  return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
+  std::ostringstream errormsg;
+  errormsg << "Failed to find kernel for " << node.OpType();
+  if (node.Op() != nullptr)
+    errormsg << "(" << node.Op()->since_version() << ")";
+  if (!node.Name().empty()) errormsg << " (node " << node.Name() << ")";
+  return Status(ONNXRUNTIME, FAIL, errormsg.str());
 }
 
 }  // namespace onnxruntime

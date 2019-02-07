@@ -164,8 +164,15 @@ class Tensor final {
     shape_ = new_shape;
   }
 
+  //return zero if integer overflow
   size_t Size() const noexcept {
-    return shape_.Size() * dtype_->Size();
+    size_t ret;
+    int64_t l = shape_.Size();
+    if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max()))
+      return 0;
+    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret))
+      ret = 0;
+    return ret;
   }
 
   // More API methods.
