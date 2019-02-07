@@ -168,16 +168,13 @@ Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
 
   auto& input_shape = shape_tensor->Shape();
 
-  // If empty the output is a scalar, which means a single value
+  // If empty the output is a scalar with empty shape
+  // TensorShape::Size() will still return 1 and we will output
+  // one value
   std::vector<int64_t> output_dims;
-  const auto input_size = input_shape.Size();
-  if (input_size > 0) {
-    auto span = gsl::make_span(shape_tensor->Data<int64_t>(), input_size);
+  if (input_shape.NumDimensions() > 0) {
+    auto span = gsl::make_span(shape_tensor->Data<int64_t>(), input_shape.Size());
     output_dims.insert(output_dims.end(), span.cbegin(), span.cend());
-  } else if (input_size == 0) {
-    output_dims.push_back(1);  // scalar
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input tensor dimensions is expected to be either 1-D or empty");
   }
 
   TensorShape output_shape(output_dims);
