@@ -98,10 +98,9 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   */
   Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule);
 
-  /** Register a default rewrite rule, i.e., a rule that we will attempt to apply to all 
-  graph nodes, regardless of their type. */
+  /** Register a rewrite rule that we will attempt to apply to all graph nodes, regardless of their op_type. */
   Status Register(std::unique_ptr<RewriteRule> rule) {
-    return Register(kDefaultRewriteRules, std::move(rule));
+    return Register(kAnyOpRewriteRules, std::move(rule));
   }
 
   /** Check if the given op_type has any rules registered for it 
@@ -110,14 +109,14 @@ class RuleBasedGraphTransformer : public GraphTransformer {
     return op_to_rules_.find(op_type) != op_to_rules_.cend();
   }
 
-  /** Check if there are default rules registered. */
-  bool HasDefaultRules() const {
-    return HasRules(kDefaultRewriteRules);
+  /** Check if there are rules registered for all nodes, regardless of their op_type). */
+  bool HasAnyOpRules() const {
+    return HasRules(kAnyOpRewriteRules);
   }
 
   /**
   Gets the rewrite rules for the given op_type.
-  @returns a pointer to the vector containing all the rewrite rules registered for op_type if found. nullptr
+  @returns a pointer to the vector containing all the rewrite rules registered for op_type if found, nullptr
   otherwise.
   */
   const std::vector<std::unique_ptr<RewriteRule>>* GetRewriteRules(const std::string& op_type) const {
@@ -128,12 +127,28 @@ class RuleBasedGraphTransformer : public GraphTransformer {
     return nullptr;
   }
 
-  const std::vector<std::unique_ptr<RewriteRule>>* GetDefaultRewriteRules() const {
-    return GetRewriteRules(kDefaultRewriteRules);
+  /*
+  Get rewrite rules that get applied to a node regardless of its op_type ("any-op" rewrite rules).
+  @returns a pointer to the vector containing all any-op rewrite rules, nullptr otherwise.
+  */
+  const std::vector<std::unique_ptr<RewriteRule>>* GetAnyOpRewriteRules() const {
+    return GetRewriteRules(kAnyOpRewriteRules);
   }
 
+ protected:
+  /** Apply the given set of rewrite rules on the Node of this Graph.
+  @param[in] graph The Graph.
+  @param[in] node The Node to apply the rules to.
+  @param[in] rules The vector of RewriteRules that will be applied to the Node.
+  @param[out] modified Set to indicate whether the node was modified or not.
+  @param[out] deleted Set to indicate if the node was deleted. 
+  @returns Status indicating success or providing error information */
+  common::Status ApplyRulesOnNode(Graph& graph, Node& node,
+                                  const std::vector<std::unique_ptr<RewriteRule>>& rules,
+                                  bool& modified, bool& deleted) const;
+
  private:
-  static constexpr const char* kDefaultRewriteRules = "DefaultRewriteRules";
+  static constexpr const char* kAnyOpRewriteRules = "AnyOpRewriteRules";
   using RewriteRuleSet = std::unordered_map<std::string, std::vector<std::unique_ptr<RewriteRule>>>;
 
   RewriteRuleSet op_to_rules_;

@@ -93,7 +93,7 @@ TEST(GraphTransformationTests, ConstantFolding) {
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
 
   rule_transformer->Register(std::make_unique<ConstantFolding>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, true};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, false};
 
   graph_transformation_mgr.Register(std::move(rule_transformer));
   ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
