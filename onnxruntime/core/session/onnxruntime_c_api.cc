@@ -630,6 +630,28 @@ ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t
   API_IMPL_END
 }
 
+
+static OrtStatus* GetNumValuesImpl(const OrtValue* value, int* out) {
+  // get mlvalue
+  // get type
+  auto value_type = OrtGetValueType(value);
+  if (value_type == ONNX_TYPE_MAP) {
+    *out = 2;
+    return nullptr;
+  } else if (value_type == ONNX_TYPE_SEQUENCE) {
+
+    return nullptr;
+  } else {
+    return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
+  }
+}
+
+ORT_API_STATUS_IMPL(OrtGetNumValues, const OrtValue* value, int* out) {
+  API_IMPL_BEGIN
+  return GetNumValuesImpl(value, out);
+  API_IMPL_END
+}
+
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, MLValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
