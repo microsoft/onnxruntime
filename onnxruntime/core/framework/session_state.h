@@ -192,7 +192,7 @@ class SessionState {
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
-  const logging::Logger* logger_;
+  const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_;
 
   // switch for enable memory pattern optimization or not.

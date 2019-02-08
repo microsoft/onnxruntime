@@ -45,7 +45,7 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
-option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" OFF)
+option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -146,7 +146,7 @@ if(CMAKE_CROSSCOMPILING)
   message("Doing crosscompiling")
 endif()
 
-#Need python to generate def file 
+#Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
     find_package(PythonInterp 3.5 REQUIRED)
@@ -305,7 +305,10 @@ if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
-add_definitions(-DUSE_MLAS)
+if (onnxruntime_USE_MLAS)
+  add_definitions(-DUSE_MLAS)
+endif()
+
 #Adjust warning flags
 if (WIN32)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
@@ -345,7 +348,7 @@ if (WIN32)
 
     # set linker flags to minimize the binary size.
     if (MSVC)
-      foreach(type EXE SHARED)    
+      foreach(type EXE SHARED)
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
         if (NOT onnxruntime_USE_CUDA)
@@ -353,7 +356,7 @@ if (WIN32)
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
         endif()
       endforeach()
-    endif()      
+    endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning in Linux
