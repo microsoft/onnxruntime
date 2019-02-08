@@ -422,6 +422,10 @@ ORT_ALL_ARGS_NONNULL;
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
 
+ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, const OrtAllocatorInfo* info, OrtValue** out);
+ORT_API_STATUS(OrtGetNumValues, const OrtValue* value, int* out);
+ORT_API_STATUS(OrtCreateValue, OrtValue** in, int num_values, enum ONNXType value_type, const OrtAllocatorInfo* info, OrtValue** out);
+
 #ifdef __cplusplus
 }
 #endif
