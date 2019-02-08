@@ -3,8 +3,8 @@
 
 #include <memory>
 #include <unordered_map>
-
 #include "core/framework/kernel_registry.h"
+#include "core/framework/session_state.h"
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -260,7 +260,9 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
 
 Status KernelRegistry::CreateKernel(const onnxruntime::Node& node,
                                     const IExecutionProvider& execution_provider,
-                                    const SessionState& session_state,
+                                    const std::unordered_map<int, MLValue>& initialized_tensors,
+                                    const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                    const FuncManager& funcs_mgr,
                                     /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
@@ -268,7 +270,12 @@ Status KernelRegistry::CreateKernel(const onnxruntime::Node& node,
     return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
   }
 
-  OpKernelInfo kernel_info(node, *kernel_create_info->kernel_def, execution_provider, session_state);
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           execution_provider,
+                           initialized_tensors,
+                           mlvalue_name_idx_map,
+                           funcs_mgr);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }

@@ -227,10 +227,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_trt) {
 #ifdef USE_TRT
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
-      sf.AppendExecutionProvider(f);
-      OrtReleaseObject(f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -274,7 +271,7 @@ int real_main(int argc, char* argv[]) {
       {"PoissonNLLLLoss_no_reduce", "disable reason"},
       {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},      
+      {"convtranspose_3d", "disable reason"},
       {"flatten_axis0", "disable reason"},
       {"flatten_axis1", "disable reason"},
       {"flatten_axis2", "disable reason"},
@@ -317,10 +314,8 @@ int real_main(int argc, char* argv[]) {
       {"scatter_without_axis", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"shrink", "opset 9 not supported yet"},
-      {"constantofshape_int_zeros", "opset 9 not supported yet"},
       {"shrink_hard", "opset 9 not supported yet"},
       {"shrink_soft", "opset 9 not supported yet"},
-      {"constantofshape_float_ones", "opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -329,7 +324,6 @@ int real_main(int argc, char* argv[]) {
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
-      {"nonzero_example", "NonZero opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
       {"tf_inception_v4", "Cast opset 9 not supported yet"}};
 
@@ -345,9 +339,9 @@ int real_main(int argc, char* argv[]) {
   broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
 
-  broken_tests["fp16_tiny_yolov2"] = "unknown failure on CUDA";
-  broken_tests["fp16_shufflenet"] = "unknown failure on CUDA";
-  broken_tests["fp16_inception_v1"] = "unknown failure on CUDA";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
+  broken_tests["fp16_shufflenet"] = "still have issue on Linux";
+  broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
 #endif
 
   int result = 0;

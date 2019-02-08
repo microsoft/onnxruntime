@@ -177,7 +177,7 @@ const SessionState::NameNodeInfoMapType& SessionState::GetOutputNodeInfoMap() co
 
 void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
                                            const std::string& attribute_name,
-                                           const SessionState& session_state) {
+                                           std::unique_ptr<SessionState> session_state) {
   auto entry = subgraph_session_states_.find(index);
 
   // make sure this is new. internal logic error if it is not so using ORT_ENFORCE.
@@ -187,12 +187,12 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
                 "Entry exists in node ", index, " for attribute ", attribute_name);
   }
 
-  subgraph_session_states_[index].insert({attribute_name, gsl::not_null<const SessionState*>(&session_state)});
+  subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
 }
 
-const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex index,
-                                                          const std::string& attribute_name) const {
-  const SessionState* session_state = nullptr;
+SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeIndex index,
+                                                           const std::string& attribute_name) {
+  SessionState* session_state = nullptr;
 
   auto node_entry = subgraph_session_states_.find(index);
   if (node_entry != subgraph_session_states_.cend()) {
@@ -200,11 +200,16 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
 
     const auto& subgraph_entry = attribute_state_map.find(attribute_name);
     if (subgraph_entry != attribute_state_map.cend()) {
-      session_state = subgraph_entry->second;
+      session_state = subgraph_entry->second.get();
     }
   }
 
   return session_state;
+}
+
+const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex index,
+                                                          const std::string& attribute_name) const {
+  return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
 }
 
 void SessionState::CalculateNodeIndexInfo() {
@@ -213,8 +218,7 @@ void SessionState::CalculateNodeIndexInfo() {
 
   for (auto& node_to_map_pair : subgraph_session_states_) {
     for (auto& attr_name_to_subgraph : node_to_map_pair.second) {
-      // TEMPORARY const_cast pending changes from PR that moves ownership of the subgraph SessionState into here
-      const_cast<SessionState*>(attr_name_to_subgraph.second.get())->CalculateNodeIndexInfo();
+      attr_name_to_subgraph.second->CalculateNodeIndexInfo();
     }
   }
 }

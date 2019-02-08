@@ -140,24 +140,6 @@ TEST(TensorTest, EmptyTensorTest) {
   EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
 }
 
-TEST(TensorTest, TensorCopyAssignOpTest) {
-  TensorShape shape({1, 2, 3});
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-  auto data = alloc->Alloc(sizeof(int) * shape.Size());
-  EXPECT_TRUE(data);
-  Tensor t1(DataTypeImpl::GetType<int>(), shape, data, alloc->Info());
-  Tensor t2 = t1;
-  EXPECT_EQ(t2.DataType(), DataTypeImpl::GetType<int>());
-  EXPECT_EQ(t2.Shape(), shape);
-  auto location = t2.Location();
-  ASSERT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
-  auto t_data = t2.template Data<int>();
-  EXPECT_EQ((void*)t_data, data);
-  alloc->Free(data);
-}
-
 TEST(TensorTest, StringTensorTest) {
 //add scope to explicitly delete tensor
 #ifdef _MSC_VER

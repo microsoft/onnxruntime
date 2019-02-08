@@ -3,7 +3,7 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/allocator.h"
-#include "core/framework/insert_cast_transformer.h"
+#include "core/optimizer/insert_cast_transformer.h"
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"
@@ -32,14 +32,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  auto cpu_execution_provider = TestCPUExecutionProvider();
   InsertCastTransformer transformer("Test");
-  transformer.AddKernelRegistry(*cpu_execution_provider->GetKernelRegistry().get());
-
-#ifdef USE_CUDA
-  auto cuda_execution_provider = TestCudaExecutionProvider();
-  transformer.AddKernelRegistry(*cuda_execution_provider->GetKernelRegistry().get());
-#endif
 
   bool modified = true;
   status = transformer.Apply(graph, modified);
@@ -87,14 +80,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  auto cpu_execution_provider = TestCPUExecutionProvider();
   InsertCastTransformer transformer("Test");
-  transformer.AddKernelRegistry(*cpu_execution_provider->GetKernelRegistry().get());
-
-#ifdef USE_CUDA
-  auto cuda_execution_provider = TestCudaExecutionProvider();
-  transformer.AddKernelRegistry(*cuda_execution_provider->GetKernelRegistry().get());
-#endif
 
   bool modified = true;
   EXPECT_TRUE(transformer.Apply(graph, modified).IsOK());
