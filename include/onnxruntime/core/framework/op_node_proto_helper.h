@@ -43,7 +43,7 @@ class OpNodeProtoHelper {
 
   /**
      Get a single attribute
-     Call this function only when onnx doesn't have default value
+     Call this function only when onnx spec defines default value for an attribute
   */
   template <typename T>
   T GetAttrOrDefault(const std::string& name, const T& default_value) const {
@@ -53,7 +53,7 @@ class OpNodeProtoHelper {
 
   /**
      Get a single attribute
-     Call this function only when onnx doesn't have default value
+     Call this function only when onnx spec defines default value for an attribute
   */
   template <typename T>
   void GetAttrOrDefault(const std::string& name, T* value, const T& default_value) const {
@@ -63,7 +63,7 @@ class OpNodeProtoHelper {
 
   /**
      Get repeated attributes
-     Call this function only when onnx doesn't have default value
+     Call this function only when onnx spec defines default value for an attribute
   */
   template <typename T>
   MUST_USE_RESULT std::vector<T> GetAttrsOrDefault(const std::string& name, const std::vector<T>& default_value = std::vector<T>{}) const {
