@@ -407,6 +407,7 @@ if (onnxruntime_USE_MKLML)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
   endif()
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  include_directories(${MKLML_INCLUDE_DIR})
   link_directories(${MKLML_LIB_DIR})
 endif()
 
