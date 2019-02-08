@@ -401,17 +401,6 @@ AllocatorPtr ExecutionFrame::GetAllocator(const OrtAllocatorInfo& info) {
   return utils::GetAllocator(session_state_, info);
 }
 
-static inline void VerifyShape(const MLValue* p_mlvalue,
-                               const MLValueAllocationParameters& parameters) {
-  if (p_mlvalue->IsTensor()) {
-    const Tensor* tensor = &p_mlvalue->Get<Tensor>();
-
-    ORT_ENFORCE(tensor->Shape() == parameters.GetTensorShape(),
-                "MLValue shape verification failed. Current shape:", tensor->Shape(),
-                " Requested shape:", parameters.GetTensorShape());
-  }
-}
-
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 Status ExecutionFrame::GetOrCreateNodeOutputMLValue(int index,

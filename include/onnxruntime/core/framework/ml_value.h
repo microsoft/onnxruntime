@@ -69,4 +69,31 @@ class MLValue {
   MLDataType type_{nullptr};
   FencePtr fence_;
 };
+
+struct MLValueAllocationParameters {
+  MLValueAllocationParameters() = default;
+  MLValueAllocationParameters(const TensorShape* shape)
+      : tensor_shape{shape} {}
+
+  const TensorShape& GetTensorShape() const {
+    static const TensorShape s_empty_tensor_shape;
+    return tensor_shape != nullptr ? *tensor_shape : s_empty_tensor_shape;
+  }
+
+ private:
+  const TensorShape* tensor_shape{};
+  // todo: is there any parameter needed for ml types?
+};
+
+static inline void VerifyShape(const MLValue* p_mlvalue,
+                               const MLValueAllocationParameters& parameters) {
+  if (p_mlvalue->IsTensor()) {
+    const Tensor* tensor = &p_mlvalue->Get<Tensor>();
+
+    ORT_ENFORCE(tensor->Shape() == parameters.GetTensorShape(),
+                "MLValue shape verification failed. Current shape:", tensor->Shape(),
+                " Requested shape:", parameters.GetTensorShape());
+  }
+}
+
 }  // namespace onnxruntime

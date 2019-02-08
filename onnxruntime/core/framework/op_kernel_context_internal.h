@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/execution_frame.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
 // APIs that aren't desirable to add to the public OpKernelContext API
@@ -17,42 +19,69 @@ class OpKernelContextInternal : public OpKernelContext {
   explicit OpKernelContextInternal(ExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const std::vector<NodeArg*>& implicit_inputs,
-                                   const bool& terminate_flag)
-      : OpKernelContext(&frame, &kernel, logger),
-        implicit_inputs_{implicit_inputs},
-        terminate_flag_{terminate_flag} {
-  }
+                                   const bool& terminate_flag);
 
-  const SessionState* SubgraphSessionState(const std::string& attribute_name) {
-    return GetSessionState().GetSubgraphSessionState(GetNodeIndex(), attribute_name);
-  }
+  MLDataType InputType(int index) const;
+  MLDataType OutputType(int index) const;
+  Tensor* Output(int index, const TensorShape& shape) override;
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const;
 
-  const MLValue* GetInputMLValue(int index) const {
-    return OpKernelContext::GetInputMLValue(index);
-  }
+  virtual Fence_t InputFence(int index) const;
+  Fence_t ImplicitInputFence(int index) const;
+  Fence_t OutputFence(int index) const;
 
-  MLValue* GetOutputMLValue(int index) {
-    return OpKernelContext::GetOutputMLValue(index);
-  }
+  const SessionState* SubgraphSessionState(const std::string& attribute_name);
+  std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const;
 
-  std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const {
-    // we need to convert implicit_inputs_ to a name to MLValue map so it can be used in the ExecutionFrame
-    // for a subgraph (the index numbers will be different there).
-    std::unordered_map<std::string, const MLValue*> implicit_inputs_map;
-
-    for (int i = 0, end = gsl::narrow_cast<int>(implicit_inputs_.size()); i < end; ++i) {
-      implicit_inputs_map[implicit_inputs_[i]->Name()] = GetImplicitInputMLValue(i);
-    }
-
-    return implicit_inputs_map;
-  }
+  const MLValue* GetInputMLValue(int index) const;
+  MLValue* GetOutputMLValue(int index);
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
- private:
-  const std::vector<NodeArg*>& implicit_inputs_;
+protected:
+  Status GetOrCreateOutputMLValue(int index, MLValue*& p_value) {
+    auto output_arg_index = GetOutputArgIndex(index);
+    MLValueAllocationParameters parameters;
+    ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, parameters, p_value).IsOK());
+    return Status::OK();
+  }
+
+private:
+  onnxruntime::NodeIndex GetNodeIndex() const {
+    return kernel_->Node().Index();
+  }
+
+  const SessionState& GetSessionState() const {
+    return execution_frame_->GetSessionState();
+  }
+
+  int GetInputArgIndex(int index) const {
+    return node_input_start_index_ + index;
+  }
+
+  int GetImplicitInputArgIndex(int index) const {
+    return node_implicit_input_start_index_ + index;
+  }
+
+  int GetOutputArgIndex(int index) const {
+    return node_output_start_index_ + index;
+  }
+
+  const MLValue* OpKernelContextInternal::GetImplicitInputMLValue(int index) const {
+    if (index < 0 || index >= ImplicitInputCount())
+      return nullptr;
+
+    int input_arg_index = GetImplicitInputArgIndex(index);
+    return execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
+  }
+
+  ExecutionFrame* execution_frame_{nullptr};
   const bool& terminate_flag_;
+
+  // The argument starting index in ExecutionFrame.
+  int node_input_start_index_{-1};
+  int node_implicit_input_start_index_{-1};
+  int node_output_start_index_{-1};
 };
 
 }  // namespace onnxruntime

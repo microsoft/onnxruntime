@@ -128,7 +128,6 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     }
 
     OpKernelContextInternal op_kernel_context(*root_frame_, *p_op_kernel, logger,
-                                              p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
 
     if (f_profiler_enabled) {
