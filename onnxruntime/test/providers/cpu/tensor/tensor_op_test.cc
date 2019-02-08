@@ -3,7 +3,6 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/providers/cpu/tensor/cast_op.h"
 #include "core/providers/cpu/tensor/crop.h"
 #include "core/util/math.h"
 
