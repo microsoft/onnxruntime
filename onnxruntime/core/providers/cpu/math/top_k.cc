@@ -15,6 +15,7 @@
 */
 
 #include "core/providers/cpu/math/top_k.h"
+#include "core/providers/common.h"
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
@@ -65,13 +66,12 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const vector<int64_t>& in_dims = X->Shape().GetDims();
-
-  // Linearize input tensor except for last dimension
-  // e.g. [3, 4, 5] -> [12, 5]
-  // [5] -> [5]
-  if (in_dims.back() < k_) {
+  // Will return axis_ as is if positive or fixes it in case it is negative
+  auto axis_fixed = HandleNegativeAxis(axis_, in_dims.size());	
+  // Check to ensure k_ is within the bounds of what is available in that specific axis 	
+  if (in_dims.at(axis_fixed) < k_) {
     ostringstream err_msg;
-    err_msg << "k argment [" << k_ << "] should not be greater than last dim [" << in_dims.back() << "]";
+    err_msg << "k argment [" << k_ << "] should not be greater than specified axis dim [" << in_dims.at(axis_fixed) << "]";
     return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
   }
 
@@ -83,9 +83,10 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
       linear_shape[1]);
 
   // Resize output tensors to be the same shape as the linearized input except
-  // for the last dimension, which will be of size k. E.x. for an input tensor
-  // of shape [3, 4, 5] and k=2, both of these will be shape [3, 4, 2]
-  vector<int64_t> output_linear_shape = {linear_shape[0], k_};
+  // for the specified dimension (axis_), which will be of size k. E.x. for an input tensor
+  // of shape [3, 4, 5] and k=2 with axis=2, both of these will be shape [3, 4, 2]
+  vector<int64_t> output_linear_shape = in_dims;
+  output_linear_shape[axis_fixed] = k_;
   auto* Values = p_op_kernel_context->Output(0, output_linear_shape);
   auto* Indices = p_op_kernel_context->Output(1, output_linear_shape);
 
