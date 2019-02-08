@@ -70,6 +70,29 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
   }
 }
 
+template <>
+void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<MLFloat16>();
+  auto* output = output_tensor.template Data<MLFloat16>();
+  auto size = output_tensor.Shape().Size();
+
+  std::vector<float> f_expected(size);
+  std::vector<float> f_output(size);
+  ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
+  ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
+
+  float threshold = 0.001f;
+  for (int i = 0; i < size; ++i) {
+    if (std::isinf(f_expected[i]))  // Test infinity for equality
+      EXPECT_EQ(f_expected[i], f_output[i]);
+    else {
+      // the default for existing tests
+      EXPECT_NEAR(f_expected[i], f_output[i], threshold) << "provider_type: " << provider_type;
+    }
+  }
+}
+
 template <typename Type>
 void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
