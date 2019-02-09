@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 
+#include "gsl/span"
+
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -39,6 +41,49 @@ void WhereBasicNumericTest() {
 
   test.Run();
 }
+
+template <typename T>
+void WhereBroadcastTest(const T& x_value, const T& y_value) {
+  const auto condition_values = {true, false, true};  // std::initializer_list<bool> for OpTester::AddInput<bool>()
+  const std::vector<T> X_values(3, x_value);
+  const std::vector<T> Y_values(3, y_value);
+
+  {
+    OpTester test{kOpName, kOpVersion};
+
+    test.AddInput<bool>("condition", {1, 1, 3}, condition_values);
+    test.AddInput<T>("X", {1, 3, 1}, X_values);
+    test.AddInput<T>("Y", {3, 1, 1}, Y_values);
+
+    std::vector<T> result{};
+    result.reserve(3 * 3 * 3);
+    for (int i = 0; i < 3 * 3; ++i) {
+      result.insert(result.end(), {x_value, y_value, x_value});
+    }
+    test.AddOutput<T>("output", {3, 3, 3}, result);
+
+    test.Run();
+  }
+
+  {
+    OpTester test{kOpName, kOpVersion};
+
+    test.AddInput<bool>("condition", {3, 1, 1}, condition_values);
+    test.AddInput<T>("X", {1, 1, 3}, X_values);
+    test.AddInput<T>("Y", {1, 3, 1}, Y_values);
+
+    std::vector<T> result{};
+    result.reserve(3 * 3 * 3);
+    for (int i = 0; i < 3; ++i) {
+      result.insert(
+          result.end(), 3 * 3,
+          gsl::make_span(condition_values.begin(), condition_values.size())[i] ? x_value : y_value);
+    }
+    test.AddOutput<T>("output", {3, 3, 3}, result);
+
+    test.Run();
+  }
+}
 }  // namespace
 
 TEST(WhereOpTest, BasicNumeric) {
@@ -60,20 +105,8 @@ TEST(WhereOpTest, BasicString) {
 }
 
 TEST(WhereOpTest, Broadcast) {
-  OpTester test{kOpName, kOpVersion};
-
-  test.AddInput<bool>("condition", {1, 1, 3}, {true, false, true});
-  test.AddInput<float>("X", {1, 3, 1}, {1.0f, 1.0f, 1.0f});
-  test.AddInput<float>("Y", {3, 1, 1}, {0.0f, 0.0f, 0.0f});
-
-  std::vector<float> result{};
-  result.reserve(3 * 3 * 3);
-  for (int i = 0; i < 3 * 3; ++i) {
-    result.insert(result.end(), {1.0f, 0.0f, 1.0f});
-  }
-  test.AddOutput<float>("output", {3, 3, 3}, result);
-
-  test.Run();
+  WhereBroadcastTest<float>(1.0f, 0.0f);
+  WhereBroadcastTest<std::string>("true", "false");
 }
 
 }  // namespace test

@@ -587,6 +587,25 @@ void BroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, 
   }
 }
 
+// Broadcast loop for when using gsl::span<T>, functions are in this form:
+// Input0Scalar: [](gsl::span<TOutput> output, TInput0 input0, gsl::span<const TInput1> input1)
+// Input1Scalar: [](gsl::span<TOutput> output, gsl::span<const TInput0> input0, TInput1 input1)
+// General     : [](gsl::span<TOutput> output, gsl::span<const TInput0> input0, gsl::span<const TInput1> input1)
+// Scalar parameters can also be of type const TX&.
+template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
+void BroadcastLoopSpan(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
+  if (bc.IsInput0Scalar()) {
+    while (output)
+      input0scalar(output.NextSpanOutput(), bc.NextScalar0(), bc.NextSpan1());
+  } else if (bc.IsInput1Scalar()) {
+    while (output)
+      input1scalar(output.NextSpanOutput(), bc.NextSpan0(), bc.NextScalar1());
+  } else {
+    while (output)
+      general(output.NextSpanOutput(), bc.NextSpan0(), bc.NextSpan1());
+  }
+}
+
 template <typename TInput, typename TOutput, typename Input0Scalar, typename Input1Scalar, typename General>
 Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   TBroadcaster<TInput, TInput> bc(*context.Input<Tensor>(0), *context.Input<Tensor>(1));

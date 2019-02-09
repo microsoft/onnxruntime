@@ -3,10 +3,11 @@
 
 #include "core/providers/cpu/tensor/where_op.h"
 
+#include <algorithm>
+
 #include "core/providers/cpu/math/element_wise_ops.h"  // for broadcast utilities
 
 namespace onnxruntime {
-
 // kernel builder functions
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
@@ -40,16 +41,15 @@ WHERE_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
 
 namespace {
 template <typename T>
-std::unique_ptr<Tensor> WhereSelection(bool target, const Tensor& condition_tensor, const Tensor& value_tensor,
-                                       TensorAllocator<T>& tensor_allocator) {
-  TBroadcaster<bool, T> selection_broadcaster{condition_tensor, value_tensor};
-  std::unique_ptr<Tensor> selection_tensor{
-      tensor_allocator.Allocate(selection_broadcaster.GetOutputShape())};
-  TBroadcastOutput<T> selection_broadcast_output{
-      selection_broadcaster.GetSpanSize(), *selection_tensor};
+constexpr bool IsEigenScalarCompatible = std::is_arithmetic_v<T>;
 
+template <typename T>
+std::enable_if_t<IsEigenScalarCompatible<T>, void>
+SelectBroadcastLoop(bool target,
+                    TBroadcaster<bool, T>* select_broadcaster,
+                    TBroadcastOutput<T>* select_broadcast_output) {
   BroadcastLoop(
-      selection_broadcaster, selection_broadcast_output,
+      *select_broadcaster, *select_broadcast_output,
       [target](EigenVectorMap<T> output, bool condition, ConstEigenVectorMap<T> value) {
         if (condition == target) {
           output = value;
@@ -65,8 +65,102 @@ std::unique_ptr<Tensor> WhereSelection(bool target, const Tensor& condition_tens
         output = (condition.array() == target)
                      .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
       });
+}
 
-  return selection_tensor;
+template <typename T>
+std::enable_if_t<!IsEigenScalarCompatible<T>, void>
+SelectBroadcastLoop(bool target, TBroadcaster<bool, T>* select_broadcaster,
+                    TBroadcastOutput<T>* select_broadcast_output) {
+  BroadcastLoopSpan(
+      *select_broadcaster, *select_broadcast_output,
+      [target](gsl::span<T> output, bool condition, gsl::span<const T> value) {
+        if (condition == target) {
+          std::copy(value.cbegin(), value.cend(), output.begin());
+        } else {
+          std::fill(output.begin(), output.end(), T{});
+        }
+      },
+      [target](gsl::span<T> output, gsl::span<const bool> condition, const T& value) {
+        std::transform(condition.cbegin(), condition.cend(), output.begin(),
+                       [target, &value](bool condition_element) {
+                         return condition_element == target ? value : T{};
+                       });
+      },
+      [target](gsl::span<T> output, gsl::span<const bool> condition, gsl::span<const T> value) {
+        std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
+                       [target](bool condition_element, const T& value_element) {
+                         return condition_element == target ? value_element : T{};
+                       });
+      });
+}
+
+template <typename T>
+std::unique_ptr<Tensor> Select(bool target, const Tensor& condition_tensor, const Tensor& value_tensor,
+                               TensorAllocator<T>& tensor_allocator) {
+  TBroadcaster<bool, T> select_broadcaster{condition_tensor, value_tensor};
+  std::unique_ptr<Tensor> select_tensor{
+      tensor_allocator.Allocate(select_broadcaster.GetOutputShape())};
+  TBroadcastOutput<T> select_broadcast_output{
+      select_broadcaster.GetSpanSize(), *select_tensor};
+
+  SelectBroadcastLoop(target, &select_broadcaster, &select_broadcast_output);
+
+  return select_tensor;
+}
+
+template <typename T>
+std::enable_if_t<IsEigenScalarCompatible<T>, void>
+MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
+  const auto merge_scalar_vector = [](EigenVectorMap<T> output,
+                                      const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
+    if (scalar_value != T{}) {
+      output = EigenVectorMap<T>::PlainObject::Constant(vector_value.size(), scalar_value);
+    } else {
+      output = vector_value;
+    }
+  };
+
+  BroadcastLoop(
+      *merge_broadcaster, *merge_broadcast_output,
+      [merge_scalar_vector](EigenVectorMap<T> output, const T& X_selection, ConstEigenVectorMap<T> Y_selection) {
+        merge_scalar_vector(output, X_selection, Y_selection);
+      },
+      [merge_scalar_vector](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, const T& Y_selection) {
+        merge_scalar_vector(output, Y_selection, X_selection);
+      },
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, ConstEigenVectorMap<T> Y_selection) {
+        output = X_selection.binaryExpr(Y_selection, [](T x, T y) -> T {
+          return x != T{} ? x : y;
+        });
+      });
+}
+
+template <typename T>
+std::enable_if_t<!IsEigenScalarCompatible<T>, void>
+MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
+  const auto merge_scalar_vector = [](gsl::span<T> output, const T& scalar_value, gsl::span<const T> vector_value) {
+    if (scalar_value != T{}) {
+      std::fill(output.begin(), output.end(), scalar_value);
+    } else {
+      std::copy(vector_value.cbegin(), vector_value.cend(), output.begin());
+    }
+  };
+
+  BroadcastLoopSpan(
+      *merge_broadcaster, *merge_broadcast_output,
+      [merge_scalar_vector](gsl::span<T> output, const T& X_selection, gsl::span<const T> Y_selection) {
+        merge_scalar_vector(output, X_selection, Y_selection);
+      },
+      [merge_scalar_vector](gsl::span<T> output, gsl::span<const T> X_selection, const T& Y_selection) {
+        merge_scalar_vector(output, Y_selection, X_selection);
+      },
+      [](gsl::span<T> output, gsl::span<const T> X_selection, gsl::span<const T> Y_selection) {
+        std::transform(
+            X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(),
+            [](const T& x, const T& y) {
+              return x != T{} ? x : y;
+            });
+      });
 }
 }  // namespace
 
@@ -82,11 +176,11 @@ Status Where<T>::Compute(OpKernelContext* context) const {
   //   X_selection = condition ? X : default value
   // Similarly, we broadcast over condition and Y to select the values from Y:
   //   Y_selection = !condition ? Y : default value
-  // Finally, we merge X_selection and Y_selection:
+  // Finally, we broadcast over and merge X_selection and Y_selection:
   //   output = (X_selection != default value) ? X_selection : Y_selection
   TensorAllocator<T> tensor_allocator{*context};
-  auto X_selection_tensor = WhereSelection<T>(true, *condition, *X, tensor_allocator);
-  auto Y_selection_tensor = WhereSelection<T>(false, *condition, *Y, tensor_allocator);
+  auto X_selection_tensor = Select<T>(true, *condition, *X, tensor_allocator);
+  auto Y_selection_tensor = Select<T>(false, *condition, *Y, tensor_allocator);
 
   TBroadcaster<T, T> merge_broadcaster{*X_selection_tensor, *Y_selection_tensor};
   Tensor* const output = context->Output(0, merge_broadcaster.GetOutputShape());
@@ -94,27 +188,7 @@ Status Where<T>::Compute(OpKernelContext* context) const {
   TBroadcastOutput<T> merge_broadcast_output{
       merge_broadcaster.GetSpanSize(), *output};
 
-  BroadcastLoop(
-      merge_broadcaster, merge_broadcast_output,
-      [](EigenVectorMap<T> output, const T& X_selection, ConstEigenVectorMap<T> Y_selection) {
-        if (X_selection != T{}) {
-          output = EigenVectorMap<T>::PlainObject::Constant(Y_selection.size(), X_selection);
-        } else {
-          output = Y_selection;
-        }
-      },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, const T& Y_selection) {
-        if (Y_selection != T{}) {
-          output = EigenVectorMap<T>::PlainObject::Constant(X_selection.size(), Y_selection);
-        } else {
-          output = X_selection;
-        }
-      },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, ConstEigenVectorMap<T> Y_selection) {
-        output = X_selection.binaryExpr(Y_selection, [](T x, T y) -> T {
-          return x != T{} ? x : y;
-        });
-      });
+  MergeBroadcastLoop(&merge_broadcaster, &merge_broadcast_output);
 
   return Status::OK();
 }
