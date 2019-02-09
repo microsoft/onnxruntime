@@ -37,7 +37,7 @@ class OpNodeProtoHelper {
 
   /**
      Get a single attribute
-	 Call this function for a required attribute or when a default value for an optional attribute is specified in the op schema
+     Call this function for a required attribute or when a default value for an optional attribute is specified in the op schema
   */
   template <typename T>
   MUST_USE_RESULT Status GetAttr(const std::string& name, T* value) const;
