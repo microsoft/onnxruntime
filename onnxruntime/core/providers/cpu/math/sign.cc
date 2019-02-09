@@ -5,6 +5,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 #include "gsl/span"
 #include <type_traits>
@@ -20,69 +21,24 @@ class Sign final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 };
 
-#define ADD_TYPED_SIGN_OP(data_type)                                       \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                          \
-      Sign,                                                                \
-      9,                                                                   \
-      data_type,                                                           \
-      KernelDefBuilder()                                                   \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>())  \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<data_type>()), \
-      Sign);
-
-ADD_TYPED_SIGN_OP(MLFloat16);
-ADD_TYPED_SIGN_OP(BFloat16);
-ADD_TYPED_SIGN_OP(float);
-ADD_TYPED_SIGN_OP(double);
-
-ADD_TYPED_SIGN_OP(int8_t);
-ADD_TYPED_SIGN_OP(int16_t);
-ADD_TYPED_SIGN_OP(int32_t);
-ADD_TYPED_SIGN_OP(int64_t);
-
-ADD_TYPED_SIGN_OP(uint8_t);
-ADD_TYPED_SIGN_OP(uint16_t);
-ADD_TYPED_SIGN_OP(uint32_t);
-ADD_TYPED_SIGN_OP(uint64_t);
+ONNX_CPU_OPERATOR_KERNEL(
+    Sign,
+    9,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<int16_t>(),
+                                            DataTypeImpl::GetTensorType<uint16_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>(),
+                                            DataTypeImpl::GetTensorType<MLFloat16>(),
+                                            DataTypeImpl::GetTensorType<BFloat16>()}),
+    Sign);
 
 namespace sign_internal {
-// Unsigned types can only be eq or gt zero
-// Signed can be lt, gt or eq to zero
-// float, float16 and double will require special handling bc
-// - float16 requires unpacking
-// - all of then require care for comparing to zeros
-
-// Unsigned Integer types
-template <class T>
-static void SignUnsigned(const Tensor* input, Tensor* output) {
-  static_assert(std::numeric_limits<T>::is_integer &&
-                    !std::numeric_limits<T>::is_signed,
-                "Expect a unsigned integer type");
-  auto span = gsl::make_span(input->Data<T>(), input->Shape().Size());
-  auto output_data = output->template MutableData<T>();
-  std::transform(span.cbegin(), span.cend(), output_data, [](T val) {
-    return (val == T(0)) ? T(0) : T(1);
-  });
-}
-
-// Signed types
-template <class T>
-void SignSignedInteger(const Tensor* input, Tensor* output) {
-  static_assert(std::numeric_limits<T>::is_integer &&
-                    std::numeric_limits<T>::is_signed,
-                "Expect a signed type");
-  auto span = gsl::make_span(input->Data<T>(), input->Shape().Size());
-  auto output_data = output->template MutableData<T>();
-  std::transform(span.cbegin(), span.cend(), output_data, [](T val) {
-    if (val > T(0)) {
-      return T(1);
-    } else if (val < T(0)) {
-      return T(-1);
-    }
-    return T(0);
-  });
-}
-
 // The spec does not specify how NaN is
 // treated but we have to treat it somehow. We choose
 // to return 0 for NaN as TF does.
@@ -95,17 +51,6 @@ inline T FloatingImpl(T val) {
   } else {
     return T(-1);
   }
-}
-
-template <class T>
-void SignFloat(const Tensor* input, Tensor* output) {
-  static_assert((std::is_same<T, float>::value || std::is_same<T, double>::value),
-                "Expect a signed type");
-  auto span = gsl::make_span(input->Data<T>(), input->Shape().Size());
-  auto output_data = output->template MutableData<T>();
-  std::transform(span.cbegin(), span.cend(), output_data, [](T val) {
-    return FloatingImpl<T>(val);
-  });
 }
 
 void SignMLFloat16(const Tensor* input, Tensor* output) {
@@ -125,7 +70,6 @@ void SignBFloat16(const Tensor* input, Tensor* output) {
     return BFloat16(FloatingImpl(fl));
   });
 }
-
 }  // namespace sign_internal
 
 Status Sign::Compute(OpKernelContext* ctx) const {
@@ -135,26 +79,26 @@ Status Sign::Compute(OpKernelContext* ctx) const {
   auto output = ctx->Output(0, input->Shape());
 
   auto dtype = input->DataType();
-  if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    SignSignedInteger<int8_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-    SignSignedInteger<int16_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-    SignSignedInteger<int32_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-    SignSignedInteger<int64_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-    SignUnsigned<uint8_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-    SignUnsigned<uint16_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-    SignUnsigned<uint32_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-    SignUnsigned<uint64_t>(input, output);
-  } else if (dtype == DataTypeImpl::GetType<float>()) {
-    SignFloat<float>(input, output);
+  if (dtype == DataTypeImpl::GetType<float>()) {
+    EigenMap<float>(*output) = EigenMap<float>(*input).array().cwiseSign();
   } else if (dtype == DataTypeImpl::GetType<double>()) {
-    SignFloat<double>(input, output);
+    EigenMap<double>(*output) = EigenMap<double>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
+    EigenMap<int8_t>(*output) = EigenMap<int8_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
+    EigenMap<int16_t>(*output) = EigenMap<int16_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
+    EigenMap<int32_t>(*output) = EigenMap<int32_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+    EigenMap<int64_t>(*output) = EigenMap<int64_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
+    EigenMap<uint8_t>(*output) = EigenMap<uint8_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
+    EigenMap<uint16_t>(*output) = EigenMap<uint16_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
+    EigenMap<uint32_t>(*output) = EigenMap<uint32_t>(*input).array().cwiseSign();
+  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
+    EigenMap<uint64_t>(*output) = EigenMap<uint64_t>(*input).array().cwiseSign();
   } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
     SignMLFloat16(input, output);
   } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
