@@ -40,6 +40,15 @@ static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
   return r;
 }
 
+static int64_t SizeFromDim(size_t k, const vector<int64_t>& dims) {
+  ORT_ENFORCE(k <= dims.size());
+  int64_t r = 1;
+  for (size_t i = k; i < dims.size(); ++i) {
+    r *= dims[i];
+  }
+  return r;
+}
+
 // Define these two names to allow lookup into the 2d tensors like
 // mytensor(i, j)
 template <typename T>
@@ -67,37 +76,38 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
-  auto axis_fixed = HandleNegativeAxis(axis_, in_dims.size());	
+  auto axis_parsed = HandleNegativeAxis(axis_, in_dims.size());	
   // Check to ensure k_ is within the bounds of what is available in that specific axis 	
-  if (in_dims.at(axis_fixed) < k_) {
+  if (in_dims.at(axis_parsed) < k_) {
     ostringstream err_msg;
-    err_msg << "k argment [" << k_ << "] should not be greater than specified axis dim [" << in_dims.at(axis_fixed) << "]";
+    err_msg << "k argment [" << k_ << "] should not be greater than specified axis dim [" << in_dims.at(axis_parsed) << "]";
     return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
   }
 
-  vector<int64_t> linear_shape = {SizeToDim(in_dims.size() - 1, in_dims),
-                                  in_dims[in_dims.size() - 1]};
+  const int64_t rows = SizeToDim(axis_parsed, in_dims);
+  const int64_t cols = X->Shape().Size() / rows;
   auto input_map = ConstEigenMatrixMapRowMajor<float>(
       static_cast<const float*>(X->template Data<float>()),
-      linear_shape[0],
-      linear_shape[1]);
+      rows,
+      cols);
 
   // Resize output tensors to be the same shape as the linearized input except
-  // for the specified dimension (axis_), which will be of size k. E.x. for an input tensor
-  // of shape [3, 4, 5] and k=2 with axis=2, both of these will be shape [3, 4, 2]
+  // for the specified dimension (axis_parsed), which will be of size k. E.x. for an input tensor
+  // of shape [3, 4, 5] and k=2 with axis=1, both of these will be shape [3, 2, 5]
   vector<int64_t> output_linear_shape = in_dims;
-  output_linear_shape[axis_fixed] = k_;
+  output_linear_shape[axis_parsed] = k_;
   auto* Values = p_op_kernel_context->Output(0, output_linear_shape);
   auto* Indices = p_op_kernel_context->Output(1, output_linear_shape);
 
   // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
+  auto reduced_cols = SizeFromDim(axis_parsed + 1, output_linear_shape);
   auto Values_map = EigenMatrixMapRowMajor<float>(
-      Values->template MutableData<float>(), linear_shape[0], k_);
+      Values->template MutableData<float>(), rows, reduced_cols);
   auto Indices_map = EigenMatrixMapRowMajor<int64_t>(
-      Indices->template MutableData<int64_t>(), linear_shape[0], k_);
+      Indices->template MutableData<int64_t>(), rows, reduced_cols);
 
   // Sort preserving Indices
-  for (int64_t i = 0; i < linear_shape[0]; ++i) {
+  for (int64_t i = 0; i < rows; ++i) {
     // Build a min-heap, the heap element is pair of (value, idx)
     // the top of the heap is the smallest value
     priority_queue<
@@ -125,7 +135,7 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
     }
   }
 
-  // Reshape output tensors to [a_1, a_2, ..., a_n, k]
+  // Reshape output tensors to [a_1, a_2, ,k,(..., a_n)]
   auto out_dims = in_dims;
   out_dims[out_dims.size() - 1] = k_;
   Values->Reshape(out_dims);
