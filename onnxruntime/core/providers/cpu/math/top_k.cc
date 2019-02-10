@@ -80,7 +80,7 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   // Check to ensure k_ is within the bounds of what is available in that specific axis 	
   if (in_dims.at(axis_parsed) < k_) {
     ostringstream err_msg;
-    err_msg << "k argment [" << k_ << "] should not be greater than specified axis dim [" << in_dims.at(axis_parsed) << "]";
+    err_msg << "k argment [" << k_ << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
     return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
   }
 
