@@ -76,13 +76,14 @@
           Visible="false"
     />
 
-    <None Include="Microsoft.ML.OnnxRuntime.targets"
-          PackagePath="\build\$(TargetFramework)"
+    <None Include="$(PackageId).targets" 
+          PackagePath="\build\$(TargetFramework);\build\native"
           Pack="true"
           Visible="false"
     />
-    <None Include="Microsoft.ML.OnnxRuntime.props"
-          PackagePath="\build\$(TargetFramework)"
+
+    <None Include="$(PackageId).props"
+          PackagePath="\build\$(TargetFramework);\build\native"
           Pack="true"
           Visible="false"
     />
