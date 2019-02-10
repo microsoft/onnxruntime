@@ -91,9 +91,9 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
       rows,
       cols);
 
-  // Resize output tensors to be the same shape as the linearized input except
-  // for the specified dimension (axis_parsed), which will be of size k. E.x. for an input tensor
-  // of shape [3, 4, 5] and k=2 with axis=1, both of these will be shape [3, 2, 5]
+  // Resize output tensors to be the same shape as the input except
+  // for the specified dimension ((i.e.) axis_parsed), which will be of size k_. E.x. for an input tensor
+  // of shape [3, 4, 5] and k_=2 with axis_parsed=1, both of these will be shape [3, 2, 5]
   vector<int64_t> output_linear_shape = in_dims;
   output_linear_shape[axis_parsed] = k_;
   auto* Values = p_op_kernel_context->Output(0, output_linear_shape);
