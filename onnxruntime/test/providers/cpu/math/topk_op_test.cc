@@ -116,6 +116,16 @@ TEST(TopKOperator, TopAllExplicitAxis1DInput) {
   RunTest(13, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
+TEST(TopKOperator, Top1ExplicitAxisMultiDInput) {
+  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  std::vector<int64_t> input_dimensions = {2, 2, 2};
+  std::vector<float> expected_vals = {3, 4, 7, 8};
+  std::vector<int64_t> expected_indices = {1, 1, 1, 1};
+  std::vector<int64_t> expected_dimensions = {2, 1, 2};
+  int64_t axis = 1;
+  RunTest(1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+}
+
 TEST(TopKOperator, InvalidK) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
