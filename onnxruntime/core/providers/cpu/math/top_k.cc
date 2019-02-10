@@ -31,7 +31,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<float>);
 
-/*
 static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
   ORT_ENFORCE(k <= dims.size());
   int64_t r = 1;
@@ -49,7 +48,6 @@ static int64_t SizeFromDim(size_t k, const vector<int64_t>& dims) {
   }
   return r;
 }
-*/
 
 // Define these two names to allow lookup into the 2d tensors like
 // mytensor(i, j)
