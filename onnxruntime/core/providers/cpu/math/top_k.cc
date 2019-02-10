@@ -31,6 +31,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<float>);
 
+/*
 static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
   ORT_ENFORCE(k <= dims.size());
   int64_t r = 1;
@@ -48,6 +49,7 @@ static int64_t SizeFromDim(size_t k, const vector<int64_t>& dims) {
   }
   return r;
 }
+*/
 
 // Define these two names to allow lookup into the 2d tensors like
 // mytensor(i, j)
@@ -100,46 +102,46 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   auto* Indices = p_op_kernel_context->Output(1, output_linear_shape);
 
   // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
-  auto reduced_cols = SizeFromDim(axis_parsed + 1, output_linear_shape);
+  auto reduced_cols = SizeFromDim(axis_parsed, output_linear_shape);
   auto Values_map = EigenMatrixMapRowMajor<float>(
       Values->template MutableData<float>(), rows, reduced_cols);
   auto Indices_map = EigenMatrixMapRowMajor<int64_t>(
       Indices->template MutableData<int64_t>(), rows, reduced_cols);
 
+  // This is basically the number of elements within each of the "k_" rows  
+  const int64_t block_slice = reduced_cols / k_;
   // Sort preserving Indices
   for (int64_t i = 0; i < rows; ++i) {
-    // Build a min-heap, the heap element is pair of (value, idx)
-    // the top of the heap is the smallest value
-    priority_queue<
-        pair<float, int64_t>,
-        vector<pair<float, int64_t>>,
-        ValueCmp<float>>
-        min_heap;
-
-    // Maintain the size of heap to be less or equal to k_, so the
-    // heap will hold the k_ largest Values
-    for (int64_t j = 0; j < linear_shape[1]; ++j) {
-      const auto value = input_map(i, j);
-      if (min_heap.size() < k_ || value > min_heap.top().first) {
-        min_heap.push({value, j});
-      }
-      if (min_heap.size() > k_) {
-        min_heap.pop();
-      }
-    }
-    for (int64_t j = 0; j < k_; ++j) {
-      auto& pqElem = min_heap.top();
-      Values_map(i, k_ - j - 1) = pqElem.first;
-      Indices_map(i, k_ - j - 1) = pqElem.second;
-      min_heap.pop();
-    }
+	  for (int64_t j = 0; j < block_slice; ++j) {
+		// Build a min-heap, the heap element is pair of (value, idx)
+		// the top of the heap is the smallest value
+		priority_queue<
+			pair<float, int64_t>,
+			vector<pair<float, int64_t>>,
+			ValueCmp<float>>
+			min_heap;
+		// Maintain the size of heap to be less or equal to k_, so the
+		// heap will hold the k_ largest Values
+		for (int64_t k = 0; k < in_dims[axis_parsed]; ++k) {
+			const auto value = input_map(i, k * block_slice + j);
+			if (min_heap.size() < k_ || value > min_heap.top().first) {
+				min_heap.push({value, k});
+			}
+			if (min_heap.size() > k_) {
+				min_heap.pop();
+			}    
+		} 
+		// Extract these k_ elements and place them in the results placeholder
+		for (int64_t l = 0; l < k_; ++l) {
+			auto& pqElem = min_heap.top();
+			auto col_index = (k_ - l -1) * block_slice + j;  
+			Values_map(i, col_index) = pqElem.first;
+			Indices_map(i, col_index) = pqElem.second;
+			min_heap.pop();
+		}
+	  }
   }
 
-  // Reshape output tensors to [a_1, a_2, ,k,(..., a_n)]
-  auto out_dims = in_dims;
-  out_dims[out_dims.size() - 1] = k_;
-  Values->Reshape(out_dims);
-  Indices->Reshape(out_dims);
   return Status::OK();
 }
 }  // namespace onnxruntime
