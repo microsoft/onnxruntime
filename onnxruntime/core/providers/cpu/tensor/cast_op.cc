@@ -85,7 +85,6 @@ inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& s
       }
     } else {
       std::ostringstream convert;
-      convert.precision(20);
       convert << in->Data<SrcType>()[i];
       out->MutableData<std::string>()[i] = convert.str();
     }
@@ -227,8 +226,6 @@ const std::vector<MLDataType> castOpTypeConstraints{
   template <>                                                                                                                      \
   Status Cast<in_type>::Compute(OpKernelContext* context) const {                                                                  \
     const Tensor* X = context->Input<Tensor>(0);                                                                                   \
-    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,                                                             \
-                                    "Input is missing. The operator Cast expects one and only one input");                         \
     const TensorShape& shape = X->Shape();                                                                                         \
     Tensor* Y = context->Output(0, TensorShape(shape));                                                                            \
                                                                                                                                    \
@@ -308,8 +305,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 template <>
 Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
-                                  "Input is missing. The operator Cast expects one and only one input");
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, TensorShape(shape));
   Status st;
