@@ -8,10 +8,11 @@
 #include "mkldnn_fwd.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
 
 constexpr const char* MKLDNN = "MklDnn";
 constexpr const char* MKLDNN_CPU = "MklDnnCpu";
+
+namespace mkl_dnn {
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
