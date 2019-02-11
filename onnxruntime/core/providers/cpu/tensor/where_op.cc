@@ -4,6 +4,7 @@
 #include "core/providers/cpu/tensor/where_op.h"
 
 #include <algorithm>
+#include <type_traits>
 
 #include "core/providers/cpu/math/element_wise_ops.h"  // for broadcast utilities
 
@@ -111,7 +112,7 @@ std::unique_ptr<Tensor> Select(bool target, const Tensor& condition_tensor, cons
 template <typename T>
 std::enable_if_t<IsEigenScalarCompatible<T>, void>
 MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
-  const auto merge_scalar_vector = [](EigenVectorMap<T> output,
+  const auto merge_scalar_and_vector = [](EigenVectorMap<T> output,
                                       const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
     if (scalar_value != T{}) {
       output = EigenVectorMap<T>::PlainObject::Constant(vector_value.size(), scalar_value);
@@ -122,11 +123,11 @@ MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* m
 
   BroadcastLoop(
       *merge_broadcaster, *merge_broadcast_output,
-      [merge_scalar_vector](EigenVectorMap<T> output, const T& X_selection, ConstEigenVectorMap<T> Y_selection) {
-        merge_scalar_vector(output, X_selection, Y_selection);
+      [merge_scalar_and_vector](EigenVectorMap<T> output, const T& X_selection, ConstEigenVectorMap<T> Y_selection) {
+        merge_scalar_and_vector(output, X_selection, Y_selection);
       },
-      [merge_scalar_vector](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, const T& Y_selection) {
-        merge_scalar_vector(output, Y_selection, X_selection);
+      [merge_scalar_and_vector](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, const T& Y_selection) {
+        merge_scalar_and_vector(output, Y_selection, X_selection);
       },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> X_selection, ConstEigenVectorMap<T> Y_selection) {
         output = X_selection.binaryExpr(Y_selection, [](T x, T y) -> T {
@@ -138,7 +139,7 @@ MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* m
 template <typename T>
 std::enable_if_t<!IsEigenScalarCompatible<T>, void>
 MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
-  const auto merge_scalar_vector = [](gsl::span<T> output, const T& scalar_value, gsl::span<const T> vector_value) {
+  const auto merge_scalar_and_vector = [](gsl::span<T> output, const T& scalar_value, gsl::span<const T> vector_value) {
     if (scalar_value != T{}) {
       std::fill(output.begin(), output.end(), scalar_value);
     } else {
@@ -148,11 +149,11 @@ MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* m
 
   BroadcastLoopSpan(
       *merge_broadcaster, *merge_broadcast_output,
-      [merge_scalar_vector](gsl::span<T> output, const T& X_selection, gsl::span<const T> Y_selection) {
-        merge_scalar_vector(output, X_selection, Y_selection);
+      [merge_scalar_and_vector](gsl::span<T> output, const T& X_selection, gsl::span<const T> Y_selection) {
+        merge_scalar_and_vector(output, X_selection, Y_selection);
       },
-      [merge_scalar_vector](gsl::span<T> output, gsl::span<const T> X_selection, const T& Y_selection) {
-        merge_scalar_vector(output, Y_selection, X_selection);
+      [merge_scalar_and_vector](gsl::span<T> output, gsl::span<const T> X_selection, const T& Y_selection) {
+        merge_scalar_and_vector(output, Y_selection, X_selection);
       },
       [](gsl::span<T> output, gsl::span<const T> X_selection, gsl::span<const T> Y_selection) {
         std::transform(
