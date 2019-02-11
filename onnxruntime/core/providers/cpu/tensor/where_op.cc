@@ -41,7 +41,7 @@ WHERE_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
 
 namespace {
 template <typename T>
-constexpr bool IsEigenScalarCompatible = std::is_arithmetic_v<T>;
+constexpr bool IsEigenScalarCompatible = std::is_arithmetic<T>::value;
 
 template <typename T>
 std::enable_if_t<IsEigenScalarCompatible<T>, void>
