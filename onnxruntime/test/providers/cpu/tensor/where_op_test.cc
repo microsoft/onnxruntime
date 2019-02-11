@@ -44,7 +44,7 @@ void WhereBasicNumericTest() {
 
 template <typename T>
 void WhereBroadcastTest(const T& x_value, const T& y_value) {
-  const auto condition_values = {true, false, true};  // std::initializer_list<bool> for OpTester::AddInput<bool>()
+  auto condition_values = {true, false, true};  // std::initializer_list<bool> for OpTester::AddInput<bool>()
   const std::vector<T> X_values(3, x_value);
   const std::vector<T> Y_values(3, y_value);
 
