@@ -37,13 +37,14 @@ class OpNodeProtoHelper {
 
   /**
      Get a single attribute
+     Call this function for a required attribute or when a default value for an optional attribute is specified in the op schema
   */
   template <typename T>
   MUST_USE_RESULT Status GetAttr(const std::string& name, T* value) const;
 
   /**
      Get a single attribute
-     Call this function only when onnx doesn't have default value
+     Call this function only when a default value for an optional attribute isn't specified in the op schema
   */
   template <typename T>
   T GetAttrOrDefault(const std::string& name, const T& default_value) const {
@@ -53,7 +54,7 @@ class OpNodeProtoHelper {
 
   /**
      Get a single attribute
-     Call this function only when onnx doesn't have default value
+     Call this function only when a default value for an optional attribute isn't specified in the op schema
   */
   template <typename T>
   void GetAttrOrDefault(const std::string& name, T* value, const T& default_value) const {
@@ -63,7 +64,7 @@ class OpNodeProtoHelper {
 
   /**
      Get repeated attributes
-     Call this function only when onnx doesn't have default value
+     Call this function only when a default value for an optional attribute isn't specified in the op schema
   */
   template <typename T>
   MUST_USE_RESULT std::vector<T> GetAttrsOrDefault(const std::string& name, const std::vector<T>& default_value = std::vector<T>{}) const {
