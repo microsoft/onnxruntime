@@ -159,7 +159,7 @@ struct SliceIterator {
   }
 
   // Initialize initial skip and inner_extent.
-  void Init(const std::vector<int64_t> dims, gsl::span<const int64_t> starts) {
+  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts) {
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
