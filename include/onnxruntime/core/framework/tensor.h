@@ -72,9 +72,6 @@ class Tensor final {
   //Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
-  ///requires other.buffer_deleter_ == nullptr
-  Tensor& ShallowCopy(const Tensor& other);
-
   Tensor(Tensor&& other);
 
   Tensor& operator=(Tensor&& other);
