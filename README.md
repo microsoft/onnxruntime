@@ -65,7 +65,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
 
 ## System Requirements
-* The OnnxRuntime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the system. For Windows, OpenMP support comes as part of VC runtime. For Linux, the system must have the libgomp.so.1 istalled. 
+* The OnnxRuntime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the system. For Windows, OpenMP support comes as part of VC runtime. For Linux, the system must have the libgomp.so.1 installed. 
 * The GPU builds require the CUDA9.1 and cuDNN 7.3 runtime libraries being installed in the system. 
 
 ## Build Details
