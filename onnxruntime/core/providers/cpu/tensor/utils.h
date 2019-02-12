@@ -141,11 +141,11 @@ template <typename T>
 struct SliceIterator {
     SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
         : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents), indices_(extents.size(), 0) {
-        auto& dims = tensor_.Shape().GetDims();
-        ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
+    auto& dims = tensor_.Shape().GetDims();
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
 
-        Init(dims, starts);
-    }
+    Init(dims, starts);
+  }
     
     // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
     // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
@@ -163,8 +163,8 @@ struct SliceIterator {
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
-        input_ += pitch * starts[i];
-        pitch *= dims[i];
+      input_ += pitch * starts[i];
+      pitch *= dims[i];
     }
 
     inner_extent_ = extents_[dims.size() - 1];
