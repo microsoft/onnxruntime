@@ -74,6 +74,15 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
+  AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info) const {
+    auto exec_provider = Get(allocator_info);
+    if (exec_provider == nullptr) {
+      return nullptr;
+    }
+
+    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+  }
+
   bool Empty() const { return exec_providers_.empty(); }
 
   size_t NumProviders() const { return exec_providers_.size(); }
