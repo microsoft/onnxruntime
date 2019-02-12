@@ -70,7 +70,7 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
         && slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
       break;
 
-  } while (--inner_axis >= 0);
+  } while (inner_axis-- > 0);
 
   reshaped_dims.resize(inner_axis + 1);
   std::copy(input_dims.begin(), input_dims.begin() + inner_axis + 1, reshaped_dims.begin());
