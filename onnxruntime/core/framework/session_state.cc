@@ -228,24 +228,22 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-Status SessionState::GetOrCreateFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                                    const std::vector<std::string>& output_names,
-                                                    FeedsFetchesManager*& manager,
-                                                    bool& created) {
-  created = false;
+// use a cheap way of matching first. if we have multiple entries with this key, we will do the more expensive
+// check of the individual feed/output names
+static int MakeFeedsFetchesManagerCacheKey(const std::vector<std::string>& feed_names,
+                                    const std::vector<std::string>& output_names) {
+  return static_cast<int>(feed_names.size()) << 16 | static_cast<int>(output_names.size());
+};
 
-  // use a cheap way of matching first. if we have multiple entries with this key, we will do the more expensive
-  // check of the individual feed/output names
-  auto make_key = [&]() {
-    return static_cast<int>(feed_names.size()) << 16 | static_cast<int>(output_names.size());
-  };
-
-  int key = make_key();
+FeedsFetchesManager* SessionState::GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                                          const std::vector<std::string>& output_names) {
+  int key = MakeFeedsFetchesManagerCacheKey(feed_names, output_names);
   auto num_matches = cached_feeds_fetches_managers_.count(key);
+
+  FeedsFetchesManager* manager = nullptr;
 
   switch (num_matches) {
     case 0: {
-      // create
       break;
     }
     case 1: {
@@ -280,15 +278,24 @@ Status SessionState::GetOrCreateFeedsFetchesManager(const std::vector<std::strin
     }
   }
 
-  if (!manager) {
-    std::unique_ptr<FeedsFetchesManager> ffm;
-    auto status = FeedsFetchesManager::Create(feed_names, output_names, GetMLValueNameIdxMap(), ffm);
-    ORT_RETURN_IF_ERROR(status);
-    manager = ffm.get();
+  return manager;
+}
 
-    cached_feeds_fetches_managers_.emplace(key, std::move(ffm));
-    created = true;
+Status SessionState::CacheFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                              const std::vector<std::string>& output_names,
+                                              std::unique_ptr<FeedsFetchesManager> manager) {
+  int key = MakeFeedsFetchesManagerCacheKey(feed_names, output_names);
+
+  auto num_matches = cached_feeds_fetches_managers_.count(key);
+
+  if (num_matches) {
+    // be paranoid and make sure we're not attempting to insert a duplicate entry.
+    // if so it would imply that there is probably a concurrency issue in InferenceSession::Run.
+    ORT_ENFORCE(GetFeedsFetchesManager(feed_names, output_names) == nullptr,
+                "Existing FeedsFetchesManager found.");
   }
+
+  cached_feeds_fetches_managers_.emplace(key, std::move(manager));
 
   return Status::OK();
 }

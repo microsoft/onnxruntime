@@ -178,10 +178,12 @@ class SessionState {
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
-  Status GetOrCreateFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                        const std::vector<std::string>& output_names,
-                                        FeedsFetchesManager*& manager,
-                                        bool& created);
+  FeedsFetchesManager* GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                              const std::vector<std::string>& output_names);
+
+  Status CacheFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                  const std::vector<std::string>& output_names,
+                                  std::unique_ptr<FeedsFetchesManager> manager);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
