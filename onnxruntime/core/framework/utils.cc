@@ -107,7 +107,13 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
   needed_copy = false;
 
   //TODO: make it configurable
-  const int target_device_id = 0;
+  // This could be a const, but to make the MacOS compiler and VC++ compiler happy we make it non-const.
+  // If it's const AppleClang doesn't want it included in the capture list for copier (it's in reaching scope
+  // and should be able to be used implicitly), and VC++ complains it can't be implicitly captured.
+  // Seems like the VC++ bug is low priority given it has been around for year:
+  // https://developercommunity.visualstudio.com/content/problem/1997/constexpr-not-implicitely-captured-in-lambdas.html
+  // https://stackoverflow.com/questions/43119643/lambda-expression-with-empty-capture
+  int target_device_id = 0;
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
 
@@ -164,19 +170,19 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
 
     auto* required_provider = exec_providers.Get(required_provider_type);
     ORT_ENFORCE(required_provider);
-    auto copier = [required_provider_type,
-                   required_provider,
-                   p_input_provider,
+
+    auto* p_copy_provider = (required_provider_type != onnxruntime::kCpuExecutionProvider)
+                                ? required_provider
+                                : p_input_provider;
+
+    auto copier = [required_provider,
+                   p_copy_provider,
                    target_device_id](const MLValue& feed_value, MLValue& new_value) {
       const auto& feed_tensor = feed_value.Get<Tensor>();
       ORT_RETURN_IF_ERROR(utils::AllocateHelper(*required_provider, target_device_id, feed_tensor, new_value));
       auto* new_tensor = new_value.GetMutable<Tensor>();
 
-      if (required_provider_type != onnxruntime::kCpuExecutionProvider) {
-        ORT_RETURN_IF_ERROR(required_provider->CopyTensor(feed_tensor, *new_tensor));
-      } else {
-        ORT_RETURN_IF_ERROR(p_input_provider->CopyTensor(feed_tensor, *new_tensor));
-      }
+      ORT_RETURN_IF_ERROR(p_copy_provider->CopyTensor(feed_tensor, *new_tensor));
 
       return Status::OK();
     };
@@ -399,11 +405,15 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
     auto fetched_provider_type = p_fetched_provider->Type();
     auto& output_mlvalue = user_fetches[idx];
 
-    const IExecutionProvider* p_output_provider = cpu_execution_provider;
+    const IExecutionProvider* p_output_provider = nullptr;
 
     if (output_mlvalue.IsAllocated()) {
       Tensor* p_output_tensor = output_mlvalue.GetMutable<Tensor>();
       p_output_provider = execution_providers.Get(p_output_tensor->Location());
+    }
+
+    if (!p_output_provider) {
+      p_output_provider = cpu_execution_provider;
     }
 
     auto output_provider_type = p_output_provider->Type();
@@ -416,8 +426,11 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 
     needed_copy = true;
 
-    auto copy_between_providers = [fetched_provider_type,
-                                   p_fetched_provider,
+    auto* p_copy_provider = (fetched_provider_type != onnxruntime::kCpuExecutionProvider)
+                                ? p_fetched_provider
+                                : p_output_provider;
+
+    auto copy_between_providers = [p_copy_provider,
                                    p_output_provider](const MLValue& fetched_mlvalue, MLValue& output_mlvalue) {
       auto& fetched_tensor = fetched_mlvalue.Get<Tensor>();
 
@@ -427,12 +440,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 
       Tensor* p_output_tensor = output_mlvalue.GetMutable<Tensor>();
 
-      // our CPU exec provider doesn't support copy from GPU->CPU
-      if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
-        ORT_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
-      } else {
-        ORT_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
-      }
+      ORT_RETURN_IF_ERROR(p_copy_provider->CopyTensor(fetched_tensor, *p_output_tensor));
 
       return Status::OK();
     };
@@ -445,7 +453,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   }
 
   return Status::OK();
-}
+}  // namespace utils
 
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
