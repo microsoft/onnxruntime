@@ -28,9 +28,6 @@ for build_type in 'Debug' 'Relwithdebinfo'; do
 done
 export ONNX_ML=1
 INSTALLED_PYTHON_VERSION=$(python3 -c 'import sys; version=sys.version_info[:2]; print("{0}.{1}".format(*version));')
-
-pip3 install setuptools wheel numpy
-
 if [ "$INSTALLED_PYTHON_VERSION" = "3.7" ];then
   pip3 install --upgrade setuptools
 fi
