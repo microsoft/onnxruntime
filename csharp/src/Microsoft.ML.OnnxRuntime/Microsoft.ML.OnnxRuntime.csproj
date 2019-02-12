@@ -31,8 +31,8 @@
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
   <!--TODO: Find a way to bundle the native symbol files properly -->
   <ItemGroup>
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\**\*.*"
-          PackagePath="\build\native\include"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\*"
+          PackagePath="\build\native\include\onnxruntime"
           Pack="true"
           CopyToOutputDirectory="Never"
           Visible="false"
