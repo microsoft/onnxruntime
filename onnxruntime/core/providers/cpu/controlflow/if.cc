@@ -173,9 +173,15 @@ Status IfImpl::AllocateOutputTensors() {
 Status IfImpl::Execute() {
   Status status = Status::OK();
 
-  NameMLValMap feeds;
+  // we setup the FeedsFetchesInfo manually here as we need to skip implicit inputs that aren't in this subgraph
+  FeedsFetchesInfo ffi;
+  std::vector<MLValue> feeds;
 
-  feeds.reserve(implicit_inputs_.size());
+  auto num_inputs = implicit_inputs_.size();
+  ffi.feed_names.reserve(num_inputs);
+  ffi.feeds_mlvalue_idxs.reserve(num_inputs);
+  feeds.reserve(num_inputs);
+
   auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
 
   // pass in implicit inputs as feeds.
@@ -188,13 +194,29 @@ Status IfImpl::Execute() {
     // would make that tracking a bit more complicated.
     int idx;
     if (mlvalue_name_idx_map.GetIdx(entry.first, idx).IsOK()) {
-      feeds[entry.first] = *entry.second;
+      ffi.feed_names.push_back(entry.first);
+      ffi.feeds_mlvalue_idxs.push_back(idx);
+      feeds.push_back(*entry.second);
     }
   }
+
   std::vector<MLValue> fetches;
   std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
-  fetches.reserve(num_outputs_);
 
+  // setup the output names and matching mlvalue_idx vector
+  ffi.output_names = subgraph_output_names_;
+  ffi.fetches_mlvalue_idxs.reserve(num_outputs_);
+
+  for (const auto& output_name : subgraph_output_names_) {
+    int idx;
+    if (mlvalue_name_idx_map.GetIdx(output_name, idx).IsOK()) {
+      ffi.fetches_mlvalue_idxs.push_back(idx);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output ", output_name, " was not found.");
+    }
+  }
+
+  fetches.reserve(num_outputs_);
   for (int i = 0; i < num_outputs_; ++i) {
     fetches.push_back(outputs_[i].second);
 
@@ -216,8 +238,11 @@ Status IfImpl::Execute() {
     }
   }
 
-  status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, fetch_allocators,
-                               /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
+  FeedsFetchesManager ffm(std::move(ffi));
+  status = utils::ExecuteGraph(session_state_, ffm, feeds, fetches, fetch_allocators,
+                               /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger(),
+                               /*cache_copy_info*/ false);  // we're only executing the subgraph once so no point caching
+
   ORT_RETURN_IF_ERROR(status);
 
   return status;

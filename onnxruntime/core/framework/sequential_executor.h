@@ -19,8 +19,9 @@ class SequentialExecutor : public IExecutor {
   SequentialExecutor(const bool& terminate_flag = false) : terminate_flag_{terminate_flag} {}
 
   common::Status Execute(const SessionState& session_state,
-                         const NameMLValMap& feeds,
-                         const std::vector<std::string>& output_names,
+                         const std::vector<int>& feed_mlvalue_idxs,
+                         const std::vector<MLValue>& feeds,
+                         const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<MLValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                          const logging::Logger& logger) override;

@@ -164,6 +164,9 @@ class Tensor final {
     shape_ = new_shape;
   }
 
+  /**
+  The number of bytes of data.
+  */
   size_t Size() const noexcept {
     return shape_.Size() * dtype_->Size();
   }

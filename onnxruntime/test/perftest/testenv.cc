@@ -15,51 +15,52 @@
 #include "default_providers.h"
 
 using namespace std::experimental::filesystem::v1;
-using onnxruntime::Status;
+using namespace onnxruntime;
+// using Status;
 
-inline void RegisterExecutionProvider(onnxruntime::InferenceSession* sess, std::unique_ptr<onnxruntime::IExecutionProvider>&& f) {
+inline void RegisterExecutionProvider(InferenceSession* sess, std::unique_ptr<IExecutionProvider>&& f) {
   auto status = sess->RegisterExecutionProvider(std::move(f));
   if (!status.IsOK()) {
     throw std::runtime_error(status.ErrorMessage().c_str());
   }
 }
 
-Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& sess, const path& model_url, const std::string& logid) const {
-  ::onnxruntime::SessionOptions so;
+Status SessionFactory::Create(std::shared_ptr<InferenceSession>& sess, const path& model_url, const std::string& logid) const {
+  SessionOptions so;
   so.session_logid = logid;
   so.enable_cpu_mem_arena = enable_cpu_mem_arena_;
   so.enable_mem_pattern = enable_mem_pattern_;
   so.enable_sequential_execution = enable_sequential_execution;
   so.session_thread_pool_size = session_thread_pool_size;
-  sess.reset(new ::onnxruntime::InferenceSession(so));
+  sess = std::make_shared<InferenceSession>(so);
 
   Status status;
   for (const std::string& provider : providers_) {
-    if (provider == onnxruntime::kCudaExecutionProvider) {
+    if (provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultCudaExecutionProvider());
+      RegisterExecutionProvider(sess.get(), test::DefaultCudaExecutionProvider());
 #else
       ORT_THROW("CUDA is not supported in this build");
 #endif
-    } else if (provider == onnxruntime::kMklDnnExecutionProvider) {
+    } else if (provider == kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultMkldnnExecutionProvider(enable_cpu_mem_arena_ ? 1 : 0));
+      RegisterExecutionProvider(sess.get(), test::DefaultMkldnnExecutionProvider(enable_cpu_mem_arena_ ? 1 : 0));
 #else
-      ORT_THROW("CUDA is not supported in this build");
+      ORT_THROW("MKLDNN is not supported in this build");
 #endif
-    } else if (provider == onnxruntime::kNupharExecutionProvider) {
+    } else if (provider == kNupharExecutionProvider) {
 #ifdef USE_NUPHAR
-      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultNupharExecutionProvider());
+      RegisterExecutionProvider(sess.get(), test::DefaultNupharExecutionProvider());
 #else
-      ORT_THROW("CUDA is not supported in this build");
+      ORT_THROW("NUPHAR is not supported in this build");
 #endif
-    } else if (provider == onnxruntime::kBrainSliceExecutionProvider) {
+    } else if (provider == kBrainSliceExecutionProvider) {
 #if USE_BRAINSLICE
-      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultBrainSliceExecutionProvider());
+      RegisterExecutionProvider(sess.get(), test::DefaultBrainSliceExecutionProvider());
 #else
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
-    } else if (provider == onnxruntime::kTRTExecutionProvider) {
+    } else if (provider == kTRTExecutionProvider) {
 #if USE_TRT
       OrtProviderFactoryInterface** f;
       ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));

@@ -11,25 +11,27 @@
 #include <fstream>
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
-#include "core/platform/env.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
+#include "core/framework/compute_capability.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/session/IOBinding.h"
+#include "dummy_provider.h"
+#include "test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
-#include "test_utils.h"
+
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -947,7 +949,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names: unknown_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Error mapping feeds: Could not find MLValue with name 'unknown_input'"));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
@@ -1194,6 +1196,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
+  run_options.cache_feeds_fetches_info = true;  // caching should handle the truncated and non-truncated cases
 
   std::vector<int64_t> X_dims = {5, 1, 3};
   std::vector<float> X = {0.5488135f, 0.71518934f, 0.60276335f,
@@ -1289,6 +1292,64 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     fetches = truncated_fetches;
     seq_start += truncated_len;
   }
+}
+
+// create the feeds and fetches using the dummy allocator so that we have to copy to CPU to execute, and from
+// CPU to return in utils::ExecuteGraph. Call InferenceSession::Run twice to test the caching of the copy logic.
+TEST(InferenceSessionTests, TestCopyToFromDevices) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestCopyToFromDevices";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+
+  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
+  auto* p_dummy_provider = dummy_provider.get();
+  session_object.RegisterExecutionProvider(std::move(dummy_provider));
+
+  // prepare inputs
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  MLValue ml_value;
+  CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value);
+
+  std::vector<std::string> feed_names;
+  std::vector<MLValue> feeds;
+  feed_names.push_back("X");
+  feeds.push_back(ml_value);
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul_y = {3, 2};
+  std::vector<float> expected_values_mul_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  auto run_test = [&](int run_num) {
+    // prepare outputs
+    std::vector<std::string> output_names;
+    std::vector<MLValue> fetches;
+    output_names.push_back("Y");
+
+    fetches.resize(output_names.size());
+    for (auto& elem : fetches) {
+      CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                           &elem);
+    }
+
+    // Now run
+    RunOptions run_options;
+    run_options.run_tag = "run:" + std::to_string(run_num);
+    run_options.cache_feeds_fetches_info = true;
+
+    common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches);
+    ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+    VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);
+  };
+
+  int run_number = 0;
+  run_test(run_number++);
+  run_test(run_number++);
 }
 
 }  // namespace test

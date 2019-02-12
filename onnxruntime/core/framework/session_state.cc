@@ -18,11 +18,11 @@ void SessionState::SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> grap
   graph_viewer_ = std::move(graph_viewer);
 }
 
-const onnxruntime::GraphViewer* SessionState::GetGraphViewer() const {
+const GraphViewer* SessionState::GetGraphViewer() const {
   return graph_viewer_.get();
 }
 
-const OpKernel* SessionState::GetKernel(onnxruntime::NodeIndex node_id) const {
+const OpKernel* SessionState::GetKernel(NodeIndex node_id) const {
   if (session_kernels_.count(node_id) == 0) {
     return nullptr;
   }
@@ -226,6 +226,71 @@ void SessionState::CalculateNodeIndexInfo() {
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_, "CalculateNodeIndexInfo must be called prior to GetExecutionInfo.");
   return *node_index_info_;
+}
+
+Status SessionState::GetOrCreateFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                                    const std::vector<std::string>& output_names,
+                                                    FeedsFetchesManager*& manager,
+                                                    bool& created) {
+  created = false;
+
+  // use a cheap way of matching first. if we have multiple entries with this key, we will do the more expensive
+  // check of the individual feed/output names
+  auto make_key = [&]() {
+    return static_cast<int>(feed_names.size()) << 16 | static_cast<int>(output_names.size());
+  };
+
+  int key = make_key();
+  auto num_matches = cached_feeds_fetches_managers_.count(key);
+
+  switch (num_matches) {
+    case 0: {
+      // create
+      break;
+    }
+    case 1: {
+      manager = cached_feeds_fetches_managers_.find(key)->second.get();
+      break;
+    }
+    default: {
+      auto iter = cached_feeds_fetches_managers_.lower_bound(key);
+      auto end = cached_feeds_fetches_managers_.upper_bound(key);
+
+      while (iter != end) {
+        auto& ffi = iter->second->GetFeedsFetchesInfo();
+        // the key should have guaranteed this. short term check
+        assert(ffi.feed_names.size() == feed_names.size());
+        assert(ffi.output_names.size() == output_names.size());
+
+        auto check = [](const std::vector<std::string>& input, const std::vector<std::string>& existing) {
+          for (size_t i = 0, end = input.size(); i < end; ++i) {
+            if (input[i] != existing[i]) {
+              return false;
+            }
+          }
+
+          return true;
+        };
+
+        if (check(feed_names, ffi.feed_names) && check(output_names, ffi.output_names)) {
+          manager = iter->second.get();
+          break;
+        }
+      }
+    }
+  }
+
+  if (!manager) {
+    std::unique_ptr<FeedsFetchesManager> ffm;
+    auto status = FeedsFetchesManager::Create(feed_names, output_names, GetMLValueNameIdxMap(), ffm);
+    ORT_RETURN_IF_ERROR(status);
+    manager = ffm.get();
+
+    cached_feeds_fetches_managers_.emplace(key, std::move(ffm));
+    created = true;
+  }
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

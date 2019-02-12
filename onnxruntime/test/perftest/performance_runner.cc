@@ -58,12 +58,12 @@ bool PerformanceRunner::Initialize() {
     return false;
   }
 
-  // TO DO: remove the input and model name's dependency on directory tree
+  // TODO: remove the input and model name's dependency on directory tree
   std::string model_name = model_path.parent_path().filename().string();
   if (model_name.compare(0, 5, "test_") == 0) model_name = model_name.substr(5);
   performance_result_.model_name = model_name;
 
-  // TO DO: remove depedency on OnnxTestCase.
+  // TODO: remove dependency on OnnxTestCase.
   std::unique_ptr<ITestCase> test_case(CreateOnnxTestCase(model_name));
 
   if (!test_case->SetModelPath(model_path).IsOK()) {
@@ -71,16 +71,30 @@ bool PerformanceRunner::Initialize() {
     return false;
   }
 
-  std::vector<std::string> provider_types;
-  if (performance_test_config_.machine_config.provider_type_name == onnxruntime::kCpuExecutionProvider) {
-    provider_types = {onnxruntime::kMklDnnExecutionProvider, onnxruntime::kCpuExecutionProvider};
-  }
-  provider_types = {performance_test_config_.machine_config.provider_type_name};
-  SessionFactory sf(provider_types, true, true);
+  std::vector<std::string> provider_types {
+#ifdef USE_MKLDNN
+    onnxruntime::kMklDnnExecutionProvider,
+#endif
+#ifdef USE_CUDA
+        onnxruntime::kCudaExecutionProvider,
+#endif
+#ifdef USE_NUPHAR
+        onnxruntime::kNupharExecutionProvider,
+#endif
+#if USE_BRAINSLICE
+        onnxruntime::kBrainSliceExecutionProvider,
+#endif
+#if USE_TRT
+        onnxruntime::kTRTExecutionProvider,
+#endif
+        onnxruntime::kCpuExecutionProvider
+  };
+
+  SessionFactory sf(std::move(provider_types), true, true);
   sf.enable_sequential_execution = performance_test_config_.run_config.enable_sequential_execution;
   sf.session_thread_pool_size = 6;
 
-  sf.create(session_object_, test_case->GetModelUrl(), test_case->GetTestCaseName());
+  sf.Create(session_object_, test_case->GetModelUrl(), test_case->GetTestCaseName());
 
   // Initialize IO Binding
   if (!session_object_->NewIOBinding(&io_binding_).IsOK()) {

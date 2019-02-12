@@ -22,7 +22,7 @@
 
 namespace onnxruntime {
 
-static common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
+static common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
                                                   MLValueNameIdxMap& mlvalue_name_idx_map,
                                                   const logging::Logger& logger);
 
@@ -60,13 +60,13 @@ SessionStateInitializer::SessionStateInitializer(onnxruntime::Graph& graph,
 
 common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
-  session_state_.SetGraphViewer(std::make_unique<onnxruntime::GraphViewer>(graph_));
+  auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
 
-  auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
   // populate the SessionState MLValueNameIdxMap
-  ORT_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(graph_, mlvalue_name_idx_map, logger_));
+  auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
+  ORT_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(*graph_viewer, mlvalue_name_idx_map, logger_));
 
-  // remove any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
+  // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
   std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
                 [&mlvalue_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
@@ -77,12 +77,12 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
                 });
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
-  GraphViewer viewer(graph_);
+
   if (enable_sequential_execution) {
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(*graph_viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -90,11 +90,13 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(viewer, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(*graph_viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
   }
+
+  session_state_.SetGraphViewer(std::move(graph_viewer));
 
   return Status::OK();
 }
@@ -126,20 +128,20 @@ common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pat
 }
 
 // Build the MLValue name->idx mapping
-common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
+common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
                                            MLValueNameIdxMap& mlvalue_name_idx_map,
                                            const logging::Logger& logger) {
   LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
   int idx = 0;
 
   // we keep all graph inputs (including initializers), even if they are unused, so make sure they all have an entry
-  for (const auto* input_def : graph.GetInputsIncludingInitializers()) {
+  for (const auto* input_def : graph_viewer.GetInputsIncludingInitializers()) {
     idx = mlvalue_name_idx_map.Add(input_def->Name());
     VLOGS(logger, 1)
-        << "Added graph input with name: " << input_def->Name() << " to MLValueIndex with index: " << idx;
+        << "Added graph_viewer input with name: " << input_def->Name() << " to MLValueIndex with index: " << idx;
   }
 
-  for (auto& node : graph.Nodes()) {
+  for (auto& node : graph_viewer.Nodes()) {
     // build the MLValue->index map
     for (const auto* input_def : node.InputDefs()) {
       if (input_def->Exists()) {
@@ -167,7 +169,7 @@ common::Status SaveMLValueNameIndexMapping(const onnxruntime::Graph& graph,
   }
 
   // allocate MLValue for graph outputs when coming from initializers
-  for (const auto& output : graph.GetOutputs()) {
+  for (const auto& output : graph_viewer.GetOutputs()) {
     if (output->Exists()) {
       idx = mlvalue_name_idx_map.Add(output->Name());
       VLOGS(logger, 1)

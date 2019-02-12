@@ -25,8 +25,9 @@ class ParallelExecutor : public IExecutor {
   ParallelExecutor(const SessionState& session_state, const bool& terminate_flag = false);
 
   common::Status Execute(const SessionState& session_state,
-                         const NameMLValMap& feeds,
-                         const std::vector<std::string>& output_names,
+                         const std::vector<int>& feed_mlvalue_idxs,
+                         const std::vector<MLValue>& feeds,
+                         const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<MLValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                          const logging::Logger& logger) override;
@@ -38,12 +39,6 @@ class ParallelExecutor : public IExecutor {
   void RunNodeAsyncInternal(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
 
   void EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
-
-  Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
-                     ExecutionFrame& frame,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>& fetches,
-                     const logging::Logger& logger);
 
   void FinishNodeRun() {
     bool finished = false;

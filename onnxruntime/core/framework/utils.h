@@ -12,6 +12,7 @@
 
 namespace onnxruntime {
 class ExecutionProviders;
+class FeedsFetchesManager;
 class Graph;
 class KernelDef;
 class KernelRegistryManager;
@@ -44,27 +45,17 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
                                          const MLValue& orig_mlvalue,
                                          MLValue& new_mlvalue);
 
-common::Status CopyInputsAcrossDevices(const SessionState& session_state,
-                                       const NameMLValMap& orig_feeds,
-                                       NameMLValMap& new_feeds);
-
-common::Status MatchOutputsWithProviders(const SessionState& session_state,
-                                         const std::vector<std::string>& output_names,
-                                         std::vector<MLValue>& fetches,
-                                         std::vector<MLValue>& new_fetches);
-
-common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
-                                        std::vector<MLValue>& fetches,
-                                        std::vector<MLValue>& user_fetches);
-
+// ExecuteGraph, using FeedsFetchesManager to optimize feed and fetch usage across invocations when the
+// order and location of the feeds and fetches is unchanged.
 common::Status ExecuteGraph(const SessionState& session_state,
-                            const NameMLValMap& feeds,
-                            const std::vector<std::string>& output_names,
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const std::vector<MLValue>& feeds,
                             std::vector<MLValue>& fetches,
                             const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                             bool sequential_execution,
                             const bool& terminate_flag,
-                            const logging::Logger& logger);
+                            const logging::Logger& logger,
+                            bool cache_copy_info = true);
 
 #define DispatchOnTensorType(tensor_type, function, ...)      \
   if (tensor_type == DataTypeImpl::GetType<float>())          \
