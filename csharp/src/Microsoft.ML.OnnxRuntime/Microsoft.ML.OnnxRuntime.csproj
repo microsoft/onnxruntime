@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard1.1</TargetFramework>
@@ -31,7 +31,7 @@
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
   <!--TODO: Find a way to bundle the native symbol files properly -->
   <ItemGroup>
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\*"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_c_api.h"
           PackagePath="\build\native\include\onnxruntime"
           Pack="true"
           CopyToOutputDirectory="Never"
