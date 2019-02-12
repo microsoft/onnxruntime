@@ -431,7 +431,7 @@ int valueCount(OrtValue* val);
 OrtValue* createValue(OrtValue** val, int count, ValueType type, Allocator* alloc);
    */
 
-ORT_API_STATUS(OrtGetValue, const OrtValue* value, OrtAllocator* allocator, OrtValue** out);
+ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allocator, OrtValue** out);
 ORT_API_STATUS(OrtGetNumValues, const OrtValue* value, int* out);
 ORT_API_STATUS(OrtCreateValue, int num_values, enum ONNXTensorElementDataType value_type, OrtAllocator* allocator, OrtValue** out);
 
