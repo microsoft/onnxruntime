@@ -1,0 +1,35 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_CPU
+
+  timeoutInMinutes: 60
+
+  variables:
+  - group: AzureKeyVault # for $(AZURESASKEY)
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/set-test-data-variables-step.yml
+
+  - script: 'tools/ci_build/vsts/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --azure_sas_key=$(AZURESASKEY) --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    displayName: 'Command Line Script'
+    env:
+      AZURE_BLOB_KEY: $(lotus-storage-key) # TODO needed?
+      AZURESASKEY: $(AZURESASKEY) # TODO needed?
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+
+  - template: templates/clean-agent-build-directory-step.yml

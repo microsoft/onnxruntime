@@ -1,0 +1,18 @@
+# sets variables $(TestDataUrl) and $(TestDataChecksum)
+
+parameters:
+  TestDataUrl: https://lotus.blob.core.windows.net/onnx-model-zoo-20181113/20181113.zip
+  TestDataChecksum: 011b3c291799d94dac13f2b5ed53b4df
+
+steps:
+- task: CmdLine@1
+  displayName: 'Set TestDataUrl variable'
+  inputs:
+    filename: echo
+    arguments: '##vso[task.setvariable variable=TestDataUrl;]${{parameters.TestDataUrl}}'
+
+- task: CmdLine@1
+  displayName: 'Set TestDataChecksum variable'
+  inputs:
+    filename: echo
+    arguments: '##vso[task.setvariable variable=TestDataChecksum;]${{parameters.TestDataChecksum}}'
