@@ -422,18 +422,9 @@ ORT_ALL_ARGS_NONNULL;
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
 
-
-  /*
-// For fetch:
-OrtValue* getValue(OrtValue* val, int index, Allocator* alloc);
-int valueCount(OrtValue* val);
-// For feed:
-OrtValue* createValue(OrtValue** val, int count, ValueType type, Allocator* alloc);
-   */
-
-ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allocator, OrtValue** out);
+ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, const OrtAllocatorInfo* info, OrtValue** out);
 ORT_API_STATUS(OrtGetNumValues, const OrtValue* value, int* out);
-ORT_API_STATUS(OrtCreateValue, int num_values, enum ONNXTensorElementDataType value_type, OrtAllocator* allocator, OrtValue** out);
+ORT_API_STATUS(OrtCreateValue, OrtValue** in, int num_values, enum ONNXType value_type, const OrtAllocatorInfo* info, OrtValue** out);
 
 #ifdef __cplusplus
 }
