@@ -192,9 +192,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       return Status::OK();
     }
 
-    // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
     // Only Max Min will have indices output, need to set the indices to nullptr for other ops
-    if (CUDNN_REDUCE_TENSOR_MAX == ReduceTensorIndices || CUDNN_REDUCE_TENSOR_MIN == ReduceTensorIndices) {
+    if (CUDNN_REDUCE_TENSOR_MAX == cudnnReduceOp || CUDNN_REDUCE_TENSOR_MIN == cudnnReduceOp) {
       size_t indices_bytes = 0;
       CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
       auto indices_cuda = GetScratchBuffer<void>(indices_bytes);
