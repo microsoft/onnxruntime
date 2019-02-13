@@ -1,18 +1,48 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "tokenizer.h"
 #include "onnx/defs/schema.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "core/framework/op_kernel.h"
 
 #include "core/common/utf8_util.h"
+#include "re2/re2.h"
 
 #include <codecvt>
 #include <locale>
 
 namespace onnxruntime {
 namespace contrib {
+
+class Tokenizer final : public OpKernel {
+ public:
+  explicit Tokenizer(const OpKernelInfo& info);
+  Tokenizer(const Tokenizer&) = delete;
+  Tokenizer& operator=(const Tokenizer&) = delete;
+  ~Tokenizer() = default;
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  Status CharTokenize(OpKernelContext* context, size_t N, size_t C,
+                      const std::vector<int64_t>& input_dims) const;
+
+  Status SeparatorTokenize(OpKernelContext* context, size_t N, size_t C,
+                           const std::vector<int64_t>& input_dims) const;
+
+  Status ExpressionTokenize(OpKernelContext* ctx,
+                            size_t N, size_t C,
+                            const std::vector<int64_t>& input_dims) const;
+
+  bool mark_;
+  std::string pad_value_;
+  int64_t mincharnum_;
+  bool char_tokenezation_;
+  struct SearchData;
+  std::unique_ptr<SearchData> search_data_;
+  std::unique_ptr<re2::RE2> regex_;
+};
 
 using namespace utf8_util;
 
@@ -209,10 +239,17 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   ORT_ENFORCE(status.IsOK(), "attribute mincharnum is not set");
   ORT_ENFORCE(mincharnum_ > 0, "attribute mincharnum must have a positive value");
 
+  // Optional attributes either or
   std::vector<std::string> separators;
-  status = info.GetAttrs<std::string>("separators", separators);
-  ORT_ENFORCE(status.IsOK(), "attribute separators is not set");
-  ORT_ENFORCE(!separators.empty(), "Requires at least one separator");
+  std::string tokenexp;
+  status = info.GetAttrs("separators", separators);
+  if (!status.IsOK()) {
+    status = info.GetAttr("tokenexp", &tokenexp);
+    ORT_ENFORCE(status.IsOK(), "Either one of the separators OR tokenexp attributes required but none is set");
+    ORT_ENFORCE(!tokenexp.empty(), "Expecting a non-empty tokenexp");
+  } else {
+    ORT_ENFORCE(!separators.empty(), "Expect at least on item within separators");
+  }
 
   char_tokenezation_ = (separators.size() == 1 &&
                         separators[0].empty());
@@ -220,25 +257,33 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   ORT_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
               "mincharnum is too big for char level tokenezation");
 
-  // Create TST and insert separators
+  // Check if we have separators or tokenexp
   if (!char_tokenezation_) {
-    std::unique_ptr<SearchData> sd(std::make_unique<SearchData>());
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
-    int priority = 0;  // earlier search patterns get priority
-    for (const auto& sep : separators) {
-      ORT_ENFORCE(!sep.empty(), "No empty separators allowed");
-      std::wstring wsep = converter.from_bytes(sep);
-      ORT_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
-      bool result = sd->tst_.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
-      ORT_ENFORCE(result, "duplicate separator detected");
-      ++priority;
+    if (!separators.empty()) {
+      std::unique_ptr<SearchData> sd(std::make_unique<SearchData>());
+      std::wstring_convert<std::codecvt_utf8<wchar_t>> converter(conv_error, wconv_error);
+      int priority = 0;  // earlier search patterns get priority
+      for (const auto& sep : separators) {
+        ORT_ENFORCE(!sep.empty(), "No empty separators allowed");
+        std::wstring wsep = converter.from_bytes(sep);
+        ORT_ENFORCE(wsep != wconv_error, "Separator strings contains invalid utf8 chars");
+        bool result = sd->tst_.put(wsep.c_str(), wsep.length(), {wsep.length(), priority});
+        ORT_ENFORCE(result, "duplicate separator detected");
+        ++priority;
+      }
+      search_data_.swap(sd);
+    } else {
+      // Use tokenexp
+      re2::RE2::Options options;
+      options.set_longest_match(true);
+      options.set_posix_syntax(true);
+      std::unique_ptr<re2::RE2> regex(new re2::RE2(tokenexp, options));
+      if (!regex->ok()) {
+        ORT_THROW("Can not digest regex: ", regex->error());
+      }
+      regex_.swap(regex);
     }
-    search_data_.swap(sd);
   }
-}
-
-// Make SearchData definition available for destruction
-Tokenizer ::~Tokenizer() {
 }
 
 Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
@@ -447,6 +492,133 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   return Status::OK();
 }
 
+Status Tokenizer::ExpressionTokenize(OpKernelContext* ctx,
+                                     size_t N, size_t C,
+                                     const std::vector<int64_t>& input_dims) const {
+  using namespace re2;
+  // Represents a token that will be output after
+  // first is the index, second is the size;
+  using Token = std::pair<size_t, size_t>;
+  std::vector<std::vector<Token>> tokens;
+  tokens.reserve(N * C);
+
+  size_t max_tokens = 0;
+  auto X = ctx->Input<Tensor>(0);
+  auto const input_data = X->template Data<std::string>();
+  auto curr_input = input_data;
+  auto const last = input_data + N * C;
+
+  // We do not constraint the search to match
+  // on the beginning or end of the string
+  const RE2::Anchor anchor = RE2::UNANCHORED;
+
+  while (curr_input != last) {
+    const auto& s = *curr_input;
+    tokens.emplace_back();
+    auto& row = tokens.back();
+
+    StringPiece text(s);
+    const auto end_pos = s.length();
+    size_t start_pos = 0;
+    StringPiece submatch;
+
+    bool match = true;
+    while (match) {
+      match = regex_->Match(text, start_pos, end_pos, anchor, &submatch, 1);
+      if (match) {
+        // Record  pos/len
+        assert(submatch.data() != nullptr);
+        size_t match_pos = submatch.data() - s.data();
+        assert(match_pos >= start_pos);
+        auto token_len = match_pos - start_pos;
+        if (token_len > 0) {
+          row.emplace_back(start_pos, token_len);
+        }
+        // Update starting position
+        // Guard against empty string match
+        auto match_len = submatch.length();
+        if (match_len > 0) {
+          start_pos = match_pos + match_len;
+        } else {
+          start_pos = match_pos + 1;
+        }
+      } else {
+        // record trailing token
+        auto trailing_len = end_pos - start_pos;
+        if (trailing_len > 0) {
+          row.emplace_back(start_pos, trailing_len);
+        }
+      }
+    }
+    size_t tokens_num = row.size();
+    if (mark_) {
+      tokens_num += 2;  // Start/end markers as separate tokens
+    }
+    max_tokens = std::max(max_tokens, tokens_num);
+    ++curr_input;
+  }
+  // Check for empty output
+  std::vector<int64_t> output_dims(input_dims);
+  // Check if we have no output due to either empty input
+  // everything is a separator
+  if ((max_tokens - mark_ * 2) == 0) {
+    output_dims.push_back(0);
+    TensorShape output_shape(output_dims);
+    ctx->Output(0, output_shape);
+    return Status::OK();
+  }
+
+  output_dims.push_back(max_tokens);
+  TensorShape output_shape(output_dims);
+
+  auto output_tensor = ctx->Output(0, output_shape);
+  auto const output_data = output_tensor->template MutableData<std::string>();
+
+#ifdef _DEBUG
+  const size_t max_output_index = N * C * max_tokens;
+#endif
+  curr_input = input_data;
+  size_t output_index = 0;
+  for (const auto& row : tokens) {
+    assert(curr_input != last);
+#ifdef _DEBUG
+    size_t c_idx = output_index;
+#endif
+    if (mark_) {
+      (output_data + output_index)->assign(&start_text, 1);
+      ++output_index;
+    }
+    // Output tokens for this row
+    const char* data = curr_input->data();
+    for (const auto& token : row) {
+#ifdef _DEBUG
+      auto s_len = curr_input->length();
+      assert(token.second > 0);
+      assert(token.first < s_len);
+      assert(token.first + token.second <= s_len);
+#endif
+      (output_data + output_index)->assign(data + token.first, token.second);
+      ++output_index;
+    }
+    if (mark_) {
+      (output_data + output_index)->assign(&end_text, 1);
+      ++output_index;
+    }
+    const size_t pads = max_tokens - (mark_ * 2) - row.size();
+    for (size_t p = 0; p < pads; ++p) {
+      *(output_data + output_index) = pad_value_;
+      ++output_index;
+    }
+#ifdef _DEBUG
+    assert(output_index <= max_output_index);
+    assert((output_index - c_idx) <= max_tokens);
+#endif
+    ++curr_input;
+  }
+
+  return Status::OK();
+}
+
 Status Tokenizer::Compute(OpKernelContext* ctx) const {
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
@@ -482,7 +654,11 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   if (char_tokenezation_) {
     s = CharTokenize(ctx, N, C, input_dims);
   } else {
-    s = SeparatorTokenize(ctx, N, C, input_dims);
+    if (regex_ != nullptr) {
+      s = ExpressionTokenize(ctx, N, C, input_dims);
+    } else {
+      s = SeparatorTokenize(ctx, N, C, input_dims);
+    }
   }
   return s;
 }
