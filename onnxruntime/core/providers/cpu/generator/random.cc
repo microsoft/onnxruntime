@@ -71,10 +71,10 @@ ONNX_CPU_OPERATOR_KERNEL(
     Multinomial);
 
 template <typename T, typename TDistribution>
-void GenerateData(std::default_random_engine generator, TDistribution distribution, Tensor& tensor);
+void GenerateData(std::default_random_engine& generator, TDistribution distribution, Tensor& tensor);
 
-static Status RandomNormalCompute(float mean, float scale, std::default_random_engine generator, TensorProto::DataType dtype, Tensor& Y);
-static Status RandomUniformCompute(float high, float low, std::default_random_engine generator, TensorProto::DataType dtype, Tensor& Y);
+static Status RandomNormalCompute(float mean, float scale, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y);
+static Status RandomUniformCompute(float high, float low, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y);
 
 // Leaving in case we need to change to this approach
 //static Status CreateOutputTensorFromTensorValues(OpKernelContext* ctx, const Tensor& X,Tensor** Y);
@@ -84,7 +84,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor);
 Status RandomNormal::Compute(OpKernelContext* ctx) const {
   Tensor& Y = *ctx->Output(0, shape_);
 
-  auto status = RandomNormalCompute(mean_, scale_, generator_, dtype_, Y);
+  auto status = RandomNormalCompute(mean_, scale_, const_cast<std::default_random_engine&>(generator_), dtype_, Y);
 
   return status;
 }
@@ -92,7 +92,7 @@ Status RandomNormal::Compute(OpKernelContext* ctx) const {
 Status RandomUniform::Compute(OpKernelContext* ctx) const {
   Tensor& Y = *ctx->Output(0, shape_);
 
-  auto status = RandomUniformCompute(low_, high_, generator_, dtype_, Y);
+  auto status = RandomUniformCompute(low_, high_, const_cast<std::default_random_engine&>(generator_), dtype_, Y);
 
   return status;
 }
@@ -113,7 +113,7 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
 
-  status = RandomNormalCompute(mean_, scale_, generator_, dtype, *Y);
+  status = RandomNormalCompute(mean_, scale_, const_cast<std::default_random_engine&>(generator_), dtype, *Y);
 
   return status;
 }
@@ -133,7 +133,7 @@ Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
-  status = RandomUniformCompute(low_, high_, generator_, dtype, *Y);
+  status = RandomUniformCompute(low_, high_, const_cast<std::default_random_engine&>(generator_), dtype, *Y);
 
   return status;
 }
@@ -308,7 +308,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor) {
 }
 
 static Status RandomNormalCompute(float mean, float scale,
-                                  std::default_random_engine generator,
+                                  std::default_random_engine& generator,
                                   TensorProto::DataType dtype, Tensor& Y) {
   switch (dtype) {
     case TensorProto::FLOAT: {
@@ -332,7 +332,7 @@ static Status RandomNormalCompute(float mean, float scale,
 }
 
 static Status RandomUniformCompute(float low, float high,
-                                   std::default_random_engine generator,
+                                   std::default_random_engine& generator,
                                    TensorProto::DataType dtype,
                                    Tensor& Y) {
   switch (dtype) {
@@ -357,7 +357,7 @@ static Status RandomUniformCompute(float low, float high,
 }
 
 template <typename T, typename TDistribution>
-void GenerateData(std::default_random_engine generator, TDistribution distribution, Tensor& tensor) {
+void GenerateData(std::default_random_engine& generator, TDistribution distribution, Tensor& tensor) {
   auto out = gsl::make_span(tensor.template MutableData<T>(), tensor.Shape().Size());
 
   std::for_each(out.begin(), out.end(), [&generator, &distribution](T& value) { value = distribution(generator); });
