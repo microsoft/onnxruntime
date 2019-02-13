@@ -10,6 +10,7 @@
 #endif
 
 #include "core/providers/cpu/controlflow/loop.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -94,12 +95,14 @@ class LoopImpl {
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
 
+  Status CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm);
+
   // Execute the batch, by iterating the sequence in each batch entry
   // and calling the subgraph with each item in the sequence.
-  Status Execute();
+  Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
 
  private:
-  void CreateInitialFeeds(std::vector<std::string>& feed_names, std::vector<MLValue>& feeds);
+  void CreateInitialFeeds(std::vector<MLValue>& feeds);
   void UpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs);
 
   // create the single Loop output from a collection of per-iteration outputs
@@ -139,7 +142,8 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
 
-  status = loop_impl.Execute();
+  // create FeedsFetchesManager if needed and call LoopImpl::Execute
+  status = controlflow::detail::SubgraphExecuteHelper(cached_feeds_fetches_manager_, loop_impl);
 
   return status;
 }
@@ -226,29 +230,41 @@ Status LoopImpl::Initialize() {
   return status;
 }
 
-void LoopImpl::CreateInitialFeeds(std::vector<std::string>& feed_names, std::vector<MLValue>& feeds) {
+Status LoopImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
   auto num_implicit_inputs = implicit_inputs_.size();
+  std::vector<std::string> feed_names;
   feed_names.reserve(num_subgraph_inputs_ + num_implicit_inputs);
+
+  std::copy(subgraph_input_names_.cbegin(), subgraph_input_names_.cend(), std::back_inserter(feed_names));
+  for (auto& entry : implicit_inputs_) {
+    feed_names.push_back(entry.first);
+  }
+
+  FeedsFetchesInfo ffi(feed_names, subgraph_output_names_);
+  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
+                                            ffm);
+
+  return status;
+}
+
+void LoopImpl::CreateInitialFeeds(std::vector<MLValue>& feeds) {
+  auto num_implicit_inputs = implicit_inputs_.size();
   feeds.reserve(num_subgraph_inputs_ + num_implicit_inputs);
 
-  auto add = [&feed_names, &feeds](const std::string& name, const MLValue& value) {
-    feed_names.push_back(name);
-    feeds.push_back(value);
-  };
-
-  add(subgraph_input_names_[0], iter_num_mlvalue_);
-  add(subgraph_input_names_[1], condition_mlvalue_);
+  // This ordering is the same as used in CreateFeedsFetchesManager
+  feeds.push_back(iter_num_mlvalue_);
+  feeds.push_back(condition_mlvalue_);
 
   // populate loop carried var inputs which conveniently start at slot 2 in both the Loop and subgraph inputs
   for (int i = 2; i < num_subgraph_inputs_; ++i) {
-    add(subgraph_input_names_[i], *context_.GetInputMLValue(i));
+    feeds.push_back(*context_.GetInputMLValue(i));
   }
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
                 entry.first, " did not.");
-    add(entry.first, *entry.second);
+    feeds.push_back(*entry.second);
   }
 }
 
@@ -256,9 +272,9 @@ void LoopImpl::UpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector
   // last_output: cond, loop vars..., loop output...
   // next_input: iter_num, cond, loop_vars. iter_num is re-used
 
-  // simple copy for cond and loop carried vars.
+  // simple copy for cond and loop carried vars. start at 1 to skip iter_num in input
   for (int i = 1; i < num_subgraph_inputs_; ++i) {
-    next_inputs[i] = last_outputs[i - 1];  // skip iter_num in input
+    next_inputs[i] = last_outputs[i - 1];
   }
 
   // save loop outputs as we have to concatenate at the end
@@ -305,22 +321,15 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
   return Status::OK();
 }
 
-Status LoopImpl::Execute() {
+Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
   auto status = Status::OK();
 
-  std::vector<std::string> feed_names;
   std::vector<MLValue> feeds;
   std::vector<MLValue> fetches;
 
-  CreateInitialFeeds(feed_names, feeds);
+  CreateInitialFeeds(feeds);
 
   auto& iter_num_value = *iter_num_mlvalue_.GetMutable<Tensor>()->MutableData<int64_t>();
-
-  // FeedsFetchesManager will minimize name lookups and copy logic on each subsequent execution of the graph,
-  // based on what is required during the first execution
-  FeedsFetchesInfo ffi(feed_names, subgraph_output_names_);
-  ORT_RETURN_IF_ERROR(ffi.SetMLValueIdxs(session_state_.GetMLValueNameIdxMap()));
-  FeedsFetchesManager ffm{std::move(ffi)};
 
   while (iter_num_value < max_trip_count_ && *condition_mlvalue_.GetMutable<Tensor>()->MutableData<bool>()) {
     if (iter_num_value != 0) {
@@ -331,9 +340,19 @@ Status LoopImpl::Execute() {
     // loop carried variables can change shape across iterations, and we don't know how many iterations
     // there will be to allocate loop outputs upfront. due to that we can't use a custom fetch allocator
     // for any outputs
-    status = utils::ExecuteGraph(session_state_, ffm, feeds, fetches, {},
-                                 /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger(),
-                                 /*cache_copy_info*/ true);
+    if (cached_ffm) {
+      status = utils::ExecuteGraphWithCachedInfo(session_state_, *cached_ffm, feeds, fetches, {},
+                                                 /*sequential_execution*/ true, context_.GetTerminateFlag(),
+                                                 context_.Logger());
+    } else {
+      status = utils::ExecuteGraph(session_state_, *ffm, feeds, fetches, {},
+                                   /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger(),
+                                   /*cache_copy_info*/ true);
+
+      // after the first execution, use the cached information
+      cached_ffm = ffm;
+    }
+
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];

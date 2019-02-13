@@ -231,16 +231,16 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
 // use a cheap way of matching first. if we have multiple entries with this key, we will do the more expensive
 // check of the individual feed/output names
 static int MakeFeedsFetchesManagerCacheKey(const std::vector<std::string>& feed_names,
-                                    const std::vector<std::string>& output_names) {
+                                           const std::vector<std::string>& output_names) {
   return static_cast<int>(feed_names.size()) << 16 | static_cast<int>(output_names.size());
 };
 
-FeedsFetchesManager* SessionState::GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                                          const std::vector<std::string>& output_names) {
+const FeedsFetchesManager* SessionState::GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                                                const std::vector<std::string>& output_names) const {
   int key = MakeFeedsFetchesManagerCacheKey(feed_names, output_names);
   auto num_matches = cached_feeds_fetches_managers_.count(key);
 
-  FeedsFetchesManager* manager = nullptr;
+  const FeedsFetchesManager* manager = nullptr;
 
   switch (num_matches) {
     case 0: {

@@ -7,9 +7,9 @@
 #include "core/framework/mlvalue_name_idx_map.h"
 
 namespace onnxruntime {
-static common::Status MapNamesToMLValueIdxs(const std::vector<std::string>& names,
-                                            const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                            std::vector<int>& mlvalue_idxs) {
+common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::string>& names,
+                                                       const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                                       std::vector<int>& mlvalue_idxs) {
   auto status = Status::OK();
 
   mlvalue_idxs.reserve(names.size());
@@ -52,29 +52,6 @@ Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
   feed_fetch_manager = std::make_unique<FeedsFetchesManager>(std::move(info));
 
   return Status::OK();
-}
-
-DeviceCopyCheck FeedsFetchesManager::CheckExecutionProviders(const ExecutionProviders& execution_providers) {
-  bool all_cpu = true;
-  for (const auto& execution_provider : execution_providers) {
-    const auto& allocators = execution_provider->GetAllocators();
-    // this won't work as desired until multiple providers can share the CPU Allocator and the logic here is updated
-    // to detect that..
-    // it will currently handle the scenario when only the CPUExecutionProvider is registered though
-    if (!std::all_of(allocators.cbegin(), allocators.cend(),
-                     [](const gsl::not_null<const IAllocator*>& allocator) {
-                       return strcmp(allocator->Info().name, CPU) == 0;
-                     })) {
-      all_cpu = false;
-      break;
-    }
-  }
-
-  if (all_cpu) {
-    device_copy_checks_.status = DeviceCopyCheck::NoCopy;
-  }
-
-  return device_copy_checks_.status;
 }
 
 void FeedsFetchesManager::SetDeviceCopyChecks(DeviceCopyChecks checks) {

@@ -8,13 +8,16 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/mlvalue_tensor_slicer.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 class GraphViewer;
+class MLValueNameIdxMap;
 class OpKernelContextInternal;
+
 namespace scan {
 namespace detail {
 
@@ -157,6 +160,13 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
                       ScanDirection direction = ScanDirection::kForward,
                       bool temporary = false);
 
+Status CreateFeedsFetchesManager(const GraphViewer& subgraph,
+                                 int num_variadic_inputs,
+                                 std::unordered_map<std::string, const MLValue*>& implicit_inputs,
+                                 std::vector<std::string>& subgraph_output_names,
+                                 const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                 std::unique_ptr<FeedsFetchesManager>& ffm);
+
 Status IterateSequence(OpKernelContextInternal& context,
                        const SessionState& session_state,
                        const GraphViewer& subgraph,
@@ -168,7 +178,9 @@ Status IterateSequence(OpKernelContextInternal& context,
                        int num_variadic_outputs,
                        std::unordered_map<std::string, const MLValue*>& implicit_inputs,
                        std::vector<std::string>& subgraph_output_names,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators);
+                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
+                       FeedsFetchesManager* ffm,
+                       const FeedsFetchesManager* cached_ffm);
 
 MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
 

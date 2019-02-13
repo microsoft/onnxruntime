@@ -96,6 +96,42 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   return Status::OK();
 }
 
+Status CreateFeedsFetchesManager(const GraphViewer& subgraph,
+                                 int num_variadic_inputs,
+                                 std::unordered_map<std::string, const MLValue*>& implicit_inputs,
+                                 std::vector<std::string>& subgraph_output_names,
+                                 const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                 std::unique_ptr<FeedsFetchesManager>& ffm) {
+  auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
+  if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
+    // fallback to just the required inputs.
+    graph_inputs = &subgraph.GetInputs();
+    ORT_ENFORCE(static_cast<size_t>(num_variadic_inputs) == graph_inputs->size(),
+                "Graph::InferAndVerifySubgraphTypes should have already validated that "
+                "num_variadic_inputs matched the subgraph inputs or required inputs.");
+  }
+
+  auto num_implicit_inputs = implicit_inputs.size();
+  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
+
+  std::vector<std::string> feed_names;
+  feed_names.reserve(num_inputs);
+
+  // pass explicit graph inputs first. order doesn't actually matter though
+  for (int input = 0; input < num_variadic_inputs; ++input) {
+    feed_names.push_back((*graph_inputs)[input]->Name());
+  }
+
+  for (auto& entry : implicit_inputs) {
+    feed_names.push_back(entry.first);
+  }
+
+  FeedsFetchesInfo ffi(feed_names, subgraph_output_names);
+  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, mlvalue_name_idx_map, ffm);
+
+  return status;
+}
+
 Status IterateSequence(OpKernelContextInternal& context,
                        const SessionState& session_state,
                        const GraphViewer& subgraph,
@@ -107,7 +143,9 @@ Status IterateSequence(OpKernelContextInternal& context,
                        int num_variadic_outputs,
                        std::unordered_map<std::string, const MLValue*>& implicit_inputs,
                        std::vector<std::string>& subgraph_output_names,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators) {
+                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
+                       FeedsFetchesManager* ffm,
+                       const FeedsFetchesManager* cached_ffm) {
   Status status = Status::OK();
 
   // prefer matching all inputs to the subgraph as per the Scan spec,
@@ -120,36 +158,24 @@ Status IterateSequence(OpKernelContextInternal& context,
                 "num_variadic_inputs matched the subgraph inputs or required inputs.");
   }
 
-  std::vector<std::string> feed_names;
+  auto num_implicit_inputs = implicit_inputs.size();
+  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
+
   std::vector<MLValue> feeds;
   std::vector<MLValue> fetches;
   std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
-  auto num_implicit_inputs = implicit_inputs.size();
-  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
-
-  feed_names.reserve(num_inputs);
   feeds.resize(num_inputs);
   fetches.resize(num_variadic_outputs);
-
-  // pass explicit graph inputs first. order doesn't actually matter though
-  for (int input = 0; input < num_variadic_inputs; ++input) {
-    feed_names.push_back((*graph_inputs)[input]->Name());
-  }
 
   // add implicit inputs and pass in implicit inputs as feeds. we're going to pass in the explicit inputs
   // first in each iteration though so offset by num_variadic_inputs
   int i = 0;
   for (auto& entry : implicit_inputs) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ", entry.first, " did not.");
-    feed_names.push_back(entry.first);
     feeds[num_variadic_inputs + i] = *entry.second;
     ++i;
   }
-
-  FeedsFetchesInfo ffi(feed_names, subgraph_output_names);
-  ORT_RETURN_IF_ERROR(ffi.SetMLValueIdxs(session_state.GetMLValueNameIdxMap()));
-  FeedsFetchesManager ffm{std::move(ffi)};
 
   int64_t seq_no = 0;
   for (; seq_no < seq_length; ++seq_no) {
@@ -194,9 +220,18 @@ Status IterateSequence(OpKernelContextInternal& context,
     }
 
     // Create Executor and run graph.
-    status = utils::ExecuteGraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                 /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger(),
-                                 /*cache_copy_info*/ true);
+    if (cached_ffm) {
+      status = utils::ExecuteGraphWithCachedInfo(session_state, *cached_ffm, feeds, fetches, fetch_allocators,
+                                                 /*sequential_execution*/ true, context.GetTerminateFlag(),
+                                                 context.Logger());
+    } else {
+      status = utils::ExecuteGraph(session_state, *ffm, feeds, fetches, fetch_allocators,
+                                   /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger(),
+                                   /*cache_copy_info*/ true);
+      // we can now use the cached info
+      cached_ffm = ffm;
+    }
+
     ORT_RETURN_IF_ERROR(status);
 
     // cycle the LoopStateVariable input/output in preparation for the next iteration

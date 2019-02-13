@@ -10,6 +10,7 @@
 #endif
 #include "core/providers/cpu/controlflow/scan.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -109,9 +110,11 @@ class ScanImpl {
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
 
+  Status CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm);
+
   // Execute the batch, by iterating the sequence in each batch entry
   // and calling the subgraph with each item in the sequence.
-  Status Execute();
+  Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
 
  private:
   // validate inputs and setup batch size and max sequence length.
@@ -203,7 +206,8 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
 
-  status = scan_impl.Execute();
+  // create FeedsFetchesManager if needed and call ScanImpl::Execute
+  status = controlflow::detail::SubgraphExecuteHelper(cached_feeds_fetches_manager_, scan_impl);
 
   return status;
 }
@@ -416,7 +420,13 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
   return status;
 }
 
-Status ScanImpl::Execute() {
+Status ScanImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
+  return scan::detail::CreateFeedsFetchesManager(subgraph_, num_variadic_inputs_, implicit_inputs_,
+                                                 subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
+                                                 ffm);
+}
+
+Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
   Status status = Status::OK();
 
   std::vector<LoopStateVariable> loop_state_variables;
@@ -443,7 +453,7 @@ Status ScanImpl::Execute() {
   status = IterateSequence(context_, session_state_, subgraph_, loop_state_variables,
                            scan_input_stream_iterators, sequence_len_, num_loop_state_variables_,
                            num_variadic_inputs_, num_variadic_outputs_, implicit_inputs_,
-                           subgraph_output_names_, output_iterators_);
+                           subgraph_output_names_, output_iterators_, ffm, cached_ffm);
 
   ORT_RETURN_IF_ERROR(status);
 

@@ -10,6 +10,7 @@
 
 namespace onnxruntime {
 class ExecutionProviders;
+class IExecutionProvider;
 class MLValueNameIdxMap;
 
 enum class DeviceCopyCheck {
@@ -30,6 +31,10 @@ struct FeedsFetchesInfo {
                    std::vector<std::string>& output_names_in)
       : feed_names{feed_names_in}, output_names{output_names_in} {}
 
+  static Status MapNamesToMLValueIdxs(const std::vector<std::string>& names,
+                                      const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                      std::vector<int>& mlvalue_idxs);
+
   // set the mlvalue_idxs for the current values in feed_names and output_names
   Status SetMLValueIdxs(const MLValueNameIdxMap& mlvalue_name_idx_map);
 
@@ -42,7 +47,11 @@ struct FeedsFetchesInfo {
 
 class FeedsFetchesManager {
  public:
-  using MLValueCopyFunc = std::function<Status(const MLValue&, MLValue&)>;
+  struct MLValueCopyInfo {
+    int allocation_device_id = 0;
+    const IExecutionProvider* allocation_provider = nullptr;
+    const IExecutionProvider* copy_provider = nullptr;
+  };
 
   static Status Create(const std::vector<std::string>& feed_names,
                        const std::vector<std::string>& output_names,
@@ -51,15 +60,16 @@ class FeedsFetchesManager {
 
   FeedsFetchesManager(FeedsFetchesInfo&& info) : feeds_fetches_info_{info} {}
 
-  // check if all the execution providers use the same allocator. if so, no copies between devices should be required,
-  // and the overall status for DeviceCopyChecks can be set to NoCopy
-  DeviceCopyCheck CheckExecutionProviders(const ExecutionProviders& execution_providers);
-
   const FeedsFetchesInfo& GetFeedsFetchesInfo() const { return feeds_fetches_info_; }
 
-  std::vector<MLValueCopyFunc>& GetFeedsDeviceCopiers() { return feeds_device_copiers_; }
-  std::vector<bool>& GetCanUseFetchDuringExecutionFlags() { return can_use_fetch_during_execution_flags_; }
-  std::vector<MLValueCopyFunc>& GetFetchesDeviceCopiers() { return fetches_device_copiers_; }
+  std::vector<MLValueCopyInfo>& GetMutableFeedsDeviceCopiers() { return feeds_device_copiers_; }
+  const std::vector<MLValueCopyInfo>& GetFeedsDeviceCopiers() const { return feeds_device_copiers_; }
+
+  std::vector<bool>& GetMutableCanUseFetchDuringExecutionFlags() { return can_use_fetch_during_execution_flags_; }
+  const std::vector<bool>& GetCanUseFetchDuringExecutionFlags() const { return can_use_fetch_during_execution_flags_; }
+
+  std::vector<MLValueCopyInfo>& GetMutableFetchesDeviceCopiers() { return fetches_device_copiers_; }
+  const std::vector<MLValueCopyInfo>& GetFetchesDeviceCopiers() const { return fetches_device_copiers_; }
 
   DeviceCopyChecks GetDeviceCopyChecks() const { return device_copy_checks_; }
   void SetDeviceCopyChecks(DeviceCopyChecks checks);
@@ -71,8 +81,8 @@ class FeedsFetchesManager {
 
   FeedsFetchesInfo feeds_fetches_info_;
 
-  std::vector<MLValueCopyFunc> feeds_device_copiers_;
+  std::vector<MLValueCopyInfo> feeds_device_copiers_;
   std::vector<bool> can_use_fetch_during_execution_flags_;
-  std::vector<MLValueCopyFunc> fetches_device_copiers_;
+  std::vector<MLValueCopyInfo> fetches_device_copiers_;
 };
 }  // namespace onnxruntime

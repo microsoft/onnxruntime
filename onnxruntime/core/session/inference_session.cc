@@ -546,9 +546,10 @@ class InferenceSession::Impl {
     Status retval = Status::OK();
 
     try {
-      bool created_ffm = false;
+      // use cached info if available, otherwise create a FeedsFetchesManager and update it in the call to ExecuteGraph
       std::unique_ptr<FeedsFetchesManager> local_ffm;
       FeedsFetchesManager* feeds_fetches_manager = nullptr;
+      const FeedsFetchesManager* cached_feeds_fetches_manager = nullptr;
 
       // lambda to construct so that we can call it under the lock if we're caching this, or outside of the lock
       // if we're not.
@@ -558,8 +559,8 @@ class InferenceSession::Impl {
         // if the output vector is non-empty, ensure that its the same size as the output_names
         ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
-        created_ffm = true;
-        auto status = FeedsFetchesManager::Create(feed_names, output_names, session_state_.GetMLValueNameIdxMap(), local_ffm);
+        auto status = FeedsFetchesManager::Create(feed_names, output_names, session_state_.GetMLValueNameIdxMap(),
+                                                  local_ffm);
         ORT_RETURN_IF_ERROR(status);
         feeds_fetches_manager = local_ffm.get();
 
@@ -578,8 +579,8 @@ class InferenceSession::Impl {
         }
 
         if (run_options.cache_feeds_fetches_info) {
-          feeds_fetches_manager = session_state_.GetFeedsFetchesManager(feed_names, output_names);
-          if (!feeds_fetches_manager) {
+          cached_feeds_fetches_manager = session_state_.GetFeedsFetchesManager(feed_names, output_names);
+          if (!cached_feeds_fetches_manager) {
             // create the instance under the lock as we add it to SessionState and don't want concurrent calls to Run
             // to clash with each other
             ORT_RETURN_IF_ERROR(create_feeds_fetches_manager());
@@ -590,12 +591,12 @@ class InferenceSession::Impl {
       if (!run_options.cache_feeds_fetches_info) {
         // if we're not creating/using cached info, create an instance for this run
         ORT_RETURN_IF_ERROR(create_feeds_fetches_manager());
-      } else if (!created_ffm) {
+      } else if (cached_feeds_fetches_manager) {
         // make sure that if we didn't create the FeedsFetchesManager it has been fully initialized by the
         // successful completion of a call to Run. this is primarily to detect concurrent calls to Run
         // prior to the initial call completing. we could do something more complicated to handle failure on the
         // initial call if a real need to do so is proven.
-        if (feeds_fetches_manager->GetDeviceCopyChecks().status == DeviceCopyCheck::Unknown) {
+        if (cached_feeds_fetches_manager->GetDeviceCopyChecks().status == DeviceCopyCheck::Unknown) {
           return ORT_MAKE_STATUS(
               ONNXRUNTIME, FAIL,
               "Existing cached information was found but was not fully initialized. "
@@ -627,10 +628,19 @@ class InferenceSession::Impl {
         ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
       }
 
-      ORT_CHECK_AND_SET_RETVAL(
-          utils::ExecuteGraph(session_state_, *feeds_fetches_manager, feeds, *p_fetches, {},
-                              session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                              run_options.cache_feeds_fetches_info));
+      if (cached_feeds_fetches_manager) {
+        // used the const cached_feeds_fetches_manager to execute the graph
+        ORT_CHECK_AND_SET_RETVAL(
+            utils::ExecuteGraphWithCachedInfo(session_state_, *cached_feeds_fetches_manager, feeds, *p_fetches, {},
+                                              session_options_.enable_sequential_execution, run_options.terminate,
+                                              run_logger));
+      } else {
+        // execute the graph and update feeds_fetches_manager
+        ORT_CHECK_AND_SET_RETVAL(
+            utils::ExecuteGraph(session_state_, *feeds_fetches_manager, feeds, *p_fetches, {},
+                                session_options_.enable_sequential_execution, run_options.terminate, run_logger,
+                                run_options.cache_feeds_fetches_info));
+      }
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
     } catch (...) {
