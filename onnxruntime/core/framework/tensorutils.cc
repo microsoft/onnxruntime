@@ -263,7 +263,7 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
     CASE_PROTO_TRACE(UINT64, uint64_t);
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
+    CASE_PROTO_TRACE(STRING, std::string);
     default:
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }

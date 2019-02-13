@@ -58,52 +58,13 @@ common::Status GetTensorByTypeFromTensorProto(const TensorProto& tensor_proto,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size, expected ", size_to_allocate, ", got ", preallocated_size);
   //TODO(): size_to_allocate could be zero. We shouldn't pass zero to alloc->Alloc()
   T* p_data = static_cast<T*>(preallocated ? preallocated : alloc->Alloc(size_to_allocate));
+  std::unique_ptr<Tensor> t = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+                                                       tensor_shape,
+                                                       static_cast<void*>(p_data),
+                                                       alloc->Info(),
+                                                       preallocated ? nullptr : alloc);  // no deleter for preallocated
   ORT_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
-  *p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                       tensor_shape,
-                                       static_cast<void*>(p_data),
-                                       alloc->Info(),
-                                       preallocated ? nullptr : alloc);  // no deleter for preallocated
-
-  return common::Status::OK();
-}
-
-template <>
-common::Status GetTensorByTypeFromTensorProto<std::string>(const TensorProto& tensor_proto,
-                                                           const TensorShape& tensor_shape,
-                                                           std::unique_ptr<Tensor>* p_tensor,
-                                                           AllocatorPtr alloc,
-                                                           void* preallocated,
-                                                           size_t preallocated_size) {
-  int64_t tensor_size = tensor_shape.Size();
-  if (tensor_size < 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Tensor shape cannot contain any negative value");
-  }
-  size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArrayWithAlignment<256>(static_cast<size_t>(tensor_size), sizeof(std::string), &size_to_allocate)) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
-  }
-
-  if (preallocated && preallocated_size != size_to_allocate)
-    return Status(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size");
-
-  std::string* p_data = static_cast<std::string*>(preallocated ? preallocated : alloc->Alloc(size_to_allocate));
-  *p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<std::string>(),
-                                       tensor_shape,
-                                       static_cast<void*>(p_data),
-                                       alloc->Info(),
-                                       preallocated ? nullptr : alloc);  // no deleter for preallocated
-
-  /*
-  In the case of string tensors, the strings need to be constructed in the pre-allocated memory (placement
-  new) before calling Unpack (which copies the strings from the proto). Placement new happens inside the
-  Tensor's constructor. Hence the order of invocation of Tensor construction and Unpack needs to be reversed
-  in comparison to other types. This has the disadvantage of alloc/deallocing a Tensor if Unpack fails;
-  however restricting it to string types only alleviates this concern for other types at least. Hence the template
-  specialization for string.
-  */
-  ORT_RETURN_IF_ERROR(::onnxruntime::utils::TensorUtils::UnpackTensor(tensor_proto, p_data, tensor_size));
-
+  *p_tensor = std::move(t);
   return common::Status::OK();
 }
 

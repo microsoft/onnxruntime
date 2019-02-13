@@ -15,7 +15,7 @@ class TensorProto;
 namespace onnxruntime {
 namespace utils {
 //How much memory it will need for putting the content of this tensor into a plain array
-//string/complex64/complex128 tensors are not supported.
+//complex64/complex128 tensors are not supported.
 //The output value could be zero or -1.
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
