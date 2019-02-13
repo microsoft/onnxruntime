@@ -69,14 +69,8 @@ class Tensor final {
 
   ~Tensor();
 
-  /**
-     Copy constructor and assign op will just pass the shape and memory
-     reference to another tensor. Not deep clone/copy.
-  */
-  Tensor(const Tensor& src);
-
-  ///requires other.buffer_deleter_ == nullptr
-  Tensor& ShallowCopy(const Tensor& other);
+  //Move is allowed
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
   Tensor(Tensor&& other);
 
