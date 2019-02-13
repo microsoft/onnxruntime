@@ -17,6 +17,8 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
                                            calculate_sqt_(false),
                                            log_sum_exp_(false) {}
 
+  // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
+  // Only Max Min will have indices output, need to set the indices to nullptr for other ops
   template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const;
 
@@ -74,7 +76,7 @@ class ReduceMax final : public ReduceKernel<true> {
   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_MAX);
+    return ComputeImpl<T, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, CUDNN_REDUCE_TENSOR_MAX);
   }
 };
 
@@ -94,7 +96,7 @@ class ReduceMin final : public ReduceKernel<true> {
   ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_MIN);
+    return ComputeImpl<T, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, CUDNN_REDUCE_TENSOR_MIN);
   }
 };
 

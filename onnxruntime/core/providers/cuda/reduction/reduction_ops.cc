@@ -139,11 +139,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                       tmp_div, tmp_div,
                       input_data, input_count);
     } else if (log_sum_exp_) {
-      // Reduce max
+      // Reduce max -- Max/Min will output indices data
+      size_t indices_bytes = 0;
+      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
+      auto indices_cuda = GetScratchBuffer<void>(indices_bytes);
       CudnnReduceDescriptor reduce_max_desc;
       ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_max_desc, nullptr, 0, workspace_cuda.get(), workspace_bytes,
+          CudnnHandle(), reduce_max_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
 
