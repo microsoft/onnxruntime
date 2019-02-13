@@ -133,7 +133,12 @@ You can build from source on Linux by using the following `cmd` from the onnxrun
 ./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
-
+### OpenVINO Build
+ONNX Runtime supports the OpenVINO Execution Provider that provides access to Intel's Deep Learning accelerator hardware via the OpenVINO package.
+To enable OpenVINO Execution Provider in the build, do the following:-
+1. Install the latest OpenVINO SDK along with its dependencies from (https://software.intel.com/en-us/openvino-toolkit).
+2. Enable the associated environment by running the setupvars.sh from <OpenVINO-installation-directory>/bin.
+3. Begin building ONNX Runtime by passing the `--use_openvino` option.
 
 ### OpenBLAS
 #### Windows

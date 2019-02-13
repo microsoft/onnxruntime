@@ -61,6 +61,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_OPENVINO}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

@@ -7,6 +7,10 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
+if (onnxruntime_USE_OPENVINO)
+    list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
+endif()
+
 set(disabled_warnings)
 set(extra_includes)
 function(AddTest)
@@ -183,10 +187,19 @@ if(onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
 endif()
 
+if(onnxruntime_USE_OPENVINO)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
+
+file(GLOB_RECURSE onnxruntime_test_openvino_src
+  "${ONNXRUNTIME_ROOT}/test/openvino/*.h"
+  "${ONNXRUNTIME_ROOT}/test/openvino/*.cc"
+ )
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
@@ -199,6 +212,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -258,6 +272,9 @@ if (SingleUnitTestProject)
 
   if (onnxruntime_USE_TVM)
     list(APPEND all_tests ${onnxruntime_test_tvm_src})
+  endif()
+  if (onnxruntime_USE_OPENVINO)
+    list(APPEND all_tests ${onnxruntime_test_openvino_src})
   endif()
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
   # up everything we need for all tests

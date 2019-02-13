@@ -12,6 +12,9 @@
 #ifdef USE_TENSORRT 
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #endif
+#ifdef USE_OPENVINO
+#include "core/providers/openvino/openvino_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -23,6 +26,10 @@ IExecutionProvider* TestCudaExecutionProvider();
 
 #ifdef USE_TENSORRT
 IExecutionProvider* TestTensorrtExecutionProvider();
+#endif
+
+#ifdef USE_OPENVINO
+IExecutionProvider* TestOpenVINOExecutionProvider();
 #endif
 
 template <typename T>

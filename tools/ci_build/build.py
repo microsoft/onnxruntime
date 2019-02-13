@@ -117,6 +117,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
+    parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
+                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
     parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
@@ -313,6 +315,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_SOURCE=" + ("ON" if args.use_openvino != "MYRIAD_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_VAD_R=" + ("ON" if args.use_openvino == "HDDL_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -630,9 +640,9 @@ def generate_documentation(source_dir, build_dir, configs):
                         sys.executable,
                         'gen_doc.py',
                         '--output_path', operator_doc_path
-                    ], 
+                    ],
                     cwd = os.path.join(build_dir,config, config))
-        
+
     docdiff = run_subprocess(['git', 'diff', operator_doc_path], capture=True).stdout
     if len(docdiff) > 0:
         raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in")
@@ -749,6 +759,10 @@ def main():
             onnx_test_data_dir = '/data/onnx'
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
+
+            if args.use_openvino:
+               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False)
+
             if args.use_tensorrt:
               # Disable some onnx unit tests that TensorRT parser doesn't supported yet
               onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
@@ -759,6 +773,8 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
             elif args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
+            if args.use_openvino:
+               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False) 
               # TODO: parallel executor test fails on MacOS
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)

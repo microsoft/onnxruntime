@@ -70,6 +70,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
