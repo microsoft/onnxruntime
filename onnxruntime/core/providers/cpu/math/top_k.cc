@@ -49,16 +49,6 @@ static int64_t SizeFromDim(size_t k, const vector<int64_t>& dims) {
   return r;
 }
 
-// Define these two names to allow lookup into the 2d tensors like
-// mytensor(i, j)
-template <typename T>
-using EigenMatrixMapRowMajor = Eigen::Map<
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
-
-template <typename T>
-using ConstEigenMatrixMapRowMajor = Eigen::Map<
-    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
-
 template <typename T>
 struct ValueCmp {
   bool operator()(
@@ -100,7 +90,7 @@ Status TopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   auto* Indices = p_op_kernel_context->Output(1, output_linear_shape);
 
   // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
-  auto reduced_cols = SizeFromDim(axis_parsed, output_linear_shape);
+  const int64_t reduced_cols = SizeFromDim(axis_parsed, output_linear_shape);
   auto Values_map = EigenMatrixMapRowMajor<float>(
       Values->template MutableData<float>(), rows, reduced_cols);
   auto Indices_map = EigenMatrixMapRowMajor<int64_t>(
