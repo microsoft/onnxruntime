@@ -126,7 +126,35 @@ You can build from source on Linux by using the following `cmd` from the onnxrun
 ./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
+### OpenVINO Build
+ONNX Runtime supports OpenVINO Execution Provider to enable deep learning inference using Intel<sup>®</sup> OpenVINO<sup>TM</sup> Toolkit. This execution provider supports several Intel hardware device types - CPU, integrated GPU, Intel<sup>®</sup> Movidius<sup>TM</sup> VPUs, Intel<sup>®</sup> Vision accelerator Design with Intel Movidius<sup>TM</sup> MyriadX VPU.
 
+The OpenVINO Execution Provider can be built using the following commands:
+
+- Install the OpenVINO 2018 R5.0.1 release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+- Install the model optimizer prerequisites for onnx by running <code>\<openvino\_install\_directory\>\/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
+- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+
+<code>source setupvars.sh</code>
+
+
+- Build ONNX Runtime using the below command.
+
+<code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
+
+<code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
+
+<code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+
+| Hardware Option | Target Device |
+| --------- | -------- |
+| <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
+| <code>GPU_FP32</code> |Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks |
+| <code>VAD-R_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document README.md in <code>$onnxruntime_root/onnxruntime/core/providers/openvino</code>
 
 ### OpenBLAS
 #### Windows

@@ -32,7 +32,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn','tensorrt', 'ngraph' or 'openvino'. Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -83,6 +83,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
+  bool enable_openvino = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
@@ -136,6 +137,8 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+            enable_openvino = true;
           } else {
             usage();
             return -1;
@@ -200,6 +203,15 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
+#endif
+    }
+
+    if(enable_openvino){
+#ifdef USE_OPENVINO
+        ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+#else
+    fprintf(stderr, "OpenVINO is not supported in this build");
+    return -1;
 #endif
     }
     if (enable_cuda) {

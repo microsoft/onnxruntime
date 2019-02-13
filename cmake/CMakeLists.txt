@@ -46,12 +46,14 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
+option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_USE_JEMALLOC "Use jecmalloc" OFF)
@@ -491,6 +493,44 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ngraph)
 endif()
+
+if(onnxruntime_USE_OPENVINO)
+
+    add_definitions(-DUSE_OPENVINO=1)
+
+	if (onnxruntime_USE_OPENVINO_SOURCE)
+	  include(openvino)
+	  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
+	  link_directories(${OPENVINO_LIB_DIR})
+	  #TODO: set plugin path var
+	endif()
+	
+	if (onnxruntime_USE_OPENVINO_BINARY)
+	    #TODO: set plugin path var
+	endif()
+	
+	if(onnxruntime_USE_OPENVINO_MYRIAD)
+		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_GPU_FP32)
+		add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_GPU_FP16)
+		add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_CPU_FP32)
+		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_VAD_R)
+		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+	endif()
+	
+endif()
+
 
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)

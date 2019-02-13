@@ -11,6 +11,7 @@ import datetime
 
 nightly_build = False
 package_name = 'onnxruntime'
+
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt'
     sys.argv.remove('--use_tensorrt')
@@ -28,6 +29,9 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
+
+elif '--use_openvino' in sys.argv:
+    package_name = 'onnxruntime-openvino'
 
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
@@ -54,6 +58,11 @@ else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
 
 data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
+
+#Adding python modules required for openvino ep
+python_modules_list = []
+python_modules_list.append('openvino_mo')
+python_modules_list.append('openvino_emitter')
 
 # Additional examples
 examples_names = ["mul_1.pb", "logreg_iris.onnx", "sigmoid.onnx"]
@@ -99,6 +108,7 @@ setup(
     package_data={
         'onnxruntime': data + examples + extra,
     },
+    py_modules=python_modules_list,
     extras_require={
         'backend': ['onnx>=1.2.3'],
         'numpy': ['numpy>=1.15.0']
