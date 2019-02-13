@@ -70,6 +70,37 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_int32) {
   test.Run();
 }
 
+TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
+  OpTester test("Upsample");
+
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("scales", scales);
+
+  const int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<uint8_t> X = {1, 3,
+                            3, 5,
+
+                            3, 5,
+                            7, 9};
+
+  test.AddInput<uint8_t>("X", {N, C, H, W}, X);
+
+  std::vector<uint8_t> Y = {
+      1, 1, 1, 3, 3, 3,
+      1, 1, 1, 3, 3, 3,
+      3, 3, 3, 5, 5, 5,
+      3, 3, 3, 5, 5, 5,
+
+      3, 3, 3, 5, 5, 5,
+      3, 3, 3, 5, 5, 5,
+      7, 7, 7, 9, 9, 9,
+      7, 7, 7, 9, 9, 9};
+
+  test.AddOutput<uint8_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.Run();
+}
+
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest) {
   OpTester test("Upsample");
 

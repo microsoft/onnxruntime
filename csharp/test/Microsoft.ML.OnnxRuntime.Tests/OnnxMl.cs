@@ -40,65 +40,75 @@ namespace Onnx {
             "ASgJIpYBCglOb2RlUHJvdG8SDQoFaW5wdXQYASADKAkSDgoGb3V0cHV0GAIg",
             "AygJEgwKBG5hbWUYAyABKAkSDwoHb3BfdHlwZRgEIAEoCRIOCgZkb21haW4Y",
             "ByABKAkSJwoJYXR0cmlidXRlGAUgAygLMhQub25ueC5BdHRyaWJ1dGVQcm90",
-            "bxISCgpkb2Nfc3RyaW5nGAYgASgJIpMCCgpNb2RlbFByb3RvEhIKCmlyX3Zl",
+            "bxISCgpkb2Nfc3RyaW5nGAYgASgJIrsCCgpNb2RlbFByb3RvEhIKCmlyX3Zl",
             "cnNpb24YASABKAMSLgoMb3BzZXRfaW1wb3J0GAggAygLMhgub25ueC5PcGVy",
             "YXRvclNldElkUHJvdG8SFQoNcHJvZHVjZXJfbmFtZRgCIAEoCRIYChBwcm9k",
             "dWNlcl92ZXJzaW9uGAMgASgJEg4KBmRvbWFpbhgEIAEoCRIVCg1tb2RlbF92",
             "ZXJzaW9uGAUgASgDEhIKCmRvY19zdHJpbmcYBiABKAkSHwoFZ3JhcGgYByAB",
-            "KAsyEC5vbm54LkdyYXBoUHJvdG8SNAoObWV0YWRhdGFfcHJvcHMYDiADKAsy",
-            "HC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8iNAoWU3RyaW5nU3RyaW5n",
-            "RW50cnlQcm90bxILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAki6gEKCkdy",
-            "YXBoUHJvdG8SHQoEbm9kZRgBIAMoCzIPLm9ubnguTm9kZVByb3RvEgwKBG5h",
-            "bWUYAiABKAkSJgoLaW5pdGlhbGl6ZXIYBSADKAsyES5vbm54LlRlbnNvclBy",
-            "b3RvEhIKCmRvY19zdHJpbmcYCiABKAkSIwoFaW5wdXQYCyADKAsyFC5vbm54",
-            "LlZhbHVlSW5mb1Byb3RvEiQKBm91dHB1dBgMIAMoCzIULm9ubnguVmFsdWVJ",
-            "bmZvUHJvdG8SKAoKdmFsdWVfaW5mbxgNIAMoCzIULm9ubnguVmFsdWVJbmZv",
-            "UHJvdG8iuAUKC1RlbnNvclByb3RvEgwKBGRpbXMYASADKAMSEQoJZGF0YV90",
-            "eXBlGAIgASgFEioKB3NlZ21lbnQYAyABKAsyGS5vbm54LlRlbnNvclByb3Rv",
-            "LlNlZ21lbnQSFgoKZmxvYXRfZGF0YRgEIAMoAkICEAESFgoKaW50MzJfZGF0",
-            "YRgFIAMoBUICEAESEwoLc3RyaW5nX2RhdGEYBiADKAwSFgoKaW50NjRfZGF0",
-            "YRgHIAMoA0ICEAESDAoEbmFtZRgIIAEoCRISCgpkb2Nfc3RyaW5nGAwgASgJ",
-            "EhAKCHJhd19kYXRhGAkgASgMEjMKDWV4dGVybmFsX2RhdGEYDSADKAsyHC5v",
-            "bm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8SNQoNZGF0YV9sb2NhdGlvbhgO",
-            "IAEoDjIeLm9ubnguVGVuc29yUHJvdG8uRGF0YUxvY2F0aW9uEhcKC2RvdWJs",
-            "ZV9kYXRhGAogAygBQgIQARIXCgt1aW50NjRfZGF0YRgLIAMoBEICEAEaJQoH",
-            "U2VnbWVudBINCgViZWdpbhgBIAEoAxILCgNlbmQYAiABKAMi2gEKCERhdGFU",
-            "eXBlEg0KCVVOREVGSU5FRBAAEgkKBUZMT0FUEAESCQoFVUlOVDgQAhIICgRJ",
-            "TlQ4EAMSCgoGVUlOVDE2EAQSCQoFSU5UMTYQBRIJCgVJTlQzMhAGEgkKBUlO",
-            "VDY0EAcSCgoGU1RSSU5HEAgSCAoEQk9PTBAJEgsKB0ZMT0FUMTYQChIKCgZE",
-            "T1VCTEUQCxIKCgZVSU5UMzIQDBIKCgZVSU5UNjQQDRINCglDT01QTEVYNjQQ",
-            "DhIOCgpDT01QTEVYMTI4EA8SDAoIQkZMT0FUMTYQECIpCgxEYXRhTG9jYXRp",
-            "b24SCwoHREVGQVVMVBAAEgwKCEVYVEVSTkFMEAEilQEKEFRlbnNvclNoYXBl",
-            "UHJvdG8SLQoDZGltGAEgAygLMiAub25ueC5UZW5zb3JTaGFwZVByb3RvLkRp",
-            "bWVuc2lvbhpSCglEaW1lbnNpb24SEwoJZGltX3ZhbHVlGAEgASgDSAASEwoJ",
-            "ZGltX3BhcmFtGAIgASgJSAASEgoKZGVub3RhdGlvbhgDIAEoCUIHCgV2YWx1",
-            "ZSLCBAoJVHlwZVByb3RvEi0KC3RlbnNvcl90eXBlGAEgASgLMhYub25ueC5U",
-            "eXBlUHJvdG8uVGVuc29ySAASMQoNc2VxdWVuY2VfdHlwZRgEIAEoCzIYLm9u",
-            "bnguVHlwZVByb3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5cGUYBSABKAsyEy5v",
-            "bm54LlR5cGVQcm90by5NYXBIABItCgtvcGFxdWVfdHlwZRgHIAEoCzIWLm9u",
-            "bnguVHlwZVByb3RvLk9wYXF1ZUgAEjoKEnNwYXJzZV90ZW5zb3JfdHlwZRgI",
-            "IAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRlbnNvckgAEhIKCmRlbm90",
-            "YXRpb24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVz",
-            "aGFwZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90bxouCghTZXF1ZW5j",
-            "ZRIiCgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQcm90bxo8CgNNYXAS",
-            "EAoIa2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgCIAEoCzIPLm9ubngu",
-            "VHlwZVByb3RvGiYKBk9wYXF1ZRIOCgZkb21haW4YASABKAkSDAoEbmFtZRgC",
-            "IAEoCRpICgxTcGFyc2VUZW5zb3ISEQoJZWxlbV90eXBlGAEgASgFEiUKBXNo",
-            "YXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFwZVByb3RvQgcKBXZhbHVlIjUK",
-            "Ek9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASABKAkSDwoHdmVyc2lv",
-            "bhgCIAEoAyp9CgdWZXJzaW9uEhIKDl9TVEFSVF9WRVJTSU9OEAASGQoVSVJf",
-            "VkVSU0lPTl8yMDE3XzEwXzEwEAESGQoVSVJfVkVSU0lPTl8yMDE3XzEwXzMw",
-            "EAISGAoUSVJfVkVSU0lPTl8yMDE3XzExXzMQAxIOCgpJUl9WRVJTSU9OEARi",
-            "BnByb3RvMw=="));
+            "KAsyEC5vbm54LkdyYXBoUHJvdG8SJgoJZnVuY3Rpb25zGGQgAygLMhMub25u",
+            "eC5GdW5jdGlvblByb3RvEjQKDm1ldGFkYXRhX3Byb3BzGA4gAygLMhwub25u",
+            "eC5TdHJpbmdTdHJpbmdFbnRyeVByb3RvIjQKFlN0cmluZ1N0cmluZ0VudHJ5",
+            "UHJvdG8SCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJImQKCVF1YW50SW5m",
+            "bxITCgt0ZW5zb3JfbmFtZRgBIAEoCRJCChxxdWFudF9wYXJhbWV0ZXJfdGVu",
+            "c29yX25hbWVzGAIgAygLMhwub25ueC5TdHJpbmdTdHJpbmdFbnRyeVByb3Rv",
+            "IpwCCgpHcmFwaFByb3RvEh0KBG5vZGUYASADKAsyDy5vbm54Lk5vZGVQcm90",
+            "bxIMCgRuYW1lGAIgASgJEiYKC2luaXRpYWxpemVyGAUgAygLMhEub25ueC5U",
+            "ZW5zb3JQcm90bxISCgpkb2Nfc3RyaW5nGAogASgJEiMKBWlucHV0GAsgAygL",
+            "MhQub25ueC5WYWx1ZUluZm9Qcm90bxIkCgZvdXRwdXQYDCADKAsyFC5vbm54",
+            "LlZhbHVlSW5mb1Byb3RvEigKCnZhbHVlX2luZm8YDSADKAsyFC5vbm54LlZh",
+            "bHVlSW5mb1Byb3RvEjAKF3F1YW50aXphdGlvbl9hbm5vdGF0aW9uGGQgAygL",
+            "Mg8ub25ueC5RdWFudEluZm8iuAUKC1RlbnNvclByb3RvEgwKBGRpbXMYASAD",
+            "KAMSEQoJZGF0YV90eXBlGAIgASgFEioKB3NlZ21lbnQYAyABKAsyGS5vbm54",
+            "LlRlbnNvclByb3RvLlNlZ21lbnQSFgoKZmxvYXRfZGF0YRgEIAMoAkICEAES",
+            "FgoKaW50MzJfZGF0YRgFIAMoBUICEAESEwoLc3RyaW5nX2RhdGEYBiADKAwS",
+            "FgoKaW50NjRfZGF0YRgHIAMoA0ICEAESDAoEbmFtZRgIIAEoCRISCgpkb2Nf",
+            "c3RyaW5nGAwgASgJEhAKCHJhd19kYXRhGAkgASgMEjMKDWV4dGVybmFsX2Rh",
+            "dGEYDSADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8SNQoNZGF0",
+            "YV9sb2NhdGlvbhgOIAEoDjIeLm9ubnguVGVuc29yUHJvdG8uRGF0YUxvY2F0",
+            "aW9uEhcKC2RvdWJsZV9kYXRhGAogAygBQgIQARIXCgt1aW50NjRfZGF0YRgL",
+            "IAMoBEICEAEaJQoHU2VnbWVudBINCgViZWdpbhgBIAEoAxILCgNlbmQYAiAB",
+            "KAMi2gEKCERhdGFUeXBlEg0KCVVOREVGSU5FRBAAEgkKBUZMT0FUEAESCQoF",
+            "VUlOVDgQAhIICgRJTlQ4EAMSCgoGVUlOVDE2EAQSCQoFSU5UMTYQBRIJCgVJ",
+            "TlQzMhAGEgkKBUlOVDY0EAcSCgoGU1RSSU5HEAgSCAoEQk9PTBAJEgsKB0ZM",
+            "T0FUMTYQChIKCgZET1VCTEUQCxIKCgZVSU5UMzIQDBIKCgZVSU5UNjQQDRIN",
+            "CglDT01QTEVYNjQQDhIOCgpDT01QTEVYMTI4EA8SDAoIQkZMT0FUMTYQECIp",
+            "CgxEYXRhTG9jYXRpb24SCwoHREVGQVVMVBAAEgwKCEVYVEVSTkFMEAEilQEK",
+            "EFRlbnNvclNoYXBlUHJvdG8SLQoDZGltGAEgAygLMiAub25ueC5UZW5zb3JT",
+            "aGFwZVByb3RvLkRpbWVuc2lvbhpSCglEaW1lbnNpb24SEwoJZGltX3ZhbHVl",
+            "GAEgASgDSAASEwoJZGltX3BhcmFtGAIgASgJSAASEgoKZGVub3RhdGlvbhgD",
+            "IAEoCUIHCgV2YWx1ZSLCBAoJVHlwZVByb3RvEi0KC3RlbnNvcl90eXBlGAEg",
+            "ASgLMhYub25ueC5UeXBlUHJvdG8uVGVuc29ySAASMQoNc2VxdWVuY2VfdHlw",
+            "ZRgEIAEoCzIYLm9ubnguVHlwZVByb3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5",
+            "cGUYBSABKAsyEy5vbm54LlR5cGVQcm90by5NYXBIABItCgtvcGFxdWVfdHlw",
+            "ZRgHIAEoCzIWLm9ubnguVHlwZVByb3RvLk9wYXF1ZUgAEjoKEnNwYXJzZV90",
+            "ZW5zb3JfdHlwZRgIIAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRlbnNv",
+            "ckgAEhIKCmRlbm90YXRpb24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlw",
+            "ZRgBIAEoBRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90",
+            "bxouCghTZXF1ZW5jZRIiCgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQ",
+            "cm90bxo8CgNNYXASEAoIa2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgC",
+            "IAEoCzIPLm9ubnguVHlwZVByb3RvGiYKBk9wYXF1ZRIOCgZkb21haW4YASAB",
+            "KAkSDAoEbmFtZRgCIAEoCRpICgxTcGFyc2VUZW5zb3ISEQoJZWxlbV90eXBl",
+            "GAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFwZVByb3Rv",
+            "QgcKBXZhbHVlIjUKEk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASAB",
+            "KAkSDwoHdmVyc2lvbhgCIAEoAyK/AQoNRnVuY3Rpb25Qcm90bxIMCgRuYW1l",
+            "GAEgASgJEhUKDXNpbmNlX3ZlcnNpb24YAiABKAMSJAoGc3RhdHVzGAMgASgO",
+            "MhQub25ueC5PcGVyYXRvclN0YXR1cxINCgVpbnB1dBgEIAMoCRIOCgZvdXRw",
+            "dXQYBSADKAkSEQoJYXR0cmlidXRlGAYgAygJEh0KBG5vZGUYByADKAsyDy5v",
+            "bm54Lk5vZGVQcm90bxISCgpkb2Nfc3RyaW5nGAggASgJKn0KB1ZlcnNpb24S",
+            "EgoOX1NUQVJUX1ZFUlNJT04QABIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMTAQ",
+            "ARIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMzAQAhIYChRJUl9WRVJTSU9OXzIw",
+            "MTdfMTFfMxADEg4KCklSX1ZFUlNJT04QBCouCg5PcGVyYXRvclN0YXR1cxIQ",
+            "CgxFWFBFUklNRU5UQUwQABIKCgZTVEFCTEUQAWIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), }, new pbr::GeneratedClrTypeInfo[] {
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "Floats", "Ints", "Strings", "Tensors", "Graphs" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ValueInfoProto), global::Onnx.ValueInfoProto.Parser, new[]{ "Name", "Type", "DocString" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "MetadataProps" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "DocString", "Input", "Output", "ValueInfo" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.QuantInfo), global::Onnx.QuantInfo.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "OpaqueType", "SparseTensorType", "Denotation" }, new[]{ "Value" }, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null),
@@ -106,7 +116,8 @@ namespace Onnx {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Map), global::Onnx.TypeProto.Types.Map.Parser, new[]{ "KeyType", "ValueType" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString" }, null, null, null)
           }));
     }
     #endregion
@@ -154,6 +165,14 @@ namespace Onnx {
     /// - Add type BFLOAT16
     /// </summary>
     [pbr::OriginalName("IR_VERSION")] IrVersion = 4,
+  }
+
+  /// <summary>
+  /// Operator/function status.
+  /// </summary>
+  public enum OperatorStatus {
+    [pbr::OriginalName("EXPERIMENTAL")] Experimental = 0,
+    [pbr::OriginalName("STABLE")] Stable = 1,
   }
 
   #endregion
@@ -1258,6 +1277,7 @@ namespace Onnx {
       modelVersion_ = other.modelVersion_;
       docString_ = other.docString_;
       graph_ = other.graph_ != null ? other.graph_.Clone() : null;
+      functions_ = other.functions_.Clone();
       metadataProps_ = other.metadataProps_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -1395,6 +1415,19 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "functions" field.</summary>
+    public const int FunctionsFieldNumber = 100;
+    private static readonly pb::FieldCodec<global::Onnx.FunctionProto> _repeated_functions_codec
+        = pb::FieldCodec.ForMessage(802, global::Onnx.FunctionProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.FunctionProto> functions_ = new pbc::RepeatedField<global::Onnx.FunctionProto>();
+    /// <summary>
+    /// kezhan: This field is not in ONNX, and will be pushed into ONNX with good use cases in microsoft.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.FunctionProto> Functions {
+      get { return functions_; }
+    }
+
     /// <summary>Field number for the "metadata_props" field.</summary>
     public const int MetadataPropsFieldNumber = 14;
     private static readonly pb::FieldCodec<global::Onnx.StringStringEntryProto> _repeated_metadataProps_codec
@@ -1429,6 +1462,7 @@ namespace Onnx {
       if (ModelVersion != other.ModelVersion) return false;
       if (DocString != other.DocString) return false;
       if (!object.Equals(Graph, other.Graph)) return false;
+      if(!functions_.Equals(other.functions_)) return false;
       if(!metadataProps_.Equals(other.metadataProps_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -1444,6 +1478,7 @@ namespace Onnx {
       if (ModelVersion != 0L) hash ^= ModelVersion.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
       if (graph_ != null) hash ^= Graph.GetHashCode();
+      hash ^= functions_.GetHashCode();
       hash ^= metadataProps_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1488,6 +1523,7 @@ namespace Onnx {
       }
       opsetImport_.WriteTo(output, _repeated_opsetImport_codec);
       metadataProps_.WriteTo(output, _repeated_metadataProps_codec);
+      functions_.WriteTo(output, _repeated_functions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1518,6 +1554,7 @@ namespace Onnx {
       if (graph_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Graph);
       }
+      size += functions_.CalculateSize(_repeated_functions_codec);
       size += metadataProps_.CalculateSize(_repeated_metadataProps_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1555,6 +1592,7 @@ namespace Onnx {
         }
         Graph.MergeFrom(other.Graph);
       }
+      functions_.Add(other.functions_);
       metadataProps_.Add(other.metadataProps_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1604,6 +1642,10 @@ namespace Onnx {
           }
           case 114: {
             metadataProps_.AddEntriesFrom(input, _repeated_metadataProps_codec);
+            break;
+          }
+          case 802: {
+            functions_.AddEntriesFrom(input, _repeated_functions_codec);
             break;
           }
         }
@@ -1773,6 +1815,160 @@ namespace Onnx {
 
   }
 
+  public sealed partial class QuantInfo : pb::IMessage<QuantInfo> {
+    private static readonly pb::MessageParser<QuantInfo> _parser = new pb::MessageParser<QuantInfo>(() => new QuantInfo());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pb::MessageParser<QuantInfo> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[5]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public QuantInfo() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public QuantInfo(QuantInfo other) : this() {
+      tensorName_ = other.tensorName_;
+      quantParameterTensorNames_ = other.quantParameterTensorNames_.Clone();
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public QuantInfo Clone() {
+      return new QuantInfo(this);
+    }
+
+    /// <summary>Field number for the "tensor_name" field.</summary>
+    public const int TensorNameFieldNumber = 1;
+    private string tensorName_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string TensorName {
+      get { return tensorName_; }
+      set {
+        tensorName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "quant_parameter_tensor_names" field.</summary>
+    public const int QuantParameterTensorNamesFieldNumber = 2;
+    private static readonly pb::FieldCodec<global::Onnx.StringStringEntryProto> _repeated_quantParameterTensorNames_codec
+        = pb::FieldCodec.ForMessage(18, global::Onnx.StringStringEntryProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> quantParameterTensorNames_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
+    /// <summary>
+    /// The keys used in the mapping below will be pre-defined in ONNX spec.
+    /// For example, for linear case, “SCALE”, “ZERO_POINT” will be pre-defined as
+    /// quantization parameter keys.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.StringStringEntryProto> QuantParameterTensorNames {
+      get { return quantParameterTensorNames_; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override bool Equals(object other) {
+      return Equals(other as QuantInfo);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool Equals(QuantInfo other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (TensorName != other.TensorName) return false;
+      if(!quantParameterTensorNames_.Equals(other.quantParameterTensorNames_)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (TensorName.Length != 0) hash ^= TensorName.GetHashCode();
+      hash ^= quantParameterTensorNames_.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void WriteTo(pb::CodedOutputStream output) {
+      if (TensorName.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(TensorName);
+      }
+      quantParameterTensorNames_.WriteTo(output, _repeated_quantParameterTensorNames_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public int CalculateSize() {
+      int size = 0;
+      if (TensorName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(TensorName);
+      }
+      size += quantParameterTensorNames_.CalculateSize(_repeated_quantParameterTensorNames_codec);
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(QuantInfo other) {
+      if (other == null) {
+        return;
+      }
+      if (other.TensorName.Length != 0) {
+        TensorName = other.TensorName;
+      }
+      quantParameterTensorNames_.Add(other.quantParameterTensorNames_);
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(pb::CodedInputStream input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            TensorName = input.ReadString();
+            break;
+          }
+          case 18: {
+            quantParameterTensorNames_.AddEntriesFrom(input, _repeated_quantParameterTensorNames_codec);
+            break;
+          }
+        }
+      }
+    }
+
+  }
+
   /// <summary>
   /// Graphs
   ///
@@ -1789,7 +1985,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[5]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[6]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1813,6 +2009,7 @@ namespace Onnx {
       input_ = other.input_.Clone();
       output_ = other.output_.Clone();
       valueInfo_ = other.valueInfo_.Clone();
+      quantizationAnnotation_ = other.quantizationAnnotation_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1914,6 +2111,22 @@ namespace Onnx {
       get { return valueInfo_; }
     }
 
+    /// <summary>Field number for the "quantization_annotation" field.</summary>
+    public const int QuantizationAnnotationFieldNumber = 100;
+    private static readonly pb::FieldCodec<global::Onnx.QuantInfo> _repeated_quantizationAnnotation_codec
+        = pb::FieldCodec.ForMessage(802, global::Onnx.QuantInfo.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.QuantInfo> quantizationAnnotation_ = new pbc::RepeatedField<global::Onnx.QuantInfo>();
+    /// <summary>
+    /// This field carries information to indicate the mapping among a tensor and its
+    /// quantization parameter tensors. For example:
+    /// A tensor “a” and its quantization parameter tensor are “scale_a” and
+    /// “zero_point_a” (in linear case).
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.QuantInfo> QuantizationAnnotation {
+      get { return quantizationAnnotation_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as GraphProto);
@@ -1934,6 +2147,7 @@ namespace Onnx {
       if(!input_.Equals(other.input_)) return false;
       if(!output_.Equals(other.output_)) return false;
       if(!valueInfo_.Equals(other.valueInfo_)) return false;
+      if(!quantizationAnnotation_.Equals(other.quantizationAnnotation_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1947,6 +2161,7 @@ namespace Onnx {
       hash ^= input_.GetHashCode();
       hash ^= output_.GetHashCode();
       hash ^= valueInfo_.GetHashCode();
+      hash ^= quantizationAnnotation_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1973,6 +2188,7 @@ namespace Onnx {
       input_.WriteTo(output, _repeated_input_codec);
       output_.WriteTo(output, _repeated_output_codec);
       valueInfo_.WriteTo(output, _repeated_valueInfo_codec);
+      quantizationAnnotation_.WriteTo(output, _repeated_quantizationAnnotation_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1992,6 +2208,7 @@ namespace Onnx {
       size += input_.CalculateSize(_repeated_input_codec);
       size += output_.CalculateSize(_repeated_output_codec);
       size += valueInfo_.CalculateSize(_repeated_valueInfo_codec);
+      size += quantizationAnnotation_.CalculateSize(_repeated_quantizationAnnotation_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -2014,6 +2231,7 @@ namespace Onnx {
       input_.Add(other.input_);
       output_.Add(other.output_);
       valueInfo_.Add(other.valueInfo_);
+      quantizationAnnotation_.Add(other.quantizationAnnotation_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -2053,6 +2271,10 @@ namespace Onnx {
             valueInfo_.AddEntriesFrom(input, _repeated_valueInfo_codec);
             break;
           }
+          case 802: {
+            quantizationAnnotation_.AddEntriesFrom(input, _repeated_quantizationAnnotation_codec);
+            break;
+          }
         }
       }
     }
@@ -2072,7 +2294,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[6]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[7]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2844,7 +3066,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[7]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[8]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3203,7 +3425,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[8]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[9]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4394,7 +4616,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[9]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[10]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4545,6 +4767,330 @@ namespace Onnx {
           }
           case 16: {
             Version = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    }
+
+  }
+
+  public sealed partial class FunctionProto : pb::IMessage<FunctionProto> {
+    private static readonly pb::MessageParser<FunctionProto> _parser = new pb::MessageParser<FunctionProto>(() => new FunctionProto());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pb::MessageParser<FunctionProto> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[11]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public FunctionProto() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public FunctionProto(FunctionProto other) : this() {
+      name_ = other.name_;
+      sinceVersion_ = other.sinceVersion_;
+      status_ = other.status_;
+      input_ = other.input_.Clone();
+      output_ = other.output_.Clone();
+      attribute_ = other.attribute_.Clone();
+      node_ = other.node_.Clone();
+      docString_ = other.docString_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public FunctionProto Clone() {
+      return new FunctionProto(this);
+    }
+
+    /// <summary>Field number for the "name" field.</summary>
+    public const int NameFieldNumber = 1;
+    private string name_ = "";
+    /// <summary>
+    /// The name of the function, similar usage of op_type in OperatorProto.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Name {
+      get { return name_; }
+      set {
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "since_version" field.</summary>
+    public const int SinceVersionFieldNumber = 2;
+    private long sinceVersion_;
+    /// <summary>
+    /// The first version of a function set which contains this function.
+    /// When there's any breaking change for this function, the function set
+    /// contains the function needs to bump its version, and since_version of
+    /// the updated function will be changed to the updated function set version.  
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public long SinceVersion {
+      get { return sinceVersion_; }
+      set {
+        sinceVersion_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "status" field.</summary>
+    public const int StatusFieldNumber = 3;
+    private global::Onnx.OperatorStatus status_ = 0;
+    /// <summary>
+    /// This field indicates whether the syntax, semantics, or presence
+    /// of this function is in an experimental or stable stage. Once an
+    /// function is published as STABLE, its syntax and semantics MUST NOT
+    /// change in subsequent versions of the operator set.
+    /// When a function is published as EXPERIMENTAL, the syntax and semantics
+    /// of the function MAY change across operator set versions.
+    /// Functions "become" stable by deprecating the experimental version and
+    /// introducing a new stable function with the same name.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.OperatorStatus Status {
+      get { return status_; }
+      set {
+        status_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "input" field.</summary>
+    public const int InputFieldNumber = 4;
+    private static readonly pb::FieldCodec<string> _repeated_input_codec
+        = pb::FieldCodec.ForString(34);
+    private readonly pbc::RepeatedField<string> input_ = new pbc::RepeatedField<string>();
+    /// <summary>
+    /// The inputs and outputs of the function.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<string> Input {
+      get { return input_; }
+    }
+
+    /// <summary>Field number for the "output" field.</summary>
+    public const int OutputFieldNumber = 5;
+    private static readonly pb::FieldCodec<string> _repeated_output_codec
+        = pb::FieldCodec.ForString(42);
+    private readonly pbc::RepeatedField<string> output_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<string> Output {
+      get { return output_; }
+    }
+
+    /// <summary>Field number for the "attribute" field.</summary>
+    public const int AttributeFieldNumber = 6;
+    private static readonly pb::FieldCodec<string> _repeated_attribute_codec
+        = pb::FieldCodec.ForString(50);
+    private readonly pbc::RepeatedField<string> attribute_ = new pbc::RepeatedField<string>();
+    /// <summary>
+    /// The attributes of the function.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<string> Attribute {
+      get { return attribute_; }
+    }
+
+    /// <summary>Field number for the "node" field.</summary>
+    public const int NodeFieldNumber = 7;
+    private static readonly pb::FieldCodec<global::Onnx.NodeProto> _repeated_node_codec
+        = pb::FieldCodec.ForMessage(58, global::Onnx.NodeProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.NodeProto> node_ = new pbc::RepeatedField<global::Onnx.NodeProto>();
+    /// <summary>
+    /// The nodes in the function.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.NodeProto> Node {
+      get { return node_; }
+    }
+
+    /// <summary>Field number for the "doc_string" field.</summary>
+    public const int DocStringFieldNumber = 8;
+    private string docString_ = "";
+    /// <summary>
+    /// A human-readable documentation for this function. Markdown is allowed.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string DocString {
+      get { return docString_; }
+      set {
+        docString_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override bool Equals(object other) {
+      return Equals(other as FunctionProto);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool Equals(FunctionProto other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Name != other.Name) return false;
+      if (SinceVersion != other.SinceVersion) return false;
+      if (Status != other.Status) return false;
+      if(!input_.Equals(other.input_)) return false;
+      if(!output_.Equals(other.output_)) return false;
+      if(!attribute_.Equals(other.attribute_)) return false;
+      if(!node_.Equals(other.node_)) return false;
+      if (DocString != other.DocString) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      if (SinceVersion != 0L) hash ^= SinceVersion.GetHashCode();
+      if (Status != 0) hash ^= Status.GetHashCode();
+      hash ^= input_.GetHashCode();
+      hash ^= output_.GetHashCode();
+      hash ^= attribute_.GetHashCode();
+      hash ^= node_.GetHashCode();
+      if (DocString.Length != 0) hash ^= DocString.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void WriteTo(pb::CodedOutputStream output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (SinceVersion != 0L) {
+        output.WriteRawTag(16);
+        output.WriteInt64(SinceVersion);
+      }
+      if (Status != 0) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Status);
+      }
+      input_.WriteTo(output, _repeated_input_codec);
+      output_.WriteTo(output, _repeated_output_codec);
+      attribute_.WriteTo(output, _repeated_attribute_codec);
+      node_.WriteTo(output, _repeated_node_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(DocString);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public int CalculateSize() {
+      int size = 0;
+      if (Name.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
+      }
+      if (SinceVersion != 0L) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(SinceVersion);
+      }
+      if (Status != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Status);
+      }
+      size += input_.CalculateSize(_repeated_input_codec);
+      size += output_.CalculateSize(_repeated_output_codec);
+      size += attribute_.CalculateSize(_repeated_attribute_codec);
+      size += node_.CalculateSize(_repeated_node_codec);
+      if (DocString.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(DocString);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(FunctionProto other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Name.Length != 0) {
+        Name = other.Name;
+      }
+      if (other.SinceVersion != 0L) {
+        SinceVersion = other.SinceVersion;
+      }
+      if (other.Status != 0) {
+        Status = other.Status;
+      }
+      input_.Add(other.input_);
+      output_.Add(other.output_);
+      attribute_.Add(other.attribute_);
+      node_.Add(other.node_);
+      if (other.DocString.Length != 0) {
+        DocString = other.DocString;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(pb::CodedInputStream input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 16: {
+            SinceVersion = input.ReadInt64();
+            break;
+          }
+          case 24: {
+            status_ = (global::Onnx.OperatorStatus) input.ReadEnum();
+            break;
+          }
+          case 34: {
+            input_.AddEntriesFrom(input, _repeated_input_codec);
+            break;
+          }
+          case 42: {
+            output_.AddEntriesFrom(input, _repeated_output_codec);
+            break;
+          }
+          case 50: {
+            attribute_.AddEntriesFrom(input, _repeated_attribute_codec);
+            break;
+          }
+          case 58: {
+            node_.AddEntriesFrom(input, _repeated_node_codec);
+            break;
+          }
+          case 66: {
+            DocString = input.ReadString();
             break;
           }
         }

@@ -22,14 +22,14 @@ struct OrtAllocatorInfo {
   OrtMemType mem_type;
   OrtAllocatorType type;
 
-  constexpr OrtAllocatorInfo(const char* name1, OrtAllocatorType type, int id1 = 0, OrtMemType mem_type1 = OrtMemTypeDefault)
+  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
-      : name(name1),
-        id(id1),
-        mem_type(mem_type1),
-        type(type) {
+      : name(name_),
+        id(id_),
+        mem_type(mem_type_),
+        type(type_) {
   }
 
   inline bool operator==(const OrtAllocatorInfo& other) const {
@@ -182,9 +182,21 @@ class IDeviceAllocator : public IAllocator {
 
 class CPUAllocator : public IDeviceAllocator {
  public:
+  explicit CPUAllocator(std::unique_ptr<OrtAllocatorInfo> allocator_info) {
+    ORT_ENFORCE(nullptr != allocator_info);
+    allocator_info_ = std::move(allocator_info);
+  }
+
+  CPUAllocator() {
+    allocator_info_ = std::make_unique<OrtAllocatorInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+  }
+
   void* Alloc(size_t size) override;
   void Free(void* p) override;
   const OrtAllocatorInfo& Info() const override;
+
+ private:
+  std::unique_ptr<OrtAllocatorInfo> allocator_info_;
 };
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;

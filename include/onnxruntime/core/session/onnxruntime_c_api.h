@@ -373,7 +373,8 @@ typedef enum OrtAllocatorType {
 } OrtAllocatorType;
 
 /**
-   memory types for allocator, exec provider specific types should be extended in each provider
+ * memory types for allocator, exec provider specific types should be extended in each provider
+ * Whenever this struct is updated, please also update the MakeKey function in onnxruntime/core/framework/execution_provider.cc
 */
 typedef enum OrtMemType {
   OrtMemTypeCPUInput = -2,              // Any CPU memory used by non-CPU execution provider

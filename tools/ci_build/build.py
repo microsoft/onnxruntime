@@ -562,7 +562,8 @@ def main():
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
             install_ubuntu_deps(args)
-            install_python_deps()
+            if not is_docker():
+                install_python_deps()
         if (args.enable_pybind and is_windows()):
             install_python_deps()
         if (not args.skip_submodule_sync):

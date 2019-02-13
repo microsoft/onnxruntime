@@ -11,8 +11,9 @@
 namespace onnxruntime {
 
 namespace {
+//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
 inline int MakeKey(int id, OrtMemType mem_type) {
-  return id << 2 | mem_type;
+  return id << 2 | (mem_type + 2);
 }
 }  // namespace
 
