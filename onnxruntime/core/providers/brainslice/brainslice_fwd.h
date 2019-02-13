@@ -4,7 +4,8 @@
 #pragma once
 
 namespace onnxruntime {
-namespace contrib {
-void RegisterInternalSchemas();
-}  // namespace contrib
-}  // namespace onnxruntime
+namespace brainslice {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}
+}
