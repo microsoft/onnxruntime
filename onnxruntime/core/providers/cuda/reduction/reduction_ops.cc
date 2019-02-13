@@ -125,6 +125,10 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
+  size_t indices_bytes = 0;
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
+  auto indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes);
+
   // need to allocate a separate buffer for ArgMin/ArgMax comparsion output
   auto output_count = Y->Shape().Size();
 
@@ -140,13 +144,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                       input_data, input_count);
     } else if (log_sum_exp_) {
       // Reduce max -- Max/Min will output indices data
-      size_t indices_bytes = 0;
-      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-      auto indices_cuda = GetScratchBuffer<void>(indices_bytes);
       CudnnReduceDescriptor reduce_max_desc;
       ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
+      size_t indices_bytes_max = 0;
+      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_max_desc, input_tensor, output_tensor, &indices_bytes_max));
+      auto indices_cuda_max = GetScratchBuffer<uint32_t>(indices_bytes);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_max_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          CudnnHandle(), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
 
@@ -172,7 +176,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
       // ReduceSum
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_desc, nullptr, 0, workspace_cuda.get(), workspace_bytes,
+          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, exp_result,
           &zero, output_tensor, reinterpret_cast<CudaT*>(log_sum_result)));
 
@@ -192,25 +196,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       return Status::OK();
     }
 
-    // Only Max Min will have indices output, need to set the indices to nullptr for other ops
-    if (CUDNN_REDUCE_TENSOR_MAX == cudnnReduceOp || CUDNN_REDUCE_TENSOR_MIN == cudnnReduceOp) {
-      size_t indices_bytes = 0;
-      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-      auto indices_cuda = GetScratchBuffer<void>(indices_bytes);
-      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, calculate_sqt_ ? input_data : reinterpret_cast<const CudaT*>(X->template Data<T>()),
-          &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
-    } else {
-      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_desc, nullptr, 0, workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, calculate_sqt_ ? input_data : reinterpret_cast<const CudaT*>(X->template Data<T>()),
-          &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
-    }
+    CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+        CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+        &one, input_tensor, calculate_sqt_ ? input_data : reinterpret_cast<const CudaT*>(X->template Data<T>()),
+        &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
   } else { // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     size_t indices_bytes = 0;
     CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-    auto indices_cuda = GetScratchBuffer<void>(indices_bytes);
+    auto indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes);
 
     if (temp_X) {
       auto temp_output = GetScratchBuffer<float>(output_count);
