@@ -10,11 +10,7 @@
 #include "core/common/logging/logging.h"
 
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_transformer.h"
-#include "core/graph/graph_transformer_mgr.h"
-
 #include "core/framework/graph_partitioner.h"
-#include "core/framework/insert_cast_transformer.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/mlvalue_name_idx_map.h"
@@ -22,7 +18,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorutils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/transformer_memcpy.h"
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
@@ -105,7 +100,6 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
 }
 
 common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pattern,
-                                                          std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                                           const std::vector<NodeArg*>* implicit_inputs) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
@@ -118,8 +112,8 @@ common::Status SessionStateInitializer::InitializeAndSave(bool enable_memory_pat
     session_state_.AddInitializedTensor(idx, value);
   };
 
-  ORT_RETURN_IF_ERROR(SaveInitializedTensors(graph_, enable_memory_pattern, exec_plan,
-                                             execution_providers_, mlvalue_name_idx_map, weights_buffers,
+  ORT_RETURN_IF_ERROR(SaveInitializedTensors(graph_, enable_memory_pattern, exec_plan, execution_providers_,
+                                             mlvalue_name_idx_map, session_state_.GetMutableWeightsBuffers(),
                                              add_initialized_tensor, logger_));
 
   graph_.CleanAllInitializedTensors();  // remove weights from the graph now to save memory
@@ -377,7 +371,10 @@ static common::Status CreateOpKernelInternal(const onnxruntime::Node& node,
                                              const SessionState& session_state,
                                              const KernelRegistryManager& custom_registry_manager,
                                              std::unique_ptr<OpKernel>& op_kernel) {
-  return custom_registry_manager.CreateKernel(node, exec_provider, session_state, op_kernel);
+  return custom_registry_manager.CreateKernel(node,
+                                              exec_provider,
+                                              session_state,
+                                              op_kernel);
 }
 
 static common::Status CreateOpKernel(const onnxruntime::Node& node,

@@ -31,6 +31,7 @@ inline void ComputeTransposePadAndOutputShape(
     const int64_t in_size,
     const int64_t stride,
     const int64_t kernel,
+    const int64_t dilation,
     const int64_t adj,
     AutoPadType pad_type,
     int64_t* pad_head,
@@ -39,7 +40,7 @@ inline void ComputeTransposePadAndOutputShape(
   if (*out_size != -1) {
     ORT_ENFORCE(*out_size >= 0);
     // total padding size
-    int64_t paddings = std::max<int64_t>(0, (in_size - 1) * stride + kernel + adj - *out_size);
+    int64_t paddings = std::max<int64_t>(0, (in_size - 1) * stride + kernel + dilation - 1 + adj - *out_size);
     if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when paddings are odd.
       *pad_head = paddings - paddings / 2;
       *pad_tail = paddings / 2;
@@ -61,14 +62,14 @@ inline void ComputeTransposePadAndOutputShape(
         case AutoPadType::SAME_LOWER:
           *pad_head = 0;
           *pad_tail = 0;
-          *out_size = (in_size - 1) * stride + kernel + adj;
+          *out_size = (in_size - 1) * stride + kernel + dilation - 1 + adj;
           break;
         default:
           throw NotImplementedException("pad type not supported");
       }
     } else {
       *out_size =
-          (in_size - 1) * stride + kernel + adj - *pad_head - *pad_tail;
+          (in_size - 1) * stride + kernel + dilation - 1 + adj - *pad_head - *pad_tail;
     }
   }
 }
@@ -144,7 +145,7 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
 
   std::vector<int64_t> Y_dims;
 
-  ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape, strides, output_padding, &pads, &Y_dims);
+  ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape, strides, dilations, output_padding, &pads, &Y_dims);
   TensorShape Yshape(Y_dims);
   Tensor* Y = context->Output(0, Yshape);
 
@@ -169,6 +170,7 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
     const int64_t output_channel,
     const std::vector<int64_t>& kernel_shape,
     const std::vector<int64_t>& strides,
+    const std::vector<int64_t>& dilations,
     const std::vector<int64_t>& output_padding,
     std::vector<int64_t>* pads,
     std::vector<int64_t>* output_shape) const {
@@ -189,6 +191,7 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
       H,
       strides[0],
       kernel_shape[0],
+      dilations[0],
       output_padding[0],
       auto_pad_,
       &pads->at(0),
@@ -199,6 +202,7 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
       W,
       strides[1],
       kernel_shape[1],
+      dilations[1],
       output_padding[1],
       auto_pad_,
       &pads->at(1),
@@ -256,8 +260,8 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
           p.Y->Shape()[3],
           p.kernel_shape[0],
           p.kernel_shape[1],
-          1,
-          1,
+          p.dilations[0],
+          p.dilations[1],
           p.pads[0],
           p.pads[1],
           p.pads[2],

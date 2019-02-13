@@ -30,16 +30,11 @@ const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
 }
 
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info) {
-  auto exec_provider = exec_providers.Get(allocator_info);
-  if (exec_provider == nullptr) {
-    return nullptr;
-  }
-
-  return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+  return exec_providers.GetAllocator(allocator_info);
 }
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
-  return GetAllocator(session_state.GetExecutionProviders(), allocator_info);
+  return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider,
@@ -160,8 +155,11 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
   // our CPU exec provider doesn't support copy from GPU->CPU
   if (required_provider_type != onnxruntime::kCpuExecutionProvider) {
     ORT_RETURN_IF_ERROR(required_provider->CopyTensor(input_tensor, *new_tensor));
-  } else {
+  } else if (input_provider_type != onnxruntime::kCpuExecutionProvider) {
     ORT_RETURN_IF_ERROR(p_input_provider->CopyTensor(input_tensor, *new_tensor));
+  } else {
+    //both tensors are on CPU.
+    return Status(common::ONNXRUNTIME, common::FAIL, "can't copy a tensor from CPU to CPU");
   }
 
   // } loop of node_info_vec
@@ -314,8 +312,11 @@ common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
     // our CPU exec provider doesn't support copy from GPU->CPU
     if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
       ORT_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
-    } else {
+    } else if (output_provider_type != onnxruntime::kCpuExecutionProvider) {
       ORT_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
+    } else {
+      //both tensors are on CPU.
+      return Status(common::ONNXRUNTIME, common::FAIL, "can't copy a tensor from CPU to CPU");
     }
   }
 

@@ -1,17 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup>
+   <Link>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x64/native/onnxruntime.lib</AdditionalDependencies>
+   </Link>
+  </ItemDefinitionGroup>
+
   <ItemGroup Condition="Exists('packages.config') OR
                         Exists('$(MSBuildProjectName).packages.config') OR
                         Exists('packages.$(MSBuildProjectName).config')">
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win10-x64\native\onnxruntime.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'x64'">
       <Link>onnxruntime.dll</Link>    
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win10-x64\native\mkldnn.dll"
-          Condition="'$(PlatformTarget)' == 'x64'">
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mkldnn.dll"
+          Condition="'$(PlatformTarget)' == 'x64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mkldnn.dll')">
       <Link>mkldnn.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
