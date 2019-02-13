@@ -315,7 +315,6 @@ int real_main(int argc, char* argv[]) {
       {"shrink", "opset 9 not supported yet"},
       {"shrink_hard", "opset 9 not supported yet"},
       {"shrink_soft", "opset 9 not supported yet"},
-      {"where_example", "opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
