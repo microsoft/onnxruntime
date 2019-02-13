@@ -142,7 +142,6 @@ struct SliceIterator {
     SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
         : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents), indices_(extents.size(), 0) {
     auto& dims = tensor_.Shape().GetDims();
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
 
     Init(dims, starts);
   }
@@ -153,13 +152,15 @@ struct SliceIterator {
     SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
       : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents), indices_(extents.size(), 0) {
     auto& dims = tensor_shape.GetDims();
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents.size());
     
     Init(dims, starts);
   }
 
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts) {
+
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents_.size());
+
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
     for (size_t i = dims.size(); i-- > 0;) {
