@@ -192,11 +192,23 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       return Status::OK();
     }
 
-    CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-        CudnnHandle(), reduce_desc, nullptr, 0, workspace_cuda.get(), workspace_bytes,
-        &one, input_tensor, calculate_sqt_ ? input_data : reinterpret_cast<const CudaT*>(X->template Data<T>()),
-        &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
-  } else {
+    // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
+    // Only Max Min will have indices output, need to set the indices to nullptr for other ops
+    if (CUDNN_REDUCE_TENSOR_MAX == ReduceTensorIndices || CUDNN_REDUCE_TENSOR_MIN == ReduceTensorIndices) {
+      size_t indices_bytes = 0;
+      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
+      auto indices_cuda = GetScratchBuffer<void>(indices_bytes);
+      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          &one, input_tensor, calculate_sqt_ ? input_data : reinterpret_cast<const CudaT*>(X->template Data<T>()),
+          &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+    } else {
+      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+          CudnnHandle(), reduce_desc, nullptr, 0, workspace_cuda.get(), workspace_bytes,
+          &one, input_tensor, calculate_sqt_ ? input_data : reinterpret_cast<const CudaT*>(X->template Data<T>()),
+          &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+    }
+  } else { // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     size_t indices_bytes = 0;
     CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
     auto indices_cuda = GetScratchBuffer<void>(indices_bytes);

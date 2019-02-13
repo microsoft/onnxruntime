@@ -76,7 +76,7 @@ class ReduceMax final : public ReduceKernel<true> {
   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, CUDNN_REDUCE_TENSOR_MAX);
+    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_MAX);
   }
 };
 
@@ -96,7 +96,7 @@ class ReduceMin final : public ReduceKernel<true> {
   ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, CUDNN_REDUCE_TENSOR_MIN);
+    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_MIN);
   }
 };
 
