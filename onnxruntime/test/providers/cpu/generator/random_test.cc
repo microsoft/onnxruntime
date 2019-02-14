@@ -34,7 +34,6 @@ TEST(Random, RandomNormal2DDouble) {
 
   test.AddOutput<double>("Y", dims, expected_output);
   test.Run();
-  test.Run();
 }
 
 void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
