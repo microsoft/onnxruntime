@@ -686,19 +686,13 @@ ORT_API_STATUS_IMPL(OrtGetNumValues, const OrtValue* value, int* out) {
 ///////////////////
 // OrtGetValue
 template <typename T>
-static OrtStatus* OrtGetValueImplSeqOfMap(const MLValue* p_ml_value, int index, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtGetValueImplSeqOfMap(const MLValue* p_ml_value, int index, const OrtAllocatorInfo* info, OrtValue** out) {  // XXX
   using TKey = typename T::value_type::key_type;
-  using TVal = typename T::value_type::value_type;
+  using TVal = typename T::value_type::mapped_type;
   using MapType = std::map<TKey, TVal>;
-  //auto& data = p_ml_value->Get<T>();
-  //  auto& data_elem = data.at(index);
-  // copy the map
-  std::unique_ptr<MapType> copy_data_elem = std::make_unique<MapType>();
-  //auto& map_copy = *copy_data_elem;
-  /*   for (const auto& p : data_elem) {
-    std::decay<decltype(p.second)>::type x = p.second;
-    map_copy.insert(std::make_pair(p.first, p.second));
-  } */
+  auto& data_vec = p_ml_value->Get<T>();
+  auto& data_elem = data_vec.at(index);
+  auto copy_data_elem = std::make_unique<MapType>(data_elem);
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
   value->Init(copy_data_elem.release(),
               DataTypeImpl::GetType<MapType>(),
@@ -836,7 +830,8 @@ ORT_API_STATUS_IMPL(OrtGetValue, const OrtValue* value, int index, const OrtAllo
 // OrtCreateValue
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
-  auto vec_ptr = std::make_unique<std::vector<T>>();
+  using SeqType = std::vector<T>;
+  auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
   for (int idx = 0; idx < num_values; ++idx) {
     auto& m = reinterpret_cast<const MLValue*>(in[idx])->Get<T>();
@@ -845,27 +840,30 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue** in, int num_va
   // create MLValue with this vector
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
   value->Init(vec_ptr.release(),
-              DataTypeImpl::GetType<std::vector<T>>(),
-              DataTypeImpl::GetType<std::vector<T>>()->GetDeleteFunc());
+              DataTypeImpl::GetType<SeqType>(),
+              DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
   *out = reinterpret_cast<OrtValue*>(value.release());
   return nullptr;
 }
 
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
-  auto vec_ptr = std::make_unique<std::vector<T>>();
+  using SeqType = std::vector<T>;
+  auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
   for (int idx = 0; idx < num_values; ++idx) {
     auto& tensor = reinterpret_cast<const MLValue*>(in[idx])->Get<Tensor>();
     auto data = tensor.Data<T>();
-    // TODO check for data nullptr?
+    if (!data) {
+      return OrtCreateStatus(ORT_FAIL, "Encountered nullptr.");
+    }
     vec_ptr->push_back(*data);
   }
   // create MLValue with this vector
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
   value->Init(vec_ptr.release(),
-              DataTypeImpl::GetType<std::vector<T>>(),
-              DataTypeImpl::GetType<std::vector<T>>()->GetDeleteFunc());
+              DataTypeImpl::GetType<SeqType>(),
+              DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
   *out = reinterpret_cast<OrtValue*>(value.release());
   return nullptr;
 }
@@ -910,22 +908,10 @@ static OrtStatus* OrtCreateValueImplSeq(const OrtValue** in, int num_values, con
   } else if (first_value_type == ONNX_TYPE_MAP) {
     // maintenance nightmare: keep these in sync with the registered types in data_types.h
     auto map_type = first_mlvalue->Type();
-    if (map_type == DataTypeImpl::GetType<MapStringToString>()) {
-      return OrtCreateValueImplSeqHelperMap<MapStringToString>(in, num_values, info, out);
-    } else if (map_type == DataTypeImpl::GetType<MapStringToInt64>()) {
-      return OrtCreateValueImplSeqHelperMap<MapStringToInt64>(in, num_values, info, out);
-    } else if (map_type == DataTypeImpl::GetType<MapStringToFloat>()) {
+    if (map_type == DataTypeImpl::GetType<MapStringToFloat>()) {
       return OrtCreateValueImplSeqHelperMap<MapStringToFloat>(in, num_values, info, out);
-    } else if (map_type == DataTypeImpl::GetType<MapStringToDouble>()) {
-      return OrtCreateValueImplSeqHelperMap<MapStringToDouble>(in, num_values, info, out);
-    } else if (map_type == DataTypeImpl::GetType<MapInt64ToString>()) {
-      return OrtCreateValueImplSeqHelperMap<MapInt64ToString>(in, num_values, info, out);
-    } else if (map_type == DataTypeImpl::GetType<MapInt64ToInt64>()) {
-      return OrtCreateValueImplSeqHelperMap<MapInt64ToInt64>(in, num_values, info, out);
     } else if (map_type == DataTypeImpl::GetType<MapInt64ToFloat>()) {
       return OrtCreateValueImplSeqHelperMap<MapInt64ToFloat>(in, num_values, info, out);
-    } else if (map_type == DataTypeImpl::GetType<MapInt64ToDouble>()) {
-      return OrtCreateValueImplSeqHelperMap<MapInt64ToDouble>(in, num_values, info, out);
     } else {
       return OrtCreateStatus(ORT_FAIL, "Input is not of one of the supported map types.");
     }
@@ -942,7 +928,7 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
   auto key_data = key_tensor.Data<KeyType>();
   auto value_data = value_tensor.Data<ValueType>();
   size_t num_kv_pairs = key_tensor.Shape().Size();
-  for (int n = 0; n < num_kv_pairs; ++n, ++key_data, ++value_data) {
+  for (size_t n = 0; n < num_kv_pairs; ++n, ++key_data, ++value_data) {
     map_ptr->insert({*key_data, *value_data});
   }
   // create mlvalue with this map
@@ -984,8 +970,14 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue** in, int num_values, con
   auto p_value_ml_value = reinterpret_cast<const MLValue*>(ort_values);
   auto& value_tensor = p_value_ml_value->Get<Tensor>();
 
-  // TODO validate that key and value tensors are rank-1 tensors only
-  // TODO validate that the key and value tensors have the same number of elements
+  if (key_tensor.Shape().NumDimensions() > 1 || value_tensor.Shape().NumDimensions() > 1) {
+    return OrtCreateStatus(ORT_FAIL, "Either the key tensor or the value tensor had NumDimensions > 1");
+  }
+
+  if (key_tensor.Shape().Size() != value_tensor.Shape().Size()) {
+    return OrtCreateStatus(ORT_FAIL, "Key and value tensors have unequal number of elements.");
+  }
+
   if (key_type == DataTypeImpl::GetType<std::string>()) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, info, out);
   } else if (key_type == DataTypeImpl::GetType<int64_t>()) {
