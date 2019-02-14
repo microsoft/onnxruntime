@@ -242,7 +242,6 @@ add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 add_library(date ALIAS tz)
 add_library(gsl ALIAS GSL)
-add_library(re2 ALIAS re2)
 
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
