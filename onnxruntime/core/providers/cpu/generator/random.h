@@ -45,7 +45,7 @@ class RandomNormal final : public OpKernel {
   
   // generator_ is updated with every call to Compute(). 
   // use generator_mutex_ to ensure Compute() can be called concurrently.
-  // this is to ensure that a model with random generators is deterministic and still can be executated in parallel.
+  // this is to ensure that a model with random generators is deterministic and still can be executed in parallel.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_;
