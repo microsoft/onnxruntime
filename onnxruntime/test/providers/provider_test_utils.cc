@@ -50,9 +50,11 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i]))  // Test infinity for equality
+    if (std::isinf(expected[i])){  // Test infinity for equality
       EXPECT_EQ(expected[i], output[i]);
-    else {
+    } else if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i  << " to be NaN";
+    } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
         EXPECT_NEAR(expected[i], output[i], threshold) << "provider_type: " << provider_type;

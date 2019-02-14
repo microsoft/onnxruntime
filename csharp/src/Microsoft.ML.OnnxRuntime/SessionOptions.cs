@@ -24,7 +24,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class SessionOptions:IDisposable
     {
         public IntPtr _nativePtr;
-        protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithMklDnnProvider);
+        protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
         private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
         /// <summary>
@@ -46,10 +46,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private static SessionOptions MakeSessionOptionWithMklDnnProvider()
+        private static SessionOptions MakeSessionOptionWithCpuProvider()
         {
             SessionOptions options = new SessionOptions();
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(options._nativePtr, 1);
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }
@@ -73,7 +72,6 @@ namespace Microsoft.ML.OnnxRuntime
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options._nativePtr, deviceId);
-            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(options._nativePtr, 1);
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }

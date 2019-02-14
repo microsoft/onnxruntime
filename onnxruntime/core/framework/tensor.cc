@@ -83,22 +83,6 @@ Tensor::~Tensor() {
   ReleaseBuffer();
 }
 
-Tensor& Tensor::ShallowCopy(const Tensor& other) {
-  // similar as above
-  ORT_ENFORCE(other.buffer_deleter_ == nullptr,
-              "Can't copy tensor with its owned buffer. Please transfer ownership by move.");
-
-  if (this != &other) {
-    dtype_ = other.dtype_;
-    alloc_info_ = other.alloc_info_;
-    shape_ = other.shape_;
-    byte_offset_ = other.byte_offset_;
-    p_data_ = other.p_data_;
-    buffer_deleter_ = nullptr;
-  }
-  return *this;
-}
-
 void Tensor::ReleaseBuffer() {
   if (buffer_deleter_) {
     // if current tensor is responsible for delete the buffer
