@@ -71,10 +71,10 @@ ONNX_CPU_OPERATOR_KERNEL(
     Multinomial);
 
 template <typename T, typename TDistribution>
-void GenerateData(std::default_random_engine generator, TDistribution distribution, Tensor& tensor);
+void GenerateData(std::default_random_engine& generator, TDistribution distribution, Tensor& tensor);
 
-static Status RandomNormalCompute(float mean, float scale, std::default_random_engine generator, TensorProto::DataType dtype, Tensor& Y);
-static Status RandomUniformCompute(float high, float low, std::default_random_engine generator, TensorProto::DataType dtype, Tensor& Y);
+static Status RandomNormalCompute(float mean, float scale, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y);
+static Status RandomUniformCompute(float high, float low, std::default_random_engine& generator, TensorProto::DataType dtype, Tensor& Y);
 
 // Leaving in case we need to change to this approach
 //static Status CreateOutputTensorFromTensorValues(OpKernelContext* ctx, const Tensor& X,Tensor** Y);
@@ -84,6 +84,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor);
 Status RandomNormal::Compute(OpKernelContext* ctx) const {
   Tensor& Y = *ctx->Output(0, shape_);
 
+  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   auto status = RandomNormalCompute(mean_, scale_, generator_, dtype_, Y);
 
   return status;
@@ -92,6 +93,7 @@ Status RandomNormal::Compute(OpKernelContext* ctx) const {
 Status RandomUniform::Compute(OpKernelContext* ctx) const {
   Tensor& Y = *ctx->Output(0, shape_);
 
+  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   auto status = RandomUniformCompute(low_, high_, generator_, dtype_, Y);
 
   return status;
@@ -113,6 +115,7 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
 
+  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   status = RandomNormalCompute(mean_, scale_, generator_, dtype, *Y);
 
   return status;
@@ -133,6 +136,7 @@ Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
+  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   status = RandomUniformCompute(low_, high_, generator_, dtype, *Y);
 
   return status;
@@ -154,7 +158,7 @@ static Status MultinomialCompute(OpKernelContext* ctx,
                                  const int64_t batch_size,
                                  const int64_t num_classes,
                                  const int64_t num_samples,
-                                 std::default_random_engine generator,
+                                 std::default_random_engine& generator,
                                  Tensor& Y) {
   // implementation copied from Tensorflow with some changes such as using the std::uniform_real_distribution
   // instead of the Philox RNG.
@@ -241,6 +245,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, TensorShape({batch_size, num_samples_}));
 
   Status status = Status::OK();
+  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   switch (output_dtype_) {
     case TensorProto::INT32: {
       status = MultinomialCompute<int32_t>(ctx, X, batch_size, num_classes, num_samples_, generator_, *Y);
@@ -308,7 +313,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor) {
 }
 
 static Status RandomNormalCompute(float mean, float scale,
-                                  std::default_random_engine generator,
+                                  std::default_random_engine& generator,
                                   TensorProto::DataType dtype, Tensor& Y) {
   switch (dtype) {
     case TensorProto::FLOAT: {
@@ -332,7 +337,7 @@ static Status RandomNormalCompute(float mean, float scale,
 }
 
 static Status RandomUniformCompute(float low, float high,
-                                   std::default_random_engine generator,
+                                   std::default_random_engine& generator,
                                    TensorProto::DataType dtype,
                                    Tensor& Y) {
   switch (dtype) {
@@ -357,7 +362,7 @@ static Status RandomUniformCompute(float low, float high,
 }
 
 template <typename T, typename TDistribution>
-void GenerateData(std::default_random_engine generator, TDistribution distribution, Tensor& tensor) {
+void GenerateData(std::default_random_engine& generator, TDistribution distribution, Tensor& tensor) {
   auto out = gsl::make_span(tensor.template MutableData<T>(), tensor.Shape().Size());
 
   std::for_each(out.begin(), out.end(), [&generator, &distribution](T& value) { value = distribution(generator); });
