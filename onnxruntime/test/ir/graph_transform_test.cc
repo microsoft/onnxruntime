@@ -308,8 +308,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   NameMLValMap feeds;
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
-  //X,W,SCOPE,BIAS,MEAN,VAR,ADDBY,MULBY
-  MLValue ml_value_x, ml_value_w, ml_value_scope, ml_value_bias, ml_value_mean, ml_value_var, ml_value_addby, ml_value_mulby;
+  MLValue ml_value_x;
 
   //X
   std::vector<int64_t> dims_x = {1,1,3,3};
@@ -320,67 +319,17 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  //W
-  std::vector<int64_t> dims_w = {1,1,2,2};
-  std::vector<MLFloat16> values_w;
-  for (int i = 0; i < 4; ++i) {
-    values_w.push_back(MLFloat16(math::floatToHalf(1.0)));
-  }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_w, values_w, &ml_value_w);
-  feeds.insert(std::make_pair("W", ml_value_w));
-
-  //SCOPE
-  std::vector<int64_t> dims_scope = {1};
-  std::vector<MLFloat16> values_scope = {MLFloat16(math::floatToHalf(1.0))};
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_scope, values_scope, &ml_value_scope);
-  feeds.insert(std::make_pair("SCOPE", ml_value_scope));
-
-  //BIAS
-  std::vector<int64_t> dims_bias = {1};
-  std::vector<MLFloat16> values_bias = {MLFloat16(math::floatToHalf(0.0))};
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_bias, values_bias, &ml_value_bias);
-  feeds.insert(std::make_pair("BIAS", ml_value_bias));
-
-  //MEAN
-  std::vector<int64_t> dims_mean = {1};
-  std::vector<MLFloat16> values_mean = {MLFloat16(math::floatToHalf(2.0))};
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mean, values_mean, &ml_value_mean);
-  feeds.insert(std::make_pair("MEAN", ml_value_mean));
-
-  //VAR
-  std::vector<int64_t> dims_var = {1};
-  std::vector<MLFloat16> values_var = {MLFloat16(math::floatToHalf(1.0))};
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_var, values_var, &ml_value_var);
-  feeds.insert(std::make_pair("VAR", ml_value_var));
-
-  //ADDBY
-  std::vector<int64_t> dims_addby = {1,1,2,2};
-  std::vector<MLFloat16> values_addby;
-  for (int i = 0; i < 4; ++i) {
-    values_addby.push_back(MLFloat16(math::floatToHalf(1.0)));
-  }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_addby, values_addby, &ml_value_addby);
-  feeds.insert(std::make_pair("ADDBY", ml_value_addby));
-
-  //MULBY
-  std::vector<int64_t> dims_mulby = {1,1,2,2};
-  std::vector<MLFloat16> values_mulby;
-  for (int i = 0; i < 4; ++i) {
-    values_mulby.push_back(MLFloat16(math::floatToHalf(2.0)));
-  }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mulby, values_mulby, &ml_value_mulby);
-  feeds.insert(std::make_pair("MULBY", ml_value_mulby));
-
   std::vector<std::string> output_names;
   output_names.push_back("PROD");
   std::vector<MLValue> fetches;
 
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
+  float f = 2.19727f;
   std::vector<int64_t> expected_dims_prod = {1,1,2,2};
   std::vector<MLFloat16> expected_values_prod;
   for (int i = 0; i < 4; ++i) {
-    expected_values_prod.push_back(MLFloat16(math::floatToHalf(6.0)));
+    expected_values_prod.push_back(MLFloat16(math::floatToHalf(f)));
   }
 
   ASSERT_EQ(1, fetches.size());
