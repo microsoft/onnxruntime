@@ -31,16 +31,11 @@ const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
 }
 
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info) {
-  auto exec_provider = exec_providers.Get(allocator_info);
-  if (exec_provider == nullptr) {
-    return nullptr;
-  }
-
-  return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+  return exec_providers.GetAllocator(allocator_info);
 }
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
-  return GetAllocator(session_state.GetExecutionProviders(), allocator_info);
+  return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider,

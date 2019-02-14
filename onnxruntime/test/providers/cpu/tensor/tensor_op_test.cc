@@ -3,7 +3,6 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/providers/cpu/tensor/cast_op.h"
 #include "core/providers/cpu/tensor/crop.h"
 #include "core/util/math.h"
 
@@ -80,7 +79,7 @@ void TestCastOp(const std::initializer_list<SrcType>& input,
                 int64_t toType,
                 ExpectResult expect_result = ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "") {
-  OpTester test("Cast");
+  OpTester test("Cast", 9);
   test.AddAttribute("to", toType);
   test.AddInput<SrcType>("input", dimensions, input);
   test.AddOutput<DstType>("output", dimensions, output);
@@ -275,6 +274,32 @@ TEST(TensorOpTest, CastFromFloat16) {
 
   std::initializer_list<int64_t> int64_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   TestCastOp(input, int64_t_data, shape, TensorProto::INT64);
+}
+
+TEST(TensorOpTest, CastFromString) {
+  const std::vector<int64_t> shape{2, 2, 2};
+  std::initializer_list<std::string> string_data = {"-inf", "+INF", "2.0f", "3.0f", "4.0f", "5.0f", "NaN", "nan"};
+  const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(), 2.0f, 3.0f, 4.0f, 5.0f, NAN, NAN};
+  TestCastOp(string_data, float_output, shape, TensorProto::FLOAT);
+
+  std::initializer_list<std::string> int_16_string_data = {"0", "1", "2", "3", "4", "5", "-32768", "32767"};
+  const std::initializer_list<int16_t> int_16_output = {0, 1, 2, 3, 4, 5, SHRT_MIN, SHRT_MAX};
+  TestCastOp(int_16_string_data, int_16_output, shape, TensorProto::INT16);
+
+  std::initializer_list<std::string> int_64_string_data = {"0", "1", "2", "3", "4", "5", "-9223372036854775808", "9223372036854775807"};
+  const std::initializer_list<int64_t> int_64_output = {0, 1, 2, 3, 4, 5, LLONG_MIN, LLONG_MAX};
+  TestCastOp(int_64_string_data, int_64_output, shape, TensorProto::INT64);
+}
+
+TEST(TensorOpTest, CastToString) {
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::initializer_list<float> float_input = {NAN, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
+  std::initializer_list<std::string> string_output = {"NaN", "1", "2", "3", "4", "5", "-INF", "INF"};
+  TestCastOp(float_input, string_output, shape, TensorProto::STRING);
+
+  std::initializer_list<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
+  const std::initializer_list<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
+  TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING);
 }
 
 TEST(TensorOpTest, CropBorderOnly) {

@@ -37,8 +37,7 @@ void CPUAllocator::Free(void* p) {
 }
 
 const OrtAllocatorInfo& CPUAllocator::Info() const {
-  static constexpr OrtAllocatorInfo cpuAllocatorInfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
-  return cpuAllocatorInfo;
+  return *allocator_info_;
 }
 }  // namespace onnxruntime
 
