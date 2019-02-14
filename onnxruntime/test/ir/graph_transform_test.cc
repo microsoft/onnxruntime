@@ -310,11 +310,11 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   run_options.run_tag = "one session/one tag";
   MLValue ml_value_x;
 
-  //X
+  auto x_f = MLFloat16(math::floatToHalf(1.0));
   std::vector<int64_t> dims_x = {1,1,3,3};
   std::vector<MLFloat16> values_x;
   for (int i = 0; i < 9; ++i) {
-    values_x.push_back(MLFloat16(math::floatToHalf(1.0)));
+    values_x.push_back(x_f);
   }
   CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -325,11 +325,11 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
-  float f = 2.19727f;
+  auto prod_f = MLFloat16(math::floatToHalf(6.0));
   std::vector<int64_t> expected_dims_prod = {1,1,2,2};
   std::vector<MLFloat16> expected_values_prod;
   for (int i = 0; i < 4; ++i) {
-    expected_values_prod.push_back(MLFloat16(math::floatToHalf(f)));
+    expected_values_prod.push_back(prod_f);
   }
 
   ASSERT_EQ(1, fetches.size());
