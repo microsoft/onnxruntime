@@ -9,6 +9,7 @@
 
 #include "core/common/common.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 
@@ -17,6 +18,7 @@ class Initializer final {
   static bool IsSupportedDataType(const ONNX_NAMESPACE::TensorProto* tensor_proto) {
     return !(tensor_proto == nullptr ||
              (tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+              tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
               tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
   }
 
@@ -30,6 +32,10 @@ class Initializer final {
     size_ = std::accumulate(dims_.begin(), dims_.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
 
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        float16_data_.assign(size_, 0);
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float_data_.assign(size_, 0.0f);
         break;
@@ -60,6 +66,14 @@ class Initializer final {
       raw_data_ = tensor_proto->raw_data();
     } else {
       switch (data_type_) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+          int64_t size = tensor_proto->int32_data_size();
+          ORT_ENFORCE(size_ == size, "size is different");
+          for (int i = 0; i < size_; i++) {
+            float16_data_.push_back(static_cast<uint16_t>(tensor_proto->int32_data(i)));
+          }
+          break;
+        }
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           int64_t size = tensor_proto->float_data_size();
           ORT_ENFORCE(size_ == size, "size is different");
@@ -104,6 +118,13 @@ class Initializer final {
       tensor_proto->set_raw_data(raw_data_);
     } else {
       switch (data_type_) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+          tensor_proto->clear_int32_data();
+          for (int i = 0; i < size_; i++) {
+            tensor_proto->add_int32_data(float16_data_[i]);
+          }
+          break;
+        }
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           tensor_proto->clear_float_data();
           for (int i = 0; i < size_; i++) {
@@ -143,6 +164,10 @@ class Initializer final {
       return (T*)&raw_data_[0];
     }
       switch (data_type_) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+          return (T*)float16_data_.data();
+          break;
+        }
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           return (T*)float_data_.data();
           break;
@@ -164,6 +189,10 @@ class Initializer final {
       return (T*)&raw_data_[0];
     }
       switch (data_type_) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+          return (T*)float16_data_.data();
+          break;
+        }
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
           return (T*)float_data_.data();
           break;
@@ -192,6 +221,13 @@ class Initializer final {
   Initializer& add(float value) {
     int64_t n = size();
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] = math::floatToHalf(math::halfToFloat(dst[i]) + value);
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         for (int i = 0; i < n; i++) {
@@ -215,6 +251,14 @@ class Initializer final {
   Initializer& add(const Initializer& other) {
     int64_t n = size();
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        const uint16_t* src = other.data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] = math::floatToHalf(math::halfToFloat(dst[i]) + math::halfToFloat(src[i]));
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         const float* src = other.data<float>();
@@ -239,6 +283,14 @@ class Initializer final {
   Initializer& sub(const Initializer& other) {
     int64_t n = size();
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        const uint16_t* src = other.data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] = math::floatToHalf(math::halfToFloat(dst[i]) - math::halfToFloat(src[i]));
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         const float* src = other.data<float>();
@@ -264,6 +316,14 @@ class Initializer final {
   Initializer& mul(const Initializer& other) {
     int64_t n = size();
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        const uint16_t* src = other.data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] = math::floatToHalf(math::halfToFloat(dst[i]) * math::halfToFloat(src[i]));
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         const float* src = other.data<float>();
@@ -288,6 +348,14 @@ class Initializer final {
   Initializer& div(const Initializer& other) {
     int64_t n = size();
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        const uint16_t* src = other.data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] = math::floatToHalf(math::halfToFloat(dst[i]) / math::halfToFloat(src[i]));
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         const float* src = other.data<float>();
@@ -313,6 +381,13 @@ class Initializer final {
   Initializer& sqrt() {
     int64_t n = size();
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          dst[i] = math::floatToHalf(std::sqrt(math::halfToFloat(dst[i])));
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         for (int i = 0; i < n; i++) {
@@ -341,6 +416,18 @@ class Initializer final {
 
     int64_t n = size() / num;
     switch (data_type_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t* dst = data<uint16_t>();
+        const uint16_t* src = other.data<uint16_t>();
+        for (int i = 0; i < n; i++) {
+          int index = other.size() == 1 ? 0 : i;
+          for (int64_t j = 0; j < num; j++) {
+            auto k = i * num + j;
+            dst[k] = math::floatToHalf(math::halfToFloat(dst[k]) * math::halfToFloat(src[index]));
+          }
+        }
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         float* dst = data<float>();
         const float* src = other.data<float>();
@@ -376,6 +463,7 @@ class Initializer final {
 
   std::string raw_data_;
   std::vector<float> float_data_;
+  std::vector<uint16_t> float16_data_;
   std::vector<double> double_data_;
 };
 
