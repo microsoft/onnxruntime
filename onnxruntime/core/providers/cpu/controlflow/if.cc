@@ -215,8 +215,6 @@ Status IfImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cach
   std::vector<MLValue> feeds;
   feeds.reserve(num_inputs);
 
-  auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
-
   // pass in implicit inputs as feeds.
   // use the FeedsFetchesInfo as that has the pruned names
   auto& feed_names = cached_ffm ? cached_ffm->GetFeedsFetchesInfo().feed_names : ffm->GetFeedsFetchesInfo().feed_names;
