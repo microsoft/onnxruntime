@@ -67,14 +67,12 @@ namespace UnitTest1
 			OrtSession* session;
 			ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
 			int ret = run_inference(session);
-
 		}
 
 		TEST_METHOD(TestMethod1)
 		{
-			// TODO: Your test code here
-			Assert::AreEqual(12, 11);
+            int res = test();
+			Assert::AreEqual(res, 0);
 		}
-
 	};
 }
