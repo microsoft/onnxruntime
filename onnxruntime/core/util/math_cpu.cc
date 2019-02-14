@@ -77,17 +77,17 @@ void GemmEigen(
   if (beta == 0) {
     C_mat.setZero();
   } else {
-    C_mat *= beta;
+    C_mat *= static_cast<T>(beta);
   }
   switch (TransA) {
     case CblasNoTrans: {
       switch (TransB) {
         case CblasNoTrans:
-          C_mat.noalias() += alpha * (ConstEigenMatrixMap<T>(B, N, K) *
+          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, N, K) *
                                       ConstEigenMatrixMap<T>(A, K, M));
           return;
         case CblasTrans:
-          C_mat.noalias() += alpha * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
+          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
                                       ConstEigenMatrixMap<T>(A, K, M));
           return;
         default:
@@ -97,11 +97,11 @@ void GemmEigen(
     case CblasTrans: {
       switch (TransB) {
         case CblasNoTrans:
-          C_mat.noalias() += alpha * (ConstEigenMatrixMap<T>(B, N, K) *
+          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, N, K) *
                                       ConstEigenMatrixMap<T>(A, M, K).transpose());
           return;
         case CblasTrans:
-          C_mat.noalias() += alpha * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
+          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
                                       ConstEigenMatrixMap<T>(A, M, K).transpose());
           return;
         default:
@@ -185,20 +185,71 @@ void Gemm<double, CPUMathUtil>(
 }
 
 template <>
-void Gemm<long, CPUMathUtil>(
+void Gemm<int32_t, CPUMathUtil>(
     const CBLAS_TRANSPOSE TransA,
     const CBLAS_TRANSPOSE TransB,
     const int64_t M,
     const int64_t N,
     const int64_t K,
     const float alpha,
-    const long* A,
-    const long* B,
+    const int32_t* A,
+    const int32_t* B,
     const float beta,
-    long* C,
+    int32_t* C,
     CPUMathUtil* provider,
     MLDataType /*math_type*/) {
-  GemmEigen<long>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<uint32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint32_t* A,
+    const uint32_t* B,
+    const float beta,
+    uint32_t* C,
+    CPUMathUtil* provider,
+    MLDataType /*math_type*/) {
+  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<int64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int64_t* A,
+    const int64_t* B,
+    const float beta,
+    int64_t* C,
+    CPUMathUtil* provider,
+    MLDataType /*math_type*/) {
+  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<uint64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint64_t* A,
+    const uint64_t* B,
+    const float beta,
+    uint64_t* C,
+    CPUMathUtil* provider,
+    MLDataType /*math_type*/) {
+  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
