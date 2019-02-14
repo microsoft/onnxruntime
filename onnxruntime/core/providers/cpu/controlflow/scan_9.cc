@@ -450,10 +450,9 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   }
 
   // Call the subgraph for each item in the sequence
-  status = IterateSequence(context_, session_state_, subgraph_, loop_state_variables,
-                           scan_input_stream_iterators, sequence_len_, num_loop_state_variables_,
-                           num_variadic_inputs_, num_variadic_outputs_, implicit_inputs_,
-                           subgraph_output_names_, output_iterators_, ffm, cached_ffm);
+  status = IterateSequence(context_, session_state_, loop_state_variables, scan_input_stream_iterators,
+                           sequence_len_, num_loop_state_variables_, num_variadic_inputs_, num_variadic_outputs_,
+                           implicit_inputs_, output_iterators_, ffm, cached_ffm);
 
   ORT_RETURN_IF_ERROR(status);
 

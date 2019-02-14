@@ -134,7 +134,6 @@ Status CreateFeedsFetchesManager(const GraphViewer& subgraph,
 
 Status IterateSequence(OpKernelContextInternal& context,
                        const SessionState& session_state,
-                       const GraphViewer& subgraph,
                        std::vector<LoopStateVariable>& loop_state_variables,
                        std::vector<MLValueTensorSlicer<const MLValue>::Iterator>& scan_input_stream_iterators,
                        int64_t seq_length,
@@ -142,21 +141,10 @@ Status IterateSequence(OpKernelContextInternal& context,
                        int num_variadic_inputs,
                        int num_variadic_outputs,
                        std::unordered_map<std::string, const MLValue*>& implicit_inputs,
-                       std::vector<std::string>& subgraph_output_names,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
                        FeedsFetchesManager* ffm,
                        const FeedsFetchesManager* cached_ffm) {
   Status status = Status::OK();
-
-  // prefer matching all inputs to the subgraph as per the Scan spec,
-  auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
-  if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
-    // fallback to just the required inputs.
-    graph_inputs = &subgraph.GetInputs();
-    ORT_ENFORCE(static_cast<size_t>(num_variadic_inputs) == graph_inputs->size(),
-                "Graph::InferAndVerifySubgraphTypes should have already validated that "
-                "num_variadic_inputs matched the subgraph inputs or required inputs.");
-  }
 
   auto num_implicit_inputs = implicit_inputs.size();
   auto num_inputs = num_variadic_inputs + num_implicit_inputs;

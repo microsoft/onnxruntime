@@ -420,10 +420,9 @@ Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* c
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, subgraph_, batch_loop_state_variables[b],
-                             scan_input_stream_iterators, sequence_len, num_loop_state_variables_,
-                             num_variadic_inputs_, num_variadic_outputs_, implicit_inputs_,
-                             subgraph_output_names_, output_iterators_, ffm, cached_ffm);
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[b], scan_input_stream_iterators,
+                             sequence_len, num_loop_state_variables_, num_variadic_inputs_, num_variadic_outputs_,
+                             implicit_inputs_, output_iterators_, ffm, cached_ffm);
 
     // use the cached info from now on
     cached_ffm = ffm;
