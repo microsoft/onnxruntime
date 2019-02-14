@@ -686,7 +686,7 @@ ORT_API_STATUS_IMPL(OrtGetNumValues, const OrtValue* value, int* out) {
 ///////////////////
 // OrtGetValue
 template <typename T>
-static OrtStatus* OrtGetValueImplSeqOfMap(const MLValue* p_ml_value, int index, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtGetValueImplSeqOfMap(const MLValue* p_ml_value, int index, const OrtAllocatorInfo* info, OrtValue** out) {  // XXX
   using TKey = typename T::value_type::key_type;
   using TVal = typename T::value_type::value_type;
   using MapType = std::map<TKey, TVal>;
@@ -836,7 +836,8 @@ ORT_API_STATUS_IMPL(OrtGetValue, const OrtValue* value, int index, const OrtAllo
 // OrtCreateValue
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
-  auto vec_ptr = std::make_unique<std::vector<T>>();
+  using SeqType = std::vector<T>;
+  auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
   for (int idx = 0; idx < num_values; ++idx) {
     auto& m = reinterpret_cast<const MLValue*>(in[idx])->Get<T>();
@@ -845,27 +846,30 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue** in, int num_va
   // create MLValue with this vector
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
   value->Init(vec_ptr.release(),
-              DataTypeImpl::GetType<std::vector<T>>(),
-              DataTypeImpl::GetType<std::vector<T>>()->GetDeleteFunc());
+              DataTypeImpl::GetType<SeqType>(),
+              DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
   *out = reinterpret_cast<OrtValue*>(value.release());
   return nullptr;
 }
 
 template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
-  auto vec_ptr = std::make_unique<std::vector<T>>();
+  using SeqType = std::vector<T>;
+  auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
   for (int idx = 0; idx < num_values; ++idx) {
     auto& tensor = reinterpret_cast<const MLValue*>(in[idx])->Get<Tensor>();
     auto data = tensor.Data<T>();
-    // TODO check for data nullptr?
+    if (!data) {
+      return OrtCreateStatus(ORT_FAIL, "Encountered nullptr.");
+    }
     vec_ptr->push_back(*data);
   }
   // create MLValue with this vector
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
   value->Init(vec_ptr.release(),
-              DataTypeImpl::GetType<std::vector<T>>(),
-              DataTypeImpl::GetType<std::vector<T>>()->GetDeleteFunc());
+              DataTypeImpl::GetType<SeqType>(),
+              DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
   *out = reinterpret_cast<OrtValue*>(value.release());
   return nullptr;
 }
@@ -984,8 +988,14 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue** in, int num_values, con
   auto p_value_ml_value = reinterpret_cast<const MLValue*>(ort_values);
   auto& value_tensor = p_value_ml_value->Get<Tensor>();
 
-  // TODO validate that key and value tensors are rank-1 tensors only
-  // TODO validate that the key and value tensors have the same number of elements
+  if (key_tensor.Shape().NumDimensions() > 1 || value_tensor.Shape().NumDimensions() > 1) {
+    return OrtCreateStatus(ORT_FAIL, "Either the key tensor or the value tensor had NumDimensions > 1");
+  }
+
+  if (key_tensor.Shape().Size() != value_tensor.Shape().Size()) {
+    return OrtCreateStatus(ORT_FAIL, "Key and value tensors have unequal number of elements.");
+  }
+
   if (key_type == DataTypeImpl::GetType<std::string>()) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, info, out);
   } else if (key_type == DataTypeImpl::GetType<int64_t>()) {
