@@ -29,7 +29,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases()
     {2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55}});
 
   test_cases.push_back(
-	{"test padding and broadcast",
+    {"test padding and broadcast",
     {2, 3, 2},
     {3, 2, 2, 1},
     {3, 2, 3, 1},
