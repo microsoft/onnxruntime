@@ -168,6 +168,91 @@ void Gemm<float, CPUMathUtil>(
 }
 
 template <>
+void Gemm<double, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const double* A,
+    const double* B,
+    const float beta,
+    double* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<int32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int32_t* A,
+    const int32_t* B,
+    const float beta,
+    int32_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<uint32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint32_t* A,
+    const uint32_t* B,
+    const float beta,
+    uint32_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<int64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int64_t* A,
+    const int64_t* B,
+    const float beta,
+    int64_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<uint64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint64_t* A,
+    const uint64_t* B,
+    const float beta,
+    uint64_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
 void GemmEx<float, CPUMathUtil>(
     const CBLAS_TRANSPOSE TransA,
     const CBLAS_TRANSPOSE TransB,
@@ -360,6 +445,116 @@ void Gemm<float, CPUMathUtil>(
 }
 
 template <>
+void Gemm<double, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const double* A,
+    const double* B,
+    const float beta,
+    double* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+// Since MKLML does not have an implementation for Gemm (double type), check if we can fallback to Eigen 
+#if defined(USE_EIGEN_FOR_BLAS)
+  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+#else
+  #error "No implementation found for Gemm that supports double type"
+#endif
+}
+
+template <>
+void Gemm<int32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int32_t* A,
+    const int32_t* B,
+    const float beta,
+    int32_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+// Since MKLML does not have an implementation for Gemm (int32_t type), check if we can fallback to Eigen
+#if defined(USE_EIGEN_FOR_BLAS)
+  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+#else
+  #error "No implementation found for Gemm that supports int32_t type"
+#endif
+}
+
+template <>
+void Gemm<uint32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint32_t* A,
+    const uint32_t* B,
+    const float beta,
+    uint32_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+// Since MKLML does not have an implementation for Gemm (uint32_t type), check if we can fallback to Eigen
+#if defined(USE_EIGEN_FOR_BLAS)
+  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+#else
+  #error "No implementation found for Gemm that supports uint32_t type"
+#endif
+}
+
+template <>
+void Gemm<int64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int64_t* A,
+    const int64_t* B,
+    const float beta,
+    int64_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+// Since MKLML does not have an implementation for Gemm (int64_t type), check if we can fallback to Eigen
+#if defined(USE_EIGEN_FOR_BLAS)
+  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+#else
+  #error "No implementation found for Gemm that supports int64_t type"
+#endif
+}
+
+template <>
+void Gemm<uint64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint64_t* A,
+    const uint64_t* B,
+    const float beta,
+    uint64_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+// Since MKLML does not have an implementation for Gemm (uint64_t type), check if we can fallback to Eigen
+#if defined(USE_EIGEN_FOR_BLAS)  
+  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+#else
+  #error "No implementation found for Gemm that supports int64_t type"
+#endif
+}
+
+template <>
 void GemmEx<float, CPUMathUtil>(
     const CBLAS_TRANSPOSE TransA,
     const CBLAS_TRANSPOSE TransB,
@@ -451,91 +646,6 @@ CAFFE2_SPECIALIZED_AXPBY(float, s)
 #undef CAFFE2_SPECIALIZED_AXPBY
 
 #endif  // USE_EIGEN_FOR_BLAS
-
-template <>
-void Gemm<double, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const double* A,
-    const double* B,
-    const float beta,
-    double* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<int32_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const int32_t* A,
-    const int32_t* B,
-    const float beta,
-    int32_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint32_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const uint32_t* A,
-    const uint32_t* B,
-    const float beta,
-    uint32_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<int64_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const int64_t* A,
-    const int64_t* B,
-    const float beta,
-    int64_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint64_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const uint64_t* A,
-    const uint64_t* B,
-    const float beta,
-    uint64_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
 
 template <>
 void GemmBatched<float, CPUMathUtil>(
