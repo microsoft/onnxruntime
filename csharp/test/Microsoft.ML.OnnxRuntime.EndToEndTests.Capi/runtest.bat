@@ -40,6 +40,7 @@ nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.
 if NOT %ERRORLEVEL% EQU 0 (
 	echo "Error:Nuget restore failed"
 	EXIT /B 1
+)
 
 REM Build Native project
 msbuild Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
