@@ -51,15 +51,6 @@
 namespace onnxruntime {
 namespace math {
 
-////////////////////////////////////////////////////////////////////////////////
-// BLAS alternatives.
-// Depending on whether we have specified an external BLAS library or not, we
-// will delegate the Caffe math functions that are BLAS-related to either the
-// CBLAS call or the Eigen implementation.
-////////////////////////////////////////////////////////////////////////////////
-// when USE_MKLDNN and USE_MKLML are defined, use cblas APIs for MKLML
-#if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
-
 // Gemm implementation purely based on Eigen.
 template <typename T>
 void GemmEigen(
@@ -84,11 +75,11 @@ void GemmEigen(
       switch (TransB) {
         case CblasNoTrans:
           C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, N, K) *
-                                      ConstEigenMatrixMap<T>(A, K, M));
+                                                      ConstEigenMatrixMap<T>(A, K, M));
           return;
         case CblasTrans:
           C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
-                                      ConstEigenMatrixMap<T>(A, K, M));
+                                                      ConstEigenMatrixMap<T>(A, K, M));
           return;
         default:
           ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
@@ -98,11 +89,11 @@ void GemmEigen(
       switch (TransB) {
         case CblasNoTrans:
           C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, N, K) *
-                                      ConstEigenMatrixMap<T>(A, M, K).transpose());
+                                                      ConstEigenMatrixMap<T>(A, M, K).transpose());
           return;
         case CblasTrans:
           C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
-                                      ConstEigenMatrixMap<T>(A, M, K).transpose());
+                                                      ConstEigenMatrixMap<T>(A, M, K).transpose());
           return;
         default:
           ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
@@ -112,6 +103,15 @@ void GemmEigen(
       ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// BLAS alternatives.
+// Depending on whether we have specified an external BLAS library or not, we
+// will delegate the Caffe math functions that are BLAS-related to either the
+// CBLAS call or the Eigen implementation.
+////////////////////////////////////////////////////////////////////////////////
+// when USE_MKLDNN and USE_MKLML are defined, use cblas APIs for MKLML
+#if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -165,91 +165,6 @@ void Gemm<float, CPUMathUtil>(
 #else
   GemmEigen<float>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 #endif
-}
-
-template <>
-void Gemm<double, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const double* A,
-    const double* B,
-    const float beta,
-    double* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<int32_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const int32_t* A,
-    const int32_t* B,
-    const float beta,
-    int32_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint32_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const uint32_t* A,
-    const uint32_t* B,
-    const float beta,
-    uint32_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<int64_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const int64_t* A,
-    const int64_t* B,
-    const float beta,
-    int64_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint64_t, CPUMathUtil>(
-    const CBLAS_TRANSPOSE TransA,
-    const CBLAS_TRANSPOSE TransB,
-    const int64_t M,
-    const int64_t N,
-    const int64_t K,
-    const float alpha,
-    const uint64_t* A,
-    const uint64_t* B,
-    const float beta,
-    uint64_t* C,
-    CPUMathUtil* /*provider*/,
-    MLDataType /*math_type*/) {
-  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -536,6 +451,91 @@ CAFFE2_SPECIALIZED_AXPBY(float, s)
 #undef CAFFE2_SPECIALIZED_AXPBY
 
 #endif  // USE_EIGEN_FOR_BLAS
+
+template <>
+void Gemm<double, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const double* A,
+    const double* B,
+    const float beta,
+    double* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<int32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int32_t* A,
+    const int32_t* B,
+    const float beta,
+    int32_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<uint32_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint32_t* A,
+    const uint32_t* B,
+    const float beta,
+    uint32_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<int64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const int64_t* A,
+    const int64_t* B,
+    const float beta,
+    int64_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
+
+template <>
+void Gemm<uint64_t, CPUMathUtil>(
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K,
+    const float alpha,
+    const uint64_t* A,
+    const uint64_t* B,
+    const float beta,
+    uint64_t* C,
+    CPUMathUtil* /*provider*/,
+    MLDataType /*math_type*/) {
+  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+}
 
 template <>
 void GemmBatched<float, CPUMathUtil>(
