@@ -3,9 +3,27 @@ REM Licensed under the MIT License.
 echo on
 
 set LocalNuGetRepo=%1
-set CurrentOnnxRuntimeVersion=%2
+REM set CurrentOnnxRuntimeVersion=%2
 setlocal enableextensions disabledelayedexpansion
 
+REM WorkingDirectory is Build.SourcesDirectory\csharp
+set /p MajorVersionNumber=<..\VERSION_NUMBER
+set VersionSuffix=
+IF NOT DEFINED IsReleaseBuild (
+    FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
+        set VersionSuffix=-dev-%%F
+    )
+)
+
+set CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
+@echo %CurrentOnnxRuntimeVersion%
+
+pushd test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi
+
+REM Set up VS envvars
+REM call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat"
+
+REM Generate packages.config with version
 echo off
 set "token=CurrentOnnxRuntimeVersion"
 set "replace=%CurrentOnnxRuntimeVersion%"
@@ -19,10 +37,22 @@ for /f "delims=" %%i in ('type "%templateFile%" ^& break ^> "packages.config" ')
 echo on
 
 REM Restore NuGet Packages
-nuget restore -NonInteractive -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
+REM nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
 
 REM Build Native project
 msbuild Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
+echo %ERRORLEVEL%
+if NOT %ERRORLEVEL% EQU 0 (
+	echo "Error:Build failed"
+	EXIT /B 1
+)
+
 
 REM Run Unit Tests
 vstest.console.exe /platform:x64 x64\debug\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.dll
+if NOT %ERRORLEVEL% EQU 0 (
+    echo "Unit test failure: %ERRORLEVEL%"
+)
+
+popd
+EXIT /B 0

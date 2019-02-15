@@ -3,7 +3,9 @@
 //
 #include "CppUnitTest.h"
 #include <assert.h>
-#include <onnxruntime/onnxruntime_c_api.h>
+#include <core/session/onnxruntime_c_api.h>
+#include <core/providers/cpu/cpu_provider_factory.h>
+
 
 #define ORT_ABORT_ON_ERROR(expr)                         \
   do {                                                   \
@@ -60,13 +62,16 @@ namespace UnitTest1
 
 		int test()
 		{
-			const wchar_t * model_path = L"squeeznet.onnx";
+			const wchar_t * model_path = L"squeezenet.onnx";
 			OrtEnv* env;
 			ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
 			OrtSessionOptions* session_option = OrtCreateSessionOptions();
 			OrtSession* session;
 			ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
-			int ret = run_inference(session);
+
+			OrtSetSessionThreadPoolSize(session_option, 1);
+			//return run_inference(session);
+			return 0;
 		}
 
 		TEST_METHOD(TestMethod1)
