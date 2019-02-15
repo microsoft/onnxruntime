@@ -50,7 +50,8 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
-  static Status CreatePlan(const onnxruntime::GraphViewer& graph,
+  static Status CreatePlan(const Node* parent_node,
+                           const onnxruntime::GraphViewer& graph,
                            const std::vector<const NodeArg*>& outer_scope_node_args,
                            const ExecutionProviders& providers,
                            const KernelRegistryManager& kernel_registry,
@@ -60,14 +61,15 @@ class SequentialPlanner {
 
   // This uses a standard planner context and is meant to be the primary API for creating a plan
   // as the context is primarily used in test scenarios.
-  static Status CreatePlan(const onnxruntime::GraphViewer& graph,
+  static Status CreatePlan(const Node* parent_node,
+                           const onnxruntime::GraphViewer& graph,
                            const std::vector<const NodeArg*>& outer_scope_node_args,
                            const ExecutionProviders& providers,
                            const KernelRegistryManager& kernel_registry,
                            const MLValueNameIdxMap& mlvalue_name_idx_map,
                            std::unique_ptr<SequentialExecutionPlan>& plan) {
     SequentialPlannerContext context;
-    return CreatePlan(graph, outer_scope_node_args, providers, kernel_registry, mlvalue_name_idx_map, context, plan);
+    return CreatePlan(parent_node, graph, outer_scope_node_args, providers, kernel_registry, mlvalue_name_idx_map, context, plan);
   }
 };
 

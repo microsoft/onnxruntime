@@ -97,7 +97,8 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
 
 class PlannerImpl {
  public:
-  PlannerImpl(const onnxruntime::GraphViewer& graph_viewer,
+  PlannerImpl(const Node* parent_node,
+              const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args,
               const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry,
@@ -106,6 +107,7 @@ class PlannerImpl {
               SequentialExecutionPlan& plan)
       : context_{context},
         plan_{plan},
+        parent_node_{parent_node},
         graph_viewer_{graph_viewer},
         outer_scope_node_args_{outer_scope_node_args},
         execution_providers_{providers},
@@ -119,6 +121,7 @@ class PlannerImpl {
   const ISequentialPlannerContext& context_;
   SequentialExecutionPlan& plan_;
 
+  const Node* parent_node_;
   const onnxruntime::GraphViewer& graph_viewer_;
   const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
@@ -235,6 +238,36 @@ class PlannerImpl {
         }
       }
     }
+    return false;
+  }
+
+  bool FindReusableGraphInput(const onnxruntime::Node& node, int output_arg_num, MLValueIndex* reusable_input) {
+    // skip if this is main graph
+    if (parent_node_) {
+      // only check a single layer. ie. an Identity/Dropout node connecting graph's input and output
+      auto& graph_inputs = graph_viewer_.GetInputs();
+      auto& graph_outputs = graph_viewer_.GetOutputs();
+
+      if (FindReusableInput(node, output_arg_num, reusable_input)) {
+        auto& arg = ml_value_info_.at(Buffer(*reusable_input)).p_def_site;
+        auto it = std::find(graph_inputs.cbegin(), graph_inputs.cend(), arg);
+        if (it != graph_inputs.end()) {
+          auto graph_input_index = std::distance(graph_inputs.cbegin(), it);
+          ORT_ENFORCE(graph_input_index >= 0 && static_cast<size_t>(graph_input_index) < graph_inputs.size());
+          auto graph_output_index = std::distance(graph_outputs.cbegin(),
+                                                  std::find(graph_outputs.cbegin(), graph_outputs.cend(), node.OutputDefs()[output_arg_num]));
+          ORT_ENFORCE(graph_output_index >= 0 && static_cast<size_t>(graph_output_index) < graph_outputs.size());
+
+          if (parent_node_->OpType() == "Loop") {
+            // the matching carried parameters
+            return graph_input_index >= 2 && graph_input_index == graph_output_index + 1;
+          } else {
+            // TODO: other operators like Scan
+          }
+        }
+      }
+    }
+
     return false;
   }
 
@@ -486,7 +519,8 @@ class PlannerImpl {
         auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
         MLValueIndex reused;
-        if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
+        if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end() &&
+            !FindReusableGraphInput(*pnode, output_arg_num, &reused)) {
           // node_output is graph's output, so we can't reuse intermedia buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
         } else if (IsNonTensor(*node_output)) {
@@ -598,7 +632,8 @@ Status PlannerImpl::CreatePlan() {
   return Status::OK();
 }
 
-Status SequentialPlanner::CreatePlan(const onnxruntime::GraphViewer& graph_viewer,
+Status SequentialPlanner::CreatePlan(const Node* parent_node,
+                                     const onnxruntime::GraphViewer& graph_viewer,
                                      const std::vector<const NodeArg*>& outer_scope_node_args,
                                      const ExecutionProviders& providers,
                                      const KernelRegistryManager& kernel_registry,
@@ -608,7 +643,7 @@ Status SequentialPlanner::CreatePlan(const onnxruntime::GraphViewer& graph_viewe
   // allocate/reset here so we know it's clean
   plan = std::make_unique<SequentialExecutionPlan>();
 
-  PlannerImpl planner(graph_viewer, outer_scope_node_args,
+  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args,
                       providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
