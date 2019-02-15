@@ -42,4 +42,5 @@ TEST_F(CApiTest, input_output_type_info) {
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   TestModelInfo(inference_session.get(), true, {1, 3, 224, 224});
   TestModelInfo(inference_session.get(), false, {1, 1000, 1, 1});
+  ASSERT_EQ(1, 1);
 }
