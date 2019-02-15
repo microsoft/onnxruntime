@@ -179,7 +179,7 @@ void Gemm<double, CPUMathUtil>(
     const double* B,
     const float beta,
     double* C,
-    CPUMathUtil* provider,
+    CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
   GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
@@ -196,7 +196,7 @@ void Gemm<int32_t, CPUMathUtil>(
     const int32_t* B,
     const float beta,
     int32_t* C,
-    CPUMathUtil* provider,
+    CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
   GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
@@ -213,7 +213,7 @@ void Gemm<uint32_t, CPUMathUtil>(
     const uint32_t* B,
     const float beta,
     uint32_t* C,
-    CPUMathUtil* provider,
+    CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
   GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
@@ -230,7 +230,7 @@ void Gemm<int64_t, CPUMathUtil>(
     const int64_t* B,
     const float beta,
     int64_t* C,
-    CPUMathUtil* provider,
+    CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
   GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
@@ -247,7 +247,7 @@ void Gemm<uint64_t, CPUMathUtil>(
     const uint64_t* B,
     const float beta,
     uint64_t* C,
-    CPUMathUtil* provider,
+    CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
   GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
