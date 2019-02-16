@@ -181,6 +181,7 @@ void Gemm<double, CPUMathUtil>(
     double* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
+  // No double precision Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
@@ -198,7 +199,8 @@ void Gemm<int32_t, CPUMathUtil>(
     int32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    // No int32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+    GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -215,7 +217,8 @@ void Gemm<uint32_t, CPUMathUtil>(
     uint32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    // No uint32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+    GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -232,7 +235,8 @@ void Gemm<int64_t, CPUMathUtil>(
     int64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    // No int64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+    GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -249,7 +253,8 @@ void Gemm<uint64_t, CPUMathUtil>(
     uint64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    // No uint64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+    GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -458,12 +463,14 @@ void Gemm<double, CPUMathUtil>(
     double* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-// Since MKLML does not have an implementation for Gemm (double type), check if we can fallback to Eigen 
-#if defined(USE_EIGEN_FOR_BLAS)
-  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-#else
-  #error "No implementation found for Gemm that supports double type"
-#endif
+    int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
+    int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+    cblas_dgemm(CblasRowMajor, TransA, TransB,
+              gsl::narrow_cast<int>(M),
+              gsl::narrow_cast<int>(N),
+              gsl::narrow_cast<int>(K),
+              gsl::narrow_cast<double>(alpha), A, lda, B, ldb,
+              gsl::narrow_cast<double>(beta), C, gsl::narrow_cast<int>(N));
 }
 
 template <>
@@ -480,12 +487,8 @@ void Gemm<int32_t, CPUMathUtil>(
     int32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-// Since MKLML does not have an implementation for Gemm (int32_t type), check if we can fallback to Eigen
-#if defined(USE_EIGEN_FOR_BLAS)
-  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-#else
-  #error "No implementation found for Gemm that supports int32_t type"
-#endif
+    // No int32_t Gemm offering from MKLML. Directly fallback to Eigen.
+    GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -502,12 +505,8 @@ void Gemm<uint32_t, CPUMathUtil>(
     uint32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-// Since MKLML does not have an implementation for Gemm (uint32_t type), check if we can fallback to Eigen
-#if defined(USE_EIGEN_FOR_BLAS)
-  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-#else
-  #error "No implementation found for Gemm that supports uint32_t type"
-#endif
+   // No uint32_t Gemm offering from MKLML. Directly fallback to Eigen.
+    GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -524,12 +523,8 @@ void Gemm<int64_t, CPUMathUtil>(
     int64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-// Since MKLML does not have an implementation for Gemm (int64_t type), check if we can fallback to Eigen
-#if defined(USE_EIGEN_FOR_BLAS)
-  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-#else
-  #error "No implementation found for Gemm that supports int64_t type"
-#endif
+    // No int64_t Gemm offering from MKLML. Directly fallback to Eigen.
+    GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -546,12 +541,8 @@ void Gemm<uint64_t, CPUMathUtil>(
     uint64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-// Since MKLML does not have an implementation for Gemm (uint64_t type), check if we can fallback to Eigen
-#if defined(USE_EIGEN_FOR_BLAS)  
-  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-#else
-  #error "No implementation found for Gemm that supports int64_t type"
-#endif
+    // No uint64_t Gemm offering from MKLML. Directly fallback to Eigen.
+    GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
