@@ -308,8 +308,6 @@ int real_main(int argc, char* argv[]) {
       {"asinh_example", "opset 9 not supported yet"},
       {"acosh_example", "opset 9 not supported yet"},
       {"atanh_example", "opset 9 not supported yet"},
-      {"scatter_with_axis", "opset 9 not supported yet"},
-      {"scatter_without_axis", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"shrink", "opset 9 not supported yet"},
       {"shrink_hard", "opset 9 not supported yet"},
