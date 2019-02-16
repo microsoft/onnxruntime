@@ -5,7 +5,6 @@
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include <iostream>
 
 namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
@@ -63,52 +62,38 @@ Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   using namespace shrink_internal;
 
   auto input = p_op_kernel_context->Input<Tensor>(0);
-  std::cout << "Input Shape: " << (input->Shape()) << "\n";
   auto output = p_op_kernel_context->Output(0, input->Shape());
-  std::cout << "Output Shape: " << (output->Shape()) << "\n";
-  
+
   auto dtype = input->DataType();
 
   if (dtype == DataTypeImpl::GetType<float>()) {
     EigenMap<float>(*output) = EigenMap<float>(*input).unaryExpr([this](const float& val) { return ShrinkImpl<float>(val, bias_, lambd_); });
-  }
-  else if (dtype == DataTypeImpl::GetType<double>()) {
+  } else if (dtype == DataTypeImpl::GetType<double>()) {
     EigenMap<double>(*output) = EigenMap<double>(*input).unaryExpr([this](const double& val) { return ShrinkImpl<double>(val, bias_, lambd_); });
-  }
-  else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
     EigenMap<int64_t>(*output) = EigenMap<int64_t>(*input).unaryExpr([this](const int64_t& val) { return ShrinkImpl<int64_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
     EigenMap<uint64_t>(*output) = EigenMap<uint64_t>(*input).unaryExpr([this](const uint64_t& val) { return ShrinkImpl<uint64_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<int32_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
     EigenMap<int32_t>(*output) = EigenMap<int32_t>(*input).unaryExpr([this](const int32_t& val) { return ShrinkImpl<int32_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
     EigenMap<uint32_t>(*output) = EigenMap<uint32_t>(*input).unaryExpr([this](const uint32_t& val) { return ShrinkImpl<uint32_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<int16_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
     EigenMap<int16_t>(*output) = EigenMap<int16_t>(*input).unaryExpr([this](const int16_t& val) { return ShrinkImpl<int16_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
     EigenMap<uint16_t>(*output) = EigenMap<uint16_t>(*input).unaryExpr([this](const uint16_t& val) { return ShrinkImpl<uint16_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<int8_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
     EigenMap<int8_t>(*output) = EigenMap<int8_t>(*input).unaryExpr([this](const int8_t& val) { return ShrinkImpl<int8_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
+  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
     EigenMap<uint8_t>(*output) = EigenMap<uint8_t>(*input).unaryExpr([this](const uint8_t& val) { return ShrinkImpl<uint8_t>(val, bias_, lambd_); });
-  } 
-  else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-	ShrinkMLFloat16(input, output, bias_, lambd_);
-  } 
-  else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
+  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
+    ShrinkMLFloat16(input, output, bias_, lambd_);
+  } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
     ShrinkBFloat16(input, output, bias_, lambd_);
-  }
-  else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input datatype");
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input types for the Shrink operator are constrained to all numeric types only");
   }
 
   return Status::OK();
-}	
+}
 }  // namespace onnxruntime

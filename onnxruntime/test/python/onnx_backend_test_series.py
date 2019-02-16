@@ -60,6 +60,7 @@ backend_test.exclude(r'('
 '|^test_operator_non_float_params_cpu.*'
 '|^test_operator_params_cpu.*'
 '|^test_operator_pow_cpu.*'
+'|^test_shrink_cpu.*'
 '|^test_sign_model_cpu.*'
 ')')
 
