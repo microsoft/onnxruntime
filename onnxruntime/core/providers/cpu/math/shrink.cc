@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/shrink.h"
-//#include "core/providers/common.h"
-//#include "core/common/common.h"
-//#include "core/common/exceptions.h"
-//#include "core/framework/tensor.h"
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -29,7 +26,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace shrink_internal {
 template <class T>
-inline T ShrinkImpl(T val, float bias, float lambd) {
+inline T ShrinkImpl(const T& val, float bias, float lambd) {
+  // The ONNX spec doesn't take numeric overflow and underflow into account
+  // Implementing the spec as is for now
   if (val < -lambd) {
     return T(val + bias);
   } else if (val > lambd) {
