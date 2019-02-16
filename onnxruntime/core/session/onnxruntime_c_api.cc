@@ -829,7 +829,7 @@ ORT_API_STATUS_IMPL(OrtGetValue, const OrtValue* value, int index, const OrtAllo
 ///////////////////
 // OrtCreateValue
 template <typename T>
-static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeqHelperMap(OrtValue** const in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
   using SeqType = std::vector<T>;
   auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
@@ -847,7 +847,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue** in, int num_va
 }
 
 template <typename T>
-static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
   using SeqType = std::vector<T>;
   auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
@@ -868,7 +868,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue** in, int num_value
   return nullptr;
 }
 
-static OrtStatus* OrtCreateValueImplSeq(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeq(OrtValue** const in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
   // We only support limited sequence types. For the sake of simplicity the type of the first
   // OrtValue* in OrtValue** will determine the type of the vector used to create the output OrtValue
   // this type should be either a tensor of limited types or map of limited types
@@ -956,7 +956,7 @@ static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Te
   }
 }
 
-static OrtStatus* OrtCreateValueImplMap(const OrtValue** in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, int num_values, const OrtAllocatorInfo* info, OrtValue** out) {
   if (num_values != 2) {
     return OrtCreateStatus(ORT_FAIL, "For map type num_values MUST be 2");
   }
@@ -987,7 +987,7 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue** in, int num_values, con
   }
 }
 
-static OrtStatus* OrtCreateValueImpl(const OrtValue** in, int num_values, enum ONNXType value_type, const OrtAllocatorInfo* info, OrtValue** out) {
+static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum ONNXType value_type, const OrtAllocatorInfo* info, OrtValue** out) {
   if (num_values <= 0) {
     return OrtCreateStatus(ORT_FAIL, "Number of values should be at least 1.");
   }
@@ -1000,7 +1000,7 @@ static OrtStatus* OrtCreateValueImpl(const OrtValue** in, int num_values, enum O
   }
 }
 
-ORT_API_STATUS_IMPL(OrtCreateValue, const OrtValue** in, int num_values, enum ONNXType value_type, const OrtAllocatorInfo* info, OrtValue** out) {
+ORT_API_STATUS_IMPL(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type, const OrtAllocatorInfo* info, OrtValue** out) {
   API_IMPL_BEGIN
   return OrtCreateValueImpl(in, num_values, value_type, info, out);
   API_IMPL_END
