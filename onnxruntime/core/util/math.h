@@ -565,5 +565,31 @@ uint16_t floatToHalf(float f);
 
 float halfToFloat(uint16_t h);
 
+/*
+Weight tranformation for depthwise convolution
+C=channel_out
+Weight shape: [C, 1, H, W]
+data layout:
+[W[0], W[1], W[2], .., W[C-2], W[C-1]]
+
+Transformed Weight shape [C * H, C * W]
+data layout:
+W[0]
+    W[1]    
+        W[2]
+           .
+             .
+               .
+                 .
+                   .
+                      W[C-2]
+                             W[C-1]
+*/
+void WeightsDiagonalTransformation(float* weights,
+                                   int64_t channel_in,
+                                   int64_t channel_out,
+                                   int64_t height,
+                                   int64_t width,
+                                   float* transformed_weights);
 }  // namespace math
 }  // namespace onnxruntime

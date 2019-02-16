@@ -475,15 +475,15 @@ void GemmBatched<float, CPUMathUtil>(
   }
 }
 
-  // MKL will be implmenet as an execution provider
-  ////////////////////////////////////////////////////////////////////////////////
-  // MKL VML alternatives.
-  // Depending on whether we are using MKL, we will delegate the Caffe math
-  // functions that are VML-related to either the VML call or the Eigen
-  // implementation. If you are setting the flags (such as AVX) right for your CPU
-  // architecture, usually Eigen will deliver a throughput as fast as the VML
-  // functions.
-  ////////////////////////////////////////////////////////////////////////////////
+// MKL will be implmenet as an execution provider
+////////////////////////////////////////////////////////////////////////////////
+// MKL VML alternatives.
+// Depending on whether we are using MKL, we will delegate the Caffe math
+// functions that are VML-related to either the VML call or the Eigen
+// implementation. If you are setting the flags (such as AVX) right for your CPU
+// architecture, usually Eigen will deliver a throughput as fast as the VML
+// functions.
+////////////////////////////////////////////////////////////////////////////////
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
   template <>                                                                  \
@@ -1230,7 +1230,6 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(
   }
 }
 
-
 #define SPECIALIZED_COPYVECTOR(T)                                    \
   template <>                                                        \
   void CopyVector<T, CPUMathUtil>(                                   \
@@ -1266,6 +1265,45 @@ uint16_t floatToHalf(float f) {
 
 float halfToFloat(uint16_t h) {
   return Eigen::half_impl::half_to_float(Eigen::half_impl::raw_uint16_to_half(h));
+}
+
+/*
+Weight tranformation for depthwise convolution
+C=channel_out
+Weight shape: [C, 1, H, W]
+data layout:
+[W[0], W[1], W[2], .., W[C-2], W[C-1]]
+
+Transformed Weight shape [C * H, C * W]
+data layout:
+W[0]
+    W[1]    
+        W[2]
+           .
+             .
+               .
+                 .
+                   .
+                      W[C-2]
+                             W[C-1]
+*/
+void WeightsDiagonalTransformation(float* weights,
+                                   int64_t channel_in,
+                                   int64_t channel_out,
+                                   int64_t height,
+                                   int64_t width,
+                                   float* transformed_weights) {
+  //only handle input channel == 1 case for now
+  ORT_ENFORCE(channel_in == 1, "input channel has to be 1, but it's %d", channel_in);
+  float *src = weights, *dst = transformed_weights;
+  for (int64_t c = 0; c < channel_out; ++c) {
+    for (int64_t h = 0; h < height; ++h) {
+      memcpy(dst, src, width);
+      src += width;
+      dst += channel_out * width;
+    }
+    dst += width;
+  }
 }
 
 }  // namespace math
