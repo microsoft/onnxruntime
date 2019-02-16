@@ -73,13 +73,13 @@ template <typename T>
 void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases) {
   std::cout << "NUMBER OF CASES IS: " << test_cases.size();
   for (const auto& test_data : test_cases) {
-	OpTester test("Shrink", 9);
+    OpTester test("Shrink", 9);
     
-	if (test_data.bias != 0.0f) {
+    if (test_data.bias != 0.0f) {
       test.AddAttribute("bias", test_data.bias);
     }
     
-	if (test_data.lambd != 0.5f) {
+    if (test_data.lambd != 0.5f) {
       test.AddAttribute("lambd", test_data.lambd);
     }
 
