@@ -5,6 +5,7 @@
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include <iostream>
 
 namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
@@ -62,8 +63,10 @@ Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   using namespace shrink_internal;
 
   auto input = p_op_kernel_context->Input<Tensor>(0);
+  std::cout << "Input Shape: " << (input->Shape()) << "\n";
   auto output = p_op_kernel_context->Output(0, input->Shape());
-
+  std::cout << "Output Shape: " << (output->Shape()) << "\n";
+  
   auto dtype = input->DataType();
 
   if (dtype == DataTypeImpl::GetType<float>()) {

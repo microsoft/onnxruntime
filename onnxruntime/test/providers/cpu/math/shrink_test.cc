@@ -4,7 +4,6 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace test {
@@ -45,7 +44,6 @@ std::vector<ShrinkTestData<T>> GenerateSignedTestCases() {
 
 template <typename T>
 std::vector<ShrinkTestData<T>> GenerateUnsignedTestCases() {
-  std::cout << "UNSIGNED CASE ";
   std::vector<ShrinkTestData<T>> test_cases;
 
   test_cases.push_back(
@@ -71,7 +69,6 @@ std::vector<ShrinkTestData<T>> GenerateUnsignedTestCases() {
 
 template <typename T>
 void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases) {
-  std::cout << "NUMBER OF CASES IS: " << test_cases.size();
   for (const auto& test_data : test_cases) {
     OpTester test("Shrink", 9);
     
