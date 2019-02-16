@@ -237,12 +237,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     try
                     {
                         var onnxModelNames = modelDir.GetFiles("*.onnx");
-                        if (onnxModelNames.Count() != 1)
+                        if (onnxModelNames.Length > 1)
                         {
                             // TODO remove file "._resnet34v2.onnx" from test set
-                            if (onnxModelNames[0].Name == "._resnet34v2.onnx")
-                                onnxModelNames[0] = onnxModelNames[1];
-                            else
+                            bool validModelFound = false;
+                            for (int i = 0; i < onnxModelNames.Length; i++)
+                            {
+                                if (onnxModelNames[i].Name != "._resnet34v2.onnx")
+                                {
+                                    onnxModelNames[0] = onnxModelNames[i];
+                                    validModelFound = true;
+                                }
+                            }
+                            
+                            if (!validModelFound)
                             {
                                 var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
                                 throw new Exception($"Opset {opset}: Model {modelDir}. Can't determine model file name. Found these :{modelNamesList}");
