@@ -25,6 +25,7 @@ struct RelAllocations {
 
 TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
   // Creation
+  std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   OrtAllocatorInfo* info;
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
@@ -78,7 +79,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
   // Fetch
   for (int idx = 0; idx < N; ++idx) {
     OrtValue* map_out = nullptr;
-    OrtStatus* st = OrtGetValue(seq_ort, idx, info, &map_out);
+    OrtStatus* st = OrtGetValue(seq_ort, idx, default_allocator.get(), &map_out);
     rel.torel.push_back(map_out);
     rel_status.torel.push_back(st);
     ASSERT_EQ(st, nullptr);
@@ -86,7 +87,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
     // fetch the map
     // first fetch the keys
     OrtValue* keys_ort = nullptr;
-    st = OrtGetValue(map_out, 0, info, &keys_ort);
+    st = OrtGetValue(map_out, 0, default_allocator.get(), &keys_ort);
     rel.torel.push_back(keys_ort);
     rel_status.torel.push_back(st);
     ASSERT_EQ(st, nullptr);
@@ -101,7 +102,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
 
     // second fetch the values
     OrtValue* values_ort = nullptr;
-    st = OrtGetValue(map_out, 1, info, &values_ort);
+    st = OrtGetValue(map_out, 1, default_allocator.get(), &values_ort);
     rel.torel.push_back(values_ort);
     rel_status.torel.push_back(st);
     ASSERT_EQ(st, nullptr);
@@ -118,6 +119,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
 
 TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
   // Creation
+  std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   OrtAllocatorInfo* info;
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
@@ -172,7 +174,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
   // Fetch
   for (int idx = 0; idx < N; ++idx) {
     OrtValue* map_out = nullptr;
-    OrtStatus* st = OrtGetValue(seq_ort, idx, info, &map_out);
+    OrtStatus* st = OrtGetValue(seq_ort, idx, default_allocator.get(), &map_out);
     rel.torel.push_back(map_out);
     rel_status.torel.push_back(st);
     ASSERT_EQ(st, nullptr);
@@ -180,7 +182,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
     // fetch the map
     // first fetch the keys
     OrtValue* keys_ort = nullptr;
-    st = OrtGetValue(map_out, 0, info, &keys_ort);
+    st = OrtGetValue(map_out, 0, default_allocator.get(), &keys_ort);
     rel.torel.push_back(keys_ort);
     rel_status.torel.push_back(st);
     ASSERT_EQ(st, nullptr);
@@ -206,7 +208,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
 
     // second fetch the values
     OrtValue* values_ort = nullptr;
-    st = OrtGetValue(map_out, 1, info, &values_ort);
+    st = OrtGetValue(map_out, 1, default_allocator.get(), &values_ort);
     rel.torel.push_back(values_ort);
     rel_status.torel.push_back(st);
     ASSERT_EQ(st, nullptr);
