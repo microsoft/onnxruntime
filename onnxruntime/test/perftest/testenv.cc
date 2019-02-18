@@ -61,10 +61,7 @@ Status SessionFactory::create(std::shared_ptr<::onnxruntime::InferenceSession>& 
 #endif
     } else if (provider == onnxruntime::kTRTExecutionProvider) {
 #if USE_TRT
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
-      RegisterExecutionProvider(sess.get(), f);
-      FACTORY_PTR_HOLDER;
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultTRTExecutionProvider());
 #else
       ORT_THROW("TensorRT is not supported in this build");
 #endif

@@ -5,8 +5,7 @@
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 
-namespace onnxruntime
-{
+namespace onnxruntime{
 static const int kBatchSize = 1;
 static const int max_batch_size = 1;
 static const int max_workspace_size = 1 << 30;
@@ -22,8 +21,7 @@ static const int max_workspace_size = 1 << 30;
         }                                         \
     } while (0)
 
-class TRTKernel final : public OpKernel
-{
+class TRTKernel final : public OpKernel{
 public:
     explicit TRTKernel(const OpKernelInfo& info);
     common::Status Compute(OpKernelContext* context) const override;
@@ -31,50 +29,45 @@ public:
 private:
     nvinfer1::IExecutionContext *tensorrt_context_;
     std::shared_ptr<nvinfer1::ICudaEngine> engine_;
-    std::vector<int> graph_input_index_;
-    std::vector<std::string> graph_input_name_;
-    std::vector<int> input_binding_index_;
-    std::vector<int> input_dim_size_;
-    std::vector<std::vector<int>> input_dimension_;
-    std::vector<int> output_binding_index_;
-    std::vector<int> output_dim_size_;
-    std::vector<std::vector<int>> output_dimension_;
+    std::vector<int> graph_input_indexes_;
+    std::vector<std::string> graph_input_names_;
+    std::vector<int> input_binding_indexes_;
+    std::vector<int> input_dim_sizes_;
+    std::vector<std::vector<int>> input_shapes_;
+    std::vector<int> output_binding_indexes_;
+    std::vector<int> output_dim_sizes_;
+    std::vector<std::vector<int>> output_shapes_;
+    int num_inputs_, num_outputs_;
+
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TRTKernel);
 };
 
-struct InferDeleter
-{
+struct InferDeleter{
     template<typename T>
-    void operator()(T* obj) const
-    {
-        if( obj )
-        {
+    void operator()(T* obj) const{
+        if( obj ){
             obj->destroy();
         }
     }
 };
 
 template<typename T>
-inline std::shared_ptr<T> InferObject(T* obj)
-{
-    if( !obj )
-    {
+inline std::shared_ptr<T> InferObject(T* obj){
+    if( !obj ){
         throw std::runtime_error("Failed to create object");
     }
     return std::shared_ptr<T>(obj, InferDeleter());
 }
 
-class TRTLogger : public nvinfer1::ILogger
-{
-    nvinfer1::ILogger::Severity _verbosity;
-    std::ostream* _ostream;
+class TRTLogger : public nvinfer1::ILogger{
+    nvinfer1::ILogger::Severity verbosity_;
+    std::ostream* ostream_;
 public:
     TRTLogger(Severity verbosity=Severity::kWARNING,
                std::ostream& ostream=std::cout)
-        : _verbosity(verbosity), _ostream(&ostream) {}
-    void log(Severity severity, const char* msg) override
-    {
-        if( severity <= _verbosity )
-        {
+        : verbosity_(verbosity), ostream_(&ostream) {}
+    void log(Severity severity, const char* msg) override{
+        if( severity <= verbosity_ ){
             time_t rawtime = std::time(0);
             char buf[256];
             strftime(&buf[0], 256,
@@ -85,11 +78,12 @@ public:
                                   severity == Severity::kWARNING        ? "WARNING" :
                                   severity == Severity::kINFO           ? "   INFO" :
                                   "UNKNOWN");
-            (*_ostream) << "[" << buf << " " << sevstr << "] "
+            (*ostream_) << "[" << buf << " " << sevstr << "] "
                         << msg
                         << std::endl;
         }
     }
 };
 }  // namespace Lotus
+
 
