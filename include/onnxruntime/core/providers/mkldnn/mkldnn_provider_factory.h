@@ -9,9 +9,8 @@ extern "C" {
 
 /**
  * \param use_arena zero: false. non-zero: true.
- * \param out Call OrtReleaseObject() method when you no longer need to use it.
  */
-ORT_API_STATUS(OrtCreateMkldnnExecutionProviderFactory, int use_arena, _Out_ OrtProviderFactoryInterface*** out);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena);
 
 #ifdef __cplusplus
 }

@@ -24,6 +24,7 @@ class WordConvEmbedding final : public OpKernel {
       size_t seq_len,
       size_t word_len,
       size_t char_embedding_size,
+      size_t filter_width,
       const int* words_len_ptr,
       float* dst) const;
   void ComputeConvMaxPoolWithActivation(

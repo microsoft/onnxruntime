@@ -23,7 +23,7 @@ ONNX Runtime continuously strives to provide top performance for a broad and gro
 ### Alignment with ONNX Releases
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See ONNX version release details [here](https://github.com/onnx/onnx/releases).
 
-As of November 2018, ONNX Runtime supports the latest released version of ONNX (1.3). Once 1.4 is released, ONNX Runtime will align with the updated spec, adding support for new operators and other capabilities.
+As of January 2019, ONNX Runtime supports ONNX 1.3. We will soon add support for the recently released ONNX 1.4.
 
 ### Traditional ML support
 ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios. 
@@ -39,15 +39,13 @@ We are continuously working to integrate new execution providers to provide impr
 
 ## Cross Platform 
 ONNX Runtime offers:
-* APIs for Python, C#, and C (experimental)
+* APIs for Python, C#, and C
 * Available for Linux, Windows, and Mac 
 
 See API documentation and package installation instructions [below](#Installation). 
 
 Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. These include but are not limited to:
-* C# for Linux, Mac
-* C# supporting GPU
-* C packages
+* C# for Mac
 * [ARM](BUILD.md##arm-builds)
 
 # Getting Started 
@@ -61,10 +59,14 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 ## APIs and Official Builds
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
-| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows](https://pypi.org/project/onnxruntime/)<br>[Linux](https://pypi.org/project/onnxruntime/)<br>[Mac](https://pypi.org/project/onnxruntime/)| [Windows](https://pypi.org/project/onnxruntime-gpu)<br>[Linux](https://pypi.org/project/onnxruntime-gpu/) |
-| [C#](docs/CSharp_API.md) | [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Linux - Coming Soon<br>Mac - Coming Soon| [Windows](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Linux - Coming Soon<br>Mac - Coming Soon|
-| [C (experimental)](docs/C_API.md) | Coming Soon | Coming Soon |
+| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows/Linux/Mac](https://pypi.org/project/onnxruntime/)| [Windows/Linux](https://pypi.org/project/onnxruntime-gpu/)<br>(Compatible with CUDA9.1 and cuDNN 7.3) |
+| [C#](docs/CSharp_API.md) | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Mac - Coming Soon| [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Mac - Coming Soon|
+| [C](docs/C_API.md) | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Mac - Coming Soon | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Mac - Coming Soon |
 | [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
+
+## System Requirements
+* The OnnxRuntime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the system. For Windows, OpenMP support comes as part of VC runtime. For Linux, the system must have the libgomp.so.1 installed. 
+* The GPU builds require the CUDA9.1 and cuDNN 7.3 runtime libraries being installed in the system. 
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).
@@ -80,8 +82,8 @@ ONNX Runtime is built with an extensible design that makes it versatile to suppo
 * [Add a custom operator/kernel](docs/AddingCustomOp.md)
 * [Add an execution provider](docs/AddingExecutionProvider.md)
 * [Add a new graph
-transform](include/onnxruntime/core/graph/graph_transformer.h)
-* [Add a new rewrite rule](include/onnxruntime/core/graph/rewrite_rule.h)
+transform](include/onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
 
 # Contribute
 We welcome your contributions! Please see the [contribution guidelines](CONTRIBUTING.md).

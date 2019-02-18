@@ -165,7 +165,7 @@ int real_main(int argc, char* argv[]) {
   std::unique_ptr<OrtEnv> env;
   {
     OrtEnv* t;
-    OrtStatus* ost = OrtInitialize(logging_level, "Default", &t);
+    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &t);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
       OrtReleaseStatus(ost);
@@ -203,10 +203,7 @@ int real_main(int argc, char* argv[]) {
       sf.DisableSequentialExecution();
     if (enable_cuda) {
 #ifdef USE_CUDA
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateCUDAExecutionProviderFactory(0, &f));
-      sf.AppendExecutionProvider(f);
-      OrtReleaseObject(f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -214,10 +211,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_nuphar) {
 #ifdef USE_NUPHAR
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateNupharExecutionProviderFactory(0, "", &f));
-      sf.AppendExecutionProvider(f);
-      OrtReleaseObject(f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, 0, ""));
 #else
       fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
@@ -225,10 +219,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_mkl) {
 #ifdef USE_MKLDNN
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateMkldnnExecutionProviderFactory(enable_cpu_mem_arena ? 1 : 0, &f));
-      sf.AppendExecutionProvider(f);
-      OrtReleaseObject(f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
       return -1;
@@ -236,10 +227,7 @@ int real_main(int argc, char* argv[]) {
     }
     if (enable_trt) {
 #ifdef USE_TRT
-      OrtProviderFactoryInterface** f;
-      ORT_THROW_ON_ERROR(OrtCreateTRTExecutionProviderFactory(0, &f));
-      sf.AppendExecutionProvider(f);
-      OrtReleaseObject(f);
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -284,9 +272,6 @@ int real_main(int argc, char* argv[]) {
       {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
-      {"eyelike_populate_off_main_diagonal", "disable reason"},
-      {"eyelike_with_dtype", "disable reason"},
-      {"eyelike_without_dtype", "disable reason"},
       {"flatten_axis0", "disable reason"},
       {"flatten_axis1", "disable reason"},
       {"flatten_axis2", "disable reason"},
@@ -324,18 +309,12 @@ int real_main(int argc, char* argv[]) {
       {"acosh_example", "opset 9 not supported yet"},
       {"atanh_example", "opset 9 not supported yet"},
       {"sign_model", "opset 9 not supported yet"},
-      {"sign", "opset 9 not supported yet"},
       {"scatter_with_axis", "opset 9 not supported yet"},
       {"scatter_without_axis", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"shrink", "opset 9 not supported yet"},
-      {"constantofshape_int_zeros", "opset 9 not supported yet"},
       {"shrink_hard", "opset 9 not supported yet"},
       {"shrink_soft", "opset 9 not supported yet"},
-      {"where_example", "opset 9 not supported yet"},
-      {"constantofshape_float_ones", "opset 9 not supported yet"},
-      {"batchnorm_example", "opset 9 not supported yet"},
-      {"batchnorm_epsilon", "opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -344,7 +323,8 @@ int real_main(int argc, char* argv[]) {
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
-      {"nonzero_example", "NonZero opset 9 not supported yet"}};
+      {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
+      {"tf_inception_v4", "Cast opset 9 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
@@ -358,9 +338,9 @@ int real_main(int argc, char* argv[]) {
   broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
 
-  broken_tests["fp16_tiny_yolov2"] = "unknown failure on CUDA";
-  broken_tests["fp16_shufflenet"] = "unknown failure on CUDA";
-  broken_tests["fp16_inception_v1"] = "unknown failure on CUDA";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
+  broken_tests["fp16_shufflenet"] = "still have issue on Linux";
+  broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
 #endif
 
   int result = 0;

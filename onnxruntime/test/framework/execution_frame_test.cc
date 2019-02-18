@@ -70,18 +70,17 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
-  vector<MLValue> outputs;
-  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{},
-                       std::vector<std::string>{},
-                       outputs,
-                       state);
+  state.CalculateNodeIndexInfo();
 
-  int start_index = frame.GetFirstArgIndex(node->Index());
+  vector<MLValue> outputs;
+  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{}, std::vector<std::string>{}, outputs, {}, state);
+
+  int start_index = frame.GetNodeOffset(node->Index());
   EXPECT_EQ(start_index, 0);
 
   TensorShape shape(std::vector<int64_t>{2, 3});
-  status = frame.AllocateTensorWithSelfOwnBuffer(start_index, DataTypeImpl::GetType<float>(),
-                                                 execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
+  status = frame.AllocateMLValueTensorSelfOwnBuffer(start_index, DataTypeImpl::GetType<float>(),
+                                                    execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
@@ -92,12 +91,11 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   //test share memory from tensor
   TensorShape shape2(std::vector<int64_t>{3, 2});
-  status = frame.AllocateTensorWithPreAllocateBuffer(
-      start_index + 1,
-      p_tensor->template MutableData<float>(),
-      DataTypeImpl::GetType<float>(),
-      p_tensor->Location(),
-      shape2);
+  status = frame.AllocateMLValueTensorPreAllocateBuffer(start_index + 1,
+                                                        start_index,
+                                                        DataTypeImpl::GetType<float>(),
+                                                        p_tensor->Location(),
+                                                        shape2);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   const MLValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
@@ -147,11 +145,11 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   mlvalue_name_idx_map.Add("X");
   mlvalue_name_idx_map.Add("Y");
 
+  state.CalculateNodeIndexInfo();
+
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X", value}},
-                       std::vector<std::string>{},
-                       outputs,
-                       state);
+                       std::vector<std::string>{}, outputs, {}, state);
 
   MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -226,11 +224,11 @@ TEST(ExecutionFrameTest, MemPatternTest) {
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
+  state.CalculateNodeIndexInfo();
+
   vector<MLValue> outputs;
   ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X1", v1}, {"X2", v2}, {"X3", v3}},
-                       std::vector<std::string>{"T3"},
-                       outputs,
-                       state);
+                       std::vector<std::string>{"T3"}, outputs, {}, state);
 
   status = frame.AllocateMLValueTensorSelfOwnBuffer(3,
                                                     DataTypeImpl::GetType<float>(),
@@ -257,7 +255,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(pattern.patterns.size(), pattern.locations.size());
   EXPECT_EQ(pattern.patterns.size(), 1);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  EXPECT_EQ(p->PeakSize(), 2 * 64); // each allocation is 64-byte aligned
+  EXPECT_EQ(p->PeakSize(), 2 * 64);  // each allocation is 64-byte aligned
   EXPECT_EQ(p->GetBlock(3)->offset_, 0);
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }

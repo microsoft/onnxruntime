@@ -496,7 +496,11 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd.append(onnx_test_data_dir)
         run_subprocess([exe] + cmd, cwd=cwd)
         if enable_parallel_executor_test:
-          run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+          if provider == 'mkldnn':
+            #limit concurrency to 1
+            run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
+          else:
+            run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -559,7 +563,8 @@ def main():
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
             install_ubuntu_deps(args)
-            install_python_deps()
+            if not is_docker():
+                install_python_deps()
         if (args.enable_pybind and is_windows()):
             install_python_deps()
         if (not args.skip_submodule_sync):

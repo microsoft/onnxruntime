@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "mkldnn_allocator.h"
 #include "mkldnn_execution_provider.h"
 #include "core/framework/allocator.h"
-#include "core/framework/transformer_memcpy.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
 #include "mkldnn_fwd.h"
 
 namespace onnxruntime {
+
+constexpr const char* MKLDNN = "MklDnn";
+constexpr const char* MKLDNN_CPU = "MklDnnCpu";
+
 namespace mkl_dnn {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -32,11 +34,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& /*info*/) {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<MKLDNNAllocator>(); }, std::numeric_limits<size_t>::max()});
+                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info));
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<MKLDNNCPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(cpu_allocator_info));
 }
 
@@ -97,8 +99,6 @@ std::shared_ptr<KernelRegistry> GetMklDnnKernelRegistry() {
   return kernel_registry;
 }
 }  // namespace mkl_dnn
-
-
 
 std::shared_ptr<KernelRegistry> MKLDNNExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::mkl_dnn::GetMklDnnKernelRegistry();

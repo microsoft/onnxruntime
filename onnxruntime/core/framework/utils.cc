@@ -30,16 +30,11 @@ const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
 }
 
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info) {
-  auto exec_provider = exec_providers.Get(allocator_info);
-  if (exec_provider == nullptr) {
-    return nullptr;
-  }
-
-  return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+  return exec_providers.GetAllocator(allocator_info);
 }
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
-  return GetAllocator(session_state.GetExecutionProviders(), allocator_info);
+  return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider,
@@ -133,8 +128,8 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
 
   //no copy for TRT
   if (required_provider_type == onnxruntime::kTRTExecutionProvider) {
-     new_mlvalue = orig_mlvalue;
-     return Status::OK();
+    new_mlvalue = orig_mlvalue;
+    return Status::OK();
   }
 
   auto input_provider_type = p_input_provider->Type();
@@ -160,8 +155,11 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
   // our CPU exec provider doesn't support copy from GPU->CPU
   if (required_provider_type != onnxruntime::kCpuExecutionProvider) {
     ORT_RETURN_IF_ERROR(required_provider->CopyTensor(input_tensor, *new_tensor));
-  } else {
+  } else if (input_provider_type != onnxruntime::kCpuExecutionProvider) {
     ORT_RETURN_IF_ERROR(p_input_provider->CopyTensor(input_tensor, *new_tensor));
+  } else {
+    //both tensors are on CPU.
+    return Status(common::ONNXRUNTIME, common::FAIL, "can't copy a tensor from CPU to CPU");
   }
 
   // } loop of node_info_vec
@@ -218,7 +216,6 @@ common::Status MatchOutputsWithProviders(const SessionState& session_state,
 
     for (auto* arg : node.OutputDefs()) {
       if (!arg->Exists() ||
-          arg->Name().empty() ||
           !(found = Contains(output_names, arg->Name())).first) {
         continue;
       }
@@ -257,44 +254,6 @@ common::Status MatchOutputsWithProviders(const SessionState& session_state,
       }
     }
   }
-
-  // If we've already seen all the outputs requested just return.
-  if (seen_outputs.size() == output_names.size()) {
-    return Status::OK();
-  }
-
-  // Handle the case when a constant is an output but has been folded into a weight
-  // and hence it doesn't show up in any of the OutputDefs before.
-  // assume that the weight has already been placed in the appropriate device before
-  auto& defs = p_graph->GetOutputs();
-  auto& mlvalue_name_idx_map{session_state.GetMLValueNameIdxMap()};
-  auto& weights = session_state.GetInitializedTensors();
-
-  for (auto& one_def : defs) {
-    if (!one_def->Exists() ||
-        one_def->Name().empty() ||
-        seen_outputs.count(one_def->Name()) ||
-        !(found = Contains(output_names, one_def->Name())).first) {
-      continue;
-    }
-
-    auto& def_name = one_def->Name();
-    size_t idx = found.second;
-    int mlvalue_idx;
-    ORT_RETURN_IF_ERROR(mlvalue_name_idx_map.GetIdx(def_name, mlvalue_idx));
-    if (!weights.count(mlvalue_idx)) {
-      LOGS(session_state.Logger(), INFO) << "Output with name " << def_name << " is not a weight.";
-      continue;
-    }
-
-    seen_outputs.insert(def_name);
-    const auto& weight = weights.at(mlvalue_idx);
-    new_fetches[idx] = weight;
-  }
-
-  if (seen_outputs.size() != output_names.size())  // make sure we've seen all outputs
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output size mismatch, expected ", output_names.size(),
-                           " got ", seen_outputs.size());
 
   return Status::OK();
 }
@@ -353,8 +312,11 @@ common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
     // our CPU exec provider doesn't support copy from GPU->CPU
     if (fetched_provider_type != onnxruntime::kCpuExecutionProvider) {
       ORT_RETURN_IF_ERROR(p_fetched_provider->CopyTensor(fetched_tensor, *p_output_tensor));
-    } else {
+    } else if (output_provider_type != onnxruntime::kCpuExecutionProvider) {
       ORT_RETURN_IF_ERROR(p_output_provider->CopyTensor(fetched_tensor, *p_output_tensor));
+    } else {
+      //both tensors are on CPU.
+      return Status(common::ONNXRUNTIME, common::FAIL, "can't copy a tensor from CPU to CPU");
     }
   }
 
@@ -365,19 +327,10 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const NameMLValMap& feeds,
                             const std::vector<std::string>& output_names,
                             std::vector<MLValue>& fetches,
+                            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                             bool sequential_execution,
                             const bool& terminate_flag,
                             const logging::Logger& logger) {
-  // TODO: Would be better to check upfront whether there was a need to copy inputs/outputs across devices,
-  // especially when a subgraph is repeatedly executed in a Scan or Loop node. If we checked once and no copy was
-  // needed we can skip everything here apart from the Execute call.
-
-  NameMLValMap device_feeds;
-  ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
-
-  std::vector<MLValue> device_fetches;
-  ORT_RETURN_IF_ERROR(utils::MatchOutputsWithProviders(session_state, output_names, fetches, device_fetches));
-
   std::unique_ptr<IExecutor> p_exec;
 
   if (sequential_execution) {
@@ -386,9 +339,28 @@ common::Status ExecuteGraph(const SessionState& session_state,
     p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
   }
 
-  ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, device_feeds, output_names, device_fetches, logger));
-  ORT_RETURN_IF_ERROR(utils::CopyOutputsAcrossDevices(session_state, device_fetches, fetches));
+  // If we only have one provider it's the CPU provider as that is always automatically registered. If that's the
+  // case, assume no copy to/from other devices is required.
 
+  // TODO: Next step: If there is more than one provider we could add an in/out param to track whether any
+  // copy to/from devices was needed, and set that on the first execution. That way when a subgraph is repeatedly
+  // executed in a Scan or Loop node we can skip unnecessary checks for copies.
+
+  if (session_state.GetExecutionProviders().NumProviders() == 1) {
+    // no device copies are needed so simple execute
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, feeds, output_names, fetches, fetch_allocators, logger));
+  } else {
+    NameMLValMap device_feeds;
+    ORT_RETURN_IF_ERROR(utils::CopyInputsAcrossDevices(session_state, feeds, device_feeds));
+
+    std::vector<MLValue> device_fetches;
+    ORT_RETURN_IF_ERROR(utils::MatchOutputsWithProviders(session_state, output_names, fetches, device_fetches));
+
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, device_feeds, output_names, device_fetches, fetch_allocators,
+                                        logger));
+
+    ORT_RETURN_IF_ERROR(utils::CopyOutputsAcrossDevices(session_state, device_fetches, fetches));
+  }
   return Status::OK();
 }
 

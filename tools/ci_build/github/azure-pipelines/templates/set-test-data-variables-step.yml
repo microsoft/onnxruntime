@@ -1,8 +1,8 @@
 # sets variables $(TestDataUrl) and $(TestDataChecksum)
 
 parameters:
-  TestDataUrl: https://onnxruntimetestdata.blob.core.windows.net/models/20190107.zip
-  TestDataChecksum: 67622404e651317e24c581350718331a
+  TestDataUrl: https://onnxruntimetestdata.blob.core.windows.net/models/20190130.zip
+  TestDataChecksum: bf433d0dfca452fa30a6dea47eac4e5d
 
 steps:
 - task: CmdLine@1

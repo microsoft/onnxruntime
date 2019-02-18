@@ -482,7 +482,7 @@ struct Broadcaster {
   std::vector<int64_t> output_shape_;
 };
 
-template <typename T>
+template <typename T0, typename T1>
 struct TBroadcaster {
   TBroadcaster(const Tensor& input0, const Tensor& input1)
       : input_tensor0_(input0),
@@ -495,26 +495,26 @@ struct TBroadcaster {
   bool IsInput0Scalar() const { return broadcaster_.iterator1_.deltas_.front() == 0; }
   bool IsInput1Scalar() const { return broadcaster_.iterator2_.deltas_.front() == 0; }
 
-  T NextScalar0() { return *Next0(); }
-  T NextScalar1() { return *Next1(); }
+  const T0& NextScalar0() { return *Next0(); }
+  const T1& NextScalar1() { return *Next1(); }
 
-  gsl::span<const T> NextSpan0() { return gsl::span<const T>(Next0(), span_size_); }
-  gsl::span<const T> NextSpan1() { return gsl::span<const T>(Next1(), span_size_); }
+  gsl::span<const T0> NextSpan0() { return gsl::span<const T0>(Next0(), span_size_); }
+  gsl::span<const T1> NextSpan1() { return gsl::span<const T1>(Next1(), span_size_); }
 
-  ConstEigenVectorMap<T> NextEigen0() { return ConstEigenVectorMap<T>(Next0(), span_size_); }
-  ConstEigenVectorMap<T> NextEigen1() { return ConstEigenVectorMap<T>(Next1(), span_size_); }
+  ConstEigenVectorMap<T0> NextEigen0() { return ConstEigenVectorMap<T0>(Next0(), span_size_); }
+  ConstEigenVectorMap<T1> NextEigen1() { return ConstEigenVectorMap<T1>(Next1(), span_size_); }
 
  private:
-  const T* Next0() { return input0_ + broadcaster_.iterator1_.AdvanceBy(span_size_); }
-  const T* Next1() { return input1_ + broadcaster_.iterator2_.AdvanceBy(span_size_); }
+  const T0* Next0() { return input0_ + broadcaster_.iterator1_.AdvanceBy(span_size_); }
+  const T1* Next1() { return input1_ + broadcaster_.iterator2_.AdvanceBy(span_size_); }
 
   const Tensor& input_tensor0_;
   const Tensor& input_tensor1_;
   Broadcaster broadcaster_{input_tensor0_.Shape().GetDims(), input_tensor1_.Shape().GetDims()};
   size_t span_size_{broadcaster_.GetSpanSize()};
 
-  const T* input0_{input_tensor0_.template Data<T>()};
-  const T* input1_{input_tensor1_.template Data<T>()};
+  const T0* input0_{input_tensor0_.template Data<T0>()};
+  const T1* input1_{input_tensor1_.template Data<T1>()};
 };
 
 template <typename T>
@@ -568,9 +568,11 @@ struct TensorAllocator {
 };
 
 // Broadcast loop for when using eigen, functions are in this form:
-// Input0Scalar: [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1)
-// Input1Scalar: [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1)
-// General     : [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1)
+// Input0Scalar: [](EigenVectorMap<TOutput> output, TInput0 input0, ConstEigenVectorMap<TInput1> input1)
+// Input1Scalar: [](EigenVectorMap<TOutput> output, ConstEigenVectorMap<TInput0> input0, TInput1 input1)
+// General     : [](EigenVectorMap<TOutput> output, ConstEigenVectorMap<TInput0> input0,
+//                  ConstEigenVectorMap<TInput1> input1)
+// Scalar parameters can also be of type const TX&.
 template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
 void BroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   if (bc.IsInput0Scalar()) {
@@ -585,9 +587,28 @@ void BroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, 
   }
 }
 
+// Broadcast loop for when using gsl::span<T>, functions are in this form:
+// Input0Scalar: [](gsl::span<TOutput> output, TInput0 input0, gsl::span<const TInput1> input1)
+// Input1Scalar: [](gsl::span<TOutput> output, gsl::span<const TInput0> input0, TInput1 input1)
+// General     : [](gsl::span<TOutput> output, gsl::span<const TInput0> input0, gsl::span<const TInput1> input1)
+// Scalar parameters can also be of type const TX&.
+template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
+void BroadcastLoopSpan(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
+  if (bc.IsInput0Scalar()) {
+    while (output)
+      input0scalar(output.NextSpanOutput(), bc.NextScalar0(), bc.NextSpan1());
+  } else if (bc.IsInput1Scalar()) {
+    while (output)
+      input1scalar(output.NextSpanOutput(), bc.NextSpan0(), bc.NextScalar1());
+  } else {
+    while (output)
+      general(output.NextSpanOutput(), bc.NextSpan0(), bc.NextSpan1());
+  }
+}
+
 template <typename TInput, typename TOutput, typename Input0Scalar, typename Input1Scalar, typename General>
 Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
-  TBroadcaster<TInput> bc(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
+  TBroadcaster<TInput, TInput> bc(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
   TBroadcastOutput<TOutput> output(bc.GetSpanSize(), *context.Output(0, bc.GetOutputShape()));
   BroadcastLoop(bc, output, input0scalar, input1scalar, general);
 
@@ -615,7 +636,7 @@ Status BroadcastVariadic(const Node& node, OpKernelContext& context, Input0Scala
     auto& tensor0 = tempInput ? *tempInput : *context.Input<Tensor>(0);
     auto& tensor1 = *context.Input<Tensor>(i + 1);
 
-    TBroadcaster<TInput> bc(tensor0, tensor1);
+    TBroadcaster<TInput, TInput> bc(tensor0, tensor1);
 
     // Create a temporary output for all but the last iteration, which goes to the real output
     Tensor* p_output{};
@@ -634,6 +655,5 @@ Status BroadcastVariadic(const Node& node, OpKernelContext& context, Input0Scala
   }
   return Status::OK();
 }
-
 
 }  // namespace onnxruntime

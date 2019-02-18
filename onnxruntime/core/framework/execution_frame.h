@@ -8,6 +8,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
+#include "core/framework/iexecutor.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
@@ -18,20 +19,19 @@ namespace onnxruntime {
 class SessionState;
 class MLValuePatternPlanner;
 struct MemoryPatternGroup;
+class NodeIndexInfo;
 
 struct MLValueAllocationParameters {
   MLValueAllocationParameters() = default;
   MLValueAllocationParameters(const TensorShape* shape)
-    : tensor_shape{ shape }
-  {}
+      : tensor_shape{shape} {}
 
-  const TensorShape& GetTensorShape() const
-  {
+  const TensorShape& GetTensorShape() const {
     static const TensorShape s_empty_tensor_shape;
     return tensor_shape != nullptr ? *tensor_shape : s_empty_tensor_shape;
   }
 
-private:
+ private:
   const TensorShape* tensor_shape{};
   // todo: is there any parameter needed for ml types?
 };
@@ -41,10 +41,15 @@ class ExecutionFrame {
   ExecutionFrame(const std::unordered_map<std::string, MLValue>& feeds,
                  const std::vector<std::string>& output_names,
                  const std::vector<MLValue>& fetches,
+                 // optional custom allocators. key is index in fetches
+                 const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
 
   ~ExecutionFrame();
 
+  // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
+  // Fix the unit tests so they set an execution plan that results in these methods being called by
+  // GetOrCreateNodeOutputMLValue instead
   Status AllocateMLValueTensorSelfOwnBuffer(int mlvalue_index,
                                             MLDataType element_type,
                                             const OrtAllocatorInfo& location,
@@ -57,30 +62,6 @@ class ExecutionFrame {
                                                 const OrtAllocatorInfo& location,
                                                 const TensorShape& shape,
                                                 bool create_fence = false);
-
-  // ?? Cheng: What about non-tensor values??
-  // ?? Cheng: There are cases we may not want to use ORT_ENFORCE??
-  // ?? Cheng: Graph must be immutable for GetNodesInTopologicalOrder??
-  // Create tensor at index mlvalue, and allocate buffer for it.
-  // This tensor will own this buffer.
-  // This method is not thread safe!
-  Status AllocateTensorWithSelfOwnBuffer(int index,
-                                         MLDataType element_type,
-                                         const OrtAllocatorInfo& location,
-                                         const TensorShape& shape,
-                                         bool create_fence = false);
-
-  // Create tensor at index mlvalue, with pre-allocate buffer
-  // This tensor does not own the buffer.
-  // The executor / planner need to be careful about the
-  // lifetime of the buffer. Tensor itself won't manage it.
-  // This method is not thread safe!
-  Status AllocateTensorWithPreAllocateBuffer(int offset,
-                                             void* pBuffer,
-                                             MLDataType element_type,
-                                             const OrtAllocatorInfo& location,
-                                             const TensorShape& shape);
-
   const MLValue& GetMLValue(int mlvalue_index) const {
     ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
     return all_values_[mlvalue_index];
@@ -91,11 +72,8 @@ class ExecutionFrame {
     return all_values_[mlvalue_index];
   }
 
-  // Index to the first argument of the given node.
-  int GetFirstArgIndex(onnxruntime::NodeIndex index) const {
-    ORT_ENFORCE(index < node_offsets_.size());
-    return node_offsets_[index];
-  }
+  // Get the index for the first entry of the given node.
+  int GetNodeOffset(onnxruntime::NodeIndex index) const;
 
   // Return nullptr if index map to an value that is an unused optional input/output
   const MLValue* GetNodeInputOrOutputMLValue(int index) const;
@@ -112,7 +90,7 @@ class ExecutionFrame {
 
   Status ReleaseMLValue(int mlvalue_idx);
 
-  const ::onnxruntime::SessionState& SessionState() const {
+  const SessionState& GetSessionState() const {
     return session_state_;
   }
 
@@ -125,8 +103,10 @@ class ExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
-  // This method is not thread safe!
-  void Release(int offset);
+  void Init(const std::unordered_map<std::string, MLValue>& feeds,
+            const std::vector<std::string>& output_names,
+            const std::vector<MLValue>& fetches,
+            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators);
 
   common::Status AllocateAsPerAllocationPlan(int mlvalue_index,
                                              const MLValueAllocationParameters& parameters);
@@ -136,13 +116,6 @@ class ExecutionFrame {
                                                   const OrtAllocatorInfo& location,
                                                   const TensorShape& shape,
                                                   bool create_fence);
-
-  void Init(const onnxruntime::GraphViewer& graph,
-            const std::unordered_map<std::string, MLValue>& feeds,
-            const std::vector<std::string>& output_names,
-            const std::vector<MLValue>& fetches);
-
-  void SetupNodeArg(const onnxruntime::NodeArg* arg);
 
   Status AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlvalue,
                                                    void* pBuffer,
@@ -158,23 +131,19 @@ class ExecutionFrame {
 
   Status status_;
 
-  // The values for the inputs and outputs of the nodes.
-  // This vector contains the indices into the all_values_ vector.
-  std::vector<int> node_values_;
+  const NodeIndexInfo& node_index_info_;
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
   std::vector<MLValue> all_values_;
 
-  // The start index into node_values_ for all the nodes.
-  std::vector<int> node_offsets_;
-
   // i-th kernel is still waiting for pending_counts_[i] inputs.
   std::vector<int> pending_counts_;  // not used currently
 
-  std::unordered_map<std::string, int> value_name_to_index_;
+  // map of index to custom allocator
+  std::unordered_map<int, IExecutor::CustomAllocator> custom_allocators_;
 
-  const ::onnxruntime::SessionState& session_state_;
+  const SessionState& session_state_;
 
   // If we already have cached memory pattern on these input shapes
   // Use this mem pattern that create a big chunk for all the internal

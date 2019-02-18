@@ -16,8 +16,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/task_thread_pool.h"
 #include "core/graph/graph_viewer.h"
-#include "core/graph/graph_transformer.h"
-#include "core/graph/graph_transformer_mgr.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
@@ -25,7 +23,6 @@
 #include "core/framework/environment.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/graph_partitioner.h"
-#include "core/framework/insert_cast_transformer.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/ml_value_patterns_planner.h"
@@ -37,8 +34,11 @@
 #include "core/framework/session_state_initializer.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensorutils.h"
-#include "core/framework/transformer_memcpy.h"
 #include "core/framework/utils.h"
+#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_transformer_mgr.h"
+#include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/transformer_memcpy.h"
 #include "core/platform/notification.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/CustomOpsLoader.h"
@@ -133,140 +133,81 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  template <typename T>
-  common::Status Load(const T& model_uri) {
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader, const std::string& event_name) {
+    Status status = Status::OK();
     auto tp = session_profiler_.StartTime();
     try {
       std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
       if (is_model_loaded_) {  // already loaded
         LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED,
+                              "This session already contains a loaded model.");
       }
 
       std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_uri, p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
+      status = loader(p_tmp_model);
+      ORT_RETURN_IF_ERROR(status);
+
       model_ = p_tmp_model;
 
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
+      status = DoPostLoadProcessing(*model_);
+      ORT_RETURN_IF_ERROR(status);
 
       // all steps complete, mark the model as loaded.
       is_model_loaded_ = true;
     } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
     } catch (...) {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
+      status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
+    
     if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_uri", tp);
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
     }
-    return common::Status::OK();
+    
+    return status;
+  }
+
+  template <typename T>
+  common::Status Load(const T& model_uri) {
+    auto loader = [this, &model_uri](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(model_uri, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
+
+    return Load(loader, "model_loading_uri");
   }
 
   common::Status Load(const ModelProto& model_proto) {
-    auto tp = session_profiler_.StartTime();
-    try {
-      LOGS(*session_logger_, INFO) << "Loading model using model_proto";
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_model_loaded_) {  // already loaded
-        LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      }
+    auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
 
-      std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
-      model_ = p_tmp_model;
-
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
-
-      // all steps complete, mark the model as loaded.
-      is_model_loaded_ = true;
-
-      LOGS(*session_logger_, INFO) << "Model successfully loaded.";
-    } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-    } catch (...) {
-      LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
-    }
-    if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
-    }
-    return Status::OK();
+    return Load(loader, "model_loading_proto");
   }
 
   common::Status Load(std::unique_ptr<ModelProto> p_model_proto) {
-    auto tp = session_profiler_.StartTime();
-    try {
-      LOGS(*session_logger_, INFO) << "Loading model using model_proto";
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_model_loaded_) {  // already loaded
-        LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      }
+    auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(std::move(p_model_proto), model,
+                                      HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
 
-      std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(std::move(p_model_proto), p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
-      model_ = p_tmp_model;
-
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
-
-      // all steps complete, mark the model as loaded.
-      is_model_loaded_ = true;
-
-      LOGS(*session_logger_, INFO) << "Model successfully loaded.";
-    } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-    } catch (...) {
-      LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
-    }
-    if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_proto", tp);
-    }
-    return Status::OK();
+    return Load(loader, "model_loading_proto");
   }
 
   common::Status Load(std::istream& model_istream) {
-    auto tp = session_profiler_.StartTime();
-    try {
-      LOGS(*session_logger_, INFO) << "Loading model using istream";
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_model_loaded_) {  // already loaded
-        LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-        return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      }
-
+    auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
       ModelProto model_proto;
       const bool result = model_proto.ParseFromIstream(&model_istream);
       if (!result) {
-        return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
+        return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                      "Failed to load model because protobuf parsing failed.");
       }
 
-      std::shared_ptr<onnxruntime::Model> p_tmp_model;
-      ORT_RETURN_IF_ERROR(onnxruntime::Model::Load(model_proto, p_tmp_model,
-                                                   HasLocalSchema() ? &custom_schema_registries_ : nullptr));
-      model_ = p_tmp_model;
+      return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    };
 
-      ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_.get()));
-
-      // all steps complete, mark the model as loaded.
-      is_model_loaded_ = true;
-
-      LOGS(*session_logger_, INFO) << "Model successfully loaded.";
-    } catch (const std::exception& ex) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
-    } catch (...) {
-      LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
-      return Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
-    }
-    if (session_profiler_.FEnabled()) {
-      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_loading_istream", tp);
-    }
-    return common::Status::OK();
+    return Load(loader, "model_loading_istream");
   }
 
   static common::Status TransformGraph(onnxruntime::Graph& graph,
@@ -274,7 +215,7 @@ class InferenceSession::Impl {
                                        const ExecutionProviders& providers,
                                        KernelRegistryManager& kernel_registry_manager,
                                        const InsertCastTransformer& insert_cast_transformer,
-                                       const SessionState& session_state) {
+                                       SessionState& session_state) {
     // The transformer order:
     // 1. built-in graph rewriter
     // 2. each execution provider's transformer
@@ -285,35 +226,51 @@ class InferenceSession::Impl {
     // first apply the default/system/basic graph to graph optimizations.
     ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
 
-    auto kernels{kernel_registry_manager.GetAllKernelRegistries()};
-
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
-    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), const_cast<FuncManager*>(session_state.GetFuncMgr())));
+    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
+
+    bool modified = false;
 
     // Insert cast node/s.
-    bool modified = false;
     ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
-    // Insert copy nodes after all graph transformer.
-    for (auto& provider : providers) {
-      if (provider->Type() != onnxruntime::kCpuExecutionProvider &&
-          provider->Type() != onnxruntime::kMklDnnExecutionProvider &&
-          provider->Type() != onnxruntime::kNupharExecutionProvider &&
-          provider->Type() != onnxruntime::kTRTExecutionProvider) {
-        TransformerMemcpyImpl copy_impl(graph, provider->Type());
-        copy_impl.ModifyGraph(kernel_registry_manager);
-      }
+    std::vector<std::string> provider_types;
+    for (auto& provider_ptr : providers) {
+      provider_types.push_back(provider_ptr->Type());
     }
+
+    // Insert copy node/s.
+    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
+    ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified));
 
     return common::Status::OK();
   }
 
-  // memory allocations for a subgraph that are owned by InferenceSession
-  struct SubgraphMemory {
-    std::unique_ptr<SessionState> session_state;
-    std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers;
-  };
+  /// Create SessionState instance for each subgraph as we need that for the GraphPartitioner
+  /// This will be initialized by InitializeSubgraphSessions.
+  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) {
+    for (auto& node : graph.Nodes()) {
+      for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+        auto& name = entry.first;
+        Graph* subgraph = entry.second;
+        ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+
+        auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
+        subgraph_session_state->SetProfiler(session_profiler_);
+        subgraph_session_state->SetLogger(*session_logger_);
+
+        // recurse
+        ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
+
+        // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
+        // by Compute() via OpKernelContextInternal.
+        session_state.AddSubgraphSessionState(node.Index(), name, std::move(subgraph_session_state));
+      }
+    }
+
+    return Status::OK();
+  }
 
   /// iterate nodes in graph looking for ones with graph attribute/s
   /// @param graph The graph to iterate
@@ -321,46 +278,28 @@ class InferenceSession::Impl {
   /// @remarks We pass in graph and session_state so we can handled nested subgraphs in the future
   common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) {
     for (auto& node : graph.Nodes()) {
-      for (auto& attribute : node.GetAttributes()) {
-        auto& name = attribute.first;
-        auto& proto = attribute.second;
+      for (const auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+        auto& name = entry.first;
+        Graph& subgraph = *entry.second;
 
-        // check if it has a subgraph
-        if (proto.has_g()) {
-          Graph* subgraph = node.GetMutableGraphAttribute(name);
-          ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+        SessionState* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), name);
+        ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
 
-          SubgraphMemory subgraph_info;
-          // create SessionState for executing subgraph
-          subgraph_info.session_state = std::make_unique<SessionState>(execution_providers_);
-          subgraph_info.session_state->SetProfiler(session_profiler_);
-          subgraph_info.session_state->SetLogger(*session_logger_);
+        // setup everything required to execute the subgraph and save it in subgraph_session_state
+        SessionStateInitializer initializer{subgraph, *subgraph_session_state,
+                                            execution_providers_, kernel_registry_manager_};
 
-          // setup everything required to execute the subgraph and save it in subgraph_session_state
-          SessionStateInitializer initializer{*subgraph, *subgraph_info.session_state,
-                                              execution_providers_, kernel_registry_manager_};
+        ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
+                                                   session_options_.enable_sequential_execution));
 
-          ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
-                                                     session_options_.enable_sequential_execution));
+        ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
+                                                          &node.ImplicitInputDefs()));
 
-          ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                            subgraph_info.weights_buffers,
-                                                            &node.ImplicitInputDefs()));
+        // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
+        //                                                   &*subgraph_info.session_state);
 
-          // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
-          // by Compute() via OpKernelContextInternal.
-          session_state.AddSubgraphSessionState(node.Index(), name, *subgraph_info.session_state);
-
-          // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
-          //                                                   &*subgraph_info.session_state);
-
-          // recurse
-          ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(*subgraph, *subgraph_info.session_state));
-
-          // save subgraph_info as InferenceSession owns these so they remain valid
-          // for the entire InferenceSession.
-          subgraph_memory_.push_back(std::move(subgraph_info));
-        }
+        // recurse
+        ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(subgraph, *subgraph_session_state));
       }
     }
 
@@ -388,8 +327,8 @@ class InferenceSession::Impl {
       if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
         LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
         CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-        execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
-                                 std::make_unique<CPUExecutionProvider>(epi));
+        ORT_RETURN_IF_ERROR(execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
+                                                     std::make_unique<CPUExecutionProvider>(epi)));
       }
 
       onnxruntime::Graph& graph = model_->MainGraph();
@@ -402,12 +341,13 @@ class InferenceSession::Impl {
       // The 1st ones should have already been registered via session-level API into KernelRegistryManager.
       //
       // Register 2nd registries into KernelRegistryManager.
-      kernel_registry_manager_.RegisterKernels(execution_providers_);
-
-      insert_cast_transformer_.AddKernelRegistries(kernel_registry_manager_.GetAllKernelRegistries());
+      kernel_registry_manager_.RegisterKernels(execution_providers_, KernelRegistryPriority::LowPriority);
 
       SessionStateInitializer session_initializer{graph, session_state_, execution_providers_,
                                                   kernel_registry_manager_};
+
+      // create SessionState for subgraphs as it's needed by the transformers
+      ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR(TransformGraph(graph, graph_transformation_mgr_,
@@ -415,22 +355,16 @@ class InferenceSession::Impl {
                                          insert_cast_transformer_,
                                          session_state_));
 
-      ORT_RETURN_IF_ERROR(utils::ForAllMutableSubgraphs(graph, [this](Graph& subgraph) {
-        return TransformGraph(subgraph, graph_transformation_mgr_,
-                              execution_providers_, kernel_registry_manager_,
-                              insert_cast_transformer_,
-                              session_state_);
-      }));
-
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR(graph.Resolve());
 
       ORT_RETURN_IF_ERROR(session_initializer.CreatePlan({}, session_options_.enable_sequential_execution));
-      ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern(),
-                                                                weights_buffers_));
+      ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(session_state_.GetEnableMemoryPattern()));
 
       // handle any subgraphs
       ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
+
+      session_state_.CalculateNodeIndexInfo();
 
       is_inited_ = true;
 
@@ -638,7 +572,7 @@ class InferenceSession::Impl {
       }
 
       ORT_CHECK_AND_SET_RETVAL(
-          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches,
+          utils::ExecuteGraph(session_state_, feeds, output_names, *p_fetches, {},
                               session_options_.enable_sequential_execution, run_options.terminate, run_logger));
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -925,18 +859,13 @@ class InferenceSession::Impl {
 #endif
 
   // Number of concurrently running executors
-  std::atomic<int>
-      current_num_runs_;
+  std::atomic<int> current_num_runs_;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
-  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   InsertCastTransformer insert_cast_transformer_;
-
-  // memory allocations for any subgraphs
-  std::vector<SubgraphMemory> subgraph_memory_;
 };  // namespace onnxruntime
 
 //

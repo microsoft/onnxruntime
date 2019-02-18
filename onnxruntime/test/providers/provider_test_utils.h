@@ -20,6 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl_byte>
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 class InferenceSession;
@@ -148,8 +149,9 @@ const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
 // See current usage for an example, should be self explanatory
 class OpTester {
  public:
-  OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
+  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
       : op_(op), domain_(domain), opset_version_(opset_version) {}
+
   ~OpTester();
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
@@ -346,6 +348,21 @@ void ExpectThrow(OpTester& test, const std::string& error_msg) {
 void DebugTrap();
 
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type);
+
+// Only used for CUDA test since no toher kernel has float 16 support
+#ifdef USE_CUDA
+inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int input_size) {
+  auto in_vector = ConstEigenVectorMap<float>(f_datat, input_size);
+  auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(h_data)), input_size);
+  output_vector = in_vector.template cast<Eigen::half>();
+}
+#endif
+
+inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int input_size) {
+  auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);
+  auto output_vector = EigenVectorMap<float>(f_data, input_size);
+  output_vector = in_vector.template cast<float>();
+}
 
 }  // namespace test
 }  // namespace onnxruntime

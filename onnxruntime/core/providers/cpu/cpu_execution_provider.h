@@ -5,7 +5,6 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
-#include "core/graph/graph_transformer.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
@@ -51,18 +50,8 @@ class CPUExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   ///requires src.buffer_deleter_ == nullptr
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
-
-    // Todo: support copy with different devices.
-    if (strcmp(src.Location().name, CPU) != 0) {
-      ORT_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
-    }
-
-    // no really copy needed if is copy to cpu.
-    dst.ShallowCopy(src);
-
-    return Status::OK();
+  Status CopyTensor(const Tensor&, Tensor&) const override {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
   }
 
   const void* GetExecutionHandle() const noexcept override {

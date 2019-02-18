@@ -70,7 +70,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (typeAndShape != IntPtr.Zero)
                 {
-                    NativeMethods.OrtReleaseObject(typeAndShape);
+                    NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
                 }
             }
         }

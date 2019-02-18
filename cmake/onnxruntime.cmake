@@ -32,11 +32,24 @@ target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime gsl)
 
 if(UNIX)
-  set(BEGIN_WHOLE_ARCHIVE -Xlinker --whole-archive)
-  set(END_WHOLE_ARCHIVE -Xlinker --no-whole-archive)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined")
+  if (APPLE)
+    set(BEGIN_WHOLE_ARCHIVE -Xlinker -all_load)
+    set(END_WHOLE_ARCHIVE -Xlinker -noall_load)
+  else()
+    set(BEGIN_WHOLE_ARCHIVE -Xlinker --whole-archive)
+    set(END_WHOLE_ARCHIVE -Xlinker --no-whole-archive)
+    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined")
+  endif()
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${SYMBOL_FILE}")
+endif()
+
+if (NOT WIN32)
+  if (APPLE)
+    set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
+  else()
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
+  endif()
 endif()
 
 #The BEGIN_WHOLE_ARCHIVE/END_WHOLE_ARCHIVE part should contain the implementations of all the C API functions
@@ -45,6 +58,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    onnxruntime_optimizer
     onnxruntime_providers    
     onnxruntime_util
     ${onnxruntime_tvm_libs}

@@ -34,7 +34,6 @@ class SessionStateInitializer {
   // initialize tensors, and save. save kernels and input/output node mappings
   // @param enable_memory_pattern
   common::Status InitializeAndSave(bool enable_memory_pattern,
-                                   std::map<OrtAllocatorInfo, BufferUniquePtr>& weights_buffers,
                                    const std::vector<NodeArg*>* implicit_inputs = nullptr);
 
  private:

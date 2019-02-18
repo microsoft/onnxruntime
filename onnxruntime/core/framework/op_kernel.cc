@@ -18,7 +18,7 @@ OpKernelContext::OpKernelContext(ExecutionFrame* frame,
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
-  node_input_start_index_ = frame->GetFirstArgIndex(kernel->Node().Index());
+  node_input_start_index_ = frame->GetNodeOffset(kernel->Node().Index());
   node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
@@ -29,7 +29,7 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
 
   // In this case, it's assumed that the tensor hasn't been allocated yet,
   // so that it's calling ExecutionFrame to create a tensor in the given position with given shape.
-  MLValueAllocationParameters parameters{ &shape };
+  MLValueAllocationParameters parameters{&shape};
 
   //: Though we don't need to give 'ret' an initial value, GCC would generate a warning if we don't do that
   //"error: 'ret' may be used uninitialized in this function"
@@ -119,7 +119,7 @@ onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
 }
 
 const SessionState& OpKernelContext::GetSessionState() const {
-  return execution_frame_->SessionState();
+  return execution_frame_->GetSessionState();
 }
 
 const MLValue* OpKernelContext::GetInputMLValue(int index) const {
