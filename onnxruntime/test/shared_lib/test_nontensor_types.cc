@@ -53,7 +53,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
     // create map ort value
     std::vector<OrtValue*> map_in{keys_tensor, values_tensor};
     OrtValue* map_ort = nullptr;
-    OrtStatus* stx = OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, info, &map_ort);
+    OrtStatus* stx = OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, &map_ort);
     rel_status.torel.push_back(stx);
     rel.torel.push_back(map_ort);
     ASSERT_EQ(stx, nullptr);
@@ -64,7 +64,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
   // repeat above 3 steps N times and store the result in an OrtValue array
   // create sequence ort value
   OrtValue* seq_ort = nullptr;
-  OrtStatus* sty = OrtCreateValue(in.data(), N, ONNX_TYPE_SEQUENCE, info, &seq_ort);
+  OrtStatus* sty = OrtCreateValue(in.data(), N, ONNX_TYPE_SEQUENCE, &seq_ort);
   rel_status.torel.push_back(sty);
   rel.torel.push_back(seq_ort);
   ASSERT_EQ(sty, nullptr);
@@ -148,7 +148,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
     // create map ort value
     std::vector<OrtValue*> map_in{keys_tensor, values_tensor};
     OrtValue* map_ort = nullptr;
-    OrtStatus* stx = OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, info, &map_ort);
+    OrtStatus* stx = OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, &map_ort);
     rel_status.torel.push_back(stx);
     rel.torel.push_back(map_ort);
     ASSERT_EQ(stx, nullptr);
@@ -159,7 +159,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
   // repeat above 3 steps N times and store the result in an OrtValue array
   // create sequence ort value
   OrtValue* seq_ort = nullptr;
-  OrtStatus* sty = OrtCreateValue(in.data(), N, ONNX_TYPE_SEQUENCE, info, &seq_ort);
+  OrtStatus* sty = OrtCreateValue(in.data(), N, ONNX_TYPE_SEQUENCE, &seq_ort);
   rel_status.torel.push_back(sty);
   rel.torel.push_back(seq_ort);
   ASSERT_EQ(sty, nullptr);

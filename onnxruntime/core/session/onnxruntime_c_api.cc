@@ -718,23 +718,23 @@ static ONNXTensorElementDataType GetONNXTensorElementDataType() {
 }
 
 template <typename T>
-OrtStatus* PopulateTensorWithData(OrtValue* oval, const T* const data_elem, int num_elems) {
+OrtStatus* PopulateTensorWithData(OrtValue* oval, const T* data_elem, size_t num_elems) {
   void* raw_data = nullptr;
-  st = OrtGetTensorMutableData(oval, &raw_data);
+  auto st = OrtGetTensorMutableData(oval, &raw_data);
   if (st) {
     return st;
   }
-  memcpy(raw_data, data_elem, sizeof(ElemType) * num_elems);
+  memcpy(raw_data, data_elem, sizeof(T) * num_elems);
   return nullptr;
 }
 
-template <>
-OrtStatus* PopulateTensorWithData<std::string>(OrtValue* oval, const std::string* const data_elem, int num_elems) {
-  return OrtFillStringTensor(oval, data_elem->c_str(), num_elems);
-}
+// template <>
+// OrtStatus* PopulateTensorWithData<std::string>(OrtValue* oval, const std::string* const data_elem, int num_elems) {
+//   return OrtFillStringTensor(oval, data_elem->c_str(), num_elems);
+// }
 
 template <typename T>
-OrtStatus* OrtGetValueImplSeqOfPrimitives(const MLValue* p_ml_value, int index, const OrtAllocator* allocator,
+OrtStatus* OrtGetValueImplSeqOfPrimitives(const MLValue* p_ml_value, int index, OrtAllocator* allocator,
                                           OrtValue** out) {  // FIXME
   using ElemType = typename T::value_type;
   auto& data = p_ml_value->Get<T>();
@@ -742,10 +742,10 @@ OrtStatus* OrtGetValueImplSeqOfPrimitives(const MLValue* p_ml_value, int index, 
   std::vector<size_t> dims = {1};
   OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                             GetONNXTensorElementDataType<ElemType>(), out);
-  return st || PopulateTensorWithData<ElemType>(*out, data_elem, 1);
+  return st ? st : PopulateTensorWithData<ElemType>(*out, &data_elem, 1);
 }
 
-static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, const OrtAllocator* allocator,
+static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAllocator* allocator,
                                      OrtValue** out) {
   auto p_ml_value = reinterpret_cast<const MLValue*>(value);
   auto type = p_ml_value->Type();
@@ -768,7 +768,7 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, const Ort
 }
 
 template <typename T>
-static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index, const OrtAllocator* allocator,
+static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index, OrtAllocator* allocator,
                                            OrtValue** out) {  // FIXME
   using TKey = typename T::key_type;
   using TVal = typename T::mapped_type;
@@ -784,7 +784,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       std::vector<size_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TKey>(), out);
-      return st || PopulateTensorWithData<TKey>(*out, vec.data(), num_kv_pairs);
+      return st ? st : PopulateTensorWithData<TKey>(*out, vec.data(), num_kv_pairs);
     }
     case 1: {  // user is requesting values
       std::vector<TVal> vec;
@@ -794,15 +794,15 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       }
       std::vector<size_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
-                                                GetONNXTensorElementDataType<ElemType>(), out);
-      return st || PopulateTensorWithData<TVal>(*out, vec.data(), num_kv_pairs);
+                                                GetONNXTensorElementDataType<TVal>(), out);
+      return st ? st : PopulateTensorWithData<TVal>(*out, vec.data(), num_kv_pairs);
     }
     default:
       return OrtCreateStatus(ORT_FAIL, "Invalid index requested for map type.");
   }
 }
 
-static OrtStatus* OrtGetValueImplMap(const OrtValue* value, int index, const OrtAllocator* allocator,
+static OrtStatus* OrtGetValueImplMap(const OrtValue* value, int index, OrtAllocator* allocator,
                                      OrtValue** out) {
   auto p_ml_value = reinterpret_cast<const MLValue*>(value);
   auto type = p_ml_value->Type();
@@ -828,7 +828,7 @@ static OrtStatus* OrtGetValueImplMap(const OrtValue* value, int index, const Ort
   }
 }
 
-static OrtStatus* OrtGetValueImpl(const OrtValue* value, int index, const OrtAllocator* allocator,
+static OrtStatus* OrtGetValueImpl(const OrtValue* value, int index, OrtAllocator* allocator,
                                   OrtValue** out) {
   auto value_type = OrtGetValueType(value);
   if (value_type == ONNX_TYPE_MAP) {
@@ -840,7 +840,7 @@ static OrtStatus* OrtGetValueImpl(const OrtValue* value, int index, const OrtAll
   }
 }
 
-ORT_API_STATUS_IMPL(OrtGetValue, const OrtValue* value, int index, const OrtAllocator* allocator,
+ORT_API_STATUS_IMPL(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allocator,
                     OrtValue** out) {
   API_IMPL_BEGIN
   return OrtGetValueImpl(value, index, allocator, out);
@@ -868,8 +868,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(OrtValue** const in, int num_va
 }
 
 template <typename T>
-static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, int num_values,
-                                              OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, int num_values, OrtValue** out) {
   using SeqType = std::vector<T>;
   auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
@@ -890,8 +889,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, int num_value
   return nullptr;
 }
 
-static OrtStatus* OrtCreateValueImplSeq(OrtValue** const in, int num_values, const OrtAllocator* allocator,
-                                        OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeq(OrtValue** const in, int num_values, OrtValue** out) {
   // We only support limited sequence types. For the sake of simplicity the type of the first
   // OrtValue* in OrtValue** will determine the type of the vector used to create the output OrtValue
   // this type should be either a tensor of limited types or map of limited types
@@ -1012,23 +1010,23 @@ static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, int num_values, Ort
 }
 
 static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum ONNXType value_type,
-                                     const OrtAllocator* allocator, OrtValue** out) {
+                                     OrtValue** out) {
   if (num_values <= 0) {
     return OrtCreateStatus(ORT_FAIL, "Number of values should be at least 1.");
   }
   if (value_type == ONNX_TYPE_MAP) {
     return OrtCreateValueImplMap(in, num_values, out);
   } else if (value_type == ONNX_TYPE_SEQUENCE) {
-    return OrtCreateValueImplSeq(in, num_values, allocator, out);
+    return OrtCreateValueImplSeq(in, num_values, out);
   } else {
     return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
   }
 }
 
 ORT_API_STATUS_IMPL(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
-                    const OrtAllocator* allocator, OrtValue** out) {
+                    OrtValue** out) {
   API_IMPL_BEGIN
-  return OrtCreateValueImpl(in, num_values, value_type, allocator, out);
+  return OrtCreateValueImpl(in, num_values, value_type, out);
   API_IMPL_END
 }
 
