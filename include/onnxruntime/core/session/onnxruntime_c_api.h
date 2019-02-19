@@ -424,6 +424,27 @@ ORT_ALL_ARGS_NONNULL;
 
 /**
    * APIs to support non-tensor types - map and sequence.
+   * Currently only the following types are supported
+   * Note: the following types should be kept in sync with data_types.h
+   * Map types
+   * =========
+   * std::map<std::string, std::string>
+   * std::map<std::string, int64_t>
+   * std::map<std::string, float>
+   * std::map<std::string, double>
+   * std::map<int64_t, std::string>
+   * std::map<int64_t, int64_t>
+   * std::map<int64_t, float>
+   * std::map<int64_t, double>
+   * 
+   * Sequence types
+   * ==============
+   * std::vector<std::string>
+   * std::vector<int64_t>
+   * std::vector<float>
+   * std::vector<double>
+   * std::vector<std::map<std::string, float>>
+   * std::vector<std::map<int64_t, float>
    */
 
 /**
@@ -438,7 +459,7 @@ ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allo
    * Returns 2 for type map and N for sequence where N is the number of elements
    * in the sequence.
    */
-ORT_API_STATUS(OrtGetNumValues, const OrtValue* value, size_t* out);
+ORT_API_STATUS(OrtGetValueCount, const OrtValue* value, size_t* out);
 
 /**
    * To construct a map, use num_values = 2 and 'in' should be an arrary of 2 OrtValues

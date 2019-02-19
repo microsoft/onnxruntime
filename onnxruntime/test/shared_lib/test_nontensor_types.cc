@@ -78,7 +78,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
 
   // Get count
   size_t num_values = 0;
-  OrtStatus* st2 = OrtGetNumValues(seq_ort, &num_values);
+  OrtStatus* st2 = OrtGetValueCount(seq_ort, &num_values);
   rels.add(st2);
   ASSERT_EQ(st2, nullptr);
   ASSERT_EQ(num_values, N);
@@ -189,7 +189,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output t
 
   // Get count
   size_t num_values;
-  OrtStatus* st2 = OrtGetNumValues(seq_ort, &num_values);
+  OrtStatus* st2 = OrtGetValueCount(seq_ort, &num_values);
   rels.add(st2);
   ASSERT_EQ(st2, nullptr);
   ASSERT_EQ(num_values, N);

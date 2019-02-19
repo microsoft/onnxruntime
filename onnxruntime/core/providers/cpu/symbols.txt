@@ -72,5 +72,5 @@ OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue
 OrtGetValue
-OrtGetNumValues
+OrtGetValueCount
 OrtCreateValue

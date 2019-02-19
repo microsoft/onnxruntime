@@ -634,14 +634,14 @@ ORT_API_STATUS_IMPL(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t
 
 ///////////////////////////////////////////////////////////////////////////
 // Code to handle non-tensor types
-// OrtGetNumValues
+// OrtGetValueCount
 // OrtGetVaue
 // OrtCreateValue
 ///////////////////////////////////////////////////////////////////////////
 const int NUM_MAP_INDICES = 2;
 
 ////////////////////
-// OrtGetNumValues
+// OrtGetValueCount
 template <typename T>
 OrtStatus* OrtGetNumSequenceElements(const MLValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<T>();
@@ -649,7 +649,7 @@ OrtStatus* OrtGetNumSequenceElements(const MLValue* p_ml_value, size_t* out) {
   return nullptr;
 }
 
-static OrtStatus* OrtGetNumValuesImpl(const OrtValue* value, size_t* out) {
+static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
   auto value_type = OrtGetValueType(value);
   if (value_type == ONNX_TYPE_MAP) {
     *out = NUM_MAP_INDICES;
@@ -678,9 +678,9 @@ static OrtStatus* OrtGetNumValuesImpl(const OrtValue* value, size_t* out) {
   }
 }
 
-ORT_API_STATUS_IMPL(OrtGetNumValues, const OrtValue* value, size_t* out) {
+ORT_API_STATUS_IMPL(OrtGetValueCount, const OrtValue* value, size_t* out) {
   API_IMPL_BEGIN
-  return OrtGetNumValuesImpl(value, out);
+  return OrtGetValueCountImpl(value, out);
   API_IMPL_END
 }
 
@@ -704,18 +704,28 @@ static OrtStatus* OrtGetValueImplSeqOfMap(const MLValue* p_ml_value, int index,
 }
 
 template <typename T>
-static ONNXTensorElementDataType GetONNXTensorElementDataType() {
-  if (std::is_same<T, std::string>::value) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-  } else if (std::is_same<T, float>::value) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  } else if (std::is_same<T, double>::value) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-  } else if (std::is_same<T, int64_t>::value) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-  }
-  // TODO add other types here
+ONNXTensorElementDataType GetONNXTensorElementDataType() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<double>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
 }
 
 template <typename T>
