@@ -112,18 +112,18 @@ Return Value:
     #pragma warning (push)
     #pragma warning (disable: 4310)
     #endif
-    const __m512d mmCC0 = _mm512_load_pd(CC0);
-    const __m512d mmCC1 = _mm512_load_pd(CC1);
-    const __m512d mmCC2 = _mm512_load_pd(CC2);
-    const __m512d mmCC3 = _mm512_load_pd(CC3);
-    const __m512d mmCB0 = _mm512_load_pd(CB0);
+    const __m512d mmCC0 = _mm512_load_pd(&CC0[0]);
+    const __m512d mmCC1 = _mm512_load_pd(&CC1[0]);
+    const __m512d mmCC2 = _mm512_load_pd(&CC2[0]);
+    const __m512d mmCC3 = _mm512_load_pd(&CC3[0]);
+    const __m512d mmCB0 = _mm512_load_pd(&CB0[0]);
 
     const __m512d mmCD0 = _mm512_load_pd(CD0);
     const __m512d mmCD1 = _mm512_load_pd(CD1);
     const __m512d mmCD2 = _mm512_load_pd(CD2);
     const __m512d mmCD3 = _mm512_load_pd(CD3);
 	
-	const __m512d mmCA0 = _mm512_load_pd(CA0);
+	  const __m512d mmCA0 = _mm512_load_pd(CA0);
     const __m512d mmCA1 = _mm512_load_pd(CA1);
     const __m512d mmCA2 = _mm512_load_pd(CA2);
     const __m512d mmCA3 = _mm512_load_pd(CA3);
@@ -175,8 +175,9 @@ Return Value:
     }
 
     if (N > 0) {
-        __mmask8 input_mask = (1 << N) - 1;
-        __m256 xf = _mm256_maskz_loadu_ps(input_mask, Input);
+        __mmask8 input_mask = ((1 << N) - 1);
+        __m256 zerof = _mm256_setzero_ps();
+        __m256 xf = _mm256_mask_loadu_ps(zerof, input_mask, Input);
 
         __m512d x = _mm512_cvtps_pd(xf);
         __m512i sign_bits = _mm512_and_epi64(_mm512_castpd_si512(x), _mm512_set1_epi64(0x8000000000000000));
@@ -212,6 +213,8 @@ Return Value:
         resultpd = _mm512_castsi512_pd(_mm512_or_epi64(_mm512_castpd_si512(resultpd), sign_bits));
 
         _mm256_mask_storeu_ps(Output, input_mask, _mm512_cvtpd_ps(resultpd));
+
+        --N;
     }
 
     #if _MSC_VER && !__INTEL_COMPILER
