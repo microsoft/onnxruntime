@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -1036,7 +1037,8 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X_ptr != nullptr);
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
-  EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
+
+  MlasComputeErff(X.Data<float>(), Y.MutableData<float>(),  X.Shape().Size());
 
   return Status::OK();
 }

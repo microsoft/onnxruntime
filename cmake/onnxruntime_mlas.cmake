@@ -10,6 +10,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/erff.cpp
 )
 
 if (MSVC)
