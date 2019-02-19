@@ -422,8 +422,31 @@ ORT_ALL_ARGS_NONNULL;
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
 
+/**
+   * APIs to support non-tensor types - map and sequence.
+   */
+
+/**
+   * If input OrtValue represents a map, you need to retrieve the keys and values
+   * separately. Use index=0 to retrieve keys and index=1 to retrieve values.
+   * If input OrtValue represents a sequence, use index to retrieve the index'th element
+   * of the sequence.
+   */
 ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allocator, OrtValue** out);
-ORT_API_STATUS(OrtGetNumValues, const OrtValue* value, int* out);
+
+/**
+   * Returns 2 for type map and N for sequence where N is the number of elements
+   * in the sequence.
+   */
+ORT_API_STATUS(OrtGetNumValues, const OrtValue* value, size_t* out);
+
+/**
+   * To construct a map, use num_values = 2 and 'in' should be an arrary of 2 OrtValues
+   * representing keys and values.
+   * To construct a sequence, use num_values = N where N is the number of the elements in the
+   * sequence. 'in' should be an arrary of N OrtValues.
+   * \value_type should be either map or sequence.
+   */
 ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
                OrtValue** out);
 

@@ -13,6 +13,9 @@ using namespace onnxruntime;
 template <typename T>
 struct RelAllocations {
   RelAllocations(std::function<void(T*)> f) : relf(f) {}
+  void add(T* x) {
+    torel.push_back(x);
+  }
   std::vector<T*> torel;
   std::function<void(T*)> relf;
   ~RelAllocations() {
@@ -23,7 +26,7 @@ struct RelAllocations {
   }
 };
 
-TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
+TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   OrtAllocatorInfo* info;
@@ -31,7 +34,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
 
   RelAllocations<OrtValue> rel(&OrtReleaseValue);
-  RelAllocations<OrtStatus> rel_status(&OrtReleaseStatus);
+  RelAllocations<OrtStatus> rels(&OrtReleaseStatus);
 
   const int N = 3;
   const int NUM_KV_PAIRS = 4;
@@ -43,20 +46,23 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
     // create key tensor
     OrtValue* keys_tensor = OrtCreateTensorWithDataAsOrtValue(info, keys.data(), keys.size() * sizeof(int64_t),
                                                               dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
-    rel.torel.push_back(keys_tensor);
+    ASSERT_NE(keys_tensor, nullptr);
+    rel.add(keys_tensor);
 
     // create value tensor
     OrtValue* values_tensor = OrtCreateTensorWithDataAsOrtValue(info, values.data(), values.size() * sizeof(float),
                                                                 dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-    rel.torel.push_back(values_tensor);
+    ASSERT_NE(values_tensor, nullptr);
+    rel.add(values_tensor);
 
     // create map ort value
     std::vector<OrtValue*> map_in{keys_tensor, values_tensor};
     OrtValue* map_ort = nullptr;
     OrtStatus* stx = OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, &map_ort);
-    rel_status.torel.push_back(stx);
-    rel.torel.push_back(map_ort);
+    rels.add(stx);
+    rel.add(map_ort);
     ASSERT_EQ(stx, nullptr);
+    ASSERT_NE(map_ort, nullptr);
 
     in[i] = map_ort;
   }
@@ -65,59 +71,72 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {
   // create sequence ort value
   OrtValue* seq_ort = nullptr;
   OrtStatus* sty = OrtCreateValue(in.data(), N, ONNX_TYPE_SEQUENCE, &seq_ort);
-  rel_status.torel.push_back(sty);
-  rel.torel.push_back(seq_ort);
+  rels.add(sty);
+  rel.add(seq_ort);
   ASSERT_EQ(sty, nullptr);
+  ASSERT_NE(seq_ort, nullptr);
 
   // Get count
-  int num_values;
+  size_t num_values = 0;
   OrtStatus* st2 = OrtGetNumValues(seq_ort, &num_values);
-  rel_status.torel.push_back(st2);
+  rels.add(st2);
   ASSERT_EQ(st2, nullptr);
   ASSERT_EQ(num_values, N);
+
+  // test negative case
+  OrtValue* tmp = nullptr;
+  OrtStatus* st_temp = OrtGetValue(seq_ort, 999, default_allocator.get(), &tmp);
+  rels.add(st_temp);
+  rel.add(tmp);
+  ASSERT_NE(st_temp, nullptr);
 
   // Fetch
   for (int idx = 0; idx < N; ++idx) {
     OrtValue* map_out = nullptr;
     OrtStatus* st = OrtGetValue(seq_ort, idx, default_allocator.get(), &map_out);
-    rel.torel.push_back(map_out);
-    rel_status.torel.push_back(st);
+    rel.add(map_out);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(map_out, nullptr);
 
     // fetch the map
     // first fetch the keys
     OrtValue* keys_ort = nullptr;
     st = OrtGetValue(map_out, 0, default_allocator.get(), &keys_ort);
-    rel.torel.push_back(keys_ort);
-    rel_status.torel.push_back(st);
+    rel.add(keys_ort);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(keys_ort, nullptr);
 
-    int64_t* keys_ret = nullptr;
+    std::unique_ptr<int64_t> keys_ret_u;
+    int64_t* keys_ret = keys_ret_u.get();
     st = OrtGetTensorMutableData(keys_ort, reinterpret_cast<void**>(&keys_ret));
-    rel_status.torel.push_back(st);
-    // TODO free keys_ret
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(keys_ret, nullptr);
     ASSERT_EQ(std::set<int64_t>(keys_ret, keys_ret + NUM_KV_PAIRS),
               std::set<int64_t>(std::begin(keys), std::end(keys)));
 
     // second fetch the values
     OrtValue* values_ort = nullptr;
     st = OrtGetValue(map_out, 1, default_allocator.get(), &values_ort);
-    rel.torel.push_back(values_ort);
-    rel_status.torel.push_back(st);
+    rel.add(values_ort);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(values_ort, nullptr);
 
-    float* values_ret = nullptr;
+    std::unique_ptr<float> values_ret_u;
+    float* values_ret = values_ret_u.get();
     st = OrtGetTensorMutableData(values_ort, reinterpret_cast<void**>(&values_ret));
-    rel_status.torel.push_back(st);
-    // free values_ret
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(values_ret, nullptr);
     ASSERT_EQ(std::set<float>(values_ret, values_ret + NUM_KV_PAIRS),
               std::set<float>(std::begin(values), std::end(values)));
   }
 }
 
-TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
+TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
   // Creation
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   OrtAllocatorInfo* info;
@@ -125,7 +144,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
 
   RelAllocations<OrtValue> rel(&OrtReleaseValue);
-  RelAllocations<OrtStatus> rel_status(&OrtReleaseStatus);
+  RelAllocations<OrtStatus> rels(&OrtReleaseStatus);
 
   const int N = 3;
   const size_t NUM_KV_PAIRS = 4;
@@ -138,20 +157,23 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
     // create key tensor
     OrtValue* keys_tensor = OrtCreateTensorWithDataAsOrtValue(info, keys.data(), keys.size() * sizeof(std::string),
                                                               dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    rel.torel.push_back(keys_tensor);
+    ASSERT_NE(keys_tensor, nullptr);
+    rel.add(keys_tensor);
 
     // create value tensor
     OrtValue* values_tensor = OrtCreateTensorWithDataAsOrtValue(info, values.data(), values.size() * sizeof(float),
                                                                 dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-    rel.torel.push_back(values_tensor);
+    ASSERT_NE(values_tensor, nullptr);
+    rel.add(values_tensor);
 
     // create map ort value
     std::vector<OrtValue*> map_in{keys_tensor, values_tensor};
     OrtValue* map_ort = nullptr;
     OrtStatus* stx = OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, &map_ort);
-    rel_status.torel.push_back(stx);
-    rel.torel.push_back(map_ort);
+    rels.add(stx);
+    rel.add(map_ort);
     ASSERT_EQ(stx, nullptr);
+    ASSERT_NE(map_ort, nullptr);
 
     in[i] = map_ort;
   }
@@ -160,14 +182,15 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
   // create sequence ort value
   OrtValue* seq_ort = nullptr;
   OrtStatus* sty = OrtCreateValue(in.data(), N, ONNX_TYPE_SEQUENCE, &seq_ort);
-  rel_status.torel.push_back(sty);
-  rel.torel.push_back(seq_ort);
+  rels.add(sty);
+  rel.add(seq_ort);
   ASSERT_EQ(sty, nullptr);
+  ASSERT_NE(seq_ort, nullptr);
 
   // Get count
-  int num_values;
+  size_t num_values;
   OrtStatus* st2 = OrtGetNumValues(seq_ort, &num_values);
-  rel_status.torel.push_back(st2);
+  rels.add(st2);
   ASSERT_EQ(st2, nullptr);
   ASSERT_EQ(num_values, N);
 
@@ -175,27 +198,29 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
   for (int idx = 0; idx < N; ++idx) {
     OrtValue* map_out = nullptr;
     OrtStatus* st = OrtGetValue(seq_ort, idx, default_allocator.get(), &map_out);
-    rel.torel.push_back(map_out);
-    rel_status.torel.push_back(st);
+    rel.add(map_out);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(map_out, nullptr);
 
     // fetch the map
     // first fetch the keys
     OrtValue* keys_ort = nullptr;
     st = OrtGetValue(map_out, 0, default_allocator.get(), &keys_ort);
-    rel.torel.push_back(keys_ort);
-    rel_status.torel.push_back(st);
+    rel.add(keys_ort);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(keys_ort, nullptr);
 
     size_t data_len;
     st = OrtGetStringTensorDataLength(keys_ort, &data_len);
-    rel_status.torel.push_back(st);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
 
     std::string result(data_len, '\0');
     std::vector<size_t> offsets(NUM_KV_PAIRS);
     st = OrtGetStringTensorContent(keys_ort, (void*)result.data(), data_len, offsets.data(), offsets.size());
-    rel_status.torel.push_back(st);
+    rels.add(st);
     const char* s = result.data();
     std::set<std::string> keys_ret;
     for (size_t i = 0; i < offsets.size(); ++i) {
@@ -209,15 +234,17 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {
     // second fetch the values
     OrtValue* values_ort = nullptr;
     st = OrtGetValue(map_out, 1, default_allocator.get(), &values_ort);
-    rel.torel.push_back(values_ort);
-    rel_status.torel.push_back(st);
+    rel.add(values_ort);
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(values_ort, nullptr);
 
-    float* values_ret = nullptr;
+    std::unique_ptr<float> values_ret_u;
+    float* values_ret = values_ret_u.get();
     st = OrtGetTensorMutableData(values_ort, reinterpret_cast<void**>(&values_ret));
-    rel_status.torel.push_back(st);
-    // TODO free values_ret
+    rels.add(st);
     ASSERT_EQ(st, nullptr);
+    ASSERT_NE(values_ret, nullptr);
     ASSERT_EQ(std::set<float>(values_ret, values_ret + NUM_KV_PAIRS),
               std::set<float>(std::begin(values), std::end(values)));
   }
