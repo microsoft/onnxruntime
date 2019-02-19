@@ -204,7 +204,14 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     "Static mutexes are leaked intentionally. It is not thread-safe to try to clean them up."
     // Which explains this leak inside of: void Mutex::ThreadSafeLazyInit()
     //     critical_section_ = new CRITICAL_SECTION;
-    if (string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
+    //
+    // in google/re2 re2.cc initializes leaking singletons
+    //     std::call_once(empty_once, []() {
+    //     empty_string = new string;
+    //     empty_named_groups = new std::map<string, int>;
+    //     empty_group_names = new std::map<int, string>; });
+    if (string.find("re2::RE2::Init") == std::string::npos &&
+        string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos) {
       if (leaked_bytes == 0)
