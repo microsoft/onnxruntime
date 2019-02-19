@@ -86,6 +86,14 @@ void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases) {
   }
 }
 
+const std::vector<MLFloat16> ConvertFloatToMLFloat16(const std::vector<float>& float_data) {
+  std::vector<MLFloat16> new_data;
+  for (const auto& f : float_data) {
+    new_data.push_back(MLFloat16(math::floatToHalf(f)));
+  }
+  return new_data;
+}
+
 TEST(MathOpTest, ShrinkInt8Type) {
   const auto& test_cases = GenerateSignedTestCases<int8_t>();
   RunShrinkTest<int8_t>(test_cases);
@@ -134,6 +142,34 @@ TEST(MathOpTest, ShrinkFloatType) {
 TEST(MathOpTest, ShrinkDoubleType) {
   const auto& test_cases = GenerateSignedTestCases<double>();
   RunShrinkTest<double>(test_cases);
+}
+
+TEST(MathOpTest, ShrinkMLFloat16Type) {
+  const std::vector<MLFloat16> input_test_data_default = ConvertFloatToMLFloat16({-1, 0, 0, 1});
+  const std::vector<MLFloat16> output_test_data_default = ConvertFloatToMLFloat16({-1, 0, 0, 1});
+
+  const std::vector<MLFloat16> input_test_data_nondefault = ConvertFloatToMLFloat16({-3, -1, 1, 4});
+  const std::vector<MLFloat16> output_test_data_nondefault = ConvertFloatToMLFloat16({7, 0, 0, -6});
+  std::vector<ShrinkTestData<MLFloat16>> test_cases;
+  test_cases.push_back(
+      {
+          "default attributes",
+          0.0f,
+          0.5f,
+          input_test_data_default,
+          {2, 2},
+          output_test_data_default,
+          {2, 2}
+	  });
+  test_cases.push_back(
+      {"non-default attributes",
+       10.0f,
+       2.0f,
+       input_test_data_nondefault,
+       {2, 2},
+       output_test_data_nondefault,
+       {2, 2}});
+  RunShrinkTest<MLFloat16>(test_cases);
 }
 
 }  // namespace test
