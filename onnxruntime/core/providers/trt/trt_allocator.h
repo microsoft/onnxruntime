@@ -31,16 +31,6 @@ public:
                 OrtMemType::OrtMemTypeDefault);
         return trt_default_allocator_info;
     }
-
-    virtual void* Alloc(size_t) override
-    {
-        ORT_THROW("TRT has no default allocator.");
-    }
-
-    virtual void Free(void*) override
-    {
-        ORT_THROW("TRT has no default allocator.");
-    }
 };
 }  // namespace onnxruntime
 

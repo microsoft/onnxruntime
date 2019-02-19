@@ -6,11 +6,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/**
- * \param device_id trt device id, starts from zero.
- * \param out Call OrtReleaseObject() method when you no longer need to use it.
- */
-ORT_API_STATUS(OrtCreateTRTExecutionProviderFactory, int device_id, _Out_ OrtProviderFactoryInterface*** out);
+
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_TRT, _In_ OrtSessionOptions* options);
 
 #ifdef __cplusplus
 }
