@@ -161,11 +161,11 @@ class PlannerImpl {
 
   MLValueIndex& Buffer(MLValueIndex n) { return ml_value_info_.at(n).reused_buffer_index; }
 
-  SequentialExecutionPlan::AllocPlanPerValue& AllocPlan(MLValueIndex n) {
+  AllocPlanPerValue& AllocPlan(MLValueIndex n) {
     return plan_.allocation_plan.at(n);
   }
 
-  SequentialExecutionPlan::AllocPlanPerValue& AllocPlan(const MLValueName& name) {
+  AllocPlanPerValue& AllocPlan(const MLValueName& name) {
     return AllocPlan(Index(name));
   }
 
@@ -431,7 +431,7 @@ class PlannerImpl {
               return Status::OK();
 
             auto wt_index = Index(def_name);
-            SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(wt_index);
+            AllocPlanPerValue& thisplan = AllocPlan(wt_index);
             auto* p_provider = execution_providers_.Get(node);
             ORT_ENFORCE(p_provider);
 
@@ -455,7 +455,7 @@ class PlannerImpl {
 
     auto setup_preexisting = [this](const NodeArg* node_arg) {
       auto input_index = Index(node_arg->Name());
-      SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(input_index);
+      AllocPlanPerValue& thisplan = AllocPlan(input_index);
       thisplan.alloc_kind = AllocKind::kPreExisting;
       thisplan.value_type = utils::GetMLDataType(*node_arg);
     };

@@ -9,13 +9,52 @@
 
 namespace onnxruntime {
 
+// if we have a full GraphViewer, assume the min node index is 0
 NodeIndexInfo::NodeIndexInfo(const GraphViewer& graph_viewer, const MLValueNameIdxMap& mlvalue_idx_map)
+    : min_node_index_{0}, max_mlvalue_idx_{mlvalue_idx_map.MaxIdx()} {
+  Init(graph_viewer.Nodes(), graph_viewer.MaxNodeIndex(), mlvalue_idx_map);
+}
+
+NodeIndexInfo::NodeIndexInfo(const GraphNodes& nodes, const MLValueNameIdxMap& mlvalue_idx_map)
     : max_mlvalue_idx_{mlvalue_idx_map.MaxIdx()} {
+  Init(nodes, 0, mlvalue_idx_map);
+}
+
+NodeIndexInfo::NodeIndexInfo(const std::vector<const Node*>& nodes, const MLValueNameIdxMap& mlvalue_idx_map)
+    : max_mlvalue_idx_{mlvalue_idx_map.MaxIdx()} {
+  Init(ValidNodes<const std::vector<const Node*>>(nodes), 0, mlvalue_idx_map);
+}
+
+template <typename TValidNodes>
+static void FindMinAndMaxNodeIndex(const TValidNodes& nodes, NodeIndex& min, NodeIndex& max) {
+  min = std::numeric_limits<NodeIndex>::max();
+  max = 0;
+  std::for_each(nodes.cbegin(), nodes.cend(), [&min, &max](const Node& node) {
+    auto idx = node.Index();
+    if (idx > max) max = idx;
+    if (idx >= 0 && idx < min) min = idx;
+  });
+
+  // match GraphViewer::MaxNodeIndex() which returns nodes_.size(), so is actually the max used value + 1.
+  // if we didn't do this, we'd have to add 1 when calling node_offsets_.resize, which would give max used value + 2
+  // if Init was called with max_node_index from GraphViewer::MaxNodeIndex(), which would create an extra invalid entry
+  // in node_offsets_ at the end.
+  max += 1;
+}
+
+template <typename TValidNodes>
+void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index, const MLValueNameIdxMap& mlvalue_idx_map) {
   std::size_t total_def_count{};
 
-  bool include_missing_optional_defs = true;
+  const bool include_missing_optional_defs = true;
 
-  for (const auto& node : graph_viewer.Nodes()) {
+  ORT_ENFORCE(!nodes.empty());
+
+  if (max_node_index == 0) {
+    FindMinAndMaxNodeIndex(nodes, min_node_index_, max_node_index);
+  }
+
+  for (const auto& node : nodes) {
     node.ForEachDef(
         [&](const onnxruntime::NodeArg& /*arg*/, bool /*is_input*/) {
           ++total_def_count;
@@ -24,12 +63,12 @@ NodeIndexInfo::NodeIndexInfo(const GraphViewer& graph_viewer, const MLValueNameI
   }
 
   // init all to kInvalidEntry
-  node_offsets_.resize(graph_viewer.MaxNodeIndex(), kInvalidEntry);
+  node_offsets_.resize(GetNodeOffsetsIndex(max_node_index), kInvalidEntry);
   node_values_.resize(total_def_count, kInvalidEntry);
   int cur_idx = 0;
 
-  for (auto& node : graph_viewer.Nodes()) {
-    node_offsets_[node.Index()] = cur_idx;
+  for (auto& node : nodes) {
+    node_offsets_[GetNodeOffsetsIndex(node.Index())] = cur_idx;
 
     node.ForEachDef(
         [&](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
