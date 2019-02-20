@@ -242,39 +242,29 @@ const FeedsFetchesManager* SessionState::GetFeedsFetchesManager(const std::vecto
 
   const FeedsFetchesManager* manager = nullptr;
 
-  switch (num_matches) {
-    case 0: {
-      break;
-    }
-    case 1: {
-      manager = cached_feeds_fetches_managers_.find(key)->second.get();
-      break;
-    }
-    default: {
-      auto iter = cached_feeds_fetches_managers_.lower_bound(key);
-      auto end = cached_feeds_fetches_managers_.upper_bound(key);
+  if (num_matches > 0) {
+    auto begin_end_pair = cached_feeds_fetches_managers_.equal_range(key);
+    auto iter = begin_end_pair.first;
+    auto end = begin_end_pair.second;
 
-      while (iter != end) {
-        auto& ffi = iter->second->GetFeedsFetchesInfo();
-        // the key should have guaranteed this. short term check
-        assert(ffi.feed_names.size() == feed_names.size());
-        assert(ffi.output_names.size() == output_names.size());
-
-        auto check = [](const std::vector<std::string>& input, const std::vector<std::string>& existing) {
-          for (size_t i = 0, end = input.size(); i < end; ++i) {
-            if (input[i] != existing[i]) {
-              return false;
-            }
+    while (iter != end) {
+      auto& ffi = iter->second->GetFeedsFetchesInfo();
+      auto check = [](const std::vector<std::string>& input, const std::vector<std::string>& existing) {
+        for (size_t i = 0, end = input.size(); i < end; ++i) {
+          if (input[i] != existing[i]) {
+            return false;
           }
-
-          return true;
-        };
-
-        if (check(feed_names, ffi.feed_names) && check(output_names, ffi.output_names)) {
-          manager = iter->second.get();
-          break;
         }
+
+        return true;
+      };
+
+      if (check(feed_names, ffi.feed_names) && check(output_names, ffi.output_names)) {
+        manager = iter->second.get();
+        break;
       }
+
+      ++iter;
     }
   }
 
