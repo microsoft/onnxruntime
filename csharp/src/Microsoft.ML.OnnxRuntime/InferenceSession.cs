@@ -317,11 +317,6 @@ namespace Microsoft.ML.OnnxRuntime
             return new NodeMetadata(intDimensions, dotnetType);
         }
 
-
-
-
-
-
         #endregion
 
         #region destructors disposers
