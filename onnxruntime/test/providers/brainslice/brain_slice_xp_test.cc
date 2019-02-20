@@ -229,7 +229,7 @@ TEST(BrainSliceExecutionProviderTest, GRU_bi_512_512) {
 }
 
 TEST(BrainSliceExecutionProviderTest, LSTMBasicTest) {
-  fpga::FPGAInfo info = { 0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin" };
+  fpga::FPGAInfo info = {0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin"};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
@@ -273,7 +273,7 @@ TEST(BrainSliceExecutionProviderTest, LSTMBasicTest) {
 }
 
 TEST(BrainSliceExecutionProviderTest, DISABLED_LSTMForwardHiddenState) {
-  fpga::FPGAInfo info = { 0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin" };
+  fpga::FPGAInfo info = {0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin"};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
@@ -318,7 +318,7 @@ TEST(BrainSliceExecutionProviderTest, DISABLED_LSTMForwardHiddenState) {
 }
 
 TEST(BrainSliceExecutionProviderTest, DISABLED_LSTMForwardCellState) {
-  fpga::FPGAInfo info = { 0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin" };
+  fpga::FPGAInfo info = {0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin"};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
@@ -487,7 +487,7 @@ static std::vector<float> LoadFloats(std::string filename, size_t size) {
 bool CheckDenseNet121Compatibility(const BrainSlice_Parameters& bsParameters);
 
 TEST(BrainSliceExecutionProviderTest, DenseNet121Test) {
-  fpga::FPGAInfo info = { 0, false, "", "", "" };
+  fpga::FPGAInfo info = {0, false, "", "", ""};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
@@ -536,7 +536,7 @@ TEST(BrainSliceExecutionProviderTest, DenseNet121Test) {
 bool CheckResNet50Compatibility(const BrainSlice_Parameters& bsParameters);
 
 TEST(BrainSliceExecutionProviderTest, ResNet50Test) {
-  fpga::FPGAInfo info = { 0, false, "", "", "" };
+  fpga::FPGAInfo info = {0, false, "", "", ""};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
@@ -585,7 +585,7 @@ TEST(BrainSliceExecutionProviderTest, ResNet50Test) {
 bool CheckResNet152Compatibility(const BrainSlice_Parameters& bsParameters);
 
 TEST(BrainSliceExecutionProviderTest, ResNet152Test) {
-  fpga::FPGAInfo info = { 0, false, "", "", "" };
+  fpga::FPGAInfo info = {0, false, "", "", ""};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
@@ -634,7 +634,7 @@ TEST(BrainSliceExecutionProviderTest, ResNet152Test) {
 bool CheckVGG16Compatibility(const BrainSlice_Parameters& bsParameters);
 
 TEST(BrainSliceExecutionProviderTest, VGG16Test) {
-  fpga::FPGAInfo info = { 0, false, "", "", "" };
+  fpga::FPGAInfo info = {0, false, "", "", ""};
   auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 

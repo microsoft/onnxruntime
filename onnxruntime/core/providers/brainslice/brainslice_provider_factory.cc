@@ -9,11 +9,11 @@
 namespace onnxruntime {
 struct BrainSliceExecutionProviderFactory : IExecutionProviderFactory {
   BrainSliceExecutionProviderFactory(uint32_t ip, bool load_firmware, const char* instr_path, const char* data_path, const char* schema_path) 
-	  : ip_(ip),
-	  lead_firmware_(load_firmware),
-	  instr_path_(instr_path),
-	  data_path_(data_path),
-	  schema_path_(schema_path){}
+    : ip_(ip),
+    lead_firmware_(load_firmware),
+    instr_path_(instr_path),
+    data_path_(data_path),
+    schema_path_(schema_path){}
   ~BrainSliceExecutionProviderFactory() override {}
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
@@ -36,6 +36,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_BrainSlice, _In_ OrtSessionOptions* options, uint32_t ip, bool load_firmware, _In_ const char* instr_path, _In_ const char* data_path, _In_ const char* schema_path) {
-	options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_BrainSlice(ip, load_firmware, instr_path, data_path, schema_path));
-	return nullptr;
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_BrainSlice(ip, load_firmware, instr_path, data_path, schema_path));
+  return nullptr;
 }
