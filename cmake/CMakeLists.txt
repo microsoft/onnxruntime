@@ -87,6 +87,14 @@ endif()
 #must after OpenMP settings
 find_package(Threads)
 
+find_package(PythonLibs)
+include_directories(${PYTHON_INCLUDE_DIRS})
+link_directories(${PYTHON_LIBRARIES})
+
+include_directories("/home/randy/.local/lib/python3.5/site-packages/numpy/core/include/")
+link_directories("/home/randy/.local/lib/python3.5/site-packages/numpy/core/lib/")
+#target_link_libraries(<your exe or lib> ${PYTHON_LIBRARIES})
+
 if (MSVC)
   if (onnxruntime_MSVC_STATIC_RUNTIME)
     # set all of our submodules to static runtime
