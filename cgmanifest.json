@@ -36,6 +36,15 @@
             }
          }
       },
+       {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"d846fe50a3f0bb7767c7e087a05f4be95f4da0ec",
+               "repositoryUrl":"https://github.com/Microsoft/GSL.git"
+            }
+         }
+      },
       {
          "component":{
             "type":"git",
@@ -186,6 +195,105 @@
             "git":{
                "commitHash":"eddf9023206dc40974c26f589ee2ad63a4227a1e",
                "repositoryUrl":"https://github.com/glennrp/libpng.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"103abd9df2e7ad57f45531349471ea5304a7efe5",
+               "repositoryUrl":"https://github.com/dotnet/corefxlab.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"18a36291e48808fa7ef2d00a764ceb1ec95645a5",
+               "repositoryUrl":"https://github.com/dotnet/standard.git"
+            }
+         }
+      },
+         {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"217f52fb121ef92491e5d5f71394b07ce4ead1d0",
+               "repositoryUrl":"https://github.com/KjellKod/g3log.git"
+            }
+         }
+      },
+        {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"50893291621658f355bc5b4d450a8d06a563053d",
+               "repositoryUrl":"https://github.com/madler/zlib.git"
+            }
+         }
+      },
+           {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"d264a2603493fecda607c1d1cda87fedba77d36b",
+               "repositoryUrl":"https://github.com/Microsoft/CNTK.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"9ff0cc0f0212cb1e85b83ce5d2907ba9531b6cae",
+               "repositoryUrl":"https://github.com/nlohmann/json.git"
+            }
+         }
+      },
+            {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"971e2e89d08deeae0139d3011d15646fdac13c92",
+               "repositoryUrl":"https://github.com/numpy/numpy.git"
+            }
+         }
+      },
+            {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"c3cceac115c072fb63df1836ff46d8c60d9eb304",
+               "repositoryUrl":"https://github.com/NVlabs/cub.git"
+            }
+         }
+      },
+            {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"90537289a04ef5d572496240e2ac3a881be518d2",
+               "repositoryUrl":"https://github.com/pytorch/pytorch.git"
+            }
+         }
+      },
+            {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
+               "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
+            }
+         }
+      },
+            {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"",
+               "repositoryUrl":".git"
             }
          }
       },
