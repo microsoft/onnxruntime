@@ -38,9 +38,10 @@ struct MLValueAllocationParameters {
 
 class ExecutionFrame {
  public:
-  ExecutionFrame(const std::unordered_map<std::string, MLValue>& feeds,
-                 const std::vector<std::string>& output_names,
-                 const std::vector<MLValue>& fetches,
+  ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
+                 const std::vector<MLValue>& feeds,
+                 const std::vector<int>& fetch_mlvalue_idxs,
+                 std::vector<MLValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
@@ -73,7 +74,7 @@ class ExecutionFrame {
   }
 
   // Get the index for the first entry of the given node.
-  int GetNodeOffset(onnxruntime::NodeIndex index) const;
+  int GetNodeOffset(NodeIndex index) const;
 
   // Return nullptr if index map to an value that is an unused optional input/output
   const MLValue* GetNodeInputOrOutputMLValue(int index) const;
@@ -87,6 +88,9 @@ class ExecutionFrame {
                                       MLValue*& p_mlvalue);
 
   AllocatorPtr GetAllocator(const OrtAllocatorInfo& info);
+
+  // write the output values to the 'fetches' vector
+  Status GetOutputs(std::vector<MLValue>& fetches);
 
   Status ReleaseMLValue(int mlvalue_idx);
 
@@ -103,9 +107,10 @@ class ExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
-  void Init(const std::unordered_map<std::string, MLValue>& feeds,
-            const std::vector<std::string>& output_names,
-            const std::vector<MLValue>& fetches,
+  void Init(const std::vector<int>& feed_mlvalue_idxs,
+            const std::vector<MLValue>& feeds,
+            const std::vector<int>& fetch_mlvalue_idxs,
+            std::vector<MLValue>& fetches,
             const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators);
 
   common::Status AllocateAsPerAllocationPlan(int mlvalue_index,
@@ -156,7 +161,7 @@ class ExecutionFrame {
 
   // Record the ml value indices for output values. we won't include those
   // values' allocation in memory pattern, as they can't be shared.
-  std::vector<int> output_indices_;
+  const std::vector<int>& fetch_mlvalue_idxs_;
 
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtAllocatorInfo, BufferUniquePtr> buffers_;
