@@ -49,6 +49,8 @@ Looking ahead: To broaden the reach of the runtime, we will continue investments
 * [ARM](BUILD.md##arm-builds)
 
 # Getting Started 
+To quickly get started with converting and/or inferencing ONNX models, you can use the [ONNX-Ecosystem Docker container](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem).
+
 If you need a model:  
 * Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models. 
 * To get an ONNX model by exporting from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials).
