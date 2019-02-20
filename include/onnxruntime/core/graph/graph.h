@@ -744,6 +744,31 @@ class Graph {
     graph_output_order_ = outputs;
   }
 
+  Node* GetProducerNode(std::string node_arg_name) {
+    auto iter = node_arg_to_producer_node_.find(node_arg_name);
+
+    if (iter != node_arg_to_producer_node_.end()) {
+      int node_index = iter->second;
+      return GetNode(node_index);
+    }
+    return nullptr;
+  }
+
+  std::vector<Node*> GetConsumerNodes(std::string node_arg_name) {
+    std::vector<Node*> results;
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+
+    for (; iter != node_arg_to_consumer_nodes_.end() && iter->first == node_arg_name; iter++) {
+      int node_index = iter->second;
+      results.push_back(GetNode(node_index));
+    }
+    return results;
+  }
+
+  void SetWeightsToTrain(std::vector<std::string> weights_to_train) {
+    weights_to_train_ = weights_to_train;
+  }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node. 
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node which has a GraphProto attribute.
@@ -961,6 +986,12 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
+  // node arg to its producer node
+  std::unordered_map<std::string, int> node_arg_to_producer_node_;
+
+  // node arg to its consumer nodes
+  std::unordered_multimap<std::string, int> node_arg_to_consumer_nodes_;
+
   const std::unordered_map<std::string, int> domain_to_version_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
@@ -984,6 +1015,9 @@ class Graph {
 
   // Explicit graph output order to be used when constructing a Graph manually.
   std::vector<const NodeArg*> graph_output_order_;
+
+  // Used by the training module to indicate weights to train
+  std::vector<std::string> weights_to_train_;
 };
 
 }  // namespace onnxruntime

@@ -21,6 +21,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/framework_common.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -75,6 +76,16 @@ class SessionState {
   * execution frame to setup the appropriate MLValue vectors.
   */
   const std::unordered_map<int, MLValue>& GetInitializedTensors() const;
+
+  /**
+  Get some initialized tensors (weights).
+  */
+  NameMLValMap SessionState::GetInitializedTensors(const std::vector<std::string>& interested_weights) const;
+
+  /**
+  Update some initialized tensors (weights).
+  */
+  void UpdateInitializedTensors(const NameMLValMap& new_weights);
 
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);

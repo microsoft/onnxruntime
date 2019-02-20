@@ -5,6 +5,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -28,6 +29,10 @@ class CustomRegistry;
 
 namespace logging {
 class LoggingManager;
+}
+
+namespace training {
+class TrainingSessionImpl;  // TrainingSession wants to inherit from InferenceSession::Impl.
 }
 
 /**
@@ -272,5 +277,7 @@ class InferenceSession {
 
   class Impl;
   std::unique_ptr<Impl> impl_;
+
+  friend class training::TrainingSessionImpl;  // TrainingSession wants to inherit from InferenceSession::Impl.
 };
 }  // namespace onnxruntime

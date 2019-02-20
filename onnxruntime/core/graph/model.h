@@ -10,6 +10,8 @@
 #include "core/graph/graph_viewer.h"
 
 #include "gsl/pointers"
+#include "core/framework/ml_value.h"
+#include "core/framework/framework_common.h"
 
 namespace onnxruntime {
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
@@ -85,6 +87,11 @@ class Model {
 
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto();
+
+  // Update model's weights by values (for training).
+  // Here the goal is convert MLValues to TensorProto before Save().
+  // Be careful: once a model is initialized by a session, the initial tensors are removed from graph_proto and we could never save it correctly.
+  common::Status UpdateWeights(const NameMLValMap& weights);
 
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);

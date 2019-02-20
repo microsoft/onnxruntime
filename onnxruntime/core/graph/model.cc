@@ -200,6 +200,23 @@ ModelProto Model::ToProto() {
   return *model_proto_;
 }
 
+common::Status Model::UpdateWeights(const NameMLValMap& weights) {
+  // MLValue -> TensorProto
+  // TODO: support more other types than float
+  for (const auto& name_and_ml_value : weights) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    if (graph_->GetInitializedTensor(name_and_ml_value.first, tensor_proto)) {
+      auto mutable_tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(tensor_proto);
+      const auto& tensor = name_and_ml_value.second.Get<Tensor>();
+      const float* tensor_data = tensor.Data<float>();
+      for (int i = 0; i < mutable_tensor_proto->float_data_size(); ++i) {
+        mutable_tensor_proto->set_float_data(i, tensor_data[i]);
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!model_istream.good()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid istream object.");

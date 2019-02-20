@@ -947,6 +947,15 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
   for (auto& node : Nodes()) {
     // Need mutable input defs to be able to set any outer scope NodeArg implicit inputs
     auto& input_args = node.MutableInputDefs();
+    auto& output_args = node.MutableOutputDefs();
+
+    if (output_args.size() > 0) {
+      for (const auto* output_arg : output_args) {
+        if (output_arg->Exists()) {
+          node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
+        }
+      }
+    }
 
     if (input_args.size() > 0) {
       // This node needs inputs.
@@ -958,6 +967,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
           // This input could be optional and it does not exist in this case.
           continue;
         }
+
+        node_arg_to_consumer_nodes_.insert({input_arg->Name(), node.Index()});
 
         auto output_arg_iter = resolve_context_.output_args.find(input_arg->Name());
         if (resolve_context_.output_args.end() == output_arg_iter) {
@@ -2301,8 +2312,14 @@ Status Graph::SetGraphInputsOutputs() {
           // fine to catch this issue later?
         }
 
-        if (specified_graph_value_info.erase(input_arg->Name()) >= 1) {
-          value_info_.push_back(input_arg);
+        if (!weights_to_train_.empty()) {
+          std::unordered_set<std::string> value_info_names;
+          if (value_info_names.find(input_arg->Name()) == value_info_names.end()) {
+            value_info_names.insert(input_arg->Name());
+            value_info_.push_back(input_arg);
+          } else if (specified_graph_value_info.erase(input_arg->Name()) >= 1) {
+            value_info_.push_back(input_arg);
+          }
         }
       }
     }
@@ -2324,6 +2341,13 @@ Status Graph::SetGraphInputsOutputs() {
     // preserve output order
     for (auto& graph_output : graph_proto_->output()) {
       graph_outputs_.push_back(output_name_to_node_arg.at(graph_output.name()));
+    }
+
+    for (auto weight_to_train : weights_to_train_) {
+      auto found = output_name_to_node_arg.find(weight_to_train + "_grad");
+      if (found != output_name_to_node_arg.end()) {
+        graph_outputs_.push_back(found->second);
+      }
     }
   } else {
     std::unordered_map<std::string, const NodeArg*> output_name_to_node_arg;

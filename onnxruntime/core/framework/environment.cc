@@ -5,6 +5,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/gradient_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
@@ -36,6 +37,9 @@ Status Environment::Initialize() {
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
       RegisterOnnxFunctionBuilder();
+
+      // preserve this orde: this depends on operatorsetschema registration.
+      GradientOps::RegisterGradientSchemas();
     });
     //TODO:put all of the following things into call_once
     // Register MVN operator for backward compatibility.

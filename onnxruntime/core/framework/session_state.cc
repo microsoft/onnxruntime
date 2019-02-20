@@ -52,6 +52,28 @@ const std::unordered_map<int, MLValue>& SessionState::GetInitializedTensors() co
   return initialized_tensors_;
 }
 
+NameMLValMap SessionState::GetInitializedTensors(const std::vector<std::string>& interested_weights) const {
+  NameMLValMap result;
+  for (const auto& name : interested_weights) {
+    int idx;
+    if (!GetMLValueNameIdxMap().GetIdx(name, idx).IsOK()) {
+      continue;
+    }
+    result[name] = initialized_tensors_.at(idx);
+  }
+  return result;
+}
+
+void SessionState::UpdateInitializedTensors(const NameMLValMap& new_weights) {
+  for (auto name_and_ml_value : new_weights) {
+    int idx;
+    if (!GetMLValueNameIdxMap().GetIdx(name_and_ml_value.first, idx).IsOK()) {
+      continue;
+    }
+    initialized_tensors_.at(idx) = name_and_ml_value.second;
+  }
+}
+
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;
   return *this;
