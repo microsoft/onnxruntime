@@ -152,15 +152,13 @@ TEST(MathOpTest, ShrinkMLFloat16Type) {
   const std::vector<MLFloat16> output_test_data_nondefault = ConvertFloatToMLFloat16({7, 0, 0, -6});
   std::vector<ShrinkTestData<MLFloat16>> test_cases;
   test_cases.push_back(
-      {
-          "default attributes",
-          0.0f,
-          0.5f,
-          input_test_data_default,
-          {2, 2},
-          output_test_data_default,
-          {2, 2}
-	  });
+      {"default attributes",
+       0.0f,
+       0.5f,
+       input_test_data_default,
+       {2, 2},
+       output_test_data_default,
+       {2, 2}});
   test_cases.push_back(
       {"non-default attributes",
        10.0f,
