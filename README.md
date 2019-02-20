@@ -49,13 +49,14 @@ Looking ahead: To broaden the reach of the runtime, we will continue investments
 * [ARM](BUILD.md##arm-builds)
 
 # Getting Started 
-To quickly get started with converting and/or inferencing ONNX models, you can use the [ONNX-Ecosystem Docker container](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem).
 
 If you need a model:  
 * Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models. 
 * To get an ONNX model by exporting from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials).
 
 If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See detailed instructions [here](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx). 
+
+For the convenience of converting models to ONNX using existing conversion tools and inferencing with ONNX Runtime, we have provided the [ONNX-Ecosystem Docker container](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem). Otherwise, please refer to instructions below for installation.
 
 # Installation
 ## APIs and Official Builds
