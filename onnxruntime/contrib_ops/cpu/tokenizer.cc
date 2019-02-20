@@ -249,7 +249,7 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(status.IsOK(), "Either one of the separators OR tokenexp attributes required but none is set");
     ORT_ENFORCE(!tokenexp.empty(), "Expecting a non-empty tokenexp");
   } else {
-    ORT_ENFORCE(!separators.empty(), "Expect at least on item within separators");
+    ORT_ENFORCE(!separators.empty(), "Expect at least one item within separators");
   }
 
   char_tokenezation_ = (separators.size() == 1 &&
