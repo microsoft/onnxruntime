@@ -81,6 +81,89 @@ MLAS_DECLSPEC_ALIGN(static const uint64_t CA1[8], 64) = { 0x3FF20DD7504270CB, 0x
 MLAS_DECLSPEC_ALIGN(static const uint64_t CA2[8], 64) = { 0x0000000000000000, 0xBE05680ACF8280E4, 0xBEABC6A83208FCFC, 0x3F13A994A348795B, 0xBF9945BFC1915C21, 0x40233905061C3803};
 MLAS_DECLSPEC_ALIGN(static const uint64_t CA3[8], 64) = { 0xBFD8127465AFE719, 0xBFD812745E92C3D3, 0xBFD81253E42E7B99, 0xBFD8167B2DFCDE44, 0xBFD747AAABB690D8, 0xC027560B851F7690};
 
+
+void
+MLASCALL
+MlasErffKernel_avx256(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the generic kernel for the error function.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    #if _MSC_VER && !__INTEL_COMPILER
+    #pragma warning (push)
+    #pragma warning (disable: 4310)
+    #endif
+
+    //TODO: will the aligned load/store be faster???
+    while (N >= 4) {
+        __m128 xf = _mm_loadu_ps(Input);
+        __m128i sign_bits = _mm_and_si128(_mm_castps_si128(xf), _mm_set1_epi32(0x80000000));
+        __m128 axf = _mm_castsi128_ps(_mm_xor_si128(_mm_castps_si128(xf), sign_bits));
+        axf = _mm_min_ps(axf, _mm_castsi128_ps(_mm_set1_epi32(0x407fffff))); // the bigest float less than 4.0
+    
+        __m128 ge_0_125 = _mm_cmp_ps(axf, _mm_set1_ps(0.125f), _CMP_GE_OQ);
+        __m128i vindex = _mm_srli_epi32(_mm_castps_si128(axf), 23);
+        vindex = _mm_sub_epi32(vindex, _mm_set1_epi32(0x3D));
+        vindex = _mm_and_si128(_mm_castps_si128(ge_0_125), vindex);
+    
+        __m256d ax = _mm256_cvtps_pd(axf);
+        __m256d x2 = _mm256_mul_pd(ax, ax);
+
+        __m256d resultpd = _mm256_i32gather_pd((const double*)CA3, vindex, 8);
+        resultpd = _mm256_fmadd_pd(resultpd, ax, _mm256_i32gather_pd((const double*)CA2, vindex, 8));
+        resultpd = _mm256_fmadd_pd(resultpd, ax, _mm256_i32gather_pd((const double*)CA1, vindex, 8));
+        resultpd = _mm256_fmadd_pd(resultpd, ax, _mm256_i32gather_pd((const double*)CA0, vindex, 8));
+    
+        __m256d PolC = _mm256_i32gather_pd((const double*)CB0, vindex, 8);
+        PolC = _mm256_fmadd_pd(PolC, ax, _mm256_i32gather_pd((const double*)CC3, vindex, 8));
+        PolC = _mm256_fmadd_pd(PolC, ax, _mm256_i32gather_pd((const double*)CC2, vindex, 8));
+        PolC = _mm256_fmadd_pd(PolC, ax, _mm256_i32gather_pd((const double*)CC1, vindex, 8));
+        PolC = _mm256_fmadd_pd(PolC, ax, _mm256_i32gather_pd((const double*)CC0, vindex, 8));
+    
+        __m256d PolD = _mm256_i32gather_pd((const double*)CD3, vindex, 8);
+        PolD = _mm256_fmadd_pd(PolD, ax, _mm256_i32gather_pd((const double*)CD2, vindex, 8));
+        PolD = _mm256_fmadd_pd(PolD, ax, _mm256_i32gather_pd((const double*)CD1, vindex, 8));
+        PolD = _mm256_fmadd_pd(PolD, ax, _mm256_i32gather_pd((const double*)CD0, vindex, 8));
+    
+        PolD = _mm256_mul_pd(PolD, x2);
+        PolC = _mm256_mul_pd(PolC, x2);
+        resultpd = _mm256_add_pd(resultpd, _mm256_mul_pd(PolC, PolD));
+
+        __m128 result4f = _mm_castsi128_ps(_mm_or_si128(_mm_castps_si128(_mm256_cvtpd_ps(resultpd)), sign_bits));
+
+        _mm_storeu_ps(Output, result4f);
+
+        Input += 4;
+        Output += 4;
+        N -= 4;
+    }
+
+    #if _MSC_VER && !__INTEL_COMPILER
+    #pragma warning (pop)
+    #endif
+}
+
+
 void
 MLASCALL
 MlasErffKernel_avx512(
@@ -112,18 +195,18 @@ Return Value:
     #pragma warning (push)
     #pragma warning (disable: 4310)
     #endif
-    const __m512d mmCC0 = _mm512_load_pd(&CC0[0]);
-    const __m512d mmCC1 = _mm512_load_pd(&CC1[0]);
-    const __m512d mmCC2 = _mm512_load_pd(&CC2[0]);
-    const __m512d mmCC3 = _mm512_load_pd(&CC3[0]);
-    const __m512d mmCB0 = _mm512_load_pd(&CB0[0]);
+    const __m512d mmCC0 = _mm512_load_pd(CC0);
+    const __m512d mmCC1 = _mm512_load_pd(CC1);
+    const __m512d mmCC2 = _mm512_load_pd(CC2);
+    const __m512d mmCC3 = _mm512_load_pd(CC3);
+    const __m512d mmCB0 = _mm512_load_pd(CB0);
 
     const __m512d mmCD0 = _mm512_load_pd(CD0);
     const __m512d mmCD1 = _mm512_load_pd(CD1);
     const __m512d mmCD2 = _mm512_load_pd(CD2);
     const __m512d mmCD3 = _mm512_load_pd(CD3);
 	
-	  const __m512d mmCA0 = _mm512_load_pd(CA0);
+    const __m512d mmCA0 = _mm512_load_pd(CA0);
     const __m512d mmCA1 = _mm512_load_pd(CA1);
     const __m512d mmCA2 = _mm512_load_pd(CA2);
     const __m512d mmCA3 = _mm512_load_pd(CA3);
@@ -174,6 +257,7 @@ Return Value:
         N -= 8;
     }
 
+    // TODO: remove mask_load for its depedency on avx512vl
     if (N > 0) {
         __mmask8 input_mask = ((1 << N) - 1);
         __m256 zerof = _mm256_setzero_ps();
