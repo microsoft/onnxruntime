@@ -1,7 +1,16 @@
 #include "python_op.h"
 #include <vector>
+
 namespace onnxruntime {
 namespace contrib {
+
+ONNX_OPERATOR_KERNEL_EX(
+    PyOp,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder(),
+    PyOp);
 
 PyObject* FromTensor(const Tensor* tensor)
 {
@@ -20,6 +29,7 @@ Status PyOp::Compute(OpKernelContext* context) const
         PyTuple_SetItem(pyArgs, i, FromTensor(context->Input<Tensor>(i)));
     }
     auto pyResult = PyEval_CallObject(pyFunc_, pyArgs);
+    Py_DECREF(pyArgs);
     ORT_ENFORCE(PyArray_Check(pyResult));
     auto np_array = reinterpret_cast<PyArrayObject*>(pyResult);
     std::vector<int64_t> shape;
@@ -27,7 +37,9 @@ Status PyOp::Compute(OpKernelContext* context) const
         shape.push_back(PyArray_SHAPE(np_array)[i]);
     }
     auto output_tensor = context->Output(0, TensorShape(shape));
+    ORT_ENFORCE(output_tensor->DataType() == DataTypeImpl::GetType<int32_t>(), "output type not int32_t");
     memcpy(output_tensor->MutableDataRaw(), PyArray_DATA(np_array), output_tensor->Size());
+    Py_DECREF(pyResult);
     return Status::OK(); 
 }
 

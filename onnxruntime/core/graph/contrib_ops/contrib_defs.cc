@@ -1044,6 +1044,15 @@ The bounding box coordinates corresponding to the selected indices can then be o
       })
       .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PyOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "data", "data", "tensor(int32)")
+      .Output(0, "output", "output", "tensor(int32)")
+      .Attr("module", "module", AttributeProto::STRING)
+      .Attr("function", "function", AttributeProto::STRING)
+      .SetDoc(R"DOC(Prototype PyOp)DOC");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

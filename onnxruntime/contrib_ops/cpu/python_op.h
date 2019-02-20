@@ -16,8 +16,10 @@ public:
         Py_Initialize();
         _import_array();
         std::string module, script;
-        ORT_ENFORCE(info.GetAttr("module", &module).IsOK(), "module not specified");
-        ORT_ENFORCE(info.GetAttr("script", &script).IsOK(), "script not specified");
+        ORT_ENFORCE(info.GetAttr("module",   &module).IsOK(), "module not specified");
+        ORT_ENFORCE(info.GetAttr("function", &script).IsOK(), "script not specified");
+        // PySys_SetPath(L"/home/randy/onnxruntime/build/Linux/Debug/");
+        PySys_SetPath(L".");
         pyModule_ = PyImport_ImportModule(module.c_str());
         ORT_ENFORCE(nullptr != pyModule_, "import python module failed");
         pyFunc_ = PyObject_GetAttrString(pyModule_, script.c_str());
