@@ -304,7 +304,7 @@ void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_r
     res = RunTaskImpl(task_id);
   } catch (std::exception& ex) {
     res = EXECUTE_RESULT::WITH_EXCEPTION;
-    LOGF_DEFAULT(ERROR, "%s:%s", c_->GetTestCaseName().c_str(), ex.what());
+    LOGS_DEFAULT(ERROR) << c_->GetTestCaseName() << ":" << ex.what();
   }
   if (store_result) {
     result->SetResult(task_id, res);
@@ -320,7 +320,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   std::unordered_map<std::string, OrtValue*> feeds;
   common::Status status = c_->LoadTestData(session, task_id, feeds, true);
   if (!status.IsOK()) {
-    LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
+    LOGS_DEFAULT(ERROR) << status.ErrorMessage();
     return StatusCodeToExecuteResult(status.Code());
   }
 
@@ -368,7 +368,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     OrtReleaseValue(kvp.second);
   }
   if (!status.IsOK()) {
-    LOGF_DEFAULT(ERROR, "%s:%s\n", test_case_name_.c_str(), status.ErrorMessage().c_str());
+    LOGS_DEFAULT(ERROR) << test_case_name_ << ":" << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
   }
 
@@ -376,15 +376,15 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   bool post_procesing;
 
   if (!(status = c_->GetPerSampleTolerance(&per_sample_tolerance)).IsOK()) {
-    LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
+    LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
   }
   if (!(status = c_->GetRelativePerSampleTolerance(&relative_per_sample_tolerance)).IsOK()) {
-    LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
+    LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
   }
   if (!(status = c_->GetPostProcessing(&post_procesing)).IsOK()) {
-    LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
+    LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
   }
 
@@ -392,7 +392,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   std::unordered_map<std::string, OrtValue*> expected_output_values;
   status = c_->LoadTestData(session, task_id, expected_output_values, false);
   if (!status.IsOK()) {
-    LOGF_DEFAULT(ERROR, "%s", status.ErrorMessage().c_str());
+    LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
   }
   std::unordered_map<std::string, OrtValue*> name_fetch_output_map;

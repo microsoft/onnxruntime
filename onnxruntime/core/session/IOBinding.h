@@ -68,7 +68,8 @@ class IOBinding {
   const std::vector<std::string>& GetOutputNames() const;
   std::vector<MLValue>& GetOutputs();
 
-  const std::unordered_map<std::string, MLValue>& GetInputs() const;
+  const std::vector<std::string>& GetInputNames() const;
+  const std::vector<MLValue>& GetInputs() const;
 
   /**
     * Get a CPU allocator from provider for async copy later if the provider supports that
@@ -82,7 +83,8 @@ class IOBinding {
 
   IOBinding(const SessionState& session_state);
   const SessionState& session_state_;
-  std::unordered_map<std::string, MLValue> feeds_;
+  std::vector<std::string> feed_names_;
+  std::vector<MLValue> feeds_;
   std::vector<std::string> output_names_;
   std::vector<MLValue> outputs_;
 
