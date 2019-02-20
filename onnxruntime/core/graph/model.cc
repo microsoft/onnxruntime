@@ -90,7 +90,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  model_proto_.reset(std::move(model_proto.release()));
+  model_proto_ = std::move(model_proto);
   for (auto& prop : model_proto_->metadata_props()) {
     model_metadata_[prop.key()] = prop.value();
   }

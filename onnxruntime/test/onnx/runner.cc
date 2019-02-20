@@ -485,7 +485,7 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
-  {
+  try {
     DataRunner* r = nullptr;
     std::string node_name;
     Status status = info->GetNodeName(&node_name);
@@ -510,6 +510,10 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     session_object.release();
     r->Start(pci, concurrent_runs);
     return;
+  } catch (onnxruntime::NotImplementedException& ex) {
+    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
+    std::string node_name;
+    ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   }
 end:
   on_finished(ret, pci);
