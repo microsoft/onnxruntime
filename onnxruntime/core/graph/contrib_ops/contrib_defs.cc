@@ -472,6 +472,39 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
+  static const char* Tokenizer_ver1_doc = R"DOC(
+  Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
+  If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
+  Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
+  The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
+  the second mode will be used. The first mode breaks each input string into tokens by removing separators. 
+
+  Let's assume "separators" is [" "] and consider an example. 
+  If input is 
+
+  ["Hello World", "I love computer science !"] whose shape is [2], 
+
+  then the output would be 
+
+ [["Hello", "World", padvalue, padvalue, padvalue], 
+ ["I", "love", "computer", "science", "!"]] 
+
+ whose shape is [2, 5] because you can find at most 5 tokens per input string. 
+ Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
+
+ For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
+ The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
+ This operator searches for the first match starting from the beginning of the considered string, 
+ and then launches another search starting from the first remained character after the first matched token.
+ If no match found, this operator will remove the first character from the remained string and do another search.
+ This procedure will be repeated until reaching the end of the considered string.
+
+  Let's consider another example to illustrate the effect of setting "mark" to true. 
+  If input is ["Hello", "World"], 
+  then the corresponding output would be [0x02, "Hello", "World", 0x03].
+  This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2]. 
+)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -490,17 +523,50 @@ activation and leaky_relu_alpha.)DOC")
           "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.",
           AttributeProto::STRING)
       .Attr(
+          "tokenexp",
+          "An optional string. Token's regular expression in basic POSIX format"
+          " (http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
+          " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
+          " 'tokenexp' and 'separators' should be set.",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Attr(
           "separators",
-          "The list of separators, two consecutive segments in X connected by a separator would be divided into two tokens.",
-          AttributeProto::STRINGS)
+          "an optional list of strings (type: AttributeProto::STRINGS), each single string in this attribute is a separator."
+          " Two consecutive segments in X connected by a separator would be divided into two tokens."
+          " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
+          " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
+          " one should set the separators to [\"\"], which contains only one empty string."
+          " If 'separators' is a L-element array, there will be L rounds of tokenization using one stop word."
+          " More specifically, in the first round, the first element in 'separators' is used to tokenize each string in the input."
+          " Then, the second element in 'separators' will be used to tokenize the resulted strings produced at the first round.",
+          AttributeProto::STRINGS,
+          OPTIONAL)
       .Attr(
           "mincharnum",
           "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored",
           AttributeProto::INT)
+      .SetDoc(Tokenizer_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      })
-      .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis. All input strings including attributes are UTF-8 encoded.)DOC");
+
+        // Shape inference
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        auto& input_shape = getInputShape(ctx, 0);
+        auto& dims = input_shape.dim();
+        if (dims.size() < 1 || dims.size() > 2) {
+          fail_shape_inference("Input dimensions are either [C] or [N][C] allowed");
+        }
+        for (auto& dim : dims) {
+          *output_shape.add_dim() = dim;
+        }
+        // Add the last unknown dimension
+        output_shape.add_dim();
+        updateOutputShape(ctx, 0, output_shape);
+      });
 
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
@@ -736,10 +802,6 @@ if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
 
         convPoolShapeInference(ctx, true, false, 0, 3);
       });
-      
-    
-          
-
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvInteger)
       .SetDomain(kMSDomain)
