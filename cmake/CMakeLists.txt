@@ -86,16 +86,9 @@ endif()
 
 #must after OpenMP settings
 find_package(Threads)
-
 find_package(PythonLibs)
 include_directories(${PYTHON_INCLUDE_DIRS})
-#link_directories(${PYTHON_LIBRARIES})
-#list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${PYTHON_LIBRARIES})
-
-include_directories("/home/randy/.local/lib/python3.5/site-packages/numpy/core/include/")
-#link_directories("/home/randy/.local/lib/python3.5/site-packages/numpy/core/lib/")
-#list(APPEND onnxruntime_EXTERNAL_LIBRARIES "libnpymath")
-#target_link_libraries(<your exe or lib> ${PYTHON_LIBRARIES})
+include_directories("~/.local/lib/python3.5/site-packages/numpy/core/include/")
 
 if (MSVC)
   if (onnxruntime_MSVC_STATIC_RUNTIME)
@@ -264,7 +257,6 @@ include(eigen)
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${PYTHON_LIBRARIES})
-#list(APPEND onnxruntime_EXTERNAL_LIBRARIES "libnpymath")
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
