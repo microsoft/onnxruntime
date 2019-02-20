@@ -10,6 +10,7 @@
 #endif
 
 #include "core/providers/cpu/controlflow/loop.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -94,13 +95,15 @@ class LoopImpl {
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
 
+  Status CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm);
+
   // Execute the batch, by iterating the sequence in each batch entry
   // and calling the subgraph with each item in the sequence.
-  Status Execute();
+  Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
 
  private:
-  NameMLValMap CreateInitialFeeds();
-  void UpdateFeeds(const std::vector<MLValue>& last_output, NameMLValMap& next_input);
+  void CreateInitialFeeds(std::vector<MLValue>& feeds);
+  void UpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs);
 
   // create the single Loop output from a collection of per-iteration outputs
   Status ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_output, int output_index);
@@ -139,7 +142,8 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
 
-  status = loop_impl.Execute();
+  // create FeedsFetchesManager if needed and call LoopImpl::Execute
+  status = controlflow::detail::SubgraphExecuteHelper(cached_feeds_fetches_manager_, loop_impl);
 
   return status;
 }
@@ -185,7 +189,7 @@ Status LoopImpl::Initialize() {
   // we know how many inputs we are going to call the subgraph with based on the Loop inputs,
   // and that value is in num_subgraph_inputs_.
   // validate that the subgraph has that many inputs.
-  if (num_subgraph_inputs_ != subgraph_inputs.size()) {
+  if (static_cast<size_t>(num_subgraph_inputs_) != subgraph_inputs.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Graph in 'body' attribute of Loop should have ",
                            num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
@@ -195,7 +199,7 @@ Status LoopImpl::Initialize() {
   auto num_subgraph_outputs = subgraph_outputs.size();
 
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
-  if (num_subgraph_outputs - 1 != num_outputs_) {
+  if (num_subgraph_outputs - 1 != static_cast<size_t>(num_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' node has ", num_outputs_,
                            " outputs so the subgraph requires ", num_outputs_ + 1,
                            " but has ", num_subgraph_outputs);
@@ -209,7 +213,7 @@ Status LoopImpl::Initialize() {
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0);
 
   subgraph_input_names_.reserve(num_subgraph_inputs_);
-  for (size_t i = 0; i < num_subgraph_inputs_; ++i) {
+  for (int i = 0; i < num_subgraph_inputs_; ++i) {
     subgraph_input_names_.push_back(subgraph_inputs[i]->Name());
   }
 
@@ -226,41 +230,56 @@ Status LoopImpl::Initialize() {
   return status;
 }
 
-NameMLValMap LoopImpl::CreateInitialFeeds() {
-  NameMLValMap feeds;
+Status LoopImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
+  auto num_implicit_inputs = implicit_inputs_.size();
+  std::vector<std::string> feed_names;
+  feed_names.reserve(num_subgraph_inputs_ + num_implicit_inputs);
 
-  feeds.reserve(num_subgraph_inputs_ + implicit_inputs_.size());
+  std::copy(subgraph_input_names_.cbegin(), subgraph_input_names_.cend(), std::back_inserter(feed_names));
+  for (auto& entry : implicit_inputs_) {
+    feed_names.push_back(entry.first);
+  }
 
-  feeds[subgraph_input_names_[0]] = iter_num_mlvalue_;
-  feeds[subgraph_input_names_[1]] = condition_mlvalue_;
+  FeedsFetchesInfo ffi(feed_names, subgraph_output_names_);
+  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
+                                            ffm);
+
+  return status;
+}
+
+void LoopImpl::CreateInitialFeeds(std::vector<MLValue>& feeds) {
+  auto num_implicit_inputs = implicit_inputs_.size();
+  feeds.reserve(num_subgraph_inputs_ + num_implicit_inputs);
+
+  // This ordering is the same as used in CreateFeedsFetchesManager
+  feeds.push_back(iter_num_mlvalue_);
+  feeds.push_back(condition_mlvalue_);
 
   // populate loop carried var inputs which conveniently start at slot 2 in both the Loop and subgraph inputs
   for (int i = 2; i < num_subgraph_inputs_; ++i) {
-    feeds[subgraph_input_names_[i]] = *context_.GetInputMLValue(i);
+    feeds.push_back(*context_.GetInputMLValue(i));
   }
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
     ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
                 entry.first, " did not.");
-    feeds[entry.first] = *entry.second;
+    feeds.push_back(*entry.second);
   }
-
-  return feeds;
 }
 
-void LoopImpl::UpdateFeeds(const std::vector<MLValue>& last_output, NameMLValMap& next_input) {
+void LoopImpl::UpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs) {
   // last_output: cond, loop vars..., loop output...
   // next_input: iter_num, cond, loop_vars. iter_num is re-used
 
-  // simple copy for cond and loop carried vars.
+  // simple copy for cond and loop carried vars. start at 1 to skip iter_num in input
   for (int i = 1; i < num_subgraph_inputs_; ++i) {
-    next_input[subgraph_input_names_[i]] = last_output[i - 1];  // skip iter_num in input
+    next_inputs[i] = last_outputs[i - 1];
   }
 
   // save loop outputs as we have to concatenate at the end
   for (int j = num_loop_carried_vars_; j < num_outputs_; ++j) {
-    loop_output_tensors_[j - num_loop_carried_vars_].push_back(last_output[j + 1]);  // skip 'cond' in output
+    loop_output_tensors_[j - num_loop_carried_vars_].push_back(last_outputs[j + 1]);  // skip 'cond' in output
   }
 }
 
@@ -302,11 +321,13 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
   return Status::OK();
 }
 
-Status LoopImpl::Execute() {
+Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
   auto status = Status::OK();
 
-  NameMLValMap feeds{CreateInitialFeeds()};
+  std::vector<MLValue> feeds;
   std::vector<MLValue> fetches;
+
+  CreateInitialFeeds(feeds);
 
   auto& iter_num_value = *iter_num_mlvalue_.GetMutable<Tensor>()->MutableData<int64_t>();
 
@@ -319,8 +340,19 @@ Status LoopImpl::Execute() {
     // loop carried variables can change shape across iterations, and we don't know how many iterations
     // there will be to allocate loop outputs upfront. due to that we can't use a custom fetch allocator
     // for any outputs
-    status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, {},
-                                 /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
+    if (cached_ffm) {
+      status = utils::ExecuteGraphWithCachedInfo(session_state_, *cached_ffm, feeds, fetches, {},
+                                                 /*sequential_execution*/ true, context_.GetTerminateFlag(),
+                                                 context_.Logger());
+    } else {
+      status = utils::ExecuteGraph(session_state_, *ffm, feeds, fetches, {},
+                                   /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger(),
+                                   /*cache_copy_info*/ true);
+
+      // after the first execution, use the cached information
+      cached_ffm = ffm;
+    }
+
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];
@@ -356,7 +388,7 @@ Status LoopImpl::Execute() {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < num_loop_carried_vars_; ++i) {
-      copy_tensor_from_mlvalue_to_output(feeds[subgraph_input_names_[i + 2]], i);  // skip iter# and cond
+      copy_tensor_from_mlvalue_to_output(feeds[i + 2], i);  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs

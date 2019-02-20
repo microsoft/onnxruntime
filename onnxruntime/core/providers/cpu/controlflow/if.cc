@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/controlflow/if.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 #include "core/framework/execution_frame.h"
 #include "core/framework/framework_common.h"
@@ -63,9 +64,11 @@ class IfImpl {
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
 
+  Status CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm);
+
   // Execute the batch, by iterating the sequence in each batch entry
   // and calling the subgraph with each item in the sequence.
-  Status Execute();
+  Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
 
  private:
   Status AllocateOutputTensors();
@@ -101,7 +104,11 @@ Status If::Compute(OpKernelContext* ctx) const {
   auto status = impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
 
-  status = impl.Execute();
+  // create FeedsFetchesManager if needed and call IfImpl::Execute
+  status = controlflow::detail::SubgraphExecuteHelper(condition
+                                                          ? cached_then_feeds_fetches_manager_
+                                                          : cached_else_feeds_fetches_manager_,
+                                                      impl);
 
   return status;
 }
@@ -170,31 +177,59 @@ Status IfImpl::AllocateOutputTensors() {
   return Status::OK();
 }
 
-Status IfImpl::Execute() {
-  Status status = Status::OK();
+Status IfImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
+  // we setup the FeedsFetchesInfo manually here as we need to skip implicit inputs that aren't in this subgraph
+  FeedsFetchesInfo ffi;
 
-  NameMLValMap feeds;
+  auto num_inputs = implicit_inputs_.size();
+  ffi.feed_names.reserve(num_inputs);
+  ffi.feeds_mlvalue_idxs.reserve(num_inputs);
 
-  feeds.reserve(implicit_inputs_.size());
   auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
-    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                entry.first, " did not.");
-
     // prune to values that are in this subgraph as the implicit inputs cover both 'then' and 'else' subgraphs.
     // alternatively we could track implicit inputs on a per-attribute basis in the node, but that
     // would make that tracking a bit more complicated.
     int idx;
     if (mlvalue_name_idx_map.GetIdx(entry.first, idx).IsOK()) {
-      feeds[entry.first] = *entry.second;
+      ffi.feed_names.push_back(entry.first);
+      ffi.feeds_mlvalue_idxs.push_back(idx);
     }
   }
+
+  ffi.output_names = subgraph_output_names_;
+  ORT_RETURN_IF_ERROR(FeedsFetchesInfo::MapNamesToMLValueIdxs(ffi.output_names, mlvalue_name_idx_map,
+                                                              ffi.fetches_mlvalue_idxs));
+
+  ffm = std::make_unique<FeedsFetchesManager>(std::move(ffi));
+
+  return Status::OK();
+}
+
+Status IfImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
+  Status status = Status::OK();
+
+  auto num_inputs = implicit_inputs_.size();
+  std::vector<MLValue> feeds;
+  feeds.reserve(num_inputs);
+
+  // pass in implicit inputs as feeds.
+  // use the FeedsFetchesInfo as that has the pruned names
+  auto& feed_names = cached_ffm ? cached_ffm->GetFeedsFetchesInfo().feed_names : ffm->GetFeedsFetchesInfo().feed_names;
+  for (auto& feed_name : feed_names) {
+    const auto* feed_mlvalue = implicit_inputs_[feed_name];
+    ORT_ENFORCE(feed_mlvalue, "All implicit inputs should have MLValue instances by now. ",
+                feed_name, " did not.");
+
+    feeds.push_back(*feed_mlvalue);
+  }
+
   std::vector<MLValue> fetches;
   std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
-  fetches.reserve(num_outputs_);
 
+  fetches.reserve(num_outputs_);
   for (int i = 0; i < num_outputs_; ++i) {
     fetches.push_back(outputs_[i].second);
 
@@ -216,8 +251,16 @@ Status IfImpl::Execute() {
     }
   }
 
-  status = utils::ExecuteGraph(session_state_, feeds, subgraph_output_names_, fetches, fetch_allocators,
-                               /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger());
+  if (cached_ffm) {
+    status = utils::ExecuteGraphWithCachedInfo(session_state_, *cached_ffm, feeds, fetches, fetch_allocators,
+                                               /*sequential_execution*/ true, context_.GetTerminateFlag(),
+                                               context_.Logger());
+  } else {
+    status = utils::ExecuteGraph(session_state_, *ffm, feeds, fetches, fetch_allocators,
+                                 /*sequential_execution*/ true, context_.GetTerminateFlag(), context_.Logger(),
+                                 /*cache_copy_info*/ true);
+  }
+
   ORT_RETURN_IF_ERROR(status);
 
   return status;

@@ -74,14 +74,20 @@ class PerformanceRunner {
 
   inline const PerformanceResult& GetResult() const { return performance_result_; }
 
-  inline void SerializeResult() const { performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path, performance_test_config_.run_config.f_dump_statistics); }
+  inline void SerializeResult() const {
+    performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path,
+                                   performance_test_config_.run_config.f_dump_statistics);
+  }
 
  private:
   bool Initialize();
 
   inline Status RunOneIteration(bool isWarmup = false) {
     auto start = std::chrono::high_resolution_clock::now();
-    ORT_RETURN_IF_ERROR(session_object_->Run(*io_binding_));
+    OrtRunOptions run_options;
+    run_options.cache_feeds_fetches_info = true;
+
+    ORT_RETURN_IF_ERROR(session_object_->Run(run_options, *io_binding_));
     auto end = std::chrono::high_resolution_clock::now();
 
     if (!isWarmup) {

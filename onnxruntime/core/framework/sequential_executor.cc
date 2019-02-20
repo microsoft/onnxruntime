@@ -12,14 +12,9 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
-
-static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
-                          ExecutionFrame& frame,
-                          const std::vector<std::string>& output_names,
-                          std::vector<MLValue>& fetches,
-                          const logging::Logger& logger);
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
@@ -27,8 +22,9 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const logging::Logger& logger);
 
 Status SequentialExecutor::Execute(const SessionState& session_state,
-                                   const NameMLValMap& feeds,
-                                   const std::vector<std::string>& output_names,
+                                   const std::vector<int>& feed_mlvalue_idxs,
+                                   const std::vector<MLValue>& feeds,
+                                   const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<MLValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
                                    const logging::Logger& logger) {
@@ -41,7 +37,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feeds, output_names, fetches, fetch_allocators, session_state};
+  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
 
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
@@ -162,17 +158,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
   }
 
   VLOGS(logger, 1) << "Fetching output.";
-  ORT_RETURN_IF_ERROR(FetchOutput(session_state.GetMLValueNameIdxMap(), frame, output_names, fetches, logger));
+  // ExecutionFrame::Finalize will update 'fetches' with the final output
+  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+  VLOGS(logger, 1) << "Done with execution.";
 
   if (frame.HasPlan()) {
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
-      if (!(feed.second.IsTensor())) {
+      if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.second.Get<Tensor>();
+      auto& tensor = feed.Get<Tensor>();
       input_shapes.push_back(tensor.Shape());
     }
 
@@ -187,35 +185,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
-  return Status::OK();
-}
-
-static Status FetchOutput(const MLValueNameIdxMap& name_idx_map,
-                          ExecutionFrame& frame,
-                          const std::vector<std::string>& output_names,
-                          std::vector<MLValue>& fetches,
-                          const logging::Logger& logger) {
-  if (fetches.empty()) {
-    fetches.resize(output_names.size());
-  } else {
-    // this should've been checked before already
-    ORT_ENFORCE(output_names.size() == fetches.size(),
-                "output_names vector size: " + std::to_string(output_names.size()) +
-                    " does not match that of fetches vector: " + std::to_string(fetches.size()));
-  }
-
-  auto idx = 0;
-
-  for (const auto& oname : output_names) {
-    VLOGS(logger, 1) << "Attempting to fetch output with name: " << oname;
-    int mlvalue_index;
-    ORT_RETURN_IF_ERROR(name_idx_map.GetIdx(oname, mlvalue_index));
-    const MLValue& output_mlvalue = frame.GetMLValue(mlvalue_index);
-    VLOGS(logger, 1) << "Copying fetched MLValue to output vector";
-    fetches[idx++] = output_mlvalue;
-  }
-
-  VLOGS(logger, 1) << "Done with execution.";
   return Status::OK();
 }
 

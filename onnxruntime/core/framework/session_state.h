@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <map>
 #include <unordered_map>
 #include <vector>
 #include "gsl/gsl_util"
@@ -14,6 +15,7 @@
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
@@ -48,15 +50,15 @@ class SessionState {
   }
 
   // Graph viewer.
-  void SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> graph_viewer);
-  const onnxruntime::GraphViewer* GetGraphViewer() const;
+  void SetGraphViewer(std::unique_ptr<GraphViewer> graph_viewer);
+  const GraphViewer* GetGraphViewer() const;
 
   // kernels
   // Get kernel for specified node.
   // It should called right before graph execution only.
-  const OpKernel* GetKernel(onnxruntime::NodeIndex node_id) const;
+  const OpKernel* GetKernel(NodeIndex node_id) const;
 
-  void AddKernel(onnxruntime::NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel);
+  void AddKernel(NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel);
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
@@ -176,13 +178,20 @@ class SessionState {
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
+  const FeedsFetchesManager* GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                                    const std::vector<std::string>& output_names) const;
+
+  Status CacheFeedsFetchesManager(const std::vector<std::string>& feed_names,
+                                  const std::vector<std::string>& output_names,
+                                  std::unique_ptr<FeedsFetchesManager> manager);
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
-  std::unordered_map<onnxruntime::NodeIndex, std::unique_ptr<OpKernel>> session_kernels_;
-  std::unique_ptr<onnxruntime::GraphViewer> graph_viewer_;
+  std::unordered_map<NodeIndex, std::unique_ptr<OpKernel>> session_kernels_;
+  std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
   MLValueNameIdxMap mlvalue_name_idx_map_;
@@ -221,5 +230,7 @@ class SessionState {
   FuncManager fused_funcs_mgr_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
+  std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
 };
+
 }  // namespace onnxruntime

@@ -172,6 +172,12 @@ class InferenceSession {
     */
   common::Status Initialize();
 
+  common::Status Run(const RunOptions& run_options,
+                     const std::vector<std::string>& feed_names,
+                     const std::vector<MLValue>& feeds,
+                     const std::vector<std::string>& output_names,
+                     std::vector<MLValue>* p_fetches);
+
   /**
     * Run a pre-loaded and pre-intialized model.
     * Multiple threads are allowed to run this function; hence its thread-safe.
