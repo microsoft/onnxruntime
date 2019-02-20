@@ -44,18 +44,6 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = IntPtr.Zero;
             try
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                {
-                    if (!CheckLibcVersionGreaterThanMinimum(new Version(2, 23)))
-                    {
-                        throw new OnnxRuntimeException(
-                        ErrorCode.RuntimeException,
-                        "libglibc.so runtime version does not meet the minimun of 2.23 required by OnnxRuntime. " +
-                        "OS should be Ubuntu 16.04 or newer."
-                        );
-                    }
-                }
-
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options._nativePtr, out _nativeHandle));
                 else
@@ -329,32 +317,9 @@ namespace Microsoft.ML.OnnxRuntime
             return new NodeMetadata(intDimensions, dotnetType);
         }
 
-        private static bool CheckLibcVersionGreaterThanMinimum(Version minVersion)
-        {
-            Version version;
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return false;
-            }
 
-            try
-            {
-                version = Version.Parse(Marshal.PtrToStringAnsi(gnu_get_libc_version()));
-            }
-            catch (DllNotFoundException)
-            {
-                return false;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
 
-            return version >= minVersion;
-        }
 
-        [DllImport("libc", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr gnu_get_libc_version();
 
 
         #endregion
