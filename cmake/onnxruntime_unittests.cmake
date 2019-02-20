@@ -167,6 +167,14 @@ file(GLOB_RECURSE onnxruntime_test_tvm_src
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
 
+if(onnxruntime_USE_TRT)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/trt/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_trt)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_trt)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_trt)
+  list(APPEND onnx_test_libs onnxruntime_providers_trt)
+endif()
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
