@@ -122,7 +122,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   Status AllocateMLValueTensorPreAllocateBuffer(MLValue& mlvalue,
                                                 int mlvalue_index_reuse,
-                                                MLDataType element_type,
+                                                MLDataType element_type,  // annoyingly MLDataType is a const *.
                                                 const OrtAllocatorInfo& location,
                                                 const TensorShape& shape,
                                                 bool create_fence = false);
