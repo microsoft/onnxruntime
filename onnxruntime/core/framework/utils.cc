@@ -17,19 +17,6 @@
 
 namespace onnxruntime {
 namespace utils {
-
-const KernelDef* GetKernelDef(const KernelRegistryManager& kernel_registry,
-                              const onnxruntime::Node& node) {
-  const KernelCreateInfo* kernel_create_info = nullptr;
-  const KernelDef* kernel_def = nullptr;
-
-  if (kernel_registry.SearchKernelRegistry(node, &kernel_create_info).IsOK()) {
-    kernel_def = kernel_create_info->kernel_def.get();
-  }
-
-  return kernel_def;
-}
-
 AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info) {
   return exec_providers.GetAllocator(allocator_info);
 }
@@ -48,8 +35,9 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
   }
 
   void* buffer = nullptr;
-  if (fetched_tensor.Size() != 0) {
-    buffer = allocator->Alloc(fetched_tensor.Size());
+  const size_t len = fetched_tensor.Size();
+  if (len != 0) {
+    buffer = allocator->Alloc(len);
     if (!buffer) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer. Execution provider type=",
                              execution_provider.Type());
