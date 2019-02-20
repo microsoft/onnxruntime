@@ -222,7 +222,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllo
  * this function will create a copy of the allocator info
  */
 ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-                    _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+                    _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
