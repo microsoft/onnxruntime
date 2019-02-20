@@ -26,13 +26,13 @@ int main(int argc, char* args[]) {
     return -1;
   }
 
-  ::onnxruntime::perftest::PerformanceTestConfig test_config;
-  if (!::onnxruntime::perftest::CommandLineParser::ParseArguments(test_config, argc, args)) {
-    ::onnxruntime::perftest::CommandLineParser::ShowUsage();
+  perftest::PerformanceTestConfig test_config;
+  if (!perftest::CommandLineParser::ParseArguments(test_config, argc, args)) {
+    perftest::CommandLineParser::ShowUsage();
     return -1;
   }
 
-  ::onnxruntime::perftest::PerformanceRunner perf_runner(test_config);
+  perftest::PerformanceRunner perf_runner(test_config);
   status = perf_runner.Run();
   if (!status.IsOK()) {
     LOGF_DEFAULT(ERROR, "Run failed:%s", status.ErrorMessage().c_str());

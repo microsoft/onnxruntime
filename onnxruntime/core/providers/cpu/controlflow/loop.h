@@ -6,6 +6,7 @@
 #include "gsl/gsl_util"
 
 #include "core/common/common.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -22,5 +23,8 @@ class Loop final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override;
+
+ private:
+  mutable std::unique_ptr<FeedsFetchesManager> cached_feeds_fetches_manager_;
 };
 }  // namespace onnxruntime
