@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         public IntPtr _nativePtr;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
-        private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
+        private static string[] cudaDelayLoadedLibs = { "cublas64_91.dll", "cudnn64_7.dll" };
 
         /// <summary>
         /// Constructs an empty SessionOptions
