@@ -288,15 +288,6 @@
             }
          }
       },
-            {
-         "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"",
-               "repositoryUrl":".git"
-            }
-         }
-      },
       {
          "component":{
             "Type":"other",
