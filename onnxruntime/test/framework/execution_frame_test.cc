@@ -47,12 +47,11 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
-
-  KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
-
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
+  KernelRegistryManager kernel_registry_manager;
+  status = kernel_registry_manager.RegisterKernels(execution_providers);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   SessionState state{execution_providers};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
@@ -135,10 +134,9 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   auto xp_typ = cpu_xp->Type();
 
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
-
   ExecutionProviders execution_providers;
-  execution_providers.Add("", std::move(cpu_xp));
+  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
 
   SessionState state{execution_providers};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
@@ -187,7 +185,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
+  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry());
 
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_type, std::move(cpu_xp));
