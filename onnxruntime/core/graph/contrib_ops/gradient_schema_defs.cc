@@ -17,7 +17,8 @@ std::unordered_map<std::string, GradientOpSchema> GradOpSchemaRegistryHelper::Gr
     {"PowGrad", GradientOpSchema({GO(0), I(0), I(1)}, {GI(0), GI(1)})},
     {"MatMulGrad", GradientOpSchema({GO(0), I(0), I(1)}, {GI(0), GI(1)})},
     {"ReduceMeanGrad", GradientOpSchema({GO(0)}, {GI(0)})},
-
+    {"SigmoidGrad", GradientOpSchema({GO(0), I(0)}, {GI(0)})},
+    {"SoftmaxGrad", GradientOpSchema({GO(0), I(0)}, {GI(0)})},
 };
 
 using namespace ONNX_NAMESPACE;
@@ -151,6 +152,20 @@ void RegisterGradientSchemas() {
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input/output types to float16 and float32 tensors.")
       .FillUsing(GenGradientSchema(schema_registry->GetSchema("ReduceMean", 8)));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SigmoidGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(8)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input/output types to float16 and float32 tensors.")
+      .FillUsing(GenGradientSchema(schema_registry->GetSchema("Sigmoid", 9)));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(8)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input/output types to float16 and float32 tensors.")
+      .FillUsing(GenGradientSchema(schema_registry->GetSchema("Softmax", 9)));
 }
 }  // namespace GradientOps
 }  // namespace onnxruntime

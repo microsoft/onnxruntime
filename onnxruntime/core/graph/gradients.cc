@@ -31,7 +31,7 @@ using namespace ::onnxruntime::GradientOps;
 
 namespace onnxruntime {
 /**
-This builder class consturct the backward gradient graph
+This builder class constructs the backward gradient graph
 
 @param fw_graph The forward computation graph
 @param y_node_args List of NodeArgs whoes initial gradients will be provided

@@ -16,11 +16,14 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "op_gradients.h"
+#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/common/common.h"
+#include "core/providers/common.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "gsl/gsl_algorithm"
+#include "gsl/gsl_util"
 
 namespace onnxruntime {
 namespace contrib {
@@ -306,6 +309,73 @@ Status ReduceMeanGrad<T>::Compute(OpKernelContext* context) const {
     auto out = gsl::make_span(dx->template MutableData<T>(), dx->Shape().Size());
     std::for_each(out.begin(), out.end(), [&value](T& v) { v = static_cast<T>(value); });
   }
+  return Status::OK();
+}
+
+ONNX_CPU_OPERATOR_KERNEL(
+    SigmoidGrad,
+    8,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    SigmoidGrad<float>);
+
+template <typename T>
+Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& Y = *context->Input<Tensor>(1);
+  auto& dX = *context->Output(0, Y.Shape());
+
+  // dx = dy * y * (1 - y)
+  // TODO: Would this be preferable as dx = dy * sigmoid(x) * (1 - sigmoid(x)) ???
+  MakeEigenArrayMap<float>(dX) = MakeEigenArrayMap<float>(dY) * MakeEigenArrayMap<float>(Y) * (T(1) - MakeEigenArrayMap<float>(Y));
+  return Status::OK();
+}
+
+ONNX_CPU_OPERATOR_KERNEL(
+    SoftmaxGrad,
+    8,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    SoftmaxGrad<float>);
+
+template <typename T>
+Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& Y = *context->Input<Tensor>(1);
+  const TensorShape input_shape{Y.Shape()};
+  auto& dX = *context->Output(0, Y.Shape());
+
+  auto axis = HandleNegativeAxis(axis_, Y.Shape().NumDimensions());
+
+  size_t N = input_shape.SizeToDimension(axis);
+  size_t D = input_shape.SizeFromDimension(axis);
+
+  if (N == 0) {
+    return Status::OK();
+  }
+
+  std::vector<float> scale_(N);
+  std::vector<float> sum_multiplier_(D, 1.f);  // initialize all multiplier values to 1.0
+  const int n = gsl::narrow_cast<int>(N);
+  const int d = gsl::narrow_cast<int>(D);
+  const int nd = gsl::narrow_cast<int>(N * D);
+
+  float* scaledata = scale_.data();
+  const float* Ydata = Y.template Data<float>();
+  const float* dYdata = dY.template Data<float>();
+  float* dXdata = dX.template MutableData<float>();
+
+  gsl::copy(gsl::make_span(dYdata, nd), gsl::make_span(dXdata, nd));
+
+  for (int i = 0; i < N; ++i) {
+    math::Dot<float, CPUMathUtil>(d, Ydata + i * d, dYdata + i * d,
+                                  scaledata + i, nullptr);
+  }
+
+  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
+                                 scaledata, sum_multiplier_.data(), 1,
+                                 dXdata, nullptr);
+
+  math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
+
   return Status::OK();
 }
 }  // namespace contrib
