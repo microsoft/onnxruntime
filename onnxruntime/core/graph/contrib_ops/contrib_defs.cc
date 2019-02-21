@@ -234,6 +234,71 @@ void RegisterContribSchemas() {
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicTopK)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr(
+          "axis",
+          "Dimension on which to do the sort.",
+          AttributeProto::INT,
+          static_cast<int64_t>(-1))
+      .Input(
+          0,
+          "X",
+          "",
+          "T")
+      .Input(1, "K", "", "tensor(int64)")
+      .Output(
+          0,
+          "Values",
+          "",
+          "T")
+      .Output(
+          1,
+          "Indices",
+          "",
+          "I")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
+      .TypeConstraint("I", {"tensor(int64)"}, "Constrain index tensor to int64")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+		// Type inference:
+		propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::INT64);
+
+		// Shape inference:
+		if (!hasInputShape(ctx, 0))
+		  return;
+		auto& input_shape = getInputShape(ctx, 0);
+		int64_t rank = input_shape.dim_size();
+		int64_t axis = getAttribute(ctx, "axis", -1);
+		if (axis < 0)
+		  axis += rank;
+		if (axis < 0 || axis >= rank)
+		  fail_shape_inference("Invalid value for attribute axis");
+		// TODO: unclear what results should be if axis has less than k
+		// elements.
+		// Infer output shape if 'K' is available
+        const auto* k = ctx.getInputData(1);
+		if (nullptr != k) {
+          if (k->dims_size() != 1 || k->int64_data_size() != 1 || k->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
+			fail_shape_inference("K input must be a one-dimensional tensor of size 1 and of type int64.");
+          ONNX_NAMESPACE::TensorShapeProto result_shape = input_shape;
+		  result_shape.mutable_dim(static_cast<int>(axis))->set_dim_value(k->int64_data(0));
+		  updateOutputShape(ctx, 0, result_shape);
+		  updateOutputShape(ctx, 1, result_shape);
+		} else {
+		  // Infer output shapes' rank in any case
+		  auto* output_shape_0 = getOutputShape(ctx, 0);
+		  auto* output_shape_1 = getOutputShape(ctx, 1);
+		  for (int i = 0; i < input_shape.dim_size(); ++i) {
+			output_shape_0->add_dim();
+			output_shape_1->add_dim();
+		  }
+		}
+		return;
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MaxpoolWithMask)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
