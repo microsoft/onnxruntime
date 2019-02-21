@@ -29,7 +29,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace mkl_dnn
 
-MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& /*info*/) {
+MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& /*info*/)
+      : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
                                                           [](int) { return std::make_unique<MKLDNNAllocator>(); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_allocator_info));
