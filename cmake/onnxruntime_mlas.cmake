@@ -121,19 +121,14 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/erff_avx2.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
     set(mlas_platform_srcs_avx512f
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/erff.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
-
-    set(mlas_platform_srcs_avx512vl
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/erff.cpp
-    )
-    set_source_files_properties(${mlas_platform_srcs_avx512vl} PROPERTIES COMPILE_FLAGS "-mavx512vl")
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}
