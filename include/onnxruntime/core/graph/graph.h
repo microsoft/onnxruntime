@@ -748,7 +748,7 @@ class Graph {
     auto iter = node_arg_to_producer_node_.find(node_arg_name);
 
     if (iter != node_arg_to_producer_node_.end()) {
-      int node_index = iter->second;
+      auto node_index = iter->second;
       return GetNode(node_index);
     }
     return nullptr;
@@ -759,7 +759,7 @@ class Graph {
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
 
     for (; iter != node_arg_to_consumer_nodes_.end() && iter->first == node_arg_name; iter++) {
-      int node_index = iter->second;
+      auto node_index = iter->second;
       results.push_back(GetNode(node_index));
     }
     return results;
@@ -987,10 +987,10 @@ class Graph {
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
   // node arg to its producer node
-  std::unordered_map<std::string, int> node_arg_to_producer_node_;
+  std::unordered_map<std::string, NodeIndex> node_arg_to_producer_node_;
 
   // node arg to its consumer nodes
-  std::unordered_multimap<std::string, int> node_arg_to_consumer_nodes_;
+  std::unordered_multimap<std::string, NodeIndex> node_arg_to_consumer_nodes_;
 
   const std::unordered_map<std::string, int> domain_to_version_;
 

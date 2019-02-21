@@ -38,7 +38,7 @@ class TrainingSession {
   // TODO: merge BuildGradientGraph() into Initialize()
   // We don't do this right now for debugging purpose, because we want to save and check the bw graph before Initialize() which
   // could make the graph messy due to optimization.
-  common::Status Initialize(const std::vector<std::string>& weights_to_train, const std::string& loss_function_output_name) {
+  common::Status Initialize(const std::vector<std::string>& /*weights_to_train*/, const std::string& /*loss_function_output_name*/) {
     throw std::runtime_error("Initialize(const std::vector<std::string>&, const std::string&) Not implemented");
   }
 

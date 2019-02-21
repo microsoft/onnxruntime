@@ -7,7 +7,6 @@
 #include "core/framework/environment.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/training_session.h"
-#include "test/framework/test_utils.h"
 #include "core/session/training_optimizer.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
@@ -23,9 +22,9 @@ const static int MAX_STEPS = 2000;
 const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
 
-const static char* ORIGINAL_MODEL_PATH = "mnist_fc_model.onnx";
+//const static char* ORIGINAL_MODEL_PATH = "mnist_fc_model.onnx";
 const static char* ORIGINAL_MODEL_WITH_COST_PATH = "mnist_fc_model_with_cost.onnx";
-const static char* FORWARD_MODEL_PATH = "mnist_fc_model_fw.onnx";
+//const static char* FORWARD_MODEL_PATH = "mnist_fc_model_fw.onnx";
 const static char* BACKWARD_MODEL_PATH = "mnist_fc_model_bw.onnx";
 const static char* TRAINED_MODEL_PATH = "mnist_fc_model_trained.onnx";
 const static char* MNIST_DATA_PATH = "mnist_data";
@@ -41,9 +40,9 @@ typedef vector<uint8_t> Image;
 
 class DataSet {
  public:
-  DataSet(vector<Image> images, vector<Label> labels) : images_(images),
+  DataSet(vector<Image> images, vector<Label> labels) : num_samples_(int(images.size())),
+                                                        images_(images),
                                                         labels_(labels),
-                                                        num_samples_(int(images.size())),
                                                         epochs_completed_(0),
                                                         index_in_epoch_(0) {
     for (int i = 0; i < images.size(); i++) {
@@ -128,6 +127,35 @@ class DataSet {
   int index_in_epoch_;
 };
 
+template <typename T>
+static void CreateMLValue(AllocatorPtr alloc,
+                          const std::vector<int64_t>& dims,
+                          const std::vector<T>& value,
+                          MLValue* p_mlvalue) {
+  TensorShape shape(dims);
+  auto location = alloc->Info();
+  auto element_type = DataTypeImpl::GetType<T>();
+  void* buffer = alloc->Alloc(element_type->Size() * shape.Size());
+  if (value.size() > 0) {
+    memcpy(buffer, &value[0], element_type->Size() * shape.Size());
+  }
+
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+                                                              shape,
+                                                              buffer,
+                                                              location,
+                                                              alloc);
+  p_mlvalue->Init(p_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+}
+
+AllocatorPtr GetAllocator() {
+  static CPUExecutionProviderInfo info;
+  static CPUExecutionProvider cpu_provider(info);
+  return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+}
+
 vector<NameMLValMap> fill_feed_dict(const pair<vector<vector<float>>, vector<vector<float>>>& batch) {
   vector<NameMLValMap> feeds;
 
@@ -139,9 +167,9 @@ vector<NameMLValMap> fill_feed_dict(const pair<vector<vector<float>>, vector<vec
 
   for (int i = 0; i < images.size(); i++) {
     MLValue imageMLValue;
-    test::CreateMLValue(test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), image_dims, images[i], &imageMLValue);
+    CreateMLValue(GetAllocator(), image_dims, images[i], &imageMLValue);
     MLValue labelMLValue;
-    test::CreateMLValue(test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), label_dims, labels[i], &labelMLValue);
+    CreateMLValue(GetAllocator(), label_dims, labels[i], &labelMLValue);
 
     feeds.push_back(NameMLValMap({{"X", imageMLValue}, {"labels", labelMLValue}}));
   }
@@ -180,11 +208,9 @@ void Evaluate(SessionType& sess, DataSet& data_set, bool use_full_set = false) {
   printf("Num examples: %d Num correct: %d  Precision: %0.04f \n", num_examples, true_count, precision);
 }
 
-string MLValueToString(const MLValue& v);
-
 float GetLossValue(const vector<string>& fw_output_names, const vector<MLValue>& fw_fetches, const std::string& loss_name);
 
-int main(int argc, char* args[]) {
+int main(int /*argc*/, char* /*args*/[]) {
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING, false,
@@ -217,7 +243,7 @@ int main(int argc, char* args[]) {
   TERMINATE_IF_FAILED(training_session.Initialize());
 
   Optimizer<GradientDescent> optimizer(training_session,
-                                       {LEARNING_RATE, test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault)});
+                                       {LEARNING_RATE, GetAllocator()});
 
   cout << "Before training" << endl;
   Evaluate(training_session, testing_set);
@@ -281,25 +307,6 @@ int main(int argc, char* args[]) {
   Evaluate(test_session, testing_set, true /*use full test set*/);
 
   return 0;
-}
-
-string MLValueToString(const MLValue& v) {
-  string out;
-  out.reserve(1000);
-
-  if (!v.IsTensor()) {
-    out += to_string(v.Get<float>());
-  } else {
-    out += "{";
-    auto sp = v.Get<Tensor>().DataAsSpan<float>();
-    for (auto e : sp) {
-      out += to_string(e) + ",";
-    }
-    out.erase(out.end() - 1);
-    out += "}";
-  }
-
-  return out;
 }
 
 float GetLossValue(const vector<string>& fw_output_names, const vector<MLValue>& fw_fetches, const std::string& loss_name) {

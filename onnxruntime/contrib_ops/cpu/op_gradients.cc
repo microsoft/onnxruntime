@@ -162,12 +162,12 @@ Status AddGrad<T>::Compute(OpKernelContext* context) const {
   if (!output_tensor_shapes_[0].empty()) {
     auto dX1 = context->Output(0, TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]));
 
-    auto out = gsl::make_span(dX1->MutableData<float>(), dX1->Shape().Size());
+    auto out = gsl::make_span(dX1->template MutableData<float>(), dX1->Shape().Size());
     auto in = gsl::make_span(dY->Data<float>(), dY->Shape().Size());
 
     auto iter = out.begin();
     auto iter2 = in.begin();
-    for (; iter != out.end(), iter2 != in.end(); iter++, iter2++) {
+    for (; iter != out.end() && iter2 != in.end(); iter++, iter2++) {
       *iter = static_cast<float>(*iter2);
     }
   }
@@ -303,7 +303,7 @@ Status ReduceMeanGrad<T>::Compute(OpKernelContext* context) const {
 
     float value = dy.Data<float>()[0] / dx_shape.Size();  //only one value expected for this case since we support 1-D input only
 
-    auto out = gsl::make_span(dx->MutableData<T>(), dx->Shape().Size());
+    auto out = gsl::make_span(dx->template MutableData<T>(), dx->Shape().Size());
     std::for_each(out.begin(), out.end(), [&value](T& v) { v = static_cast<T>(value); });
   }
   return Status::OK();

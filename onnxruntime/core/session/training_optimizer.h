@@ -37,7 +37,7 @@ class Optimizer {
       : training_session_(training_session), optimization_(param) {
   }
 
-  common::Status Optimizer::Optimize(const std::vector<NameMLValMap>& gradients_multi_batches) {
+  common::Status Optimize(const std::vector<NameMLValMap>& gradients_multi_batches) {
     if (gradients_multi_batches.size() < 0) {
       return common::Status(common::ONNXRUNTIME, common::FAIL);
     }

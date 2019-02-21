@@ -43,10 +43,10 @@ This builder class consturct the backward gradient graph
 GradientGraphBuilder::GradientGraphBuilder(Graph* fw_graph, Graph* bw_graph,
                                            std::vector<NodeArg*> y_node_args,
                                            std::vector<NodeArg*> x_node_args,
-                                           std::string loss_node_arg_name) : fw_graph_(fw_graph),
-                                                                             bw_graph_(bw_graph),
-                                                                             y_node_args_(y_node_args),
+                                           std::string loss_node_arg_name) : y_node_args_(y_node_args),
                                                                              x_node_args_(x_node_args),
+                                                                             fw_graph_(fw_graph),
+                                                                             bw_graph_(bw_graph),
                                                                              loss_node_arg_name_(loss_node_arg_name) {
   Build();
 }
@@ -235,7 +235,7 @@ void GradientGraphBuilder::CopyInitializedTensor(const std::string& tensor_name)
 
 NodeArg& GradientGraphBuilder::GetOrCreateNodeArg(const Node* node, DefsMapping mapping,
                                                   const std::unordered_set<const NodeArg*>& visited_node_arg) {
-  int index = mapping.second;
+  size_t index = mapping.second;
 
   if (mapping.first == "I") {
     const NodeArg* input_arg = node->InputDefs()[index];
