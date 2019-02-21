@@ -193,24 +193,6 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"103abd9df2e7ad57f45531349471ea5304a7efe5",
-               "repositoryUrl":"https://github.com/dotnet/corefxlab.git"
-            }
-         }
-      },
-      {
-         "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"18a36291e48808fa7ef2d00a764ceb1ec95645a5",
-               "repositoryUrl":"https://github.com/dotnet/standard.git"
-            }
-         }
-      },
-      {
-         "component":{
-            "type":"git",
-            "git":{
                "commitHash":"217f52fb121ef92491e5d5f71394b07ce4ead1d0",
                "repositoryUrl":"https://github.com/KjellKod/g3log.git"
             }
