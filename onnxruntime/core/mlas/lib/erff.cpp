@@ -114,6 +114,7 @@ Return Value:
     }
 }
 
+#include <cmath>
 
 void
 MLASCALL
