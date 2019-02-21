@@ -44,11 +44,14 @@ static void FindMinAndMaxNodeIndex(const TValidNodes& nodes, NodeIndex& min, Nod
 
 template <typename TValidNodes>
 void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index, const MLValueNameIdxMap& mlvalue_idx_map) {
+  if (nodes.empty()) {
+    // fairly stupid edge case to handle unit test for Constant. the Constant node becomes an initializer, leaving
+    // the graph with no nodes.
+    return;
+  }
+
   std::size_t total_def_count{};
-
   const bool include_missing_optional_defs = true;
-
-  ORT_ENFORCE(!nodes.empty());
 
   if (max_node_index == 0) {
     FindMinAndMaxNodeIndex(nodes, min_node_index_, max_node_index);
