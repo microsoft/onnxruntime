@@ -36,15 +36,6 @@
             }
          }
       },
-       {
-         "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"d846fe50a3f0bb7767c7e087a05f4be95f4da0ec",
-               "repositoryUrl":"https://github.com/Microsoft/GSL.git"
-            }
-         }
-      },
       {
          "component":{
             "type":"git",
@@ -216,7 +207,7 @@
             }
          }
       },
-         {
+      {
          "component":{
             "type":"git",
             "git":{
@@ -225,7 +216,7 @@
             }
          }
       },
-        {
+      {
          "component":{
             "type":"git",
             "git":{
@@ -234,7 +225,7 @@
             }
          }
       },
-           {
+      {
          "component":{
             "type":"git",
             "git":{
@@ -247,30 +238,12 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"9ff0cc0f0212cb1e85b83ce5d2907ba9531b6cae",
-               "repositoryUrl":"https://github.com/nlohmann/json.git"
-            }
-         }
-      },
-            {
-         "component":{
-            "type":"git",
-            "git":{
                "commitHash":"971e2e89d08deeae0139d3011d15646fdac13c92",
                "repositoryUrl":"https://github.com/numpy/numpy.git"
             }
          }
       },
-            {
-         "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"c3cceac115c072fb63df1836ff46d8c60d9eb304",
-               "repositoryUrl":"https://github.com/NVlabs/cub.git"
-            }
-         }
-      },
-            {
+      {
          "component":{
             "type":"git",
             "git":{
@@ -279,7 +252,7 @@
             }
          }
       },
-            {
+      {
          "component":{
             "type":"git",
             "git":{
