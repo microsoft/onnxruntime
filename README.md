@@ -59,10 +59,14 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 ## APIs and Official Builds
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
-| [Python](https://docs.microsoft.com/en-us/python/api/overview/azure/onnx/intro?view=azure-onnx-py) | [Windows/Linux/Mac](https://pypi.org/project/onnxruntime/)| [Windows/Linux](https://pypi.org/project/onnxruntime-gpu/)<br>(Compatible with CUDA9.1 and cuDNN 7.3) |
+| [Python](https://aka.ms/onnxruntime-python) | [Windows/Linux/Mac](https://pypi.org/project/onnxruntime/)| [Windows/Linux](https://pypi.org/project/onnxruntime-gpu/)<br>(Compatible with CUDA9.1 and cuDNN 7.3) |
 | [C#](docs/CSharp_API.md) | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Mac - Coming Soon| [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Mac - Coming Soon|
 | [C](docs/C_API.md) | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Mac - Coming Soon | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Mac - Coming Soon |
 | [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
+
+## System Requirements
+* The OnnxRuntime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the system. For Windows, OpenMP support comes as part of VC runtime. For Linux, the system must have the libgomp.so.1 installed. 
+* The GPU builds require the CUDA9.1 and cuDNN 7.3 runtime libraries being installed in the system. 
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).

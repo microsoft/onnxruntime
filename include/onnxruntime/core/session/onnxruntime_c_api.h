@@ -284,7 +284,7 @@ ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
  * \param out Should be freed by calling OrtReleaseValue
  */
 ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-               _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+               _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
                ONNXTensorElementDataType type, _Out_ OrtValue** out);
 
 // This function doesn't work with string tensor
@@ -421,6 +421,55 @@ ORT_ALL_ARGS_NONNULL;
  */
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
+
+/**
+   * APIs to support non-tensor types - map and sequence.
+   * Currently only the following types are supported
+   * Note: the following types should be kept in sync with data_types.h
+   * Map types
+   * =========
+   * std::map<std::string, std::string>
+   * std::map<std::string, int64_t>
+   * std::map<std::string, float>
+   * std::map<std::string, double>
+   * std::map<int64_t, std::string>
+   * std::map<int64_t, int64_t>
+   * std::map<int64_t, float>
+   * std::map<int64_t, double>
+   * 
+   * Sequence types
+   * ==============
+   * std::vector<std::string>
+   * std::vector<int64_t>
+   * std::vector<float>
+   * std::vector<double>
+   * std::vector<std::map<std::string, float>>
+   * std::vector<std::map<int64_t, float>
+   */
+
+/**
+   * If input OrtValue represents a map, you need to retrieve the keys and values
+   * separately. Use index=0 to retrieve keys and index=1 to retrieve values.
+   * If input OrtValue represents a sequence, use index to retrieve the index'th element
+   * of the sequence.
+   */
+ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allocator, OrtValue** out);
+
+/**
+   * Returns 2 for type map and N for sequence where N is the number of elements
+   * in the sequence.
+   */
+ORT_API_STATUS(OrtGetValueCount, const OrtValue* value, size_t* out);
+
+/**
+   * To construct a map, use num_values = 2 and 'in' should be an arrary of 2 OrtValues
+   * representing keys and values.
+   * To construct a sequence, use num_values = N where N is the number of the elements in the
+   * sequence. 'in' should be an arrary of N OrtValues.
+   * \value_type should be either map or sequence.
+   */
+ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
+               OrtValue** out);
 
 #ifdef __cplusplus
 }

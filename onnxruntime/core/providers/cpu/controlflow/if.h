@@ -6,6 +6,7 @@
 #include "gsl/gsl_util"
 
 #include "core/common/common.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -27,5 +28,7 @@ class If final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
+  mutable std::unique_ptr<FeedsFetchesManager> cached_then_feeds_fetches_manager_;
+  mutable std::unique_ptr<FeedsFetchesManager> cached_else_feeds_fetches_manager_;
 };
 }  // namespace onnxruntime

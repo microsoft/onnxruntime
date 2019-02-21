@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard1.1</TargetFramework>
@@ -31,8 +31,14 @@
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
   <!--TODO: Find a way to bundle the native symbol files properly -->
   <ItemGroup>
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\**\*.*"
-          PackagePath="\build\native\include"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_c_api.h"
+          PackagePath="\build\native\include\core\session"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
+          PackagePath="\build\native\include\core\providers\cpu"
           Pack="true"
           CopyToOutputDirectory="Never"
           Visible="false"
@@ -76,13 +82,14 @@
           Visible="false"
     />
 
-    <None Include="Microsoft.ML.OnnxRuntime.targets"
-          PackagePath="\build\$(TargetFramework)"
+    <None Include="$(PackageId).targets" 
+          PackagePath="\build\$(TargetFramework);\build\native"
           Pack="true"
           Visible="false"
     />
-    <None Include="Microsoft.ML.OnnxRuntime.props"
-          PackagePath="\build\$(TargetFramework)"
+
+    <None Include="$(PackageId).props"
+          PackagePath="\build\$(TargetFramework);\build\native"
           Pack="true"
           Visible="false"
     />

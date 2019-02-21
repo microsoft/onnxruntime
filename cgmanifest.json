@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"8a1319733a5518bd0001842db27e2df53a306eff",
+               "commitHash":"2896c77cfc628f18b6ca6b28e3a380807fa00f53",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -186,6 +186,15 @@
             "git":{
                "commitHash":"eddf9023206dc40974c26f589ee2ad63a4227a1e",
                "repositoryUrl":"https://github.com/glennrp/libpng.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+               "repositoryUrl":"https://github.com/google/re2.git"
             }
          }
       },

@@ -66,7 +66,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   const auto X_shape = X->Shape();
   assert(X_shape.Size() >= 0);
 
-  const int64_t coordinate_size = X_shape.IsScalar() ? 1 : X_shape.NumDimensions();
+  const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : X_shape.NumDimensions();
   std::vector<int64_t> non_zero_indices_buffer{};
   // reserve enough space for indices for every element of X
   non_zero_indices_buffer.reserve(X_shape.Size() * coordinate_size);
@@ -87,7 +87,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  const int64_t num_non_zero_values = non_zero_indices_buffer.size() / coordinate_size;
+  const Eigen::Index num_non_zero_values = non_zero_indices_buffer.size() / coordinate_size;
 
   // transpose result for output
   ConstEigenMatrixMapRowMajor<int64_t> non_zero_indices_matrix{

@@ -207,7 +207,7 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
   }
 
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
+  size_t bytes = src.Size();
 
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
@@ -851,7 +851,7 @@ bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node)
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
-        if(pads.Get(i) != pads.Get(i + rank)) {
+        if (pads.Get(i) != pads.Get(i + rank)) {
           return true;
         }
       }

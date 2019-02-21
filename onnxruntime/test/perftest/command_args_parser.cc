@@ -73,12 +73,14 @@ namespace perftest {
         if (test_config.run_config.repeated_times <= 0) {
           return false;
         }
+        test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
         break;
       case 't':
         test_config.run_config.duration_in_seconds = static_cast<int>(strtol(optarg, nullptr, 10));
         if (test_config.run_config.repeated_times <= 0) {
           return false;
         }
+        test_config.run_config.test_mode = TestMode::kFixDurationMode;
         break;
       case 's':
         test_config.run_config.f_dump_statistics = true;

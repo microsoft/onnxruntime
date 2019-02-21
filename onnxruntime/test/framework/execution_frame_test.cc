@@ -47,12 +47,11 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
-
-  KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
-
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
+  KernelRegistryManager kernel_registry_manager;
+  status = kernel_registry_manager.RegisterKernels(execution_providers);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   SessionState state{execution_providers};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
@@ -73,7 +72,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   state.CalculateNodeIndexInfo();
 
   vector<MLValue> outputs;
-  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{}, std::vector<std::string>{}, outputs, {}, state);
+  ExecutionFrame frame({}, {}, {}, outputs, {}, state);
 
   int start_index = frame.GetNodeOffset(node->Index());
   EXPECT_EQ(start_index, 0);
@@ -133,23 +132,21 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   auto xp_typ = cpu_xp->Type();
 
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
-
   ExecutionProviders execution_providers;
-  execution_providers.Add("", std::move(cpu_xp));
+  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
 
   SessionState state{execution_providers};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
-  mlvalue_name_idx_map.Add("X");
-  mlvalue_name_idx_map.Add("Y");
+  auto x_idx = mlvalue_name_idx_map.Add("X");
+  auto y_idx = mlvalue_name_idx_map.Add("Y");
 
   state.CalculateNodeIndexInfo();
 
   vector<MLValue> outputs;
-  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X", value}},
-                       std::vector<std::string>{}, outputs, {}, state);
+  ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state);
 
   MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -186,7 +183,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
+  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry());
 
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_type, std::move(cpu_xp));
@@ -197,12 +194,12 @@ TEST(ExecutionFrameTest, MemPatternTest) {
 
   MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
 
-  mlvalue_name_idx_map.Add("X1");
-  mlvalue_name_idx_map.Add("X2");
-  mlvalue_name_idx_map.Add("X3");
+  auto x1_idx = mlvalue_name_idx_map.Add("X1");
+  auto x2_idx = mlvalue_name_idx_map.Add("X2");
+  auto x3_idx = mlvalue_name_idx_map.Add("X3");
   mlvalue_name_idx_map.Add("T1");
   mlvalue_name_idx_map.Add("T2");
-  mlvalue_name_idx_map.Add("T3");
+  auto t3_idx = mlvalue_name_idx_map.Add("T3");
 
   auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
 
@@ -227,8 +224,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   state.CalculateNodeIndexInfo();
 
   vector<MLValue> outputs;
-  ExecutionFrame frame(std::unordered_map<std::string, MLValue>{{"X1", v1}, {"X2", v2}, {"X3", v3}},
-                       std::vector<std::string>{"T3"}, outputs, {}, state);
+  ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
 
   status = frame.AllocateMLValueTensorSelfOwnBuffer(3,
                                                     DataTypeImpl::GetType<float>(),
