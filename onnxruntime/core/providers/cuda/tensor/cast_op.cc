@@ -24,10 +24,10 @@ const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<bool>()};
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      6,                                                          \
+      6, 9,                                                       \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
