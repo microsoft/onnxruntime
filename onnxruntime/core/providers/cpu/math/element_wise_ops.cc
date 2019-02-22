@@ -1037,8 +1037,26 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X_ptr != nullptr);
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
+  size_t n = (int64_t)X.Shape().Size();
 
-  MlasComputeErff(X.Data<float>(), Y.MutableData<float>(),  X.Shape().Size());
+#ifdef USE_OPENMP
+  const int64_t block_size = 8192;
+  if ((int64_t)n >= block_size*2) {
+    int64_t blocks = ((int64_t)n + block_size - 1) / block_size;
+    
+    #pragma omp parallel for
+    for (int64_t i = 0; i < blocks; ++i) {
+      int64_t offset = i * block_size;
+      int64_t remain = ((int64_t)n) - offset;
+      int64_t len = std::min(remain, offset);
+      MlasComputeErff(X.Data<float>() + offset, Y.MutableData<float>() + offset, (size_t)len);
+    }
+
+    return Status::OK();
+  }
+#endif
+
+  MlasComputeErff(X.Data<float>(), Y.MutableData<float>(), n);
 
   return Status::OK();
 }
