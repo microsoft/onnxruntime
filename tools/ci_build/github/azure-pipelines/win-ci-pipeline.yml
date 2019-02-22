@@ -87,7 +87,7 @@ jobs:
           pushd $(Build.SourcesDirectory)/include
           dir *.h /s
           popd
-        workingDirectory: "$(Build.BinariesDirectory)\$(buildConfig)"
+        workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
 
       
     - template: templates/clean-agent-build-directory-step.yml
