@@ -76,16 +76,17 @@ bool PerformanceRunner::Initialize() {
     onnxruntime::kMklDnnExecutionProvider,
 #endif
 #ifdef USE_CUDA
+    #ifdef USE_TRT
+        onnxruntime::kTRTExecutionProvider,
+    #else
         onnxruntime::kCudaExecutionProvider,
+    #endif
 #endif
 #ifdef USE_NUPHAR
         onnxruntime::kNupharExecutionProvider,
 #endif
 #if USE_BRAINSLICE
         onnxruntime::kBrainSliceExecutionProvider,
-#endif
-#if USE_TRT
-        onnxruntime::kTRTExecutionProvider,
 #endif
         onnxruntime::kCpuExecutionProvider
   };

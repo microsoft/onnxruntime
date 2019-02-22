@@ -61,7 +61,7 @@ Status SessionFactory::Create(std::shared_ptr<InferenceSession>& sess, const pat
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
     } else if (provider == kTRTExecutionProvider) {
-#if USE_TRT
+#ifdef USE_TRT
       RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultTRTExecutionProvider());
 #else
       ORT_THROW("TensorRT is not supported in this build");
