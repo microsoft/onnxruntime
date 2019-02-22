@@ -3,6 +3,8 @@
 
 #include <benchmark/benchmark.h>
 #include <core/graph/model.h>
+#include <core/session/onnxruntime_c_api.h>
+#include "providers.h"
 
 static void BM_LoadModel(benchmark::State& state) {
   for (auto _ : state) {
@@ -16,3 +18,43 @@ static void BM_LoadModel(benchmark::State& state) {
 }
 
 BENCHMARK(BM_LoadModel);
+
+extern OrtEnv* env;
+
+#define ORT_BREAK_ON_ERROR(expr)                         \
+  do {                                                   \
+    OrtStatus* onnx_status = (expr);                     \
+    if (onnx_status != NULL) {                           \
+      state.SkipWithError(OrtGetErrorMessage(onnx_status)); \
+      OrtReleaseStatus(onnx_status);                     \
+    }                                                    \
+  } while (0);
+
+#ifdef USE_CUDA
+static void BM_CreateSession_WithGPU(benchmark::State& state) {
+  const char* model_path = "../models/opset8/test_bvlc_alexnet/model.onnx";
+  OrtSessionOptions* session_option = OrtCreateSessionOptions();
+  ORT_BREAK_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
+  for (auto _ : state) {
+    OrtSession* session;
+    ORT_BREAK_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
+    state.PauseTiming();
+    OrtReleaseSession(session);
+    state.ResumeTiming();
+  }
+}
+BENCHMARK(BM_CreateSession_WithGPU);
+#endif
+
+static void BM_CreateSession(benchmark::State& state) {
+  const char* model_path = "../models/opset8/test_bvlc_alexnet/model.onnx";
+  OrtSessionOptions* session_option = OrtCreateSessionOptions();
+  for (auto _ : state) {
+    OrtSession* session;
+    ORT_BREAK_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
+    state.PauseTiming();
+    OrtReleaseSession(session);
+    state.ResumeTiming();
+  }
+}
+BENCHMARK(BM_CreateSession);
