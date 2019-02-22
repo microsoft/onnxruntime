@@ -91,6 +91,7 @@ file(GLOB onnxruntime_test_ir_src
 
 set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/framework/*.cc"
+  "${TEST_SRC_DIR}/framework/*.h"
   "${TEST_SRC_DIR}/platform/*.cc"
   )
 
