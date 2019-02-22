@@ -81,10 +81,10 @@ jobs:
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
-        script: 
+        script: |
           dir onnxruntime.dll /s
           dir onnxruntime.lib /s
-          pushd $(Build.SourcesDirectory)/include
+          pushd $(Build.SourcesDirectory)\include
           dir *.h /s
           popd
         workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
