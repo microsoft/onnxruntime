@@ -2,6 +2,7 @@ jobs:
 - job: Windows_CI_Dev
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - task: NuGetCommand@2
@@ -47,26 +48,26 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update'
         workingFoLder: "$(Build.BinariesDirectory)"
 
 
     - task: VSBuild@1
-      displayName: 'Build Release'
+      displayName: 'Build $(buildConfig)'
       inputs:
-        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
+        solution: '$(Build.BinariesDirectory)\$(buildConfig)\onnxruntime.sln'
         platform: 'x64'
-        configuration: 'Release'
+        configuration: '$(buildConfig)'
         msbuildArgs: '/m'
         msbuildArchitecture: 'x64'
         logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Release'
+        workingFolder: '$(Build.BinariesDirectory)\$(buildConfig)'
 
     - task: BatchScript@1
-      displayName: 'Test Release'
+      displayName: 'Test $(buildConfig)'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
         workingFolder: "$(Build.BinariesDirectory)"
 
     - task: PublishTestResults@2
@@ -76,6 +77,17 @@ jobs:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
+
+    - task: CmdLine@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        script: 
+          dir onnxruntime.dll /s
+          dir onnxruntime.lib /s
+          pushd $(Build.SourcesDirectory)/include
+          dir *.h /s
+          popd
+        workingDirectory: "$(Build.BinariesDirectory)\$(buildConfig)"
 
       
     - template: templates/clean-agent-build-directory-step.yml
