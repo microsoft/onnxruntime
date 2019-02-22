@@ -15,16 +15,21 @@ struct CPUExecutionProviderInfo {
 
   explicit CPUExecutionProviderInfo(bool use_arena)
       : create_arena(use_arena) {}
+
   CPUExecutionProviderInfo() = default;
 };
 
-using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vector<std::unique_ptr<ComputeCapability>>&)>;
+using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&,
+                                      std::vector<std::unique_ptr<ComputeCapability>>&)>;
 
 // Logical device representation.
 class CPUExecutionProvider : public IExecutionProvider {
  public:
-  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
+      : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
+    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
+                                                [](int) { return std::make_unique<CPUAllocator>(); },
+                                                std::numeric_limits<size_t>::max()};
 #ifdef USE_JEMALLOC
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
@@ -39,10 +44,6 @@ class CPUExecutionProvider : public IExecutionProvider {
           std::shared_ptr<IArenaAllocator>(
               std::make_unique<DummyArena>(device_info.factory(0))));
 #endif
-  }
-
-  std::string Type() const override {
-    return onnxruntime::kCpuExecutionProvider;
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
@@ -63,7 +64,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
   void InsertFusedRules(FuseRuleFn rule);
 
- protected:
+ private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
 }  // namespace onnxruntime
