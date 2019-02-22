@@ -42,6 +42,7 @@ static void BM_CreateSession_WithGPU(benchmark::State& state) {
     OrtReleaseSession(session);
     state.ResumeTiming();
   }
+  OrtReleaseSessionOptions(session_option);
 }
 BENCHMARK(BM_CreateSession_WithGPU);
 #endif
@@ -56,5 +57,6 @@ static void BM_CreateSession(benchmark::State& state) {
     OrtReleaseSession(session);
     state.ResumeTiming();
   }
+  OrtReleaseSessionOptions(session_option);
 }
 BENCHMARK(BM_CreateSession);
