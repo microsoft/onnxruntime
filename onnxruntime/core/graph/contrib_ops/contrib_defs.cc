@@ -248,7 +248,11 @@ Sample echo operator.)DOC");
           "X",
           "",
           "T")
-      .Input(1, "K", "", "tensor(int64)")
+      .Input(
+		  1,
+		  "K",
+		  "",
+		  "tensor(int64)")
       .Output(
           0,
           "Values",
