@@ -30,11 +30,12 @@
       <Visible>false</Visible>
     </None>
 
-    <None Include="$(OnnxRuntimeBuildDirectory)\models\**\*">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-        <Visible>false</Visible>
-    </None>
+    <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
   </ItemGroup>
+
+  <Target Name="DefineBuildEnvironmentVariables" BeforeTargets="Build">
+    <WriteLinesToFile File="$(OutputPath)\Properties.txt" Lines="@(BuildEnvVars)" Overwrite="true" />
+  </Target>
 
   <ItemGroup>
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />

@@ -161,8 +161,19 @@ class Tensor final {
     shape_ = new_shape;
   }
 
-  size_t Size() const noexcept {
-    return shape_.Size() * dtype_->Size();
+  /**
+  The number of bytes of data.
+  */
+  size_t Size() const {
+    size_t ret;
+    int64_t l = shape_.Size();
+    if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
+      ORT_THROW("tensor size overflow");
+    }
+    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
+      ORT_THROW("tensor size overflow");
+    }
+    return ret;
   }
 
   // More API methods.

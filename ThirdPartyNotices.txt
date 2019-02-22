@@ -1941,7 +1941,7 @@ SOFTWARE.
 
 ____
 
-Date
+HowardHinnant/date
 
 The source code in this project is released using the MIT License. There is no
 global license for the project because each file is licensed individually with
@@ -2866,4 +2866,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
