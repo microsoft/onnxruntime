@@ -69,6 +69,7 @@ Status DynamicTopK<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
   if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");	
   const auto k_ = Y->template Data<int64_t>()[0];
+  if (k_ <= 0) return Status(common::ONNXRUNTIME, common::FAIL, "Value of k should be greater than 0");	
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
   auto axis_parsed = HandleNegativeAxis(axis_, in_dims.size());	

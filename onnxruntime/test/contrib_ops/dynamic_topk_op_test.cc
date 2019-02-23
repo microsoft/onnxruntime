@@ -139,7 +139,7 @@ TEST(DynamicTopKOperator, InvalidK) {
           expected_dimensions,
           1,
           OpTester::ExpectResult::kExpectFailure,
-          "Invalid value for attribute k");
+          "Value of k should be greater than 0");
 }
 
 }  // namespace test
