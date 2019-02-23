@@ -262,9 +262,9 @@ Sample echo operator.)DOC");
           1,
           "Indices",
           "",
-          "T1")
+          "I")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
-	  .TypeConstraint("T1", {"tensor(int64)"}, "Constrain index tensor to int64")
+	  .TypeConstraint("I", {"tensor(int64)"}, "Constrain index tensor to int64")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
 		// Type inference:
 		propagateElemTypeFromInputToOutput(ctx, 0, 0);

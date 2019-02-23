@@ -29,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
 	kCpuExecutionProvider,
 	KernelDefBuilder()
 	.TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-	.TypeConstraint("I", DataTypeImpl::GetType<int64_t>()),
+    .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
 	DynamicTopK<float>);
 
 static int64_t SizeToDim(size_t k, const vector<int64_t>& dims) {
