@@ -10,18 +10,7 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     Shrink,
     9,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<int16_t>(),
-                                            DataTypeImpl::GetTensorType<uint16_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<MLFloat16>(),
-                                            DataTypeImpl::GetTensorType<BFloat16>()}),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
     Shrink);
 
 namespace shrink_internal {
@@ -39,8 +28,8 @@ inline T ShrinkImpl(const T& val, float bias, float lambd) {
 }
 
 void ShrinkMLFloat16(const Tensor* input, Tensor* output, float bias, float lambd) {
-  auto span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
-  auto output_data = output->template MutableData<MLFloat16>();
+  const auto& span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
+  auto* output_data = output->template MutableData<MLFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const MLFloat16& val) {
     float fl = math::halfToFloat(val.val);
     return MLFloat16(math::floatToHalf(ShrinkImpl<float>(fl, bias, lambd)));
@@ -48,8 +37,8 @@ void ShrinkMLFloat16(const Tensor* input, Tensor* output, float bias, float lamb
 }
 
 void ShrinkBFloat16(const Tensor* input, Tensor* output, float bias, float lambd) {
-  auto span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
-  auto output_data = output->template MutableData<BFloat16>();
+  const auto& span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
+  auto* output_data = output->template MutableData<BFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const BFloat16& val) {
     float fl = val.ToFloat();
     return BFloat16(ShrinkImpl<float>(fl, bias, lambd));
@@ -61,11 +50,10 @@ void ShrinkBFloat16(const Tensor* input, Tensor* output, float bias, float lambd
 Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   using namespace shrink_internal;
 
-  auto input = p_op_kernel_context->Input<Tensor>(0);
-  auto output = p_op_kernel_context->Output(0, input->Shape());
+  const auto* input = p_op_kernel_context->Input<Tensor>(0);
+  auto* output = p_op_kernel_context->Output(0, input->Shape());
 
-  auto dtype = input->DataType();
-
+  const auto& dtype = input->DataType();
   if (dtype == DataTypeImpl::GetType<float>()) {
     EigenMap<float>(*output) = EigenMap<float>(*input).unaryExpr([this](const float& val) { return ShrinkImpl<float>(val, bias_, lambd_); });
   } else if (dtype == DataTypeImpl::GetType<double>()) {
@@ -91,7 +79,7 @@ Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
     ShrinkBFloat16(input, output, bias_, lambd_);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input types for the Shrink operator are constrained to all numeric types only");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input types for the Shrink operator are constrained to all numeric types only, but got : ", dtype);
   }
 
   return Status::OK();
