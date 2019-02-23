@@ -1287,24 +1287,23 @@ W[0]
                       W[C-2]
                              W[C-1]
 */
-void WeightsDiagonalTransformation(float* weights,
+void WeightsDiagonalTransformation(const float* weights,
+                                   float* transformed_weights,
                                    int64_t channel_in,
-                                   int64_t channel_out,
-                                   int64_t height,
-                                   int64_t width,
-                                   float* transformed_weights) {
+                                   int64_t kernel_size,
+                                   int64_t multiplier) {
   //only handle input channel == 1 case for now
-  ORT_ENFORCE(channel_in == 1, "input channel has to be 1, but it's %d", channel_in);
-  float *src = weights, *dst = transformed_weights;
-  for (int64_t c = 0; c < channel_out; ++c) {
-    for (int64_t h = 0; h < height; ++h) {
-      memcpy(dst, src, width);
-      src += width;
-      dst += channel_out * width;
+  const float* src = weights;
+  float* dst = transformed_weights;
+  for (int64_t c = 0; c < channel_in; ++c) {
+    for (int64_t m = 0; m < multiplier; ++m) {
+      memcpy(dst, src, kernel_size * sizeof(float));
+      dst += channel_in * kernel_size;
     }
-    dst += width;
+    src += kernel_size;
+    dst += kernel_size;
   }
 }
-
 }  // namespace math
+
 }  // namespace onnxruntime

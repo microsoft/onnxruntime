@@ -585,11 +585,10 @@ W[0]
                       W[C-2]
                              W[C-1]
 */
-void WeightsDiagonalTransformation(float* weights,
+void WeightsDiagonalTransformation(const float* weights,
+                                   float* transformed_weights,
                                    int64_t channel_in,
-                                   int64_t channel_out,
-                                   int64_t height,
-                                   int64_t width,
-                                   float* transformed_weights);
+                                   int64_t kernel_size,
+                                   int64_t multiplier = 1);
 }  // namespace math
 }  // namespace onnxruntime

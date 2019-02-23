@@ -51,46 +51,70 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   if (kernel_rank == 2 || kernel_rank == 3) {
     MLAS_ACTIVATION Activation;
     if (activation_.empty()) {
-        Activation.ActivationKind = MlasIdentityActivation;
+      Activation.ActivationKind = MlasIdentityActivation;
     } else if (activation_ == "Relu") {
-        Activation.ActivationKind = MlasReluActivation;
+      Activation.ActivationKind = MlasReluActivation;
     } else if (activation_ == "LeakyRelu") {
-        Activation.ActivationKind = MlasLeakyReluActivation;
-        Activation.alpha = alpha_;
+      Activation.ActivationKind = MlasLeakyReluActivation;
+      Activation.alpha = alpha_;
     } else if (activation_ == "Tanh") {
-        Activation.ActivationKind = MlasTanhActivation;
+      Activation.ActivationKind = MlasTanhActivation;
     } else if (activation_ == "Sigmoid") {
-        Activation.ActivationKind = MlasLogisticActivation;
+      Activation.ActivationKind = MlasLogisticActivation;
     } else {
       ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
     }
 
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
+
+    const int64_t multiplier = W->Shape()[0] / C;
+    //2D depthwize convolution, not handle multiplier for now
+    bool depthwise_2D_Conv = (kernel_rank == 2 && group_ > 1 && C == group_ && W->Shape()[1] == 1 && multiplier == 1);
+
+    const int64_t input_channels = depthwise_2D_Conv ? C : C / group_;
+    const int64_t filter_count = depthwise_2D_Conv ? M : M / group_;
+    const int64_t kernel_h = kernel_shape.data()[0], kernel_w = kernel_shape.data()[1];
+    const int64_t group = depthwise_2D_Conv ? 1 : group_;
+
     MlasConvPrepare(&Parameters,
                     kernel_rank,
                     static_cast<size_t>(N),
-                    static_cast<size_t>(group_),
-                    static_cast<size_t>(C / group_),
+                    static_cast<size_t>(group),
+                    static_cast<size_t>(input_channels),
                     input_shape.GetDims().data(),
                     kernel_shape.data(),
                     dilations.data(),
                     pads.data(),
                     strides.data(),
                     output_shape.GetDims().data(),
-                    static_cast<size_t>(M / group_),
+                    static_cast<size_t>(filter_count),
                     &Activation,
                     &WorkingBufferSize);
+    int64_t transformed_weight_size = sizeof(float) * M * C * kernel_h * kernel_w;
 
-    auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
+    auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize + transformed_weight_size) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
+    if (depthwise_2D_Conv) {
+      //      memset(transformed_weight, 0, transformed_weight_size);
+      //   BufferUniquePtr transformed_weight_ptr(working_data + WorkingBufferSize, BufferDeleter(alloc));
 
-    MlasConv(&Parameters,
-             Xdata,
-             W->template Data<float>(),
-             B != nullptr ? B->template Data<float>() : nullptr,
-             static_cast<float*>(working_buffer.get()),
-             Ydata);
+      math::WeightsDiagonalTransformation(W->template Data<float>(), static_cast<float*>(working_buffer.get()) + WorkingBufferSize, C, kernel_shape.data()[0] * kernel_shape.data()[1], multiplier);
+      MlasConv(&Parameters,
+               Xdata,
+               static_cast<float*>(working_buffer.get()) + WorkingBufferSize,  //static_cast<float*>(transformed_weight_ptr.get()),
+               B != nullptr ? B->template Data<float>() : nullptr,
+               static_cast<float*>(working_buffer.get()),
+               Ydata);
+    } else {
+      MlasConv(&Parameters,
+               Xdata,
+               W->template Data<float>(),
+               B != nullptr ? B->template Data<float>() : nullptr,
+               static_cast<float*>(working_buffer.get()),
+               Ydata);
+    }
+
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -153,7 +177,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   }
 
   return Status::OK();
-}
+}  // namespace onnxruntime
 
 ONNX_CPU_OPERATOR_KERNEL(
     Conv,
