@@ -70,13 +70,12 @@ namespace UnitTest1
 			ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
 
 			OrtSetSessionThreadPoolSize(session_option, 1);
-			//return run_inference(session);
-			return 0;
+			return run_inference(session);
 		}
 
 		TEST_METHOD(TestMethod1)
 		{
-            int res = test();
+                        int res = test();
 			Assert::AreEqual(res, 0);
 		}
 	};
