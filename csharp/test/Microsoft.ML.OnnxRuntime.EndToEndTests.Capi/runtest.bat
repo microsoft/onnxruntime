@@ -51,6 +51,7 @@ if NOT %ERRORLEVEL% EQU 0 (
 
 
 REM Run Unit Tests
+dir
 cd x64\debug
 dir
 vstest.console.exe /platform:x64 Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.dll
