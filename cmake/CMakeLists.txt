@@ -479,6 +479,12 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
+if (onnxruntime_USE_TRT)
+  if (WIN32)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
+  endif()
+endif()
+
 if (onnxruntime_USE_TVM)
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter

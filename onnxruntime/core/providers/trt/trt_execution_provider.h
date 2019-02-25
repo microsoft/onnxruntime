@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <ctime>
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
