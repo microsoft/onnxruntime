@@ -386,6 +386,12 @@ typedef enum OrtMemType {
 ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out);
 
 /**
+ * Cnvenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ */
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out)
+ORT_ALL_ARGS_NONNULL;
+
+/**
  * Test if two allocation info are equal
  * \return 0, equal. zero, not equal
  */

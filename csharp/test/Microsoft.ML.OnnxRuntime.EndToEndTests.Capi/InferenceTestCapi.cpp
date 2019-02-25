@@ -4,19 +4,29 @@
 #include "CppUnitTest.h"
 #include <assert.h>
 #include <core/session/onnxruntime_c_api.h>
-#include <core/providers/cpu/cpu_provider_factory.h>
+#include <cstdio>
+#include <iostream>
 
+wchar_t* GetWideString(const char* c) {
+  const size_t cSize = strlen(c) + 1;
+  wchar_t* wc = new wchar_t[cSize];
+  mbstowcs(wc, c, cSize);
+
+  return wc;
+}
 
 #define ORT_ABORT_ON_ERROR(expr)                         \
-  do {                                                   \
+  {                                                      \
     OrtStatus* onnx_status = (expr);                     \
     if (onnx_status != NULL) {                           \
       const char* msg = OrtGetErrorMessage(onnx_status); \
       fprintf(stderr, "%s\n", msg);                      \
       OrtReleaseStatus(onnx_status);                     \
-      abort();                                           \
+      wchar_t* wmsg = GetWideString(msg);                \
+      Assert::Fail(L"Failed on ORT_ABORT_ON_ERROR");     \
+      free(wmsg);                                        \
     }                                                    \
-  } while (0);
+  }
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -75,7 +85,7 @@ namespace UnitTest1
 
 		TEST_METHOD(TestMethod1)
 		{
-                        int res = test();
+            int res = test();
 			Assert::AreEqual(res, 0);
 		}
 	};
