@@ -57,6 +57,7 @@ dir
 vstest.console.exe /platform:x64 Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.dll
 if NOT %ERRORLEVEL% EQU 0 (
     echo "Unit test failure: %ERRORLEVEL%"
+    EXIT /B 1
 )
 
 popd
