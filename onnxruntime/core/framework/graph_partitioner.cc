@@ -102,7 +102,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
       auto& fused_node = graph.FuseSubGraph(std::move(capability), node_name);
       fused_node.SetExecutionProviderType(provider_type);
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
-      if (!kernel_registry_mgr.HasImplementationOf(fused_node, provider_type)) {
+      if (provider_type == onnxruntime::kTRTExecutionProvider || !kernel_registry_mgr.HasImplementationOf(fused_node, provider_type)) {
         return &fused_node;
       }
     }
