@@ -38,17 +38,17 @@ echo on
 REM Restore NuGet Packages
 nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (
-	echo "Error:Nuget restore failed"
-	popd
+    echo "Error:Nuget restore failed"
+    popd
     EXIT /B 1
 )
 
 REM Build Native project
 msbuild Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (
-	echo "Error:MSBuild failed to compile project"
+    echo "Error:MSBuild failed to compile project"
     popd
-	EXIT /B 1
+    EXIT /B 1
 )
 
 
