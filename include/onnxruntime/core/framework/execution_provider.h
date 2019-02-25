@@ -4,6 +4,7 @@
 #pragma once
 
 #include <unordered_map>
+#include "gsl/pointers"
 
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
@@ -37,18 +38,17 @@ struct NodeComputeInfo {
 };
 
 class IExecutionProvider {
+ protected:
+  IExecutionProvider(const std::string& type) : type_{type} {}
+
  public:
   virtual ~IExecutionProvider() = default;
 
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  std::vector<AllocatorPtr> GetAllocatorMap() const {
-    std::vector<AllocatorPtr> values;
-    for (auto& kv : allocators_) {
-      values.push_back(kv.second);
-    }
-    return values;
+  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+    return allocator_list_;
   }
 
   /**
@@ -108,7 +108,7 @@ class IExecutionProvider {
      through the SetExecutionProvider API. Example valid return values are:
      kCpuExecutionProvider, kCudaExecutionProvider
   */
-  virtual std::string Type() const = 0;
+  const std::string& Type() const { return type_; }
 
   /**
      Blocks until the device has completed all preceding requested tasks.
@@ -152,6 +152,11 @@ class IExecutionProvider {
                                  std::string& dll_path);
 
  private:
+  const std::string type_;
   AllocatorMap allocators_;
+
+  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
+  // contains the same instances as allocators_
+  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
 };
 }  // namespace onnxruntime

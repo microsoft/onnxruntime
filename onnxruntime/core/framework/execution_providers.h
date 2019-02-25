@@ -30,7 +30,7 @@ class ExecutionProviders {
       return status;
     }
 
-    for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
+    for (const auto& allocator : p_exec_provider->GetAllocators()) {
       if (allocator_idx_map_.find(allocator->Info()) != allocator_idx_map_.end()) {
         auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, allocator->Info(), " allocator already registered.");
         LOGS_DEFAULT(ERROR) << status.ErrorMessage();
@@ -43,7 +43,7 @@ class ExecutionProviders {
 
     ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
 
-    for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
+    for (const auto& allocator : p_exec_provider->GetAllocators()) {
       ORT_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
     }
 
@@ -72,6 +72,15 @@ class ExecutionProviders {
     }
 
     return exec_providers_[it->second].get();
+  }
+
+  AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info) const {
+    auto exec_provider = Get(allocator_info);
+    if (exec_provider == nullptr) {
+      return nullptr;
+    }
+
+    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
   }
 
   bool Empty() const { return exec_providers_.empty(); }

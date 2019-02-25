@@ -3,7 +3,6 @@
 
 #include "contrib_ops/cpu/quantize_linear.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/providers/cpu/tensor/cast_op.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {

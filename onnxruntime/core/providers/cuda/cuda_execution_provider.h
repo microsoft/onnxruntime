@@ -4,7 +4,7 @@
 #pragma once
 #include "cuda_pch.h"
 #include "core/platform/ort_mutex.h"
-#include "core/graph/graph_transformer.h"
+#include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "shared_inc/cuda_utils.h"
@@ -31,10 +31,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   virtual ~CUDAExecutionProvider();
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
-
-  std::string Type() const override {
-    return onnxruntime::kCudaExecutionProvider;
-  }
 
   Status Sync() const override;
 

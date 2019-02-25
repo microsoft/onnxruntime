@@ -5,7 +5,6 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
-#include "core/graph/graph_transformer.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
@@ -16,16 +15,21 @@ struct CPUExecutionProviderInfo {
 
   explicit CPUExecutionProviderInfo(bool use_arena)
       : create_arena(use_arena) {}
+
   CPUExecutionProviderInfo() = default;
 };
 
-using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vector<std::unique_ptr<ComputeCapability>>&)>;
+using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&,
+                                      std::vector<std::unique_ptr<ComputeCapability>>&)>;
 
 // Logical device representation.
 class CPUExecutionProvider : public IExecutionProvider {
  public:
-  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
+      : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
+    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
+                                                [](int) { return std::make_unique<CPUAllocator>(); },
+                                                std::numeric_limits<size_t>::max()};
 #ifdef USE_JEMALLOC
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
@@ -42,27 +46,13 @@ class CPUExecutionProvider : public IExecutionProvider {
 #endif
   }
 
-  std::string Type() const override {
-    return onnxruntime::kCpuExecutionProvider;
-  }
-
-  virtual std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   ///requires src.buffer_deleter_ == nullptr
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
-
-    // Todo: support copy with different devices.
-    if (strcmp(src.Location().name, CPU) != 0) {
-      ORT_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
-    }
-
-    // no really copy needed if is copy to cpu.
-    dst.ShallowCopy(src);
-
-    return Status::OK();
+  Status CopyTensor(const Tensor&, Tensor&) const override {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
   }
 
   const void* GetExecutionHandle() const noexcept override {
@@ -70,11 +60,11 @@ class CPUExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   void InsertFusedRules(FuseRuleFn rule);
 
- protected:
+ private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
 }  // namespace onnxruntime

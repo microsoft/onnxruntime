@@ -3,8 +3,8 @@
 
 #include <memory>
 #include <unordered_map>
-
 #include "core/framework/kernel_registry.h"
+#include "core/framework/session_state.h"
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -113,25 +113,6 @@ class TypeBindingResolver {
 };
 };  // namespace
 
-std::vector<std::string> KernelRegistry::GetAllRegisteredOpNames() const {
-  std::vector<std::string> ret(kernel_creator_fn_map_.size());
-  size_t i = 0;
-  for (const auto& kvp : kernel_creator_fn_map_) {
-    ret[i++] = kvp.first;
-  }
-  return ret;
-}
-
-// Check whether the types of inputs/outputs of the given node match the extra
-// type-constraints of the given kernel. This serves two purposes: first, to
-// select the right kernel implementation based on the types of the arguments
-// when we have multiple kernels, e.g., Clip<float> and Clip<int>; second, to
-// accommodate (and check) mapping of ONNX (specification) type to the onnxruntime
-// implementation type (e.g., if we want to implement ONNX's float16 as a regular
-// float in onnxruntime). (The second, however, requires a globally uniform mapping.)
-//
-// Note that this is not intended for type-checking the node against the ONNX
-// type specification of the corresponding op, which is done before this check.
 bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
                                      const KernelDef& kernel_def,
                                      std::string& error_str,
@@ -258,17 +239,22 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   return Status::OK();
 }
 
-Status KernelRegistry::CreateKernel(const onnxruntime::Node& node,
-                                    const IExecutionProvider& execution_provider,
-                                    const SessionState& session_state,
-                                    /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
+Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
+                                       const std::unordered_map<int, MLValue>& initialized_tensors,
+                                       const MLValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
+                                       /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
   if (!kernel_create_info) {
     return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
   }
 
-  OpKernelInfo kernel_info(node, *kernel_create_info->kernel_def, execution_provider, session_state);
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           execution_provider,
+                           initialized_tensors,
+                           mlvalue_name_idx_map,
+                           funcs_mgr);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }
@@ -280,6 +266,11 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
   return ostr.str();
 }
 
+// TODO: return a Status instead of logging error messages here.
+// Because this function often returns nullptr, which is totally expected.
+// if this function is called before graph partition, then node.provider is not set.
+// In this case, the kernel's provider must equal to exec_provider
+// otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                                       onnxruntime::ProviderType exec_provider) const {
   auto range = kernel_creator_fn_map_.equal_range(node.OpType());
@@ -296,7 +287,9 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
     }
     error_strs.push_back(error_str);
   }
-  LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << exec_provider
+  std::string expected_provider =
+      (node.GetExecutionProviderType().empty() ? exec_provider : node.GetExecutionProviderType());
+  LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
                      << " Encountered following errors: " << ToString(error_strs);
   return nullptr;
 }

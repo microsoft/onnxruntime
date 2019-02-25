@@ -72,3 +72,6 @@ OrtSetSessionLogVerbosityLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue
+OrtGetValue
+OrtGetValueCount
+OrtCreateValue

@@ -45,7 +45,7 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
-option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" OFF)
+option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -141,12 +141,13 @@ endif()
 find_package(PNG)
 set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
+set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 if(CMAKE_CROSSCOMPILING)
   message("Doing crosscompiling")
 endif()
 
-#Need python to generate def file 
+#Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
     find_package(PythonInterp 3.5 REQUIRED)
@@ -238,6 +239,7 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
+add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 add_library(date ALIAS tz)
 add_library(gsl ALIAS GSL)
 
@@ -252,7 +254,7 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
 # mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz re2)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -261,7 +263,7 @@ function(onnxruntime_add_include_to_target dst_target)
     endforeach()
 endfunction()
 
-set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto)
+set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto re2)
 
 # TVM
 if (onnxruntime_USE_TVM)
@@ -305,7 +307,10 @@ if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
-add_definitions(-DUSE_MLAS)
+if (onnxruntime_USE_MLAS)
+  add_definitions(-DUSE_MLAS)
+endif()
+
 #Adjust warning flags
 if (WIN32)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
@@ -345,7 +350,7 @@ if (WIN32)
 
     # set linker flags to minimize the binary size.
     if (MSVC)
-      foreach(type EXE SHARED)    
+      foreach(type EXE SHARED)
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
         if (NOT onnxruntime_USE_CUDA)
@@ -353,7 +358,7 @@ if (WIN32)
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
         endif()
       endforeach()
-    endif()      
+    endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
   # Enable warning in Linux
@@ -409,15 +414,14 @@ if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_MKLML)
-  add_definitions(-DUSE_MKLML=1)
-  # USE_MKML_FOR_BLAS may cause numerical differences in tests so disable by default
-  #add_definitions(-DUSE_MKLML_FOR_BLAS=1)
+  add_definitions(-DUSE_MKLML=1 -DUSE_MKLML_FOR_BLAS=1)
   if (WIN32 OR APPLE)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml)
   else()
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mklml_intel)
   endif()
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mklml)
+  include_directories(${MKLML_INCLUDE_DIR})
   link_directories(${MKLML_LIB_DIR})
 endif()
 
@@ -513,6 +517,7 @@ include(onnxruntime_framework.cmake)
 include(onnxruntime_util.cmake)
 #The next file will define 'onnxruntime_libs' cmake var
 include(onnxruntime_providers.cmake)
+include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 

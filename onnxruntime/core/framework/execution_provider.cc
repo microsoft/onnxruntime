@@ -11,8 +11,9 @@
 namespace onnxruntime {
 
 namespace {
+//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
 inline int MakeKey(int id, OrtMemType mem_type) {
-  return id << 2 | mem_type;
+  return id << 2 | (mem_type + 2);
 }
 }  // namespace
 
@@ -63,6 +64,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
     ORT_THROW("duplicated allocator");
   }
   allocators_.insert(iter, {key, allocator});
+  allocator_list_.push_back(gsl::not_null<IAllocator*>(allocator.get()));
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,

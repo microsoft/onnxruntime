@@ -22,6 +22,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
     Upsample<int32_t>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Upsample,
+    7, 9,
+    uint8_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+    Upsample<uint8_t>);
+
 template <typename T>
 void UpsampleNearest2x(
     int64_t batch_size,

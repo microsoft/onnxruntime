@@ -16,16 +16,18 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& feeds,
-                               const std::vector<std::string>& output_names,
-                               const std::vector<MLValue>& fetches,
+ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
+                               const std::vector<MLValue>& feeds,
+                               const std::vector<int>& fetch_mlvalue_idxs,
+                               std::vector<MLValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
     : node_index_info_(session_state.GetNodeIndexInfo()),
       session_state_(session_state),
       mem_patterns_(nullptr),
-      planner_(nullptr) {
-  Init(feeds, output_names, fetches, fetch_allocators);
+      planner_(nullptr),
+      fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
+  Init(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators);
 
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
@@ -35,11 +37,11 @@ ExecutionFrame::ExecutionFrame(const std::unordered_map<std::string, MLValue>& f
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
-      if (!(feed.second.IsTensor())) {
+      if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.second.Get<Tensor>();
+      auto& tensor = feed.Get<Tensor>();
       input_shapes.push_back(tensor.Shape());
     }
     // if there is some traditional ml value type in inputs
@@ -290,9 +292,10 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(int mlvalue_index,
   return Status::OK();
 }
 
-void ExecutionFrame::Init(const std::unordered_map<std::string, MLValue>& feeds,
-                          const std::vector<std::string>& output_names,
-                          const std::vector<MLValue>& fetches,
+void ExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs,
+                          const std::vector<MLValue>& feeds,
+                          const std::vector<int>& fetch_mlvalue_idxs,
+                          std::vector<MLValue>& fetches,
                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators) {
   auto& mlvalue_idx_map = session_state_.GetMLValueNameIdxMap();
 
@@ -301,27 +304,17 @@ void ExecutionFrame::Init(const std::unordered_map<std::string, MLValue>& feeds,
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
-    // should've already verified this much before when Run() starts
-    ORT_ENFORCE(output_names.size() == fetches.size(),
-                "output_names vector size: " + std::to_string(output_names.size()) +
-                    " does not match that of fetches vector: " + std::to_string(fetches.size()));
-
     // setup output_indices_, we don't want to generate mem plan on output tensors.
-    output_indices_.reserve(output_names.size());
-    auto idx = 0;
-    for (const auto& oname : output_names) {
-      int mlvalue_idx;
-      Status status = mlvalue_idx_map.GetIdx(oname, mlvalue_idx);
-      ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-      all_values_[mlvalue_idx] = fetches.at(idx);
-      output_indices_.push_back(mlvalue_idx);
+    auto num_fetches = fetch_mlvalue_idxs.size();
+
+    for (size_t idx = 0; idx < num_fetches; ++idx) {
+      int mlvalue_idx = fetch_mlvalue_idxs[idx];
+      all_values_[mlvalue_idx] = fetches[idx];
 
       auto custom_alloc_entry = fetch_allocators.find(idx);
       if (custom_alloc_entry != fetch_allocators.cend()) {
         custom_allocators_[mlvalue_idx] = custom_alloc_entry->second;
       }
-
-      ++idx;
     }
   }
 
@@ -338,19 +331,17 @@ void ExecutionFrame::Init(const std::unordered_map<std::string, MLValue>& feeds,
   }
 
   // 4. handle feed in values. these can override initializer values so must be last
-  for (const auto& feed : feeds) {
-    int mlvalue_idx;
-    Status status = mlvalue_idx_map.GetIdx(feed.first, mlvalue_idx);
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
+    int mlvalue_idx = feed_mlvalue_idxs[idx];
     // we are sharing the underline tensor/object for MLValue
-    all_values_[mlvalue_idx] = feed.second;
+    all_values_[mlvalue_idx] = feeds[idx];
   }
 }
 
 void ExecutionFrame::TraceFree(int mlvalue_idx) {
   // don't trace free on output tensors.
   if (planner_ &&
-      std::find(output_indices_.begin(), output_indices_.end(), mlvalue_idx) == output_indices_.end()) {
+      std::find(fetch_mlvalue_idxs_.begin(), fetch_mlvalue_idxs_.end(), mlvalue_idx) == fetch_mlvalue_idxs_.end()) {
     const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
     const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
     const auto& per_alloc_plan = alloc_plan.at(mlvalue_idx);
@@ -437,6 +428,27 @@ Status ExecutionFrame::GetOrCreateNodeOutputMLValue(int index,
   // It's not allocated, then allocate it with given shape and return.
   // Perform allocation based on the allocation plan
   ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(mlvalue_idx, parameters));
+  return Status::OK();
+}
+
+Status ExecutionFrame::GetOutputs(std::vector<MLValue>& fetches) {
+  auto num_fetches = fetch_mlvalue_idxs_.size();
+
+  if (fetches.empty()) {
+    fetches.resize(num_fetches);
+  } else {
+    // if there's a mismatch things are out so sync so fail
+    if (fetches.size() != num_fetches) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fetches vector passed to GetOutputs contains ", fetches.size(),
+                             " entries which doesn't match the number of fetches the frame was initialized with of ",
+                             num_fetches);
+    }
+  }
+
+  for (size_t idx = 0; idx < num_fetches; ++idx) {
+    fetches[idx] = GetMLValue(fetch_mlvalue_idxs_[idx]);
+  }
+
   return Status::OK();
 }
 

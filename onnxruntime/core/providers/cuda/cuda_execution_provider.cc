@@ -3,7 +3,6 @@
 
 #include "cuda_common.h"
 #include "cuda_execution_provider.h"
-#include "core/framework/transformer_memcpy.h"
 #include "core/framework/memcpy.h"
 #include "cuda_fence.h"
 #include "cuda_allocator.h"
@@ -55,7 +54,7 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
@@ -208,7 +207,7 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
   }
 
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
+  size_t bytes = src.Size();
 
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
@@ -502,6 +501,7 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kO
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, double, Upsample);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, MLFloat16, Upsample);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, int32_t, Upsample);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, uint8_t, Upsample);
 
 static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>());
@@ -765,6 +765,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, double, Upsample)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, MLFloat16, Upsample)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, int32_t, Upsample)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, uint8_t, Upsample)>());
 }
 
 std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
@@ -850,7 +851,7 @@ bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node)
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
-        if(pads.Get(i) != pads.Get(i + rank)) {
+        if (pads.Get(i) != pads.Get(i + rank)) {
           return true;
         }
       }

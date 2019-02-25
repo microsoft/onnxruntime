@@ -15,6 +15,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     public class InferenceTest
     {
         private const string module = "onnxruntime.dll";
+        private const string propertiesFile = "Properties.txt";
 
         [Fact]
         public void CanCreateAndDisposeSessionWithModelPath()
@@ -221,10 +222,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 "fp16_tiny_yolov2" };
 
             var opsets = new[] { "opset7", "opset8" };
+            var modelsDir = GetTestModelsDir();
             foreach (var opset in opsets)
             {
-                var modelRoot = new DirectoryInfo(opset);
-                var cwd = Directory.GetCurrentDirectory();
+                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opset));
+                //var cwd = Directory.GetCurrentDirectory();
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
@@ -235,19 +237,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     try
                     {
                         var onnxModelNames = modelDir.GetFiles("*.onnx");
-                        if (onnxModelNames.Count() != 1)
+                        if (onnxModelNames.Length > 1)
                         {
                             // TODO remove file "._resnet34v2.onnx" from test set
-                            if (onnxModelNames[0].Name == "._resnet34v2.onnx")
-                                onnxModelNames[0] = onnxModelNames[1];
-                            else
+                            bool validModelFound = false;
+                            for (int i = 0; i < onnxModelNames.Length; i++)
+                            {
+                                if (onnxModelNames[i].Name != "._resnet34v2.onnx")
+                                {
+                                    onnxModelNames[0] = onnxModelNames[i];
+                                    validModelFound = true;
+                                }
+                            }
+                            
+                            if (!validModelFound)
                             {
                                 var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
                                 throw new Exception($"Opset {opset}: Model {modelDir}. Can't determine model file name. Found these :{modelNamesList}");
                             }
                         }
 
-                        onnxModelFileName = Path.Combine(cwd, opset, modelDir.Name, onnxModelNames[0].Name);
+                        onnxModelFileName = Path.Combine(modelsDir, opset, modelDir.Name, onnxModelNames[0].Name);
                         using (var session = new InferenceSession(onnxModelFileName))
                         {
                             var inMeta = session.InputMetadata;
@@ -260,10 +270,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     innodedims[i] = -1 * innodedims[i];
                             }
 
-                            var testRoot = new DirectoryInfo(Path.Combine(cwd, opset, modelDir.Name));
+                            var testRoot = new DirectoryInfo(Path.Combine(modelsDir, opset, modelDir.Name));
                             var testData = testRoot.EnumerateDirectories("test_data*").First();
-                            var dataIn = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
-                            var dataOut = LoadTensorFromFilePb(Path.Combine(cwd, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
+                            var dataIn = LoadTensorFromFilePb(Path.Combine(modelsDir, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
+                            var dataOut = LoadTensorFromFilePb(Path.Combine(modelsDir, opset, modelDir.Name, testData.ToString(), "output_0.pb"));
                             var tensorIn = new DenseTensor<float>(dataIn, innodedims);
                             var nov = new List<NamedOnnxValue>();
                             nov.Add(NamedOnnxValue.CreateFromTensor<float>(innodename, tensorIn));
@@ -531,12 +541,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [GpuFact]
         private void TestGpu()
         {
-            // TODO: execute based on test pool directly (cpu or gpu)
             var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
-            var tuple = (gpu != null) ? OpenSessionSqueezeNet(Int32.Parse(gpu)) : OpenSessionSqueezeNet();
+            var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
             using (var session = tuple.Item1)
             {
                 var inputData = tuple.Item2;
@@ -581,6 +590,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var x = GetProcAddress(hModule, ep);
                 Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
             }
+        }
+
+        static string GetTestModelsDir()
+        {
+            // get build directory, append downloaded models location
+            var cwd = Directory.GetCurrentDirectory();
+            var props = File.ReadAllLines(Path.Combine(cwd, propertiesFile));
+            var modelsRelDir = Path.Combine(props[0].Split('=')[1].Trim());
+            var modelsDir = Path.Combine(cwd, @"../../..", modelsRelDir, "models");
+            return modelsDir;
         }
 
         static float[] LoadTensorFromFile(string filename, bool skipheader = true)
@@ -638,6 +657,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             public int GetHashCode(float x)
             {
                 return 0;
+            }
+        }
+
+        private class GpuFact : FactAttribute
+        {
+            public GpuFact()
+            {
+                if (System.Environment.GetEnvironmentVariable("TESTONGPU") == null)
+                {
+                    Skip = "GPU testing not enabled";
+                }
             }
         }
     }

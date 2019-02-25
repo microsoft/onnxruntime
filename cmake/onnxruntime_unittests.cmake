@@ -91,6 +91,7 @@ file(GLOB onnxruntime_test_ir_src
 
 set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/framework/*.cc"
+  "${TEST_SRC_DIR}/framework/*.h"
   "${TEST_SRC_DIR}/platform/*.cc"
   )
 
@@ -135,6 +136,7 @@ set(onnxruntime_test_ir_libs
 
 set(onnxruntime_test_framework_libs
   onnxruntime_test_utils_for_framework
+  onnxruntime_optimizer
   onnxruntime_framework
   onnxruntime_util
   onnxruntime_graph
@@ -175,6 +177,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
@@ -406,9 +409,13 @@ install(TARGETS onnx_test_runner
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_BENCHMARKS AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
-  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc)
+  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc ${TEST_SRC_DIR}/onnx/microbenchmark/model_init.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
-  target_compile_options(onnxruntime_benchmark PRIVATE "/wd4141")
+  onnxruntime_add_include_to_target(onnxruntime_benchmark gsl)
+  if(WIN32)
+    target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
+                      "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
+  endif()
   target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark ${onnx_test_libs})
   add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -474,7 +481,8 @@ if (onnxruntime_BUILD_SHARED_LIB)
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc)
   if(onnxruntime_RUN_ONNX_TESTS)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
   endif()
