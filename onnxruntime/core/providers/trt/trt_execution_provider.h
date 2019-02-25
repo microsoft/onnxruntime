@@ -4,6 +4,7 @@
 #pragma once
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
+#include "NvOnnxParser.h"
 
 namespace onnxruntime{
 
@@ -75,6 +76,7 @@ struct TRTFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
+  nvonnxparser::IParser* parser = nullptr;
   nvinfer1::ICudaEngine* engine = nullptr;
   nvinfer1::IExecutionContext* context = nullptr;
   std::vector<std::vector<int>> input_info;
@@ -110,6 +112,7 @@ public:
 
 private:
     int device_id_;
+    std::unordered_map<std::string, std::shared_ptr<nvonnxparser::IParser>> parsers_;
     std::unordered_map<std::string, std::shared_ptr<nvinfer1::ICudaEngine>> engines_;
     std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> contexts_;
     std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;

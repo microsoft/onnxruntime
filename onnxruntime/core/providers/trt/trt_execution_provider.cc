@@ -10,7 +10,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/platform/env.h"
 #include "onnx/shape_inference/implementation.h"
-#include "NvOnnxParser.h"
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
 #include "core/graph/model.h"
@@ -70,20 +69,31 @@ TRTExecutionProvider::~TRTExecutionProvider() {}
 std::vector<std::unique_ptr<ComputeCapability>>
         TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const{
-    // Construct modelproto from graph and serialize it to string
-    ModelProto model_proto;
-    GraphProto graph_proto = ToGraphProto(graph);
-    model_proto.set_allocated_graph(&graph_proto);
+    // Construct modelproto from graph
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[onnxruntime::kOnnxDomain] = 8;
+    onnxruntime::Model model_build("", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+    onnxruntime::Graph& graph_build = model_build.MainGraph();
+    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+    for (auto& index: node_index){
+        const Node* node = graph.GetNode(index);
+        graph_build.AddNode(*node);
+    }
+    ORT_ENFORCE(graph_build.Resolve().IsOK());
+    ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();
+
     auto ir_version = 3;
     model_proto.set_ir_version(ir_version);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto.add_opset_import()};
     opset_id_proto->set_domain("ai.onnx");
     opset_id_proto->set_version(8);
 
-    // Get supported node list
+    // Serialize modelproto to string
     string string_buf;
     model_proto.SerializeToString(&string_buf);
     std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
+
+    // Get supported node list
     SubGraphCollection_t supported_nodes_vector;
     TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
     const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
@@ -352,6 +362,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
         ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));
 
         // Save engine, context and input/output info to map
+        parsers_[fused_node->Name()] = trt_parser;
         engines_[fused_node->Name()] = trt_engine;
         contexts_[fused_node->Name()] = trt_context;
         input_info_[fused_node->Name()].push_back(input_indexes);
@@ -365,7 +376,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
         NodeComputeInfo compute_info;
         compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state){
             auto* p = new TRTFuncState();
-            *p = {context->allocate_func, context->release_func, context->allocator_handle, engines_[context->node_name].get(), contexts_[context->node_name].get(),
+            *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(), engines_[context->node_name].get(), contexts_[context->node_name].get(),
                   input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name]};
             *state = p;
             return 0;
