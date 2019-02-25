@@ -38,6 +38,9 @@ struct NodeComputeInfo {
 };
 
 class IExecutionProvider {
+ protected:
+  IExecutionProvider(const std::string& type) : type_{type} {}
+
  public:
   virtual ~IExecutionProvider() = default;
 
@@ -105,7 +108,7 @@ class IExecutionProvider {
      through the SetExecutionProvider API. Example valid return values are:
      kCpuExecutionProvider, kCudaExecutionProvider
   */
-  virtual std::string Type() const = 0;
+  const std::string& Type() const { return type_; }
 
   /**
      Blocks until the device has completed all preceding requested tasks.
@@ -149,6 +152,7 @@ class IExecutionProvider {
                                  std::string& dll_path);
 
  private:
+  const std::string type_;
   AllocatorMap allocators_;
 
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

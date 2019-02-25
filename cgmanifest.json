@@ -191,6 +191,15 @@
       },
       {
          "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+               "repositoryUrl":"https://github.com/google/re2.git"
+            }
+         }
+      },
+      {
+         "component":{
             "Type":"other",
             "Other":{
                "Name":"LLVM",

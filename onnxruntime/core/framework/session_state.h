@@ -127,15 +127,22 @@ class SessionState {
   bool GetEnableMemoryPattern() const;
 
   struct NodeInfo {
+    /**
+     *
+     * \param index0
+     * \param p_node0 Nullable
+     * \param kci0 Nullable
+     */
     NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0)
         : index(index0),
           p_node(p_node0),
           kci(kci0) {
     }
-    NodeInfo() = default;
 
     size_t index;
+    // Nullable
     const onnxruntime::Node* p_node = nullptr;
+    // Nullable
     const KernelCreateInfo* kci = nullptr;
   };
 

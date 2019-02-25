@@ -14,12 +14,8 @@ class DummyExecutionProvider : public IExecutionProvider {
   static constexpr const char* kDummyExecutionProviderType = "DummyExecutionProvider";
 
  public:
-  DummyExecutionProvider() {
+  DummyExecutionProvider() : IExecutionProvider{kDummyExecutionProviderType} {
     InsertAllocator(std::make_unique<DummyAllocator>());
-  }
-
-  std::string Type() const override {
-    return kDummyExecutionProviderType;
   }
 
   Status CopyTensor(const Tensor& src, Tensor& dst) const override {
