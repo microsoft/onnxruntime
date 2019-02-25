@@ -82,17 +82,29 @@ jobs:
       displayName: 'Copy build artifacts for zipping'
       inputs:
         script: |
-          pwd
-          pushd $(Build.BinariesDirectory)\$(buildConfig)
-          dir *.dll /s
-          dir *.lib /s
-          popd
-          pushd $(Build.SourcesDirectory)\include
-          dir *.h /s
-          popd
+          mkdir $(Build.BinariesDirectory)\onnxruntime-win-x64
+          set ArtifactsRoot=$(Build.BinariesDirectory)\onnxruntime-win-x64
+          mkdir $(ArtifactsRoot)\lib
+          mkdir $(ArtifactsRoot)\include
+          
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.dll $(ArtifactsRoot)\lib
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.lib $(ArtifactsRoot)\lib
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  mkdir $(ArtifactsRoot)\include
         workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
 
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)\onnxruntime-win-x64' 
+        includeRootFolder: true
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        archiveFile: '$(Build.ArtifactStagingDirectory)\onnxruntime-win-x64.zip' 
+        replaceExistingArchive: true 
       
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)\onnxruntime-win-x64.zip' 
+        artifactName: 'drop' 
+    
     - template: templates/clean-agent-build-directory-step.yml
 
 
