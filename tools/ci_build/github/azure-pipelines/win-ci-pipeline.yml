@@ -83,13 +83,13 @@ jobs:
       inputs:
         script: |
           mkdir $(Build.BinariesDirectory)\onnxruntime-win-x64
-          set ArtifactsRoot=$(Build.BinariesDirectory)\onnxruntime-win-x64
-          mkdir $(ArtifactsRoot)\lib
-          mkdir $(ArtifactsRoot)\include
-          
-          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.dll $(ArtifactsRoot)\lib
-          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.lib $(ArtifactsRoot)\lib
-          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  mkdir $(ArtifactsRoot)\include
+          # set ArtifactsRoot=$(Build.BinariesDirectory)\onnxruntime-win-x64
+          mkdir $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
+          mkdir $(Build.BinariesDirectory)\onnxruntime-win-x64\include
+          echo "Directories created"            
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.dll $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.lib $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  $(Build.BinariesDirectory)\onnxruntime-win-x64\include
         workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
 
     - task: ArchiveFiles@2
