@@ -63,7 +63,7 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, bool custom_op) {
+                   int provider_type, bool custom_op, OrtCustomOp* custom_op_ptr = nullptr) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
@@ -93,6 +93,10 @@ void TestInference(OrtEnv* env, T model_uri,
   if (custom_op) {
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
+  if (custom_op_ptr) {
+    OrtAddCustomOp(sf, custom_op_ptr);
+  }
+
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
       inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
@@ -130,7 +134,7 @@ void TestInference(OrtEnv* env, T model_uri,
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.pb");
-static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.pb");
+static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("C:/code/github/onnxrt/build/windows/debug/debug/testdata/foo_1.pb");
 
 class CApiTestWithProvider : public CApiTest,
                              public ::testing::WithParamInterface<int> {
@@ -168,6 +172,67 @@ TEST_F(CApiTest, DISABLED_custom_op) {
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, true);
 }
 #endif
+
+struct MyCustomKernel {
+  int GetOutputShapeDimensionCount(OrtCustomOpTensor* inputs, int inputCount) {
+    return int(inputs[0].dimensionCount);
+  }
+
+  void GetOutputShape(OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) {
+    // Just match the first input shape
+    for (int i = 0; i < output->dimensionCount; i++)
+      output->dimension[i] = inputs[0].dimension[i];
+  }
+
+  void Compute(OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) {
+    const float* X = reinterpret_cast<const float*>(inputs[0].data);
+    const float* Y = reinterpret_cast<const float*>(inputs[1].data);
+
+    float* out = reinterpret_cast<float*>(output->data);
+
+    int64_t size = 1;
+    for (int i = 0; i < inputs[0].dimensionCount; i++)
+      size *= inputs[0].dimension[i];
+
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = X[i] + Y[i];
+    }
+  }
+};
+
+struct MyCustomOp : OrtCustomOp {
+  MyCustomOp() {
+    OrtCustomOp::Create = [](OrtCustomOp* this_, void** output) { *output = static_cast<MyCustomOp*>(this_)->Create(); };
+    OrtCustomOp::GetOutputShapeDimensionCount = [](void* op_kernel, OrtCustomOpTensor* inputs, int inputCount) { return static_cast<MyCustomKernel*>(op_kernel)->GetOutputShapeDimensionCount(inputs, inputCount); };
+    OrtCustomOp::GetOutputShape = [](void* op_kernel, OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) { static_cast<MyCustomKernel*>(op_kernel)->GetOutputShape(inputs, inputCount, output); };
+    OrtCustomOp::Compute = [](void* op_kernel, OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) { static_cast<MyCustomKernel*>(op_kernel)->Compute(inputs, inputCount, output); };
+    OrtCustomOp::Destroy = [](void* op_kernel) { delete static_cast<MyCustomKernel*>(op_kernel); };
+
+    name = "Foo";
+    static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
+    inputTypes = c_inputTypes;
+    inputTypeCount = _countof(c_inputTypes);
+    outputType = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  }
+
+  MyCustomKernel* Create() {
+    return new MyCustomKernel();
+  }
+};
+
+TEST_F(CApiTest, custom_op_handler) {
+  std::cout << "Running custom op inference" << std::endl;
+  std::vector<size_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  MyCustomOp custom_op;
+
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
+}
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {

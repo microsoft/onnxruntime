@@ -50,7 +50,57 @@
 
 using namespace ONNX_NAMESPACE;
 
+ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
+
 namespace onnxruntime {
+
+struct FooKernel : OpKernel {
+  FooKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
+    op_.Create(&op_, &op_kernel_);
+  }
+
+  ~FooKernel() {
+    op_.Destroy(op_kernel_);
+  }
+
+  Status Compute(OpKernelContext* ctx) const override {
+    std::vector<OrtCustomOpTensor> inputTensors;
+
+    int inputCount = ctx->InputCount();
+    for (int i = 0; i < inputCount; i++) {
+      inputTensors.emplace_back();
+      auto& tensor = inputTensors.back();
+
+      auto& input_tensor = *ctx->Input<Tensor>(i);
+      tensor.type = MLDataTypeToOnnxRuntimeTensorElementDataType(input_tensor.DataType());
+      tensor.data = const_cast<void*>(input_tensor.DataRaw());
+
+      auto& shape = input_tensor.Shape();
+      tensor.dimension = const_cast<int64_t*>(&shape[0]);
+      tensor.dimensionCount = shape.NumDimensions();
+    }
+
+    OrtCustomOpTensor outputTensor;
+    outputTensor.type = op_.outputType;
+    outputTensor.dimensionCount = op_.GetOutputShapeDimensionCount(op_kernel_, &inputTensors[0], inputTensors.size());
+
+    std::vector<int64_t> shape;
+    shape.resize(outputTensor.dimensionCount);
+
+    outputTensor.dimension = &shape[0];
+    op_.GetOutputShape(op_kernel_, &inputTensors[0], inputTensors.size(), &outputTensor);
+
+    Tensor* output = ctx->Output(0, TensorShape(shape));
+    outputTensor.data = output->MutableDataRaw();
+
+    op_.Compute(op_kernel_, &inputTensors[0], inputTensors.size(), &outputTensor);
+    return Status::OK();
+  }
+
+ private:
+  OrtCustomOp& op_;
+  void* op_kernel_;
+};
 
 class InferenceSession::Impl {
  public:
@@ -122,6 +172,56 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
+  common::Status AddCustomOps(const std::vector<OrtCustomOp*>& ops) {
+    auto custom_registry = std::make_shared<CustomRegistry>();
+    auto schemas_container = std::make_unique<SchemasContainer>();
+
+    schemas_container->domain = onnxruntime::kOnnxDomain;
+    schemas_container->baseline_opset_version = 5;
+    schemas_container->opset_version = 7;
+
+    for (auto& op : ops) {
+      ONNX_NAMESPACE::OpSchema schema(op->name, "unknown", 0);
+      schema.Input(0,
+                   "A",
+                   "First operand, should share the type with the second operand.",
+                   "T");
+      schema.Input(
+          1,
+          "B",
+          "Second operand. With broadcasting can be of smaller size than A. "
+          "If broadcasting is disabled it should be of the same size.",
+          "T");
+      schema.Output(0, "C", "Result, has same dimensions and type as A", "T");
+      schema.TypeConstraint(
+          "T",
+          OpSchema::numeric_types_for_math_reduction(),
+          "Constrain input and output types to high-precision numeric tensors.");
+      schema.SinceVersion(7);
+
+      schemas_container->schemas_list.push_back(schema);
+
+      KernelDefBuilder def_builder;
+      def_builder.SetName("Foo")
+          .SetDomain(onnxruntime::kOnnxDomain)
+          .SinceVersion(7)
+          .Provider(onnxruntime::kCpuExecutionProvider)
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
+      KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new FooKernel(info, *op); };
+      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
+
+      custom_registry->RegisterCustomKernel(create_info);
+    }
+
+    ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
+                                                       schemas_container->domain,
+                                                       schemas_container->baseline_opset_version,
+                                                       schemas_container->opset_version));
+
+    RegisterCustomRegistry(custom_registry);
+    return Status::OK();
+  }
+
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry>& custom_registry) {
     if (custom_registry == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
@@ -161,11 +261,11 @@ class InferenceSession::Impl {
       LOGS(*session_logger_, ERROR) << "Unknown exception in Load()";
       status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Load()");
     }
-    
+
     if (session_profiler_.FEnabled()) {
       session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
     }
-    
+
     return status;
   }
 
@@ -971,5 +1071,9 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 common::Status InferenceSession::LoadCustomOps(const std::vector<std::string>& dso_list) {
   return impl_->LoadCustomOps(dso_list);
+}
+
+common::Status InferenceSession::AddCustomOps(const std::vector<OrtCustomOp*>& ops) {
+  return impl_->AddCustomOps(ops);
 }
 }  // namespace onnxruntime

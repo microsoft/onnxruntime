@@ -351,18 +351,31 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
   API_IMPL_END
 }
 
-template <typename T>
-static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
-                                    _In_ const OrtSessionOptions* options,
-                                    _Out_ OrtSession** out) {
+ORT_API_STATUS_IMPL(OrtAddCustomOp, _In_ OrtSessionOptions* options, OrtCustomOp* op) {
+  API_IMPL_BEGIN
+  options->custom_ops_.emplace_back(op);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
   auto sess = std::make_unique<::onnxruntime::InferenceSession>(options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
-  if (options != nullptr && !options->custom_op_paths.empty()) {
-    status = sess->LoadCustomOps(options->custom_op_paths);
-    if (!status.IsOK())
-      return ToOrtStatus(status);
+  if (options != nullptr) {
+    if (!options->custom_op_paths.empty()) {
+      status = sess->LoadCustomOps(options->custom_op_paths);
+      if (!status.IsOK())
+        return ToOrtStatus(status);
+    }
+    if (!options->custom_ops_.empty()) {
+      status = sess->AddCustomOps(options->custom_ops_);
+      if (!status.IsOK())
+        return ToOrtStatus(status);
+    }
   }
+
   if (options != nullptr)
     for (auto& factory : options->provider_factories) {
       auto provider = factory->CreateProvider();
@@ -379,22 +392,6 @@ static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ T model_path,
   return nullptr;
   API_IMPL_END
 }
-
-#ifdef _WIN32
-ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const wchar_t* model_path,
-                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
-  API_IMPL_BEGIN
-  return CreateSessionImpl(env, model_path, options, out);
-  API_IMPL_END
-}
-#else
-ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const char* model_path,
-                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
-  API_IMPL_BEGIN
-  return CreateSessionImpl(env, model_path, options, out);
-  API_IMPL_END
-}
-#endif
 
 ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
                     _In_ OrtRunOptions* run_options,

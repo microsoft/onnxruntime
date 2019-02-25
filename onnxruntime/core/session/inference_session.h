@@ -138,6 +138,8 @@ class InferenceSession {
   */
   common::Status LoadCustomOps(const std::vector<std::string>& dso_list);
 
+  common::Status AddCustomOps(const std::vector<OrtCustomOp*>& ops);
+
   /**
     * Register a custom registry for operator schema and kernels.  If you've one to register, 
     * call this before invoking Initialize().

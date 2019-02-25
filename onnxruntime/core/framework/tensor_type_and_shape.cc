@@ -72,8 +72,7 @@ ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShape
 
 struct OrtValue;
 
-namespace {
-inline ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
+ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
     const onnxruntime::DataTypeImpl* cpp_type) {
   ONNXTensorElementDataType type;
   if (cpp_type == onnxruntime::DataTypeImpl::GetType<float>()) {
@@ -109,7 +108,6 @@ inline ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   }
   return type;
 }
-}  // namespace
 
 OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
   ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);

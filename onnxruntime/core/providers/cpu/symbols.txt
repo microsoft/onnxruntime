@@ -1,3 +1,4 @@
+OrtAddCustomOp
 OrtAllocatorAlloc
 OrtAllocatorFree
 OrtAllocatorGetInfo
