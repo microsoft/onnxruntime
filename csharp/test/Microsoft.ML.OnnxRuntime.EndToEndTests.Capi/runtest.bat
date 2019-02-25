@@ -38,23 +38,31 @@ echo on
 REM Restore NuGet Packages
 nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (
-	echo "Error:Nuget restore failed"
-	EXIT /B 1
+    echo "Error:Nuget restore failed"
+    popd
+    EXIT /B 1
 )
 
 REM Build Native project
 msbuild Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (
-	echo "Error:MSBuild failed to compile project"
-	EXIT /B 1
+    echo "Error:MSBuild failed to compile project"
+    popd
+    EXIT /B 1
 )
 
 
 REM Run Unit Tests
-vstest.console.exe /platform:x64 x64\debug\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.dll
+pushd x64\Debug
+vstest.console.exe /platform:x64 Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.dll
 if NOT %ERRORLEVEL% EQU 0 (
     echo "Unit test failure: %ERRORLEVEL%"
+    popd
+    popd
+    EXIT /B 1
 )
 
 popd
+popd
+
 EXIT /B 0
