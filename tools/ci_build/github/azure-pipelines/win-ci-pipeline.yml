@@ -2,6 +2,7 @@ jobs:
 - job: Windows_CI_Dev
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - task: NuGetCommand@2
@@ -47,79 +48,27 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update'
-        workingDirectory: "$(Build.BinariesDirectory)"
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp  --build_shared_lib --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update'
+        workingFoLder: "$(Build.BinariesDirectory)"
+
 
     - task: VSBuild@1
-      displayName: 'Build Debug'
+      displayName: 'Build $(buildConfig)'
       inputs:
-        solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
+        solution: '$(Build.BinariesDirectory)\$(buildConfig)\onnxruntime.sln'
         platform: 'x64'
-        configuration: 'Debug'
+        configuration: '$(buildConfig)'
         msbuildArgs: '/m'
         msbuildArchitecture: 'x64'
         logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Debug'
+        workingFolder: '$(Build.BinariesDirectory)\$(buildConfig)'
+
     - task: BatchScript@1
-      displayName: 'Test Debug'
+      displayName: 'Test $(buildConfig)'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
-        workingFolder: '$(Build.BinariesDirectory)'
-    - task: VSBuild@1
-      displayName: 'Build C# Debug'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'Debug'
-        restoreNugetPackages: false
-        msbuildArchitecture: 'x64'
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
-
-    - task: VSTest@2
-      displayName: 'VsTest - C# Debug'
-      inputs:
-        testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: Debug
-
-    - task: VSBuild@1
-      displayName: 'Build Release'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
-        platform: 'x64'
-        configuration: 'Release'
-        msbuildArgs: '/m'
-        msbuildArchitecture: 'x64'
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Release'
-    - task: BatchScript@1
-      displayName: 'Test Release'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
         workingFolder: "$(Build.BinariesDirectory)"
-
-    - task: VSBuild@1
-      displayName: 'Build c# Release'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'Release'
-        msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
-
-    - task: VSTest@2
-      displayName: 'VsTest - C# Release'
-      inputs:
-        testAssemblyVer2: '**\bin\Release\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: Release
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
@@ -128,4 +77,22 @@ jobs:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
+
+    - task: CmdLine@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        script: |
+          pwd
+          pushd $(Build.BinariesDirectory)\$(buildConfig)
+          dir *.dll /s
+          dir *.lib /s
+          popd
+          pushd $(Build.SourcesDirectory)\include
+          dir *.h /s
+          popd
+        workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
+
+      
     - template: templates/clean-agent-build-directory-step.yml
+
+
