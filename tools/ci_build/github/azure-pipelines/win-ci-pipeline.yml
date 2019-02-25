@@ -87,8 +87,8 @@ jobs:
           mkdir $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
           mkdir $(Build.BinariesDirectory)\onnxruntime-win-x64\include
           echo "Directories created"            
-          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.dll $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
-          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntme.lib $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntime.dll $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntime.lib $(Build.BinariesDirectory)\onnxruntime-win-x64\lib
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  $(Build.BinariesDirectory)\onnxruntime-win-x64\include
         workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
 
