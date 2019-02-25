@@ -4,8 +4,6 @@
 #include "CppUnitTest.h"
 #include <assert.h>
 #include <core/session/onnxruntime_c_api.h>
-#include <cstdio>
-#include <iostream>
 
 wchar_t* GetWideString(const char* c) {
   const size_t cSize = strlen(c) + 1;
