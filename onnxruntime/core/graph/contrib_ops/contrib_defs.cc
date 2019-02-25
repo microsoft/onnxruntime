@@ -1074,11 +1074,11 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto positive_attr = ctx.getAttribute("positive");
         bool is_positive =
             positive_attr ? (static_cast<int>(positive_attr->i()) == 1 ? true : false) : true /* default value if attribute not present */;
-        auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
+        auto output_data_type = ctx.getOutputType(0)->mutable_tensor_type();
         if (is_positive) {
-          selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_UINT32);
+          output_data_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_UINT32);
         } else {
-          selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          output_data_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
         }
 
         // Shape inference
