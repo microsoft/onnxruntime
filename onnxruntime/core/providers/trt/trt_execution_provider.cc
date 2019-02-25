@@ -13,7 +13,6 @@
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
 #include "core/graph/model.h"
-#include "NvOnnxParser.h"
 #include "cuda_runtime_api.h"
 
 using namespace std;
@@ -403,7 +402,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
             int num_binding_outputs =  output_binding_indexes.size();
             cudaStream_t stream;
             CHECK(cudaStreamCreate(&stream));
-            void* buffers[num_binding_inputs + num_binding_outputs];
+            std::vector<void*> buffers(num_binding_inputs + num_binding_outputs);
             std::vector<int> batch_size;
 
             // Get batch size and allocate cuda memory for inputs
