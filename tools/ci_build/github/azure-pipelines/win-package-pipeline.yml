@@ -9,11 +9,11 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
+        parameters:
+          EnvSetupScript: 'setup_env.bat'
+          buildArch: $(buildArch)
 
-    task: CmdLine@2
+    - task: CmdLine@2
       displayName: 'Download test data and generate cmake config'
       inputs:
         script: |
