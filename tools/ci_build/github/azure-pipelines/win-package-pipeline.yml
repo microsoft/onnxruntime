@@ -2,124 +2,49 @@ jobs:
 - job: Windows_CI_Dev
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
+    buildArch: 'x64'
+    buildAdditionalOptions: ''
+
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - task: NuGetCommand@2
-      displayName: 'NuGet restore'
-      inputs:
-        restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        feedsToUse: config
-        nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
-        restoreDirectory: '$(Build.SourcesDirectory)\csharp'
-    - task: UniversalPackages@0
-      displayName: 'Download python'
-      inputs:
-        command: download
-        vstsFeed: '$(System.TeamProject)'
-        vstsFeedPackage: 'miniconda3_win64'
-        vstsPackageVersion: '4.5.11'
-        downloadDirectory: '$(Build.BinariesDirectory)\python'
-    - task: CmdLine@1
-      displayName: 'Run python installer'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\python\installer.exe'
-        arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
-      timeoutInMinutes: 10
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
-    - task: CmdLine@1
-      displayName: 'Install conda modules'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
-        arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
-      timeoutInMinutes: 10
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: $(buildArch)
 
-    - task: CmdLine@1
-      displayName: 'Download cmake'
+    task: CmdLine@2
+      displayName: 'Download test data and generate cmake config'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+        script: |
+          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp  --build_shared_lib --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update
+        workingDirectory: '$(Build.BinariesDirectory)'
+    
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update'
-        workingDirectory: "$(Build.BinariesDirectory)"
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp  --build_shared_lib --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update'
+        workingFoLder: "$(Build.BinariesDirectory)"
+
 
     - task: VSBuild@1
-      displayName: 'Build Debug'
+      displayName: 'Build $(buildConfig)'
       inputs:
-        solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-        platform: 'x64'
-        configuration: 'Debug'
+        solution: '$(Build.BinariesDirectory)\$(buildConfig)\onnxruntime.sln'
+        platform: $(buildArch)
+        configuration: '$(buildConfig)'
         msbuildArgs: '/m'
-        msbuildArchitecture: 'x64'
+        msbuildArchitecture: $(buildArch)
         logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Debug'
+        workingFolder: '$(Build.BinariesDirectory)\$(buildConfig)'
+
     - task: BatchScript@1
-      displayName: 'Test Debug'
+      displayName: 'Test $(buildConfig)'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
-        workingFolder: '$(Build.BinariesDirectory)'
-    - task: VSBuild@1
-      displayName: 'Build C# Debug'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'Debug'
-        restoreNugetPackages: false
-        msbuildArchitecture: 'x64'
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
-
-    - task: VSTest@2
-      displayName: 'VsTest - C# Debug'
-      inputs:
-        testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: Debug
-
-    - task: VSBuild@1
-      displayName: 'Build Release'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
-        platform: 'x64'
-        configuration: 'Release'
-        msbuildArgs: '/m'
-        msbuildArchitecture: 'x64'
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\Release'
-    - task: BatchScript@1
-      displayName: 'Test Release'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
         workingFolder: "$(Build.BinariesDirectory)"
-
-    - task: VSBuild@1
-      displayName: 'Build c# Release'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'Release'
-        msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
-
-    - task: VSTest@2
-      displayName: 'VsTest - C# Release'
-      inputs:
-        testAssemblyVer2: '**\bin\Release\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: Release
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
@@ -128,4 +53,34 @@ jobs:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
+
+    - task: CmdLine@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        script: |
+          mkdir $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)
+          # set ArtifactsRoot=$(Build.BinariesDirectory)\onnxruntime-win-x64
+          mkdir $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\lib
+          mkdir $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\include
+          echo "Directories created"            
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntime.dll $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\lib
+          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntime.lib $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\lib
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\include
+        workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)' 
+        includeRootFolder: true
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        archiveFile: '$(Build.ArtifactStagingDirectory)\onnxruntime-win-$(buildArch).zip' 
+        replaceExistingArchive: true 
+      
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)\onnxruntime-win-$(buildArch).zip' 
+        artifactName: 'drop' 
+    
     - template: templates/clean-agent-build-directory-step.yml
+
+
