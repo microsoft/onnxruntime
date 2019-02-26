@@ -835,7 +835,7 @@ static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
   auto& graph = model.MainGraph();
 
   // create an initializer, which is an optional input that can be overridden
-  onnx::TensorProto tensor_proto;
+  ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.add_dims(1);
   tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
   tensor_proto.add_float_data(1.f);
