@@ -1027,7 +1027,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
-        selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+        selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
 
         // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
         auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
@@ -1043,7 +1043,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto num_outputs = ctx.getNumOutputs();
         if (num_outputs > 1) {
           auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
-          valid_outputs_shape->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          valid_outputs_shape->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
           valid_outputs_shape
               ->mutable_shape()
               ->add_dim()
@@ -1076,9 +1076,9 @@ The bounding box coordinates corresponding to the selected indices can then be o
             positive_attr ? (static_cast<int>(positive_attr->i()) == 1 ? true : false) : true /* default value if attribute not present */;
         auto output_data_type = ctx.getOutputType(0)->mutable_tensor_type();
         if (is_positive) {
-          output_data_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_UINT32);
+          output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32);
         } else {
-          output_data_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
         }
 
         // Shape inference

@@ -27,8 +27,6 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
-using namespace onnx;
-
 namespace onnxruntime {
 namespace test {
 
