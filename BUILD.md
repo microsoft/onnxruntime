@@ -197,3 +197,7 @@ By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours)
 
 ### Cross compiling on Windows
 (TODO)
+
+### Learning capabilities in onnxruntime
+
+You can enable a prototype for running training in onnxruntime by setting the flag --enable_training

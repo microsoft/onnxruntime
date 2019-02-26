@@ -251,7 +251,6 @@ int main(int /*argc*/, char* /*args*/[]) {
   // prepare output names
   auto output_names_include_gradients = training_session.GetModelOutputNames();
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
-  vector<MLValue> gradient_fetches;  // All gradients and loss are here, 1:1 mapping to the above output_names.
 
   // loop through the data
   for (size_t batch_index = 0; batch_index < MAX_STEPS; ++batch_index) {
@@ -262,7 +261,7 @@ int main(int /*argc*/, char* /*args*/[]) {
     // train for a mini batch
     vector<NameMLValMap> training_batch = fill_feed_dict(training_set.NextBatch(BATCH_SIZE));
     for (const auto& fw_feeds : training_batch) {
-      // Run forward pass.
+      vector<MLValue> gradient_fetches;  // All gradients and loss are here, 1:1 mapping to the above training_output_names.
 
       TERMINATE_IF_FAILED(training_session.Run(fw_feeds, training_output_names, &gradient_fetches));
 
@@ -274,6 +273,8 @@ int main(int /*argc*/, char* /*args*/[]) {
       NameMLValMap grad;
       for (int i = 0; i < training_output_names.size(); i++) {
         if (training_output_names[i] == "loss") continue;
+        if (training_output_names[i] == "predictions") continue;
+
         grad.insert(make_pair(training_output_names[i], gradient_fetches[i]));
       }
       grads_batch.emplace_back(grad);

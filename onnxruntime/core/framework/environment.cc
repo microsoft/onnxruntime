@@ -9,6 +9,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
+#include "core/training/gradient_builder.h"
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -38,8 +39,12 @@ Status Environment::Initialize() {
       RegisterOnnxMLOperatorSetSchema();
       RegisterOnnxFunctionBuilder();
 
-      // preserve this orde: this depends on operatorsetschema registration.
+      // preserve this order: this depends on operatorsetschema registration.
       GradientOps::RegisterGradientSchemas();
+
+#ifdef ENABLE_TRAINING
+      RegisterGradientBuilders();
+#endif
     });
     //TODO:put all of the following things into call_once
     // Register MVN operator for backward compatibility.

@@ -519,6 +519,10 @@ include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
+if (onnxruntime_ENABLE_TRAINING)
+include(onnxruntime_training.cmake)
+endif()
+
 if(WIN32)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
 else()

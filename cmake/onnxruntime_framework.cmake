@@ -26,3 +26,8 @@ endif()
 if(onnxruntime_USE_EIGEN_THREADPOOL)
     target_compile_definitions(onnxruntime_framework PUBLIC USE_EIGEN_THREADPOOL)
 endif()
+
+if(onnxruntime_ENABLE_TRAINING)
+    target_link_libraries(onnxruntime_framework onnxruntime_training)
+    target_compile_definitions(onnxruntime_framework PUBLIC ENABLE_TRAINING)
+endif()
