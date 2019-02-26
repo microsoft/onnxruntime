@@ -47,6 +47,6 @@ steps:
     - task: BatchScript@1
       displayName: 'Setup VS2017 env vars'
       inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
         arguments: '${{parameters.buildArch}} -vcvars_ver=14.11'
         modifyEnvironment: true
