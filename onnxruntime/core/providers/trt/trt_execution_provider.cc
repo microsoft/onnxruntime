@@ -52,7 +52,8 @@ GraphProto ToGraphProto(const GraphViewer& graph){
     return graph_proto;
 }
 
-TRTExecutionProvider::TRTExecutionProvider(){
+TRTExecutionProvider::TRTExecutionProvider()
+    : IExecutionProvider{onnxruntime::kTRTExecutionProvider}{
     DeviceAllocatorRegistrationInfo trt_device_info({OrtMemTypeCPU, [](int){
         return std::make_unique<TRTPinnedAllocator>();
     }, std::numeric_limits<size_t>::max()});
