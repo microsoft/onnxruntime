@@ -234,13 +234,6 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
 
 ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 
-struct OrtCustomOpTensor {
-  ONNXTensorElementDataType type;
-  void* data;          // A pointer to the raw data
-  int64_t* dimension;  // The dimensions array is the shape of the tensor
-  size_t dimensionCount;
-};
-
 struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
@@ -248,9 +241,8 @@ struct OrtCustomOp {
   void(ORT_API_CALL* Create)(struct OrtCustomOp* op, void** op_kernel);
   void(ORT_API_CALL* Destroy)(void* op_kernel);
 
-  int(ORT_API_CALL* GetOutputShapeDimensionCount)(void* op_kernel, OrtCustomOpTensor* inputs, int inputCount);
-  void(ORT_API_CALL* GetOutputShape)(void* op_kernel, OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output);
-  void(ORT_API_CALL* Compute)(void* op_kernel, OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output);
+  void(ORT_API_CALL* GetOutputShape)(void* op_kernel, OrtValue** inputs, size_t inputCount, OrtTensorTypeAndShapeInfo* output);
+  void(ORT_API_CALL* Compute)(void* op_kernel, OrtValue** inputs, size_t inputCount, OrtValue* output);
 
   // Op schema information
   const char* name;

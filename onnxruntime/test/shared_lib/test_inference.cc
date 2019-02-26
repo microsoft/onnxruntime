@@ -173,27 +173,40 @@ TEST_F(CApiTest, DISABLED_custom_op) {
 }
 #endif
 
+struct OrtTensorDimensions : std::vector<int64_t> {
+  OrtTensorDimensions(OrtValue* value) {
+    OrtTensorTypeAndShapeInfo* info;
+    OrtGetTensorShapeAndType(value, &info);
+    auto dimensionCount = OrtGetNumOfDimensions(info);
+    resize(dimensionCount);
+    OrtGetDimensions(info, data(), dimensionCount);
+    OrtReleaseTensorTypeAndShapeInfo(info);
+  }
+
+  size_t ElementCount() const {
+    int64_t count = 1;
+    for (int i = 0; i < size(); i++)
+      count *= (*this)[i];
+    return count;
+  }
+};
+
 struct MyCustomKernel {
-  int GetOutputShapeDimensionCount(OrtCustomOpTensor* inputs, int inputCount) {
-    return int(inputs[0].dimensionCount);
+  void GetOutputShape(OrtValue** inputs, size_t inputCount, OrtTensorTypeAndShapeInfo* info) {
+    OrtTensorDimensions dimensions(inputs[0]);
+    OrtSetDims(info, dimensions.data(), dimensions.size());
   }
 
-  void GetOutputShape(OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) {
-    // Just match the first input shape
-    for (int i = 0; i < output->dimensionCount; i++)
-      output->dimension[i] = inputs[0].dimension[i];
-  }
+  void Compute(OrtValue** inputs, size_t inputCount, OrtValue* output) {
+    const float* X;
+    const float* Y;
+    OrtGetTensorMutableData(inputs[0], &reinterpret_cast<void*>(const_cast<float*>(X)));
+    OrtGetTensorMutableData(inputs[0], &reinterpret_cast<void*>(const_cast<float*>(Y)));
 
-  void Compute(OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) {
-    const float* X = reinterpret_cast<const float*>(inputs[0].data);
-    const float* Y = reinterpret_cast<const float*>(inputs[1].data);
+    float* out;
+    OrtGetTensorMutableData(output, &reinterpret_cast<void*>(out));
 
-    float* out = reinterpret_cast<float*>(output->data);
-
-    int64_t size = 1;
-    for (int i = 0; i < inputs[0].dimensionCount; i++)
-      size *= inputs[0].dimension[i];
-
+    int64_t size = OrtTensorDimensions(inputs[0]).ElementCount();
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
@@ -203,9 +216,8 @@ struct MyCustomKernel {
 struct MyCustomOp : OrtCustomOp {
   MyCustomOp() {
     OrtCustomOp::Create = [](OrtCustomOp* this_, void** output) { *output = static_cast<MyCustomOp*>(this_)->Create(); };
-    OrtCustomOp::GetOutputShapeDimensionCount = [](void* op_kernel, OrtCustomOpTensor* inputs, int inputCount) { return static_cast<MyCustomKernel*>(op_kernel)->GetOutputShapeDimensionCount(inputs, inputCount); };
-    OrtCustomOp::GetOutputShape = [](void* op_kernel, OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) { static_cast<MyCustomKernel*>(op_kernel)->GetOutputShape(inputs, inputCount, output); };
-    OrtCustomOp::Compute = [](void* op_kernel, OrtCustomOpTensor* inputs, int inputCount, OrtCustomOpTensor* output) { static_cast<MyCustomKernel*>(op_kernel)->Compute(inputs, inputCount, output); };
+    OrtCustomOp::GetOutputShape = [](void* op_kernel, OrtValue** inputs, size_t inputCount, OrtTensorTypeAndShapeInfo* output) { static_cast<MyCustomKernel*>(op_kernel)->GetOutputShape(inputs, inputCount, output); };
+    OrtCustomOp::Compute = [](void* op_kernel, OrtValue** inputs, size_t inputCount, OrtValue* output) { static_cast<MyCustomKernel*>(op_kernel)->Compute(inputs, inputCount, output); };
     OrtCustomOp::Destroy = [](void* op_kernel) { delete static_cast<MyCustomKernel*>(op_kernel); };
 
     name = "Foo";

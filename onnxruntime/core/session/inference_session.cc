@@ -53,6 +53,17 @@ using namespace ONNX_NAMESPACE;
 
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
+// TODO: Move this into a shared header file
+struct OrtTensorTypeAndShapeInfo {
+ public:
+  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  onnxruntime::TensorShape shape;
+
+  OrtTensorTypeAndShapeInfo() = default;
+  OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = delete;
+  OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
+};
+
 namespace onnxruntime {
 
 struct FooKernel : OpKernel {
@@ -65,36 +76,17 @@ struct FooKernel : OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    std::vector<OrtCustomOpTensor> inputTensors;
+    std::vector<OrtValue*> inputTensors;
 
     int inputCount = ctx->InputCount();
-    for (int i = 0; i < inputCount; i++) {
-      inputTensors.emplace_back();
-      auto& tensor = inputTensors.back();
+    for (int i = 0; i < inputCount; i++)
+      inputTensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(i))));
 
-      auto& input_tensor = *ctx->Input<Tensor>(i);
-      tensor.type = MLDataTypeToOnnxRuntimeTensorElementDataType(input_tensor.DataType());
-      tensor.data = const_cast<void*>(input_tensor.DataRaw());
+    OrtTensorTypeAndShapeInfo info;
+    op_.GetOutputShape(op_kernel_, inputTensors.data(), inputTensors.size(), &info);
 
-      auto& shape = input_tensor.Shape();
-      tensor.dimension = const_cast<int64_t*>(&shape[0]);
-      tensor.dimensionCount = shape.NumDimensions();
-    }
-
-    OrtCustomOpTensor outputTensor;
-    outputTensor.type = op_.outputType;
-    outputTensor.dimensionCount = op_.GetOutputShapeDimensionCount(op_kernel_, &inputTensors[0], inputTensors.size());
-
-    std::vector<int64_t> shape;
-    shape.resize(outputTensor.dimensionCount);
-
-    outputTensor.dimension = &shape[0];
-    op_.GetOutputShape(op_kernel_, &inputTensors[0], inputTensors.size(), &outputTensor);
-
-    Tensor* output = ctx->Output(0, TensorShape(shape));
-    outputTensor.data = output->MutableDataRaw();
-
-    op_.Compute(op_kernel_, &inputTensors[0], inputTensors.size(), &outputTensor);
+    auto output = ctx->OutputMLValue(0, info.shape);
+    op_.Compute(op_kernel_, inputTensors.data(), inputTensors.size(), reinterpret_cast<OrtValue*>(output));
     return Status::OK();
   }
 
