@@ -7,56 +7,55 @@
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 
-namespace onnxruntime{
+namespace onnxruntime {
 
 static const int kBatchSize = 1;
 static const int max_batch_size = 1;
 static const int max_workspace_size = 1 << 30;
 
-#define CHECK(status)                             \
-    do                                            \
-    {                                             \
-        auto ret = (status);                      \
-        if (ret != 0)                             \
-        {                                         \
-            std::cout << "Cuda failure: " << ret; \
-            abort();                              \
-        }                                         \
-    } while (0)
+#define CHECK(status)                       \
+  do {                                      \
+    auto ret = (status);                    \
+    if (ret != 0) {                         \
+      std::cout << "Cuda failure: " << ret; \
+      abort();                              \
+    }                                       \
+  } while (0)
 
-struct InferDeleter{
-    template<typename T>
-    void operator()(T* obj) const{
-        if( obj ){
-            obj->destroy();
-        }
+struct InferDeleter {
+  template <typename T>
+  void operator()(T* obj) const {
+    if (obj) {
+      obj->destroy();
     }
+  }
 };
 
-template<typename T>
-inline std::shared_ptr<T> InferObject(T* obj){
-    if( !obj ){
-        throw std::runtime_error("Failed to create object");
-    }
-    return std::shared_ptr<T>(obj, InferDeleter());
+template <typename T>
+inline std::shared_ptr<T> InferObject(T* obj) {
+  if (!obj) {
+    throw std::runtime_error("Failed to create object");
+  }
+  return std::shared_ptr<T>(obj, InferDeleter());
 }
 
-class TRTLogger : public nvinfer1::ILogger{
-    nvinfer1::ILogger::Severity verbosity_;
-    std::ostream* ostream_;
-public:
-    TRTLogger(Severity verbosity=Severity::kWARNING,
-               std::ostream& ostream=std::cout)
-        : verbosity_(verbosity), ostream_(&ostream) {}
-    void log(Severity severity, const char* msg) override{
-        ORT_UNUSED_PARAMETER(severity);
-        ORT_UNUSED_PARAMETER(msg);
-    }
+class TRTLogger : public nvinfer1::ILogger {
+  nvinfer1::ILogger::Severity verbosity_;
+  std::ostream* ostream_;
+
+ public:
+  TRTLogger(Severity verbosity = Severity::kWARNING,
+            std::ostream& ostream = std::cout)
+      : verbosity_(verbosity), ostream_(&ostream) {}
+  void log(Severity severity, const char* msg) override {
+    ORT_UNUSED_PARAMETER(severity);
+    ORT_UNUSED_PARAMETER(msg);
+  }
 };
 
 // Information needed to construct trt execution providers.
-struct TRTExecutionProviderInfo{
-    int device_id{0};
+struct TRTExecutionProviderInfo {
+  int device_id{0};
 };
 
 // Information to construct kernel function state.
@@ -73,36 +72,35 @@ struct TRTFuncState {
 };
 
 // Logical device representation.
-class TRTExecutionProvider : public IExecutionProvider{
-public:
-    TRTExecutionProvider();
-    virtual ~TRTExecutionProvider();
+class TRTExecutionProvider : public IExecutionProvider {
+ public:
+  TRTExecutionProvider();
+  virtual ~TRTExecutionProvider();
 
-    std::vector<std::unique_ptr<ComputeCapability>>
-            GetCapability(const onnxruntime::GraphViewer& graph,
-                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph,
+                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
-    common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-        std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-    Status CopyTensor(const Tensor& src, Tensor& dst) const override;
+  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
-    const void* GetExecutionHandle() const noexcept override{
-        return nullptr;
-    }
+  const void* GetExecutionHandle() const noexcept override {
+    return nullptr;
+  }
 
-    std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-private:
-    int device_id_;
-    std::unordered_map<std::string, std::shared_ptr<nvonnxparser::IParser>> parsers_;
-    std::unordered_map<std::string, std::shared_ptr<nvinfer1::ICudaEngine>> engines_;
-    std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> contexts_;
-    std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
-    std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
-    std::unordered_map<std::string, std::vector<std::vector<int64_t>>> output_shapes_;
+ private:
+  int device_id_;
+  std::unordered_map<std::string, std::shared_ptr<nvonnxparser::IParser>> parsers_;
+  std::unordered_map<std::string, std::shared_ptr<nvinfer1::ICudaEngine>> engines_;
+  std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> contexts_;
+  std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
+  std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> output_shapes_;
 };
 
 }  // namespace onnxruntime
-
 

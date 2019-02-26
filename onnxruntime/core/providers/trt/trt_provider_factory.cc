@@ -11,7 +11,7 @@ using namespace onnxruntime;
 namespace onnxruntime {
 
 struct TRTProviderFactory : IExecutionProviderFactory {
-  TRTProviderFactory(){}
+  TRTProviderFactory() {}
   ~TRTProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
@@ -30,5 +30,4 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_TRT, _In_ OrtSessio
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_TRT());
   return nullptr;
 }
-
 
