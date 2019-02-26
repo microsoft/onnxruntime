@@ -119,8 +119,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice packages")
     parser.add_argument("--brain_slice_client_package_name", help="Name of brainslice client package")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
-    parser.add_argument("--use_trt", action='store_true', help="Build with trt")
-    parser.add_argument("--trt_path", help="Path to trt dir")
+    parser.add_argument("--use_trt", action='store_true', help="Build with TensorRT")
+    parser.add_argument("--trt_path", help="Path to TensorRT installation dir")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
