@@ -57,7 +57,7 @@ class LoopOpTester : public OpTester {
         TensorProto value_tensor;
         value_tensor.add_dims(1);
         value_tensor.add_float_data(kOuterNodeAddValue);
-        value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+        value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         constant.AddAttribute("value", value_tensor);
       }
@@ -254,7 +254,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
       TensorProto value_tensor;
       value_tensor.add_dims(1);
       value_tensor.add_float_data(kSumMax);
-      value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+      value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       constant.AddAttribute("value", value_tensor);
 
@@ -277,7 +277,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     optional_input_tensor.set_name("optional_float");
     optional_input_tensor.add_dims(1);
     optional_input_tensor.add_float_data(1.f);
-    optional_input_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+    optional_input_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
     graph.AddInitializedTensor(optional_input_tensor);
   }

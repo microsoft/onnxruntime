@@ -396,12 +396,12 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     return StatusCodeToExecuteResult(status.Code());
   }
   std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
-  std::unordered_map<std::string, const onnx::ValueInfoProto*> name_output_value_info_proto;
+  std::unordered_map<std::string, const ONNX_NAMESPACE::ValueInfoProto*> name_output_value_info_proto;
   int i = 0;
   for (auto& output_name : output_names) {
     // p_fetches is filled in the order of output_names.
     name_fetch_output_map[output_name] = output_values[i];
-    const onnx::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
+    const ONNX_NAMESPACE::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
     name_output_value_info_proto.insert(std::make_pair(infoProto.name(), &infoProto));
     i++;
   }
@@ -420,7 +420,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     std::pair<COMPARE_RESULT, std::string> ret = CompareGenericValue(actual_output_value, expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
-      const onnx::ValueInfoProto& v = *name_output_value_info_proto[output_name];
+      const ONNX_NAMESPACE::ValueInfoProto& v = *name_output_value_info_proto[output_name];
       ret = VerifyValueInfo(v, actual_output_value);
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {
