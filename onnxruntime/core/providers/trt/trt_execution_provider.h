@@ -85,10 +85,6 @@ public:
     common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
         std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-    std::string Type() const override{
-        return onnxruntime::kTRTExecutionProvider;
-    }
-
     Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
     const void* GetExecutionHandle() const noexcept override{
@@ -96,7 +92,6 @@ public:
     }
 
     std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
 
 private:
     int device_id_;
