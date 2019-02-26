@@ -49,21 +49,8 @@ public:
                std::ostream& ostream=std::cout)
         : verbosity_(verbosity), ostream_(&ostream) {}
     void log(Severity severity, const char* msg) override{
-        if( severity <= verbosity_ ){
-            time_t rawtime = std::time(0);
-            char buf[256];
-            strftime(&buf[0], 256,
-                     "%Y-%m-%d %H:%M:%S",
-                     std::gmtime(&rawtime));
-            const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" :
-                                  severity == Severity::kERROR          ? "  ERROR" :
-                                  severity == Severity::kWARNING        ? "WARNING" :
-                                  severity == Severity::kINFO           ? "   INFO" :
-                                  "UNKNOWN");
-            (*ostream_) << "[" << buf << " " << sevstr << "] "
-                        << msg
-                        << std::endl;
-        }
+        ORT_UNUSED_PARAMETER(severity);
+        ORT_UNUSED_PARAMETER(msg);
     }
 };
 

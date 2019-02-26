@@ -69,23 +69,16 @@ std::vector<std::unique_ptr<ComputeCapability>>
         TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const{
     // Construct modelproto from graph
-    std::unordered_map<std::string, int> domain_to_version;
-    domain_to_version[onnxruntime::kOnnxDomain] = 8;
-    onnxruntime::Model model_build("", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
-    onnxruntime::Graph& graph_build = model_build.MainGraph();
+    onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
+    onnxruntime::Graph& graph_build = model.MainGraph();
     const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
     for (auto& index: node_index){
         const Node* node = graph.GetNode(index);
         graph_build.AddNode(*node);
     }
     ORT_ENFORCE(graph_build.Resolve().IsOK());
-    ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();
-
-    auto ir_version = 3;
-    model_proto.set_ir_version(ir_version);
-    const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto.add_opset_import()};
-    opset_id_proto->set_domain("ai.onnx");
-    opset_id_proto->set_version(8);
+    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Serialize modelproto to string
     string string_buf;
@@ -244,12 +237,10 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
         }
 
         // Reconstruct graph from fused node's function body
-        std::unordered_map<std::string, int> domain_to_version;
-        domain_to_version[onnxruntime::kOnnxDomain] = 8;
-        onnxruntime::Model model("", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
-        onnxruntime::Graph& graph = model.MainGraph();
-
         const Graph& graph_body = fused_node->GetFunctionBody()->Body();
+        onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
+        onnxruntime::Graph& graph = model.MainGraph();
+        
         for (auto& graph_body_node : graph_body.Nodes()){
             graph.AddNode(graph_body_node);
         }
@@ -274,18 +265,18 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
 
         // Add fused node's outputs to graph's outputs if the outputs are not included yet
         // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
-        ONNX_NAMESPACE::ModelProto model_p = model.ToProto();
+        ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
         std::set<string> output_set;
-        for (int i = 0, end = model_p.graph().output().size(); i < end; ++i){
-            output_set.insert(model_p.graph().output()[i].name());
+        for (int i = 0, end = model_proto.graph().output().size(); i < end; ++i){
+            output_set.insert(model_proto.graph().output()[i].name());
         }
 
         std::vector<int> output_to_add;
         for (int i = 0, end = fused_node->OutputDefs().size(); i < end; ++i){
             const std::string& output_name = fused_node->OutputDefs()[i]->Name();
             if (output_set.find(output_name) == output_set.end()){
-                for (int j = 0, end = model_p.graph().value_info().size(); j < end; ++j){
-                    if (output_name == model_p.graph().value_info()[j].name()){
+                for (int j = 0, end = model_proto.graph().value_info().size(); j < end; ++j){
+                    if (output_name == model_proto.graph().value_info()[j].name()){
                         output_to_add.push_back(j);
                     }
                 }
@@ -293,19 +284,15 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
         }
 
         for (auto& i: output_to_add){
-            *(model_p.mutable_graph()->mutable_output()->Add()) = model_p.graph().value_info()[i];
+            *(model_proto.mutable_graph()->mutable_output()->Add()) = model_proto.graph().value_info()[i];
         }
 
-        // Set domain and version
-        int ir_version = 3;
-        model_p.set_ir_version(ir_version);
-        const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_p.add_opset_import()};
-        opset_id_proto->set_domain("ai.onnx");
-        opset_id_proto->set_version(8);
+        // Set version
+        model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         // Create TensorRT engine
         string string_buf;
-        model_p.SerializeToString(&string_buf);
+        model_proto.SerializeToString(&string_buf);
         std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
 
         TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
