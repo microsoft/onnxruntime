@@ -121,7 +121,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument("--use_trt", action='store_true', help="Build with trt")
     parser.add_argument("--trt_path", action='store_true', help="Path to trt dir")
-    parser.add_argument("--enable_training", action='store_true', help="Enable learning capabilities in onnxruntime")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -301,8 +300,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
-                 "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"), 
-
+                 "-Donnxruntime_ENABLE_TRAINING=" + ("ON"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)

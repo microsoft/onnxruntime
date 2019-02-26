@@ -21,7 +21,7 @@ struct OpDef {
                                                   op_type(op_type),
                                                   input_args(input_args),
                                                   output_args(output_args),
-                                                  attr(attr){};
+                                                  attr({}){};
 
   OpDef(const std::string& op_type,
         const std::string& node_name,
@@ -29,7 +29,8 @@ struct OpDef {
         const std::vector<ArgDef>& output_args) : node_name(node_name),
                                                   op_type(op_type),
                                                   input_args(input_args),
-                                                  output_args(output_args){};
+                                                  output_args(output_args),
+                                                  attr({}){};
 
   OpDef(const std::string& op_type,
         const std::string& node_name,
@@ -124,11 +125,11 @@ class GradientBuilderBase {
   const Node* node_;
   std::string unique_node_prefix_;
 
-  // contains set of input arg names of node_ which requires gradient
-  std::unordered_set<std::string> gradient_outputs_;
-
   // contains set of output arg names of node_ which is provided as gradient input to the bw node
   std::unordered_set<std::string> gradient_inputs_;
+
+  // contains set of input arg names of node_ which requires gradient
+  std::unordered_set<std::string> gradient_outputs_;
 };
 
 class EmptyGradientBuilder : GradientBuilderBase {
