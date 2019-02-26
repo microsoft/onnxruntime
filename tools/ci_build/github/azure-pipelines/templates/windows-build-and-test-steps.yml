@@ -1,4 +1,4 @@
-# sets up common build tools for the windows build machines before build
+# Runs various windows builds and tests, then publish test results
 
 parameters:
   buildAdditionalParams: ''

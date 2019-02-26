@@ -4,47 +4,26 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
     buildArch: 'x64'
-    buildAdditionalOptions: ''
 
   steps:
     - template: templates/set-test-data-variables-step.yml
+
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: $(buildArch)
+
     - template: templates/windows-build-and-test-steps.yml
       parameters:
         buildAdditionalParams: ' --use_openmp '
         buildArch: $(buildArch)
         buildConfig: $(buildConfig)
 
-    - task: CmdLine@2
-      displayName: 'Copy build artifacts for zipping'
-      inputs:
-        script: |
-          mkdir $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)
-          # set ArtifactsRoot=$(Build.BinariesDirectory)\onnxruntime-win-x64
-          mkdir $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\lib
-          mkdir $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\include
-          echo "Directories created"            
-          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntime.dll $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\lib
-          copy $(Build.BinariesDirectory)\$(buildConfig)\$(buildConfig)\onnxruntime.lib $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\lib
-          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  $(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)\include
-        workingDirectory: '$(Build.BinariesDirectory)\$(buildConfig)'
+    - template: templates/windows-artifacts-package-and-publish-steps.yml
+      parameters:
+        buildConfig: $(buildConfig)
+        artifactName: 'onnxruntime-win-x64'
 
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)\onnxruntime-win-$(buildArch)' 
-        includeRootFolder: true
-        archiveType: 'zip' # Options: zip, 7z, tar, wim
-        archiveFile: '$(Build.ArtifactStagingDirectory)\onnxruntime-win-$(buildArch).zip' 
-        replaceExistingArchive: true 
-      
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathtoPublish: '$(Build.ArtifactStagingDirectory)\onnxruntime-win-$(buildArch).zip' 
-        artifactName: 'drop' 
-    
     - template: templates/clean-agent-build-directory-step.yml
 
 
