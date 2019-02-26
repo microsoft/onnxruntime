@@ -13,6 +13,7 @@ jobs:
         EnvSetupScript: 'setup_env.bat'
         buildArch: $(buildArch)
     - template: templates/windows-build-and-test-steps.yml
+      parameters:
         buildAdditionalParams: ' --use_openmp '
         buildArch: $(buildArch)
         buildConfig: $(buildConfig)
