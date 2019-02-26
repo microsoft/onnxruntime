@@ -1,5 +1,5 @@
 jobs:
-- job: Windows_CI_Dev
+- job: Windows_Packaging_Pipeline
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
@@ -13,7 +13,7 @@ jobs:
         EnvSetupScript: 'setup_env.bat'
         buildArch: $(buildArch)
 
-    task: CmdLine@2
+    - task: CmdLine@2
       displayName: 'Download test data and generate cmake config'
       inputs:
         script: |
