@@ -11,7 +11,7 @@ jobs:
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
+        buildArch: 'amd64'
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
@@ -38,7 +38,7 @@ jobs:
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
+        buildArch: 'x86'
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
