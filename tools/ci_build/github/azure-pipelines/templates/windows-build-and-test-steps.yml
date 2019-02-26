@@ -2,6 +2,7 @@
 
 parameters:
   buildAdditionalParams: ''
+  msbuildPlatform: 'x64'
   buildArch: 'x64'
   buildConfig: 'RelWithDebInfo'
 

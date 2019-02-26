@@ -1,5 +1,5 @@
 jobs:
-- job: Windows_Packaging_CPU_x64
+- job: Windows_Packaging_GPU_x64
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
@@ -15,19 +15,18 @@ jobs:
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp '
+        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" '
         buildArch: $(buildArch)
-        msbuildPlatform: $(buildArch)
         buildConfig: $(buildConfig)
 
     - template: templates/windows-artifacts-package-and-publish-steps.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)'
+        artifactName: 'onnxruntime-win-gpu-$(buildArch)'
 
     - template: templates/clean-agent-build-directory-step.yml
 
-- job: Windows_Packaging_CPU_x86
+- job: Windows_Packaging_GPU_x86
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
@@ -43,15 +42,14 @@ jobs:
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp --x86 '
+        buildAdditionalParams: ' --use_openmp --x86  --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" '
         buildArch: $(buildArch)
-        msbuildPlatform: 'Win32'
         buildConfig: $(buildConfig)
 
     - template: templates/windows-artifacts-package-and-publish-steps.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)'
+        artifactName: 'onnxruntime-win-gpu-$(buildArch)'
 
     - template: templates/clean-agent-build-directory-step.yml
 
