@@ -233,17 +233,19 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     // Add fused node's outputs to graph's outputs if the outputs are not included yet
     // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+    const auto& graph_output = model_proto.graph().output();
+    const auto& graph_value_info = model_proto.graph().value_info();
     std::set<string> output_set;
-    for (int i = 0, end = model_proto.graph().output().size(); i < end; ++i) {
-      output_set.insert(model_proto.graph().output()[i].name());
+    for (int i = 0, end = graph_output.size(); i < end; ++i) {
+      output_set.insert(graph_output[i].name());
     }
 
     std::vector<int> output_to_add;
     for (int i = 0, end = fused_node->OutputDefs().size(); i < end; ++i) {
       const std::string& output_name = fused_node->OutputDefs()[i]->Name();
       if (output_set.find(output_name) == output_set.end()) {
-        for (int j = 0, end = model_proto.graph().value_info().size(); j < end; ++j) {
-          if (output_name == model_proto.graph().value_info()[j].name()) {
+        for (int j = 0, end = graph_value_info.size(); j < end; ++j) {
+          if (output_name == graph_value_info[j].name()) {
             output_to_add.push_back(j);
           }
         }
@@ -251,7 +253,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     }
 
     for (auto& i : output_to_add) {
-      *(model_proto.mutable_graph()->mutable_output()->Add()) = model_proto.graph().value_info()[i];
+      *(model_proto.mutable_graph()->mutable_output()->Add()) = graph_value_info[i];
     }
 
     // Set version
