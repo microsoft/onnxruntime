@@ -11,7 +11,7 @@ jobs:
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
+        buildArch: 'amd64'
 
     - task: CmdLine@2
       displayName: 'Download test data and generate cmake config'
