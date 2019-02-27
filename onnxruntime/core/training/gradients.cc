@@ -15,6 +15,7 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
+namespace training {
 
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const std::vector<std::string>& y_node_arg_names,
@@ -222,4 +223,5 @@ void GradientGraphBuilder::AddGradientNodes(const std::vector<OpDef>& op_defs) {
   }
 }
 
+}  // namespace training
 }  // namespace onnxruntime

@@ -9,6 +9,7 @@
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
+namespace training {
 
 struct ArgDef {
   ArgDef(std::string name, const ONNX_NAMESPACE::TypeProto* type) : name(name), type_proto(type) {}
@@ -151,4 +152,6 @@ class EmptyGradientBuilder : GradientBuilderBase {
     return std::vector<OpDef>();
   }
 };
+
+}  // namespace training
 }  // namespace onnxruntime

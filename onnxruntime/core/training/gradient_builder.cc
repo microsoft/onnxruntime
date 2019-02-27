@@ -5,6 +5,7 @@
 #include "core/training/gradient_registry.h"
 
 namespace onnxruntime {
+namespace training {
 class GetSinGradient : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
 
@@ -143,4 +144,5 @@ void RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Sub", GetSubGradient);
 };
 
+}  // namespace training
 }  // namespace onnxruntime

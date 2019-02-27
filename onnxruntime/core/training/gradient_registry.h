@@ -8,6 +8,7 @@
 #include "gradient_builder_base.h"
 
 namespace onnxruntime {
+namespace training {
 
 typedef std::function<GradientBuilderBase*(const Node*,
                                            const std::unordered_set<std::string>&,
@@ -52,4 +53,6 @@ class GradientBuilderRegistry {
       });
 
 #define NO_GRADIENT(op) REGISTER_GRADIENT_BUILDER(op, EmptyGradientBuilder)
+
+}  // namespace training
 }  // namespace onnxruntime

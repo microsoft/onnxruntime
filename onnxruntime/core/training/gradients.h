@@ -20,6 +20,7 @@
 #include "core/training/gradient_builder_base.h"
 
 namespace onnxruntime {
+namespace training {
 
 class GradientGraphBuilder {
  public:
@@ -73,4 +74,5 @@ class GradientGraphBuilder {
   void AddGradientNodes(const std::vector<OpDef>& op_defs);
 };
 
+}  // namespace training
 }  // namespace onnxruntime

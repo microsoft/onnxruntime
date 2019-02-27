@@ -43,7 +43,7 @@ Status Environment::Initialize() {
       GradientOps::RegisterGradientSchemas();
 
 #ifdef ENABLE_TRAINING
-      RegisterGradientBuilders();
+      training::RegisterGradientBuilders();
 #endif
     });
     //TODO:put all of the following things into call_once
