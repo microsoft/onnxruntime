@@ -77,7 +77,7 @@ std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
 
 class FuseExecutionProvider : public IExecutionProvider {
  public:
-  explicit FuseExecutionProvider() {
+  explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
                                                  [](int) { return std::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
@@ -120,11 +120,8 @@ class FuseExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
-  std::string Type() const override {
-    return "FuseExecutionProvider";
-  }
 };
+
 namespace test {
 static void VerifyOutputs(const std::vector<MLValue>& fetches,
                           const std::vector<int64_t>& expected_dims,
@@ -838,7 +835,7 @@ static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
   auto& graph = model.MainGraph();
 
   // create an initializer, which is an optional input that can be overridden
-  onnx::TensorProto tensor_proto;
+  ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.add_dims(1);
   tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
   tensor_proto.add_float_data(1.f);

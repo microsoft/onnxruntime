@@ -396,12 +396,12 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     return StatusCodeToExecuteResult(status.Code());
   }
   std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
-  std::unordered_map<std::string, const onnx::ValueInfoProto*> name_output_value_info_proto;
+  std::unordered_map<std::string, const ONNX_NAMESPACE::ValueInfoProto*> name_output_value_info_proto;
   int i = 0;
   for (auto& output_name : output_names) {
     // p_fetches is filled in the order of output_names.
     name_fetch_output_map[output_name] = output_values[i];
-    const onnx::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
+    const ONNX_NAMESPACE::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
     name_output_value_info_proto.insert(std::make_pair(infoProto.name(), &infoProto));
     i++;
   }
@@ -420,7 +420,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     std::pair<COMPARE_RESULT, std::string> ret = CompareGenericValue(actual_output_value, expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
-      const onnx::ValueInfoProto& v = *name_output_value_info_proto[output_name];
+      const ONNX_NAMESPACE::ValueInfoProto& v = *name_output_value_info_proto[output_name];
       ret = VerifyValueInfo(v, actual_output_value);
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {
@@ -485,7 +485,7 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
-  {
+  try {
     DataRunner* r = nullptr;
     std::string node_name;
     Status status = info->GetNodeName(&node_name);
@@ -510,6 +510,10 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     session_object.release();
     r->Start(pci, concurrent_runs);
     return;
+  } catch (onnxruntime::NotImplementedException& ex) {
+    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
+    std::string node_name;
+    ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   }
 end:
   on_finished(ret, pci);

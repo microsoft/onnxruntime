@@ -7,16 +7,23 @@
 #include <string>
 #include <stdexcept>
 #include <memory>
+#include "core/common/exceptions.h"
 
 //TODO: encode error code in the message?
-#define ORT_THROW_ON_ERROR(expr)                                       \
-  do {                                                                 \
-    OrtStatus* onnx_status = (expr);                                   \
-    if (onnx_status != nullptr) {                                      \
-      std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
-      OrtReleaseStatus(onnx_status);                                   \
-      throw std::runtime_error(ort_error_message);                     \
-    }                                                                  \
+#define ORT_THROW_ON_ERROR(expr)                                                 \
+  do {                                                                           \
+    OrtStatus* onnx_status = (expr);                                             \
+    if (onnx_status != nullptr) {                                                \
+      std::string ort_error_message = OrtGetErrorMessage(onnx_status);           \
+      OrtErrorCode error_code = OrtGetErrorCode(onnx_status);                    \
+      OrtReleaseStatus(onnx_status);                                             \
+      switch (error_code) {                                                      \
+        case ORT_NOT_IMPLEMENTED:                                                \
+          throw onnxruntime::NotImplementedException(ort_error_message);         \
+        default:                                                                 \
+          throw onnxruntime::OnnxRuntimeException(ORT_WHERE, ort_error_message); \
+      }                                                                          \
+    }                                                                            \
   } while (0);
 
 #define ORT_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \

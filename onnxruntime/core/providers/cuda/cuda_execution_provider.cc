@@ -54,7 +54,7 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
@@ -765,7 +765,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, double, Upsample)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, MLFloat16, Upsample)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, int32_t, Upsample)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, uint8_t, Upsample)>());  
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, uint8_t, Upsample)>());
 }
 
 std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
@@ -795,7 +795,7 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
     }
 
     if ("activations" == attr_name &&
-        ::onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS == attr_value.type()) {
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS == attr_value.type()) {
       for (int i = 0; i < attr_value.strings_size(); ++i) {
         std::string activation_lowercase(attr_value.strings(i));
         std::transform(activation_lowercase.begin(), activation_lowercase.end(), activation_lowercase.begin(),
@@ -808,7 +808,7 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
 
     if ("LSTM" == op_type &&
         "input_forget" == attr_name &&
-        ::onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
       if (0 != attr_value.i()) {
         return true;
       }
@@ -816,7 +816,7 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
 
     if ("GRU" == op_type &&
         "linear_before_reset" == attr_name &&
-        ::onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
+        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
       // cudnn GRU only support linear_before_reset = 1
       if (1 != attr_value.i()) {
         return true;
@@ -845,7 +845,7 @@ bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node)
     auto attr_value = attr.second;
 
     //cudnn only supports symmetric padding
-    if ("pads" == attr_name && ::onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
+    if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
       auto pads = attr_value.ints();
       int pads_size = pads.size();
       ORT_ENFORCE(pads_size % 2 == 0);
