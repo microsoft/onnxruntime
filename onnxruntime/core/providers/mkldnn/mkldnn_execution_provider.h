@@ -34,10 +34,6 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   explicit MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info);
   virtual ~MKLDNNExecutionProvider();
 
-  std::string Type() const override {
-    return onnxruntime::kMklDnnExecutionProvider;
-  }
-
   Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
   const void* GetExecutionHandle() const noexcept override {

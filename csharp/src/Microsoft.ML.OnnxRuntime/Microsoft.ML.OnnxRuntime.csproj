@@ -37,12 +37,6 @@
           CopyToOutputDirectory="Never"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
-          PackagePath="\build\native\include\core\providers\cpu"
-          Pack="true"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
           PackagePath="\runtimes\win-x64\native"
           Pack="true"

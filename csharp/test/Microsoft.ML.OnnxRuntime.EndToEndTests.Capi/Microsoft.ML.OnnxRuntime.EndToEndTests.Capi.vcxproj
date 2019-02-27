@@ -2,7 +2,6 @@
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
-    <OnnxRuntimeCsharpRoot>D:\onnxruntime\csharp</OnnxRuntimeCsharpRoot>
   </PropertyGroup>
   <Import Project="..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.props" Condition="Exists('..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.props')" />
   <ItemGroup Label="ProjectConfigurations">
