@@ -12,4 +12,7 @@ TEST_F(CApiTest, run_options) {
   ASSERT_EQ(OrtRunOptionsSetRunTag(options.get(), "abc"), nullptr);
   ASSERT_STREQ(OrtRunOptionsGetRunTag(options.get()), "abc");
   ASSERT_EQ(OrtRunOptionsGetRunLogVerbosityLevel(options.get()), (unsigned)1);
+  ASSERT_EQ(OrtRunOptionsGetCacheFeedsFetchesInfoEnabled(options.get()), false);
+  OrtRunOptionsSetCacheFeedsFetchesInfoEnabled(options.get(), true);
+  ASSERT_EQ(OrtRunOptionsGetCacheFeedsFetchesInfoEnabled(options.get()), true);
 }
