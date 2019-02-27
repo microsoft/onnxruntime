@@ -18,7 +18,7 @@ steps:
       displayName: 'Build ${{parameters.buildConfig}}'
       inputs:
         solution: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\onnxruntime.sln'
-        platform: $(buildArch)
+        platform: '${{parameters.msbuildPlatform}}'
         configuration: '${{parameters.buildConfig}}'
         msbuildArgs: '/m'
         msbuildArchitecture: $(buildArch)
