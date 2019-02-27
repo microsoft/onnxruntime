@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "training_session.h"
-#include "core/graph/gradients.h"
+#include "core/training/gradients.h"
 
 using namespace std;
 

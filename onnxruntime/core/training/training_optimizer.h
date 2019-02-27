@@ -7,7 +7,7 @@
 #include "core/framework/ml_value.h"
 #include "core/common/status.h"
 #include "core/framework/framework_common.h"
-#include "core/session/training_session.h"
+#include "core/training/training_session.h"
 
 namespace onnxruntime {
 namespace training {

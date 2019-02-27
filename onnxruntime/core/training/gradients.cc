@@ -6,7 +6,7 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include "core/graph/gradients.h"
+#include "core/training/gradients.h"
 #include "core/graph/op.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/schema_registry.h"

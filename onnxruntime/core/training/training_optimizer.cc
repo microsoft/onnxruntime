@@ -3,7 +3,7 @@
 
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
-#include "core/session/training_optimizer.h"
+#include "core/training/training_optimizer.h"
 #include "core/graph/onnx_protobuf.h"
 
 using namespace onnxruntime;
