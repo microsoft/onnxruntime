@@ -46,9 +46,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, c
 
   const auto input_elements = input_data_shape.Size();
   const auto element_bytes = data_input->DataType()->Size();
-#ifdef _DEBUG
   const auto total_input_bytes = input_elements * element_bytes;
-#endif
 
   const uint8_t* src_base = reinterpret_cast<const uint8_t*>(data_input->DataRaw());
   uint8_t* dst_base = reinterpret_cast<uint8_t*>(data_output->MutableDataRaw());
@@ -63,7 +61,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, c
       std::string* dst = data_output->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(dst_base, src_base, input_elements * element_bytes);
+      memcpy(dst_base, src_base, total_input_bytes);
     }
   }
 
@@ -75,9 +73,6 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, c
 
   // Initialize with zeros.
   const uint8_t* update_data = reinterpret_cast<const uint8_t*>(updates_input->DataRaw());
-#ifdef _DEBUG
-  const auto total_update_bytes = updates_input->Shape().Size() * element_bytes;
-#endif
   for (int64_t batch = 0; batch < data_batches; ++batch) {
     const auto batch_bytes_offset = batch * data_batch_bytes;
     for (int64_t update_idx = 0; update_idx < num_indices; ++update_idx) {
