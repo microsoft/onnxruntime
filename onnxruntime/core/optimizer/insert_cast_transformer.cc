@@ -105,8 +105,10 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
       if (node.OpType() == "Cast") {
         // if cast's next node is also cast and next cast's output type equal to cast's input type
         // remove those two cast.
+		// boolean is an exception case for this optimization
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
+        if (*src_type == "tensor(bool)" || *dst_type == "tensor(bool)") return Status::OK();
         auto input = node.MutableInputDefs()[0];
         int child_removed = 0;
         int num_child = 0;
@@ -115,6 +117,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           if (output_node.OpType() == "Cast") {
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
+            if (*src_type1 == "tensor(bool)" || *dst_type1 == "tensor(bool)") return Status::OK();
             if (src_type == dst_type1 && src_type1 == dst_type) {
               //node *it's output's follower could be linked with node's input.
               replacement_defs.clear();
