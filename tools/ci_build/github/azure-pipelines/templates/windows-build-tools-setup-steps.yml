@@ -44,9 +44,9 @@ steps:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
     
-    - task: BatchScript@1
-      displayName: 'Setup VS2017 env vars'
-      inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-        arguments: '${{parameters.buildArch}} -vcvars_ver=14.11'
-        modifyEnvironment: true
+    # - task: BatchScript@1
+    #   displayName: 'Setup VS2017 env vars'
+    #   inputs:
+    #     filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+    #     arguments: '${{parameters.buildArch}} -vcvars_ver=14.11'
+    #     modifyEnvironment: true
