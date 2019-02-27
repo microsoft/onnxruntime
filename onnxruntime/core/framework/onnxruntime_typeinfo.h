@@ -10,12 +10,12 @@ class DataTypeImpl;
 class TensorShape;
 }  // namespace onnxruntime
 
-namespace onnx {
+namespace ONNX_NAMESPACE {
 class TypeProto;
 }
 
 /**
- * the equivalent of onnx::TypeProto
+ * the equivalent of ONNX_NAMESPACE::TypeProto
  * This class is mainly for the C API
  */
 struct OrtTypeInfo {
@@ -31,7 +31,7 @@ struct OrtTypeInfo {
 
   static OrtStatus* FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
                                      const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out);
-  static OrtStatus* FromDataTypeImpl(const onnx::TypeProto*, OrtTypeInfo** out);
+  static OrtStatus* FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto*, OrtTypeInfo** out);
 
  private:
   OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;
