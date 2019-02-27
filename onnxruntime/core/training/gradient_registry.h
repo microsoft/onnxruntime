@@ -1,13 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include <unordered_map>
 #include <functional>
 #include "gradient_builder_base.h"
 
 namespace onnxruntime {
 
-typedef std::function<GradientBuilderBase*(const Node*, const std::unordered_set<std::string>&, const std::unordered_set<std::string>&)> GradientBuilderFn;
+typedef std::function<GradientBuilderBase*(const Node*,
+                                           const std::unordered_set<std::string>&,
+                                           const std::unordered_set<std::string>&)>
+    GradientBuilderFn;
 
 class GradientBuilderRegistry {
  public:
@@ -34,6 +39,8 @@ class GradientBuilderRegistry {
   std::unordered_map<std::string, GradientBuilderFn> gradient_builder_map;
 };
 
+// TODO: check better way to "new" a gradientbuilder here
+// raw pointer not good
 #define REGISTER_GRADIENT_BUILDER(op, gradientbuilder)                               \
   GradientBuilderRegistry::GetGradientBuilderRegistry().RegisterGradientBuilderFunc( \
       op,                                                                            \

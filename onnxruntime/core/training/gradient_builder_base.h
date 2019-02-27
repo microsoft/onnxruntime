@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include <vector>
 #include <string>
 #include "core/graph/graph.h"
@@ -17,33 +19,37 @@ struct ArgDef {
 struct OpDef {
   OpDef(const std::string& op_type,
         const std::vector<ArgDef>& input_args,
-        const std::vector<ArgDef>& output_args) : node_name(""),
-                                                  op_type(op_type),
+        const std::vector<ArgDef>& output_args) : op_type(op_type),
                                                   input_args(input_args),
-                                                  output_args(output_args),
-                                                  attr({}){};
+                                                  output_args(output_args){};
+  OpDef(const std::string& op_type,
+        const std::vector<ArgDef>& input_args,
+        const std::vector<ArgDef>& output_args,
+        const NodeAttributes& attr) : op_type(op_type),
+                                      input_args(input_args),
+                                      output_args(output_args),
+                                      attr(attr){};
 
   OpDef(const std::string& op_type,
         const std::string& node_name,
         const std::vector<ArgDef>& input_args,
-        const std::vector<ArgDef>& output_args) : node_name(node_name),
-                                                  op_type(op_type),
+        const std::vector<ArgDef>& output_args) : op_type(op_type),
+                                                  node_name(node_name),
                                                   input_args(input_args),
-                                                  output_args(output_args),
-                                                  attr({}){};
+                                                  output_args(output_args){};
 
   OpDef(const std::string& op_type,
         const std::string& node_name,
         const std::vector<ArgDef>& input_args,
         const std::vector<ArgDef>& output_args,
-        NodeAttributes attr) : node_name(node_name),
-                               op_type(op_type),
-                               input_args(input_args),
-                               output_args(output_args),
-                               attr(attr){};
+        const NodeAttributes& attr) : op_type(op_type),
+                                      node_name(node_name),
+                                      input_args(input_args),
+                                      output_args(output_args),
+                                      attr(attr){};
 
-  std::string node_name;
   std::string op_type;
+  std::string node_name;
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
   NodeAttributes attr;
@@ -59,12 +65,13 @@ class GradientBuilderBase {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
- protected:
+  // TODO: make this protected? Currently, compiler failure prevents it
   virtual std::vector<OpDef> GetGradientDefs() = 0;
 
+ protected:
   ArgDef I(const int i) {
     ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
-    return ArgDef(node_->InputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
+    return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
   ArgDef GI(const int i) {
@@ -74,7 +81,7 @@ class GradientBuilderBase {
 
   ArgDef GO(const int i) {
     ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
-    return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
+    return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->OutputDefs()[i]->TypeAsProto());
   }
 
   ArgDef IA(const std::string& argSuffix) {
@@ -95,14 +102,20 @@ class GradientBuilderBase {
   // returns true if the output at index i of the node_ has a gradient
   bool IsGradientAvailableForSrcNodeOutput(const int i) {
     ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
-    return gradient_inputs_.find(node_->OutputDefs()[i]->Name()) != gradient_outputs_.end();
+    return gradient_inputs_.find(node_->OutputDefs()[i]->Name()) != gradient_inputs_.end();
   }
 
   std::string Name(const std::string& name) {
     return unique_node_prefix_ + name;
   }
 
+  const NodeAttributes& SrcNodeAttributes() {
+    return node_->GetAttributes();
+  }
+
  private:
+  friend class GradientGraphBuilder;
+
   // Utility functions for gradient name computation. We don't expose them
   // in order to discourage the use of such names explicitly.
   static std::string GradientName(const std::string& name) {
@@ -118,7 +131,7 @@ class GradientBuilderBase {
     } else {
       unique_prefix << node_->OpType() << "_";
     }
-    unique_prefix << node_->Index();
+    unique_prefix << node_->Index() << "_";
     return unique_prefix.str();
   }
 

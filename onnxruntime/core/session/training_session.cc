@@ -26,7 +26,9 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     // Fill weights_to_train_ according to weights_to_train
     weights_to_train_ = weights_to_train;
 
-    GradientGraphBuilder(&model_->MainGraph(), &model_->MainGraph(), {loss_function_output_name}, weights_to_train, loss_function_output_name);
+    GradientGraphBuilder grad_graph_builder(&model_->MainGraph(), {loss_function_output_name}, weights_to_train, loss_function_output_name);
+    ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
     model_->MainGraph().SetGraphResolveNeeded();
     model_->MainGraph().SetGraphProtoSyncNeeded();
     ORT_RETURN_IF_ERROR(model_->MainGraph().Resolve());

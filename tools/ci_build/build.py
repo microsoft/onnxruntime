@@ -298,7 +298,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
                  "-Donnxruntime_USE_BRAINSLICE=" + ("ON" if args.use_brainslice else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
-                 "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
+                 "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"),
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
                  "-Donnxruntime_ENABLE_TRAINING=" + ("ON"),
                  ]
@@ -528,7 +528,7 @@ def main():
 
     if args.build_wheel:
         args.enable_pybind = True
-    
+
     if args.build_csharp:
         args.build_shared_lib = True
 
