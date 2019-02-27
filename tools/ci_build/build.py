@@ -87,6 +87,9 @@ Use the individual flags to only run the specified stages.
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
 
+    # Build ONNX hosting
+    parser.add_argument("--build_hosting", action='store_true', help="Build hosting application for the ONNXRuntime.")
+
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
                         help="Extra definitions to pass to CMake during build system generation. " +
@@ -300,6 +303,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
+                 "-Donnxruntime_BUILD_HOSTING=" + ("ON" if args.build_hosting else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -327,6 +331,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=" + os.path.join(pb_home,'bin','protoc'), '-Donnxruntime_USE_PREBUILT_PB=ON']
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
+
+    cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=/home/trmccorm/vcpkg/scripts/buildsystems/vcpkg.cmake"]
 
     if is_windows():
         cmake_args += cmake_extra_args
