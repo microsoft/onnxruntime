@@ -69,11 +69,11 @@ TEST(OptimizerTest, Basic) {
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set);
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
+  const logging::Logger& logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
 
   for (auto& node : graph.Nodes()) {
     auto* kernel = info.GetKernel(node.Index());
 
-    const logging::Logger& logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
     OpKernelContext op_kernel_context(&frame, kernel, logger);
 
     kernel->Compute(&op_kernel_context);

@@ -15,13 +15,11 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
   class Info {
    public:
-    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set);
+    Info(const std::vector<const Node*>& nodes,
+         const InitializedTensorSet& initialized_tensor_set);
 
     AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const {
-      if (info.id != device_id_ || info.mem_type != mem_type_) {
-        return nullptr;
-      }
-      return allocator_ptr_;
+      return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
     }
 
     AllocatorPtr GetAllocator() const {
@@ -32,7 +30,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     const std::unordered_map<int, const NodeArg*>& GetMLValueIdxNodeArgMap() const noexcept { return mlvalue_idx_nodearg_map_; }
     const std::unordered_map<int, MLValue>& GetInitializers() const noexcept { return initializers_; }
     const NodeIndexInfo& GetNodeIndexInfo() const { return *node_index_info_; }
-    int GetMLValueIndex(const std::string name) { 
+    int GetMLValueIndex(const std::string& name) const {
       int index = -1;
       if (mlvalue_name_idx_map_.GetIdx(name, index) == Status::OK()) {
         return index;

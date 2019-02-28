@@ -14,14 +14,15 @@ namespace onnxruntime {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set) {
-  // Create a CPU execution provider
-  CPUExecutionProviderInfo info;
-  cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(info);
+  // Create CPU execution provider
+  // For now, CPU execution provider will be created every time when initilizing Info.
+  // Later, it will be changed to pass by Info ctor.
+  cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_ != nullptr, "Failed to get allocator for optimizer");
 
   // Create MLValues related maps
-  auto initialize_maps = [this, initialized_tensor_set](const NodeArg& arg, size_t index) -> Status {
+  auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
     int idx = mlvalue_name_idx_map_.Add(arg.Name());
     mlvalue_idx_nodearg_map_[idx] = &arg;
 
@@ -36,6 +37,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     return Status::OK();
   };
 
+  // TODO: node->ImplicitInputDefs() need to be added here for control flow nodes.
   for (auto* node : nodes) {
     onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps);
     onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps);
@@ -58,11 +60,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 }
 
 const OpKernel* OptimizerExecutionFrame::Info::GetKernel(NodeIndex node_id) const {
-  if (kernels_.count(node_id) == 0) {
+  if (kernels_.find(node_id) == kernels_.cend()) {
     return nullptr;
   }
 
-  return kernels_.find(node_id)->second.get();
+  return kernels_.at(node_id).get();
 }
 
 // For optimizer, probably no need to pass feed_mlvalue_idxs, feeds to initialize IExecutionFrame.
@@ -108,7 +110,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(MLValue& mlvalue, in
 
   int64_t len = shape->Size();
   if (len < 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Tensor shape cannot contain any negative value");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape cannot contain any negative value. Shape was:", *shape);
   }
   size_t size;
   if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, element_type->Size(), &size)) {
