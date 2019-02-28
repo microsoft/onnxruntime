@@ -46,7 +46,7 @@ See API documentation and package installation instructions [below](#Installatio
 
 Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. These include but are not limited to:
 * C# for Mac
-* [ARM](BUILD.md##arm-builds)
+* [ARM](BUILD.md#arm-builds)
 
 # Getting Started 
 If you need a model:  
