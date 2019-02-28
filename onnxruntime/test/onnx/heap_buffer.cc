@@ -5,7 +5,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
-void HeapBuffer::AddDeleter(OrtDeleter* d) {
+void HeapBuffer::AddDeleter(OrtCallback* d) {
   if (d != nullptr && d->f != nullptr) deleters_.push_back(d);
 }
 

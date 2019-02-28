@@ -43,7 +43,7 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   return p_seq_exec_plan_.get();
 }
 
-Status SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtDeleter& d) {
+Status SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback& d) {
   if (mlvalue_index < 0 || mlvalue_index > mlvalue_name_idx_map_.MaxIdx()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid mlvalue index ", mlvalue_index);
   }

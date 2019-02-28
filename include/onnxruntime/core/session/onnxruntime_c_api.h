@@ -66,10 +66,6 @@ extern "C" {
 #define NO_EXCEPTION
 #endif
 
-typedef struct OrtDeleter {
-  void(ORT_API_CALL* f)(void* param) NO_EXCEPTION;
-  void* param;
-} OrtDeleter;
 
 // Copied from TensorProto::DataType
 // Currently, Ort doesn't support complex64, complex128, bfloat16 types
@@ -155,6 +151,7 @@ ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
+ORT_RUNTIME_CLASS(Callback);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -332,10 +329,12 @@ ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void
                _Out_ size_t* offsets, size_t offsets_len);
 
 /**
- *
- * @param input
- * @param input_len
- * @param input_file_path A local file path of where the input was loaded from. Can be NULL
+ * Create an OrtValue from a serialized TensorProto
+ * @param input           serialized TensorProto object
+ * @param input_len       length of 'input'.
+ * @param input_file_path A local file path of where the input was loaded from. Can be NULL if the tensor proto doesn't
+ *                        have any external data or it was loaded from current working dir. This path could be either a
+ *                        relative path or an absolute path.
  * @param preallocated A preallocated buffer for the tensor
  * @param preallocated_size Length of the preallocated buffer in bytes, can be computed from
  *          the OrtGetTensorMemSizeInBytesFromTensorProto function
@@ -344,13 +343,18 @@ ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void
  */
 ORT_API_STATUS(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
                _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
-               _Out_ OrtValue** out, _Out_ OrtDeleter** deleter);
+               _Out_ OrtValue** out, _Out_ OrtCallback** deleter);
+
+/**
+ *  f will be freed in this call
+ */
+ORT_API(void, OrtRunCallback, _Frees_ptr_opt_ OrtCallback* f);
 
 /**
  * calculate the memory requirement for the OrtTensorProtoToOrtValue function
  */
 ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
-               size_t* out);
+               _Out_ size_t* out);
 
 /**
  * Don't free the returned value

@@ -15,6 +15,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/allocator.h"
+#include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 
 using namespace ONNX_NAMESPACE;
@@ -460,7 +461,7 @@ static void DeleteHeapBuffer(void* param) noexcept {
 
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, MLValue& value,
-                            OrtDeleter& deleter) {
+                            OrtCallback& deleter) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
   void* preallocated = m.GetBuffer();
   size_t preallocated_size = m.GetLen();

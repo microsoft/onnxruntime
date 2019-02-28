@@ -19,6 +19,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
+#include "core/framework/callback.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
@@ -80,7 +81,7 @@ class SessionState {
   * Adds an initialized tensor (weight) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
   */
-  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtDeleter& d);
+  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback& d);
 
   /**
   * Gets the list of all initialized tensors (weights) so that it can be used by the
@@ -217,7 +218,7 @@ class SessionState {
   std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
   // This data structure is for unintializing string tensors and
   // munmap memory region and close file descriptor
-  std::unordered_map<int, OrtDeleter> deleter_for_initialized_tensors_;
+  std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 

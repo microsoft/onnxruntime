@@ -42,7 +42,4 @@ ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status) {
   return status->msg;
 }
 
-#define DEFINE_RELEASE_ORT_OBJECT_FUNCTION_FOR_ARRAY(INPUT_TYPE, REAL_TYPE) \
-  ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) { delete[] reinterpret_cast<REAL_TYPE*>(value); }
-
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION_FOR_ARRAY(Status, char);
+ORT_API(void, OrtReleaseStatus, OrtStatus* value) { delete[] reinterpret_cast<char*>(value); }

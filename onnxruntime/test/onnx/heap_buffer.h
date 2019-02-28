@@ -4,7 +4,7 @@
 #pragma once
 #include <vector>
 #include <memory>
-struct OrtDeleter;
+struct OrtCallback;
 
 class HeapBuffer {
  public:
@@ -15,9 +15,9 @@ class HeapBuffer {
     buffers.push_back(p);
     return p;
   }
-  void AddDeleter(OrtDeleter* d);
+  void AddDeleter(OrtCallback* d);
 
  private:
-  std::vector<OrtDeleter*> deleters_;
+  std::vector<OrtCallback*> deleters_;
   std::vector<void*> buffers;
 };

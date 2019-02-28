@@ -28,7 +28,7 @@ static common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewe
                                                   MLValueNameIdxMap& mlvalue_name_idx_map,
                                                   const logging::Logger& logger);
 
-// T should have signature of '(int idx, const onnxruntime::MLValue& value, const OrtDeleter& d) -> Status'
+// T should have signature of '(int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                              const onnxruntime::Graph& graph,
@@ -118,7 +118,7 @@ common::Status SessionStateInitializer::InitializeAndSave(const std::vector<Node
   ORT_RETURN_IF_ERROR(
       SaveInitializedTensors(env, graph_loc_, graph_, exec_plan, execution_providers_, mlvalue_name_idx_map,
                              session_state_.GetMutableWeightsBuffers(),
-                             [this](int idx, const onnxruntime::MLValue& value, const OrtDeleter& d) -> Status {
+                             [this](int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status {
                                return session_state_.AddInitializedTensor(idx, value, d);
                              },
                              logger_));
@@ -187,9 +187,9 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
 }
 
 // This function won't check if the preallocated buffer(p_data) has enough room.
-common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
-                                      const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
-                                      const ExecutionProviders& exec_providers, MLValue& mlvalue, OrtDeleter& deleter) {
+static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
+                                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
+                                             const ExecutionProviders& exec_providers, MLValue& mlvalue, OrtCallback& deleter) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
@@ -213,7 +213,7 @@ common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PA
   AllocatorPtr deserialize_alloc_ptr = exec_providers.Get(kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
   void* buffer = deserialize_alloc_ptr->Alloc(len);
   MLValue tmp_mlvalue;
-  OrtDeleter d;
+  OrtCallback d;
   ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
       env, proto_path.c_str(), tensor_proto, MemBuffer(buffer, len, deserialize_alloc_ptr->Info()), tmp_mlvalue, d));
   const Tensor& p_deserialize_tensor = tmp_mlvalue.Get<Tensor>();
@@ -330,7 +330,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   MemoryPatternGroup mem_patterns;
   ORT_RETURN_IF_ERROR(planner.GeneratePatterns(&mem_patterns));
   ORT_RETURN_IF_ERROR(AllocatePlannedBuffers(mem_patterns, exec_providers, weights_buffers));
-  OrtDeleter deleter;
+  OrtCallback deleter;
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int mlvalue_index = entry.first;

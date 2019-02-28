@@ -10,6 +10,27 @@
 #endif
 using namespace onnxruntime;
 
+TEST_F(CApiTest, load_simple_float_tensor_not_enough_space) {
+  // construct a tensor proto
+  onnx::TensorProto p;
+  p.mutable_float_data()->Add(1.0f);
+  p.mutable_float_data()->Add(2.2f);
+  p.mutable_dims()->Add(2);
+  p.set_data_type(onnx::TensorProto_DataType_FLOAT);
+  std::string s;
+  // save it to a buffer
+  ASSERT_TRUE(p.SerializeToString(&s));
+  // deserialize it
+  std::vector<float> output(1);
+  OrtValue* value;
+  OrtCallback* deleter;
+  auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
+                                     output.size() * sizeof(float), &value, &deleter);
+  // check the result
+  ASSERT_NE(st, nullptr);
+  OrtReleaseStatus(st);
+}
+
 TEST_F(CApiTest, load_simple_float_tensor) {
   // construct a tensor proto
   onnx::TensorProto p;
@@ -24,7 +45,7 @@ TEST_F(CApiTest, load_simple_float_tensor) {
   // deserialize it
   std::vector<float> output(3);
   OrtValue* value;
-  OrtDeleter* deleter;
+  OrtCallback* deleter;
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
                                      output.size() * sizeof(float), &value, &deleter);
   // check the result
@@ -71,7 +92,7 @@ TEST_F(CApiTest, load_float_tensor_with_external_data) {
   // deserialize it
   std::vector<float> output(3);
   OrtValue* value;
-  OrtDeleter* deleter;
+  OrtCallback* deleter;
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
                                      output.size() * sizeof(float), &value, &deleter);
 #ifdef _WIN32
@@ -115,7 +136,7 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   // deserialize it
   std::vector<int> output(total_ele_count);
   OrtValue* value;
-  OrtDeleter* deleter;
+  OrtCallback* deleter;
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
                                      output.size() * sizeof(int), &value, &deleter);
 #ifdef _WIN32

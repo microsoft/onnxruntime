@@ -231,7 +231,7 @@ Status LoopDataFile(int test_data_pb_fd, const std::vector<ONNX_NAMESPACE::Value
         size_t len;
         ORT_THROW_ON_ERROR(OrtGetTensorMemSizeInBytesFromTensorProto(s.data(), (int)s.size(), 0, &len));
         char* p = len == 0 ? nullptr : new char[len];
-        OrtDeleter* d;
+        OrtCallback* d;
         ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(s.data(), (int)s.size(), nullptr, p, len, &temp_value, &d));
         if (d != nullptr) {
           b.AddDeleter(d);
@@ -567,7 +567,7 @@ Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<ONNX
     size_t len;
     ORT_THROW_ON_ERROR(OrtGetTensorMemSizeInBytesFromTensorProto(s.data(), (int)s.size(), 0, &len));
     char* p = len == 0 ? nullptr : (char*)b.AllocMemory(len);
-    OrtDeleter* d;
+    OrtCallback* d;
     ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(s.data(), (int)s.size(), nullptr, p, len, (OrtValue**)&v1, &d));
     if (d != nullptr) b.AddDeleter(d);
     out.insert(std::make_pair(name, (OrtValue*)v1));

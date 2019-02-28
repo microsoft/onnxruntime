@@ -17,6 +17,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/environment.h"
+#include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
@@ -489,7 +490,7 @@ ORT_API_STATUS_IMPL(OrtGetStringTensorContent, _In_ const OrtValue* value,
 
 ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
                     _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
-                    _Out_ OrtValue** out, _Out_ OrtDeleter** deleter) {
+                    _Out_ OrtValue** out, _Out_ OrtCallback** deleter) {
   API_IMPL_BEGIN
   OrtAllocatorInfo* cpuAllocatorInfo;
   auto st = OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo);
@@ -499,7 +500,7 @@ ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _In_ const void* input, int input_
     return OrtCreateStatus(ORT_FAIL, "parse input tensor proto failed");
   }
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
-  std::unique_ptr<OrtDeleter> del = std::make_unique<OrtDeleter>();
+  std::unique_ptr<OrtCallback> del = std::make_unique<OrtCallback>();
   auto status =
       utils::TensorProtoToMLValue(Env::Default(), input_file_path, proto,
                                   MemBuffer(preallocated, preallocated_size, *cpuAllocatorInfo), *value, *del);
