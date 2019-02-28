@@ -234,21 +234,30 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
 
 ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 
+struct OrtKernelInfo;
+typedef struct OrtKernelInfo OrtKernelInfo;
+
+ORT_API_STATUS(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
+ORT_API_STATUS(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+
 struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
+  // Op schema callbacks
+  void(ORT_API_CALL* CreateKernel)(struct OrtCustomOp* op, OrtKernelInfo* info, void** op_kernel);
+
+  const char*(ORT_API_CALL* GetName)(struct OrtCustomOp* op);
+
+  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(struct OrtCustomOp* op, size_t index);
+  size_t(ORT_API_CALL* GetInputTypeCount)(struct OrtCustomOp* op);
+
+  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(struct OrtCustomOp* op, size_t index);
+  size_t(ORT_API_CALL* GetOutputTypeCount)(struct OrtCustomOp* op);
+
   // Op kernel callbacks
-  void(ORT_API_CALL* Create)(struct OrtCustomOp* op, void** op_kernel);
-  void(ORT_API_CALL* Destroy)(void* op_kernel);
-
-  void(ORT_API_CALL* GetOutputShape)(void* op_kernel, OrtValue** inputs, size_t inputCount, OrtTensorTypeAndShapeInfo* output);
-  void(ORT_API_CALL* Compute)(void* op_kernel, OrtValue** inputs, size_t inputCount, OrtValue* output);
-
-  // Op schema information
-  const char* name;
-  const ONNXTensorElementDataType* inputTypes;
-  int inputTypeCount;
-  ONNXTensorElementDataType outputType;
+  void(ORT_API_CALL* KernelGetOutputShape)(void* op_kernel, OrtValue** inputs, size_t input_count, size_t output_index, OrtTensorTypeAndShapeInfo* output);
+  void(ORT_API_CALL* KernelCompute)(void* op_kernel, OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count);
+  void(ORT_API_CALL* KernelDestroy)(void* op_kernel);
 };
 
 ORT_API_STATUS(OrtAddCustomOp, _In_ OrtSessionOptions* options, OrtCustomOp* op);

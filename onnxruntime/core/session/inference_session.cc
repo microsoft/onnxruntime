@@ -21,6 +21,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/environment.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
@@ -64,29 +65,46 @@ struct OrtTensorTypeAndShapeInfo {
   OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
 };
 
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
+
 namespace onnxruntime {
 
 struct FooKernel : OpKernel {
   FooKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
-    op_.Create(&op_, &op_kernel_);
+    op_.CreateKernel(&op_, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
   }
 
   ~FooKernel() {
-    op_.Destroy(op_kernel_);
+    op_.KernelDestroy(op_kernel_);
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    std::vector<OrtValue*> inputTensors;
+    std::vector<OrtValue*> input_tensors;
+    auto input_count = ctx->InputCount();
+    for (int i = 0; i < input_count; i++)
+      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(i))));
 
-    int inputCount = ctx->InputCount();
-    for (int i = 0; i < inputCount; i++)
-      inputTensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(i))));
+    std::vector<OrtValue*> output_tensors;
+    auto output_count = ctx->OutputCount();
+    for (int i = 0; i < output_count; i++) {
+      OrtTensorTypeAndShapeInfo info;
+      op_.KernelGetOutputShape(op_kernel_, input_tensors.data(), input_tensors.size(), i, &info);
+      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ctx->OutputMLValue(0, info.shape)));
+    }
 
-    OrtTensorTypeAndShapeInfo info;
-    op_.GetOutputShape(op_kernel_, inputTensors.data(), inputTensors.size(), &info);
-
-    auto output = ctx->OutputMLValue(0, info.shape);
-    op_.Compute(op_kernel_, inputTensors.data(), inputTensors.size(), reinterpret_cast<OrtValue*>(output));
+    op_.KernelCompute(op_kernel_, input_tensors.data(), input_tensors.size(), output_tensors.data(), output_tensors.size());
     return Status::OK();
   }
 
@@ -174,7 +192,7 @@ class InferenceSession::Impl {
     schemas_container->opset_version = 7;
 
     for (auto& op : ops) {
-      ONNX_NAMESPACE::OpSchema schema(op->name, "unknown", 0);
+      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
       schema.Input(0,
                    "A",
                    "First operand, should share the type with the second operand.",
@@ -191,6 +209,7 @@ class InferenceSession::Impl {
           OpSchema::numeric_types_for_math_reduction(),
           "Constrain input and output types to high-precision numeric tensors.");
       schema.SinceVersion(7);
+      schema.AllowUncheckedAttributes();
 
       schemas_container->schemas_list.push_back(schema);
 
