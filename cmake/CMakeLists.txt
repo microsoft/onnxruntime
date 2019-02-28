@@ -65,11 +65,13 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TRT "Build with TensorRT support" OFF)
+option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
+set(ONNX_CUSTOM_PROTOC_EXECUTABLE "F:/onnxruntime/build/Windows/Debug/external/protobuf/cmake/Debug/protoc.exe")
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -83,6 +85,21 @@ if(onnxruntime_USE_OPENMP)
     add_definitions(-DUSE_OPENMP)
   endif()
 endif()
+
+if(onnxruntime_CROSS_COMPILING)
+  set(CMAKE_CROSSCOMPILING ON)  
+endif()
+
+# Dummy code
+message(${CMAKE_SYSTEM_NAME})
+message(${CMAKE_HOST_SYSTEM_NAME})
+set (CMAKE_SYSTEM_PROCESSOR ARM64)
+message(${CMAKE_SYSTEM_PROCESSOR})
+message(${CMAKE_HOST_SYSTEM_PROCESSOR})
+#set(CMAKE_SYSTEM_PROCESSOR ARM64)
+#message(${CMAKE_SYSTEM_PROCESSOR})
+message(${CMAKE_CROSSCOMPILING})
+# End dummy
 
 #must after OpenMP settings
 find_package(Threads)
@@ -182,7 +199,8 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #3. both onnxruntime_USE_PREBUILT_PB and ONNX_CUSTOM_PROTOC_EXECUTABLE are not set
 #   Compile everything from source code. Slowest option.
 
-if(onnxruntime_USE_PREBUILT_PB)
+# option 1
+if(onnxruntime_USE_PREBUILT_PB AND NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
   get_filename_component(
      _PROTOBUF_INSTALL_PREFIX
      ${ONNX_CUSTOM_PROTOC_EXECUTABLE}
@@ -197,6 +215,19 @@ if(onnxruntime_USE_PREBUILT_PB)
     include(${_PROTOBUF_INSTALL_PREFIX}/lib64/cmake/protobuf/protobuf-config.cmake)
   endif()
   include(protobuf_function.cmake)
+
+# option 2
+elseif(NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
+  add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+  set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
+  set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
+  set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+  set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+  add_library(protobuf::libprotobuf ALIAS libprotobuf)
+  #add_executable(protobuf::protoc ALIAS protoc)
+  include(protobuf_function.cmake)
+ 
+# option 3  
 else()
   # use protobuf as a submodule
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
@@ -340,7 +371,7 @@ if (WIN32)
     endif()
 
     # treat warning as error only on x64 platform. For x86, there are too many warnings to fix.
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE)
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
       foreach(type EXE STATIC SHARED)

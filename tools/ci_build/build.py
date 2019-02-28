@@ -38,7 +38,8 @@ class UsageError(BaseError):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
                                      usage='''
-Default behavior is --update --build --test.
+Default behavior is --update --build --test for native architecture builds.
+Default behavior is --update --build for cross-compiled builds.
 
 The Update phase will update git submodules, and run cmake to generate makefiles.
 The Build phase will build all projects.
@@ -93,6 +94,8 @@ Use the individual flags to only run the specified stages.
                              "These are just CMake -D options without the leading -D.")
     parser.add_argument("--x86", action='store_true',
                         help="Create x86 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument("--arm64", action='store_true',
+                        help="Create ARM64 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
 
     # Arguments needed by CI
@@ -135,6 +138,9 @@ def is_windows():
 
 def is_ubuntu_1604():
     return platform.linux_distribution()[0] == 'Ubuntu' and platform.linux_distribution()[1] == '16.04'
+
+def is_processor_64_bit():
+    return platform.machine().endswith('64')
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
@@ -300,6 +306,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
+                  #By default, only support cross-comipling for ARM64
+                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -518,12 +526,15 @@ def main():
 
     cmake_extra_defines = args.cmake_extra_defines if args.cmake_extra_defines else []
 
-    # if there was no explicit argument saying what to do, default to update, build and test.
+    # if there was no explicit argument saying what to do, default to update, build and test (for native builds).
     if (args.update == False and args.clean == False and args.build == False and args.test == False):
-        log.debug("Defaulting to running update, build and test.")
+        log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        args.test = True
+        if args.arm64:
+            args.test = False
+        else:
+            args.test = True
 
     if args.build_wheel:
         args.enable_pybind = True
@@ -552,6 +563,15 @@ def main():
         if(is_windows()):
           if (args.x86):
             cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
+          elif (args.arm64):
+            # Cross-compiling for ARM64 architecture
+            if is_processor_64_bit():
+                cmake_extra_args = ['-A','ARM64', '-T', 'host=x64', '-G', 'Visual Studio 15 2017']
+            else:
+                cmake_extra_args = ['-A','ARM64', '-G', 'Visual Studio 15 2017']
+            # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
+            if args.test:
+                args.test = False
           else:
             toolset = 'host=x64'
             if (args.msvc_toolset):
@@ -561,6 +581,8 @@ def main():
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
+            if (args.arm64):
+                raise BuildError("Only Windows ARM64 builds supported currently")
             install_ubuntu_deps(args)
             if not is_docker():
                 install_python_deps()
