@@ -119,9 +119,10 @@ class WindowsEnv : public Env {
     char* wptr = const_cast<char*>(out->data());
     auto length_remain = filesize.QuadPart;
     do {
+      //read at most 1GB each time
       DWORD bytes_to_read;
-      if (length_remain > (1 << 20)) {
-        bytes_to_read = 1 << 20;
+      if (length_remain > (1 << 30)) {
+        bytes_to_read = 1 << 30;
       } else {
         bytes_to_read = static_cast<DWORD>(length_remain);
       }
