@@ -363,20 +363,10 @@ if(WIN32)
   add_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
   target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
   set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
-  set(mb_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/mb)
-  add_library(win_getopt_mb ${mb_get_opt_src_dir}/getopt.cc ${mb_get_opt_src_dir}/include/getopt.h)
-  target_include_directories(win_getopt_mb INTERFACE ${mb_get_opt_src_dir}/include)
-  set_target_properties(win_getopt_mb PROPERTIES FOLDER "ONNXRuntimeTest")
-
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
-
   set(GETOPT_LIB_WIDE win_getopt_wide)
-  set(GETOPT_LIB win_getopt_mb)
 else()
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h)
-  if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
-    set(FS_STDLIB stdc++fs)
-  endif()
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
@@ -395,7 +385,7 @@ if(WIN32)
   list(APPEND onnx_test_libs Pathcch)
 endif()
 
-list(APPEND onnx_test_libs ${FS_STDLIB} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+list(APPEND onnx_test_libs debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
 
 
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
