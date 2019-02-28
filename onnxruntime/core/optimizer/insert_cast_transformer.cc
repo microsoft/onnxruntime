@@ -112,12 +112,20 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         auto input = node.MutableInputDefs()[0];
         int child_removed = 0;
         int num_child = 0;
+        auto output_args = graph.GetOutputs();
+        std::unordered_set<std::string> graph_outputs(output_args.size());
+        for (auto output_arg : output_args) {
+          graph_outputs.emplace(output_arg->Name());
+		}
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node{*it};
-          if (output_node.OpType() == "Cast") {
+          if (output_node.OpType() == "Cast" ) {
+			// Skip if the node's output is also the output of the graph
+            if (graph_outputs.find(output_node.OutputDefs()[0]->Name()) != graph_outputs.end()) {
+              continue;
+            }
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            if (*src_type1 == "tensor(bool)" || *dst_type1 == "tensor(bool)") return Status::OK();
             if (src_type == dst_type1 && src_type1 == dst_type) {
               //node *it's output's follower could be linked with node's input.
               replacement_defs.clear();
