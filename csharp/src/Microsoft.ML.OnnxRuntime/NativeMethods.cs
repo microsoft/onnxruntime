@@ -240,6 +240,21 @@ namespace Microsoft.ML.OnnxRuntime
         #region Tensor/OnnxValue API
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtGetValue(IntPtr /*(OrtValue*)*/ value,
+                                                                 int index,
+                                                                 IntPtr /*(OrtAllocator*)*/ allocator,
+                                                                 out IntPtr /*(OrtValue**)*/ outputValue);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern OnnxType /*Onnxtype*/   OrtGetValueType(IntPtr /*(OrtValue*)*/ value);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtGetValueCount(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(size_t*)*/ count);
+
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(OrtValue**)*/ typeInfo);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /* OrtStatus */ OrtCreateTensorWithDataAsOrtValue(
                                                         IntPtr /* (const OrtAllocatorInfo*) */ allocatorInfo,
                                                         IntPtr /* (void*) */dataBufferHandle,

@@ -29,9 +29,37 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         public string Name { get { return _name; } }
+
+        /// <summary>
+        /// Try-get value as a Tensor&lt;T&gt;.
+        /// </summary>
+        /// <typeparam name="T">Type</typeparam>
+        /// <returns>Tensor object if contained value is a Tensor. Null otherwise</returns>
         public Tensor<T> AsTensor<T>()
         {
             return _value as Tensor<T>;  // will return null if not castable
+        }
+
+        /// <summary>
+        /// Try-get value as an Enumerable&lt;T&gt;.
+        /// </summary>
+        /// <typeparam name="T">Type</typeparam>
+        /// <returns>Enumerable object if contained value is a Enumerable. Null otherwise</returns>
+        public IEnumerable<T> AsEnumerable<T> ()
+        {
+            var x = _value as IEnumerable<T>;
+            return x;
+        }
+
+        /// <summary>
+        /// Try-get value as an Dictionary&lt;K,V&gt;.
+        /// </summary>
+        /// <typeparam name="K">Key type</typeparam>
+        /// <typeparam name="V">Value type</typeparam>
+        /// <returns>Dictionary object if contained value is a Dictionary. Null otherwise</returns>
+        public IDictionary<K, V> AsDictionary<K, V>()
+        {
+            return _value as IDictionary<K, V>;
         }
 
         /// <summary>
@@ -310,6 +338,16 @@ namespace Microsoft.ML.OnnxRuntime
         Complex128 = 15,
         BFloat16 = 16,
         DataTypeMax = 17
+    }
+
+    internal enum OnnxType
+    {
+        ONNX_TYPE_UNKNOWN = 0,
+        ONNX_TYPE_TENSOR = 1,
+        ONNX_TYPE_SEQUENCE = 2,
+        ONNX_TYPE_MAP = 3,
+        ONNX_TYPE_OPAQUE = 4,
+        ONNX_TYPE_SPARSETENSOR = 5,
     }
 
     internal static class TensorElementTypeConverter
