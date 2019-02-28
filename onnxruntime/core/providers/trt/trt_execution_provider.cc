@@ -55,7 +55,6 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Serialize modelproto to string
   string string_buf;
   model_proto.SerializeToString(&string_buf);
-  std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
 
   // Get supported node list
   SubGraphCollection_t supported_nodes_vector;
@@ -63,7 +62,7 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
   const auto& trt_network = InferObject(trt_builder->createNetwork());
   const auto& trt_parser = InferObject(nvonnxparser::createParser(trt_network.get(), trt_logger));
-  trt_parser->supportsModel(onnx_buf.data(), onnx_buf.size(), supported_nodes_vector);
+  trt_parser->supportsModel(string_buf.data(), string_buf.size(), supported_nodes_vector);
   model_proto.release_graph();
 
   // Find inputs, initializers and outputs for each supported subgraph
@@ -152,11 +151,11 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       meta_def->name = "TRTKernel";
       meta_def->domain = kMSDomain;
 
-      for (auto& input : inputs) {
+      for (const auto& input : inputs) {
         meta_def->inputs.push_back(input.second->Name());
       }
 
-      for (auto& output : outputs) {
+      for (const auto& output : outputs) {
         meta_def->outputs.push_back(output.second->Name());
       }
 
@@ -182,7 +181,7 @@ common::Status TRTExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) 
 
 common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (auto* fused_node : fused_nodes) {
+  for (const auto* fused_node : fused_nodes) {
     std::unordered_map<std::string, int> input_map;
     std::vector<int> input_indexes;
     std::vector<int> input_binding_indexes;
@@ -198,7 +197,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
       input_map[fused_node->InputDefs()[i]->Name()] = i;
     }
 
-    auto func_body = fused_node->GetFunctionBody();
+    const auto* func_body = fused_node->GetFunctionBody();
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
@@ -208,20 +207,20 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
     onnxruntime::Graph& graph = model.MainGraph();
 
-    for (auto& graph_body_node : graph_body.Nodes()) {
+    for (const auto& graph_body_node : graph_body.Nodes()) {
       graph.AddNode(graph_body_node);
     }
 
     ORT_ENFORCE(graph.Resolve().IsOK());
 
     // Add initializer to graph
-    auto& init_tensors = graph_body.GetAllInitializedTensors();
-    for (auto& tensor : init_tensors) {
+    const auto& init_tensors = graph_body.GetAllInitializedTensors();
+    for (const auto& tensor : init_tensors) {
       graph.AddInitializedTensor(*(tensor.second));
     }
 
     // Find graph's inputs in input map
-    auto& inputs_tensors = graph_body.GetInputs();
+    const auto& inputs_tensors = graph_body.GetInputs();
     for (int i = 0, end = inputs_tensors.size(); i < end; ++i) {
       auto iter = input_map.find(inputs_tensors[i]->Name());
       if (iter != input_map.end()) {
@@ -234,15 +233,16 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     const auto& graph_output = model_proto.graph().output();
-    const auto& graph_value_info = model_proto.graph().value_info();
     std::set<string> output_set;
     for (int i = 0, end = graph_output.size(); i < end; ++i) {
       output_set.insert(graph_output[i].name());
     }
 
+    const auto& graph_value_info = model_proto.graph().value_info();
+    const auto& output_defs = fused_node->OutputDefs();
     std::vector<int> output_to_add;
     for (int i = 0, end = fused_node->OutputDefs().size(); i < end; ++i) {
-      const std::string& output_name = fused_node->OutputDefs()[i]->Name();
+      const std::string& output_name = output_defs[i]->Name();
       if (output_set.find(output_name) == output_set.end()) {
         for (int j = 0, end = graph_value_info.size(); j < end; ++j) {
           if (output_name == graph_value_info[j].name()) {
@@ -252,8 +252,9 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
       }
     }
 
-    for (auto& i : output_to_add) {
-      *(model_proto.mutable_graph()->mutable_output()->Add()) = graph_value_info[i];
+    auto* output_add = model_proto.mutable_graph()->mutable_output()->Add();
+    for (const auto& i : output_to_add) {
+      *output_add = graph_value_info[i];
     }
 
     // Set version
@@ -262,13 +263,12 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     // Create TensorRT engine
     string string_buf;
     model_proto.SerializeToString(&string_buf);
-    std::vector<char> onnx_buf(string_buf.begin(), string_buf.end());
 
     TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
     const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
     const auto& trt_network = InferObject(trt_builder->createNetwork());
     const auto& trt_parser = InferObject(nvonnxparser::createParser(trt_network.get(), trt_logger));
-    trt_parser->parse(onnx_buf.data(), onnx_buf.size());
+    trt_parser->parse(string_buf.data(), string_buf.size());
     trt_builder->setMaxBatchSize(max_batch_size);
     trt_builder->setMaxWorkspaceSize(max_workspace_size);
     const auto& trt_engine = InferObject(trt_builder->buildCudaEngine(*trt_network.get()));
@@ -330,10 +330,10 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     // Create function state
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      auto* p = new TRTFuncState();
+      std::unique_ptr<TRTFuncState> p = std::make_unique<TRTFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(), engines_[context->node_name].get(), contexts_[context->node_name].get(),
             input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name]};
-      *state = p;
+      *state = p.release();
       return 0;
     };
 
@@ -364,7 +364,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         const auto& tensor_input = input_tensors[input_indexes[i]];
-        auto& tensor_shape = tensor_input.shape;
+        const auto& tensor_shape = tensor_input.shape;
         batch_size.push_back(tensor_shape[0]);
 
         const float* input = static_cast<float*>(tensor_input.data);
