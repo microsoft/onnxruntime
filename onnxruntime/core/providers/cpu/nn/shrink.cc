@@ -57,14 +57,11 @@ void ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, float
 
 Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   using namespace shrink_internal;
+
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
   auto* output = p_op_kernel_context->Output(0, input->Shape());
   const auto& dtype = input->DataType();
   DispatchOnNumericTensorType(dtype, ShrinkImpl, input, output, bias_, lambd_);
-
-  /*
-	return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input types for the Shrink operator are constrained to all numeric types only, but got : ", dtype);
-  */
 
   return Status::OK();
 }
