@@ -96,7 +96,7 @@ class OrtBuffer {
   virtual const void* GetData() = 0;
   virtual size_t GetLength() = 0;
   virtual ~OrtBuffer() = default;
-  ORT_DISALLOW_ASSIGNMENT(OrtBuffer);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtBuffer);
 };
 
 class OrtHeapBuffer {
