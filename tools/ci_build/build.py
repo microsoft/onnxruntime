@@ -551,7 +551,7 @@ def main():
         cmake_extra_args = []
         if(is_windows()):
           if (args.x86):
-            cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
+            cmake_extra_args = ['-A','Win32','host=x64','-G', 'Visual Studio 15 2017']
           else:
             toolset = 'host=x64'
             if (args.msvc_toolset):
@@ -598,7 +598,7 @@ def main():
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False)
               else:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
-                
+
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
 
