@@ -149,12 +149,17 @@ bool PerformanceRunner::Initialize() {
   }
 
   if (test_case->GetDataCount() <= 0) {
-    LOGF_DEFAULT(ERROR, "there is no test data for model %s", test_case->GetTestCaseName().c_str());
+    LOGS_DEFAULT(ERROR) << "there is no test data for model " << test_case->GetTestCaseName();
     return false;
   }
 
   std::unordered_map<std::string, OrtValue*> feeds;
-  test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds, true);
+  auto st = test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds, true);
+  if (!st.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Load data failed " << test_case->GetTestCaseName();
+    return false;
+  }
+
   input_names_.resize(feeds.size());
   input_values_.resize(feeds.size());
   size_t input_index = 0;
