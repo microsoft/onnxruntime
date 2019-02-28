@@ -6,12 +6,11 @@
 #include "core/session/onnxruntime_c_api.h"
 
 void HeapBuffer::AddDeleter(OrtCallback* d) {
-  if (d != nullptr && d->f != nullptr) deleters_.push_back(d);
+  if (d != nullptr) deleters_.push_back(d);
 }
 
 HeapBuffer::~HeapBuffer() {
   for (auto d : deleters_) {
-    if (d->f) d->f(d->param);
-    delete d;
+    OrtRunCallback(d);
   }
 }

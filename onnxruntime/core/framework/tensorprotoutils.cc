@@ -44,7 +44,8 @@ class ExternalDataInfo {
   static Status Create(const ::google::protobuf::RepeatedPtrField<::onnx::StringStringEntryProto>& input,
                        std::unique_ptr<ExternalDataInfo>* out) {
     *out = std::make_unique<ExternalDataInfo>();
-    for (int i = 0; i != input.size(); ++i) {
+    const int input_size = input.size();
+    for (int i = 0; i != input_size; ++i) {
       StringStringEntryProto stringmap = input[i];
       if (!stringmap.has_key())
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a key for the external data info");
@@ -87,6 +88,9 @@ class ExternalDataInfo {
   }
 };
 
+//TODO: will move OrtBuffer into env.cc and let  ReadFileAsString return an OrtBuffer instead of string
+//So that, we can put fclose into the destructor of OrtBuffer.
+#if 0
 class OrtBuffer {
  public:
   virtual const void* GetData() = 0;
@@ -95,7 +99,6 @@ class OrtBuffer {
   ORT_DISALLOW_ASSIGNMENT(OrtBuffer);
 };
 
-#if 0
 class OrtHeapBuffer {
  public:
   const void * GetData() {
