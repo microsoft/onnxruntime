@@ -42,7 +42,7 @@ ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options) {
 }
 
 // enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix) {
+ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;
   options->value.profile_file_prefix = profile_file_prefix;
 }

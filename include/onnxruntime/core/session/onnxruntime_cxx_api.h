@@ -94,7 +94,7 @@ class SessionOptionsWrapper {
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableMemPattern)
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableCpuMemArena)
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableCpuMemArena)
-  void EnableProfiling(_In_ const char* profile_file_prefix) {
+  void EnableProfiling(_In_ const ORTCHAR_T* profile_file_prefix) {
     OrtEnableProfiling(value.get(), profile_file_prefix);
   }
 

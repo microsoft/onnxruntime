@@ -22,7 +22,7 @@ limitations under the License.
 #include <string.h>
 #include <thread>
 #include <vector>
-
+#include <assert.h>
 #include "core/platform/env.h"
 #include "core/common/common.h"
 
@@ -93,6 +93,51 @@ class PosixEnv : public Env {
 
   PIDType GetSelfPid() const override {
     return getpid();
+  }
+
+  common::Status ReadFileAsString(const char* fname, std::string* out) const override {
+    if (!out) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'out' cannot be NULL");
+    }
+    if (!fname) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+    }
+    char errbuf[512];
+    int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+      int err = errno;
+      snprintf(errbuf, sizeof(errbuf), "%s:%d open file %s fail:%s, errcode = %d", __FILE__, __LINE__, fname,
+               strerror(err), err);
+      return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+    }
+    struct stat stbuf;
+    if ((fstat(fd, &stbuf) != 0) || (!S_ISREG(stbuf.st_mode))) {
+      (void)close(fd);
+      snprintf(errbuf, sizeof(errbuf), "%s:%d read file %s fail", __FILE__, __LINE__, fname);
+      return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+    }
+    if (stbuf.st_size == 0) {
+      out->clear();
+    } else {
+      out->resize(stbuf.st_size, '\0');
+      char* wptr = const_cast<char*>(out->data());
+      auto length_remain = stbuf.st_size;
+      do {
+        size_t bytes_to_read = length_remain;
+        ssize_t bytes_readed = read(fd, wptr, bytes_to_read);
+        if (bytes_readed <= 0) {
+          int err = errno;
+          (void)close(fd);
+          snprintf(errbuf, sizeof(errbuf), "%s:%d read file %s fail, errcode = %d", __FILE__, __LINE__, fname, err);
+          return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+        }
+        assert(static_cast<size_t>(bytes_readed) <= bytes_to_read);
+        wptr += bytes_readed;
+        length_remain -= bytes_readed;
+      } while (length_remain > 0);
+      (void)close(fd);
+    }
+    return common::Status::OK();
   }
 
   common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override {

@@ -13,9 +13,10 @@
 #include "TestResultStat.h"
 #include "testenv.h"
 #include "runner.h"
-#include "path_lib.h"
 #include "sync_api.h"
 #include "providers.h"
+#include <google/protobuf/stubs/common.h>
+#include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 using namespace onnxruntime;
@@ -61,18 +62,16 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() {
-  return std::thread::hardware_concurrency();
-}
+int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
 #endif
 }  // namespace
 
 #ifdef _WIN32
-int real_main(int argc, wchar_t* argv[]) {
+int real_main(int argc, wchar_t* argv[], OrtEnv** p_env) {
 #else
-int real_main(int argc, char* argv[]) {
+int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
-  //if this var is not empty, only run the tests with name in this list
+  // if this var is not empty, only run the tests with name in this list
   std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
@@ -95,44 +94,44 @@ int real_main(int argc, char* argv[]) {
           logging_level = ORT_LOGGING_LEVEL_INFO;
           break;
         case 'c':
-          concurrent_session_runs = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
           if (concurrent_session_runs <= 0) {
             usage();
             return -1;
           }
           break;
         case 'j':
-          p_models = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          p_models = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
           if (p_models <= 0) {
             usage();
             return -1;
           }
           break;
         case 'r':
-          repeat_count = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          repeat_count = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
           if (repeat_count <= 0) {
             usage();
             return -1;
           }
           break;
         case 'm':
-          //ignore.
+          // ignore.
           break;
         case 'n':
-          //run only some whitelisted tests
-          //TODO: parse name str to an array
+          // run only some whitelisted tests
+          // TODO: parse name str to an array
           whitelisted_test_cases.emplace_back(optarg);
           break;
         case 'e':
-          if (!MyStrCmp(optarg, ORT_TSTR("cpu"))) {
-            //do nothing
-          } else if (!MyStrCmp(optarg, ORT_TSTR("cuda"))) {
+          if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
+            // do nothing
+          } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("mkldnn"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("nuphar"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("trt"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("trt"))) {
             enable_trt = true;
           } else {
             usage();
@@ -162,37 +161,25 @@ int real_main(int argc, char* argv[]) {
     usage();
     return -1;
   }
-  std::unique_ptr<OrtEnv> env;
+  OrtEnv* env;
   {
-    OrtEnv* t;
-    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &t);
+    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &env);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
       OrtReleaseStatus(ost);
       return -1;
     }
-    env.reset(t);
+    *p_env = env;
   }
   std::vector<std::basic_string<PATH_CHAR_TYPE> > data_dirs;
   TestResultStat stat;
 
-  std::unique_ptr<OrtAllocator> default_allocator;
-  {
-    OrtAllocator* p;
-    OrtStatus* ost = OrtCreateDefaultAllocator(&p);
-    if (ost != nullptr) {
-      fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      OrtReleaseStatus(ost);
-      return -1;
-    }
-    default_allocator.reset(p);
-  }
   for (int i = 0; i != argc; ++i) {
     data_dirs.emplace_back(argv[i]);
   }
   {
-    std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases, default_allocator.get());
-    SessionOptionsWrapper sf(env.get());
+    std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases);
+    SessionOptionsWrapper sf(env);
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -234,7 +221,8 @@ int real_main(int argc, char* argv[]) {
 #endif
     }
     TestEnv args(tests, stat, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
+    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
+                         GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
@@ -246,85 +234,86 @@ int real_main(int argc, char* argv[]) {
       delete l;
     }
   }
+  // clang-format off
   std::map<std::string, std::string> broken_tests{
-      {"AvgPool1d", "disable reason"},
-      {"AvgPool1d_stride", "disable reason"},
-      {"AvgPool2d", "disable reason"},
-      {"AvgPool2d_stride", "disable reason"},
-      {"AvgPool3d", "disable reason"},
-      {"AvgPool3d_stride", "disable reason"},
-      {"AvgPool3d_stride1_pad0_gpu_input", "disable reason"},
-      {"BatchNorm1d_3d_input_eval", "disable reason"},
-      {"BatchNorm2d_eval", "disable reason"},
-      {"BatchNorm2d_momentum_eval", "disable reason"},
-      {"BatchNorm3d_eval", "disable reason"},
-      {"BatchNorm3d_momentum_eval", "disable reason"},
-      {"GLU", "disable reason"},
-      {"GLU_dim", "disable reason"},
-      {"Linear", "disable reason"},
-      {"PReLU_1d", "disable reason"},
-      {"PReLU_1d_multiparam", "disable reason"},
-      {"PReLU_2d", "disable reason"},
-      {"PReLU_2d_multiparam", "disable reason"},
-      {"PReLU_3d", "disable reason"},
-      {"PReLU_3d_multiparam", "disable reason"},
-      {"PoissonNLLLLoss_no_reduce", "disable reason"},
-      {"Softsign", "disable reason"},
-      {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},
-      {"flatten_axis0", "disable reason"},
-      {"flatten_axis1", "disable reason"},
-      {"flatten_axis2", "disable reason"},
-      {"flatten_axis3", "disable reason"},
-      {"flatten_default_axis", "disable reason"},
-      {"gemm_broadcast", "disable reason"},
-      {"gemm_nobroadcast", "disable reason"},
-      {"greater", "disable reason"},
-      {"greater_bcast", "disable reason"},
-      {"less", "disable reason"},
-      {"less_bcast", "disable reason"},
-      {"matmul_2d", "disable reason"},
-      {"matmul_3d", "disable reason"},
-      {"matmul_4d", "disable reason"},
-      {"mvn", "disable reason"},
-      {"operator_add_broadcast", "disable reason"},
-      {"operator_add_size1_broadcast", "disable reason"},
-      {"operator_add_size1_right_broadcast", "disable reason"},
-      {"operator_add_size1_singleton_broadcast", "disable reason"},
-      {"operator_addconstant", "disable reason"},
-      {"operator_addmm", "disable reason"},
-      {"operator_basic", "disable reason"},
-      {"operator_lstm", "disable reason"},
-      {"operator_mm", "disable reason"},
-      {"operator_non_float_params", "disable reason"},
-      {"operator_params", "disable reason"},
-      {"operator_pow", "disable reason"},
-      {"operator_rnn", "disable reason"},
-      {"operator_rnn_single_layer", "disable reason"},
-      {"prelu_broadcast", "disable reason"},
-      {"prelu_example", "disable reason"},
-      {"sinh_example", "opset 9 not supported yet"},
-      {"cosh_example", "opset 9 not supported yet"},
-      {"asinh_example", "opset 9 not supported yet"},
-      {"acosh_example", "opset 9 not supported yet"},
-      {"atanh_example", "opset 9 not supported yet"},
-      {"scatter_with_axis", "opset 9 not supported yet"},
-      {"scatter_without_axis", "opset 9 not supported yet"},
-      {"scan_sum", "opset 9 not supported yet"},
-      {"shrink", "opset 9 not supported yet"},
-      {"shrink_hard", "opset 9 not supported yet"},
-      {"shrink_soft", "opset 9 not supported yet"},
-      {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
-      {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
-      {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT16_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
-      {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
-      {"tf_inception_v4", "Cast opset 9 not supported yet"}};
-
+	{"AvgPool1d", "disable reason"},
+    {"AvgPool1d_stride", "disable reason"},
+    {"AvgPool2d", "disable reason"},
+    {"AvgPool2d_stride", "disable reason"},
+    {"AvgPool3d", "disable reason"},
+    {"AvgPool3d_stride", "disable reason"},
+    {"AvgPool3d_stride1_pad0_gpu_input", "disable reason"},
+    {"BatchNorm1d_3d_input_eval", "disable reason"},
+    {"BatchNorm2d_eval", "disable reason"},
+    {"BatchNorm2d_momentum_eval", "disable reason"},
+    {"BatchNorm3d_eval", "disable reason"},
+    {"BatchNorm3d_momentum_eval", "disable reason"},
+    {"GLU", "disable reason"},
+    {"GLU_dim", "disable reason"},
+    {"Linear", "disable reason"},
+    {"PReLU_1d", "disable reason"},
+    {"PReLU_1d_multiparam", "disable reason"},
+    {"PReLU_2d", "disable reason"},
+    {"PReLU_2d_multiparam", "disable reason"},
+    {"PReLU_3d", "disable reason"},
+    {"PReLU_3d_multiparam", "disable reason"},
+    {"PoissonNLLLLoss_no_reduce", "disable reason"},
+    {"Softsign", "disable reason"},
+    {"convtranspose_1d", "disable reason"},
+    {"convtranspose_3d", "disable reason"},
+    {"flatten_axis0", "disable reason"},
+    {"flatten_axis1", "disable reason"},
+    {"flatten_axis2", "disable reason"},
+    {"flatten_axis3", "disable reason"},
+    {"flatten_default_axis", "disable reason"},
+    {"gemm_broadcast", "disable reason"},
+    {"gemm_nobroadcast", "disable reason"},
+    {"greater", "disable reason"},
+    {"greater_bcast", "disable reason"},
+    {"less", "disable reason"},
+    {"less_bcast", "disable reason"},
+    {"matmul_2d", "disable reason"},
+    {"matmul_3d", "disable reason"},
+    {"matmul_4d", "disable reason"},
+    {"mvn", "disable reason"},
+    {"operator_add_broadcast", "disable reason"},
+    {"operator_add_size1_broadcast", "disable reason"},
+    {"operator_add_size1_right_broadcast", "disable reason"},
+    {"operator_add_size1_singleton_broadcast", "disable reason"},
+    {"operator_addconstant", "disable reason"},
+    {"operator_addmm", "disable reason"},
+    {"operator_basic", "disable reason"},
+    {"operator_lstm", "disable reason"},
+    {"operator_mm", "disable reason"},
+    {"operator_non_float_params", "disable reason"},
+    {"operator_params", "disable reason"},
+    {"operator_pow", "disable reason"},
+    {"operator_rnn", "disable reason"},
+    {"operator_rnn_single_layer", "disable reason"},
+    {"prelu_broadcast", "disable reason"},
+    {"prelu_example", "disable reason"},
+    {"sinh_example", "opset 9 not supported yet"},
+    {"cosh_example", "opset 9 not supported yet"},
+    {"asinh_example", "opset 9 not supported yet"},
+    {"acosh_example", "opset 9 not supported yet"},
+    {"atanh_example", "opset 9 not supported yet"},
+    {"scatter_with_axis", "opset 9 not supported yet"},
+    {"scatter_without_axis", "opset 9 not supported yet"},
+    {"scan_sum", "opset 9 not supported yet"},
+    {"shrink", "opset 9 not supported yet"},
+    {"shrink_hard", "opset 9 not supported yet"},
+    {"shrink_soft", "opset 9 not supported yet"},
+    {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
+    {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
+    {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
+    {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
+    {"cast_FLOAT16_to_FLOAT", "Cast opset 9 not supported yet"},
+    {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
+    {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
+    {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
+    {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
+    {"tf_inception_v4", "Cast opset 9 not supported yet"}};
+  // clang-format on
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_2d_pads"] = "cudnn pooling only support input dimension >= 3";
@@ -357,10 +346,18 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  OrtEnv* env = nullptr;
+  int retval = -1;
   try {
-    return real_main(argc, argv);
+    retval = real_main(argc, argv, &env);
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
-    return -1;
+    retval = -1;
   }
+  if (env) {
+    OrtReleaseEnv(env);
+  } else {
+    ::google::protobuf::ShutdownProtobufLibrary();
+  }
+  return retval;
 }

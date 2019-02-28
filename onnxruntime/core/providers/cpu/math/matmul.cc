@@ -62,7 +62,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
-  for (int i = 0; i < helper.OutputOffsets().size(); i++) {
+  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     math::Gemm<T, CPUMathUtil>(
         CblasNoTrans,
         CblasNoTrans,

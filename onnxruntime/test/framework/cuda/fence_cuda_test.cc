@@ -92,16 +92,13 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
-  void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-  memcpy(buffer, data, sizeof(data));
 
   //create fake ml value with owned buffer.
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       element_type,
       shape,
-      buffer,
-      cpu_allocator->Info(),
       cpu_allocator);
+  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
   MLValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -149,16 +146,14 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
-  void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-  memcpy(buffer, data, sizeof(data));
 
   //create fake ml value with owned buffer.
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       element_type,
       shape,
-      buffer,
-      cpu_allocator->Info(),
       cpu_allocator);
+  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
+
   MLValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -215,16 +210,14 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({2, 2});
   float data[4] = {-1, 2, 3, -4};
-  void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-  memcpy(buffer, data, sizeof(data));
 
   //create fake ml value with owned buffer.
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       element_type,
       shape,
-      buffer,
-      cpu_allocator->Info(),
       cpu_allocator);
+  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
+
   MLValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),

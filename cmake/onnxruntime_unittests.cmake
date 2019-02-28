@@ -349,11 +349,12 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/TestCaseResult.cc
   ${onnx_test_runner_src_dir}/TestCaseResult.h
   ${onnx_test_runner_src_dir}/testenv.cc
+  ${onnx_test_runner_src_dir}/heap_buffer.h
+  ${onnx_test_runner_src_dir}/heap_buffer.cc
   ${onnx_test_runner_src_dir}/runner.h
   ${onnx_test_runner_src_dir}/runner.cc
   ${onnx_test_runner_src_dir}/TestCase.cc
   ${onnx_test_runner_src_dir}/TestCase.h
-  ${onnx_test_runner_src_dir}/path_lib.h
   ${onnx_test_runner_src_dir}/sync_api.h
   ${onnx_test_runner_src_dir}/sync_api.cc)
 
@@ -430,33 +431,31 @@ add_test(NAME onnx_test_pytorch_converted
 add_test(NAME onnx_test_pytorch_operator
   COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
 
-if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
-  set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
-  set(onnxruntime_perf_test_src_patterns
-    "${onnxruntime_perf_test_src_dir}/*.cc"
-    "${onnxruntime_perf_test_src_dir}/*.h")
+set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
+set(onnxruntime_perf_test_src_patterns
+"${onnxruntime_perf_test_src_dir}/*.cc"
+"${onnxruntime_perf_test_src_dir}/*.h")
 
-  if(WIN32)
-    list(APPEND onnxruntime_perf_test_src_patterns
-      "${onnxruntime_perf_test_src_dir}/windows/*.cc"
-      "${onnxruntime_perf_test_src_dir}/windows/*.h" )
-  else ()
-    list(APPEND onnxruntime_perf_test_src_patterns
-      "${onnxruntime_perf_test_src_dir}/posix/*.cc"
-      "${onnxruntime_perf_test_src_dir}/posix/*.h" )
-  endif()
-
-  file(GLOB onnxruntime_perf_test_src ${onnxruntime_perf_test_src_patterns})
-  add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
-
-  target_include_directories(onnxruntime_perf_test PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
-  if (WIN32)
-    target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
-  endif()
-  onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
-  target_link_libraries(onnxruntime_perf_test PRIVATE ${GETOPT_LIB} ${onnx_test_libs})
-  set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
+if(WIN32)
+  list(APPEND onnxruntime_perf_test_src_patterns
+    "${onnxruntime_perf_test_src_dir}/windows/*.cc"
+    "${onnxruntime_perf_test_src_dir}/windows/*.h" )
+else ()
+  list(APPEND onnxruntime_perf_test_src_patterns
+    "${onnxruntime_perf_test_src_dir}/posix/*.cc"
+    "${onnxruntime_perf_test_src_dir}/posix/*.h" )
 endif()
+
+file(GLOB onnxruntime_perf_test_src ${onnxruntime_perf_test_src_patterns})
+add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
+
+target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+if (WIN32)
+  target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
+endif()
+onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
+target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -486,13 +485,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
   if(onnxruntime_RUN_ONNX_TESTS)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
   endif()
+  if (NOT(${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
+    #our CI build machine doesn't have enough memory for this test
+    list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
+  endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC}
-          LIBS onnxruntime_mocked_allocator
+          LIBS onnxruntime_mocked_allocator onnxruntime_common onnx_proto protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
-
   #demo
   if(PNG_FOUND)
     add_executable(fns_candy_style_transfer "${ONNXRUNTIME_ROOT}/test/shared_lib/fns_candy_style_transfer.c")

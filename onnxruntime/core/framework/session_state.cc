@@ -43,9 +43,14 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   return p_seq_exec_plan_.get();
 }
 
-void SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue) {
-  ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index <= mlvalue_name_idx_map_.MaxIdx());
-  initialized_tensors_.insert({mlvalue_index, mlvalue});
+Status SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtDeleter& d) {
+  if (mlvalue_index < 0 || mlvalue_index > mlvalue_name_idx_map_.MaxIdx()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid mlvalue index ", mlvalue_index);
+  }
+  auto p = initialized_tensors_.insert({mlvalue_index, mlvalue});
+  if (!p.second) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated mlvalue index ", mlvalue_index);
+  if (d.f) deleter_for_initialized_tensors_[mlvalue_index] = d;
+  return Status::OK();
 }
 
 const std::unordered_map<int, MLValue>& SessionState::GetInitializedTensors() const {
