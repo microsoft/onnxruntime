@@ -122,5 +122,56 @@ common::Status ExecuteGraph(const SessionState& session_state,
   else if (tensor_type == DataTypeImpl::GetType<BFloat16>())               \
   retval = function<BFloat16>(__VA_ARGS__)
 
+#define DispatchOnNumericTensorType(tensor_type, function, ...)      \
+  if (tensor_type == DataTypeImpl::GetType<float>())          \
+    function<float>(__VA_ARGS__);                             \
+  else if (tensor_type == DataTypeImpl::GetType<double>())    \
+    function<double>(__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<int8_t>())    \
+    function<int8_t>(__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<int16_t>())   \
+    function<int16_t>(__VA_ARGS__);                           \
+  else if (tensor_type == DataTypeImpl::GetType<int32_t>())   \
+    function<int32_t>(__VA_ARGS__);                           \
+  else if (tensor_type == DataTypeImpl::GetType<int64_t>())   \
+    function<int64_t>(__VA_ARGS__);                           \
+  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())   \
+    function<uint8_t>(__VA_ARGS__);                           \
+  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())  \
+    function<uint16_t>(__VA_ARGS__);                          \
+  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())  \
+    function<uint32_t>(__VA_ARGS__);                          \
+  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())  \
+    function<uint64_t>(__VA_ARGS__);                          \
+  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>()) \
+    function<MLFloat16>(__VA_ARGS__);                         \
+  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())  \
+  function<BFloat16>(__VA_ARGS__)
+
+#define DispatchOnNumericTensorTypeWithReturn(tensor_type, retval, function, ...) \
+  if (tensor_type == DataTypeImpl::GetType<float>())                       \
+    retval = function<float>(__VA_ARGS__);                                 \
+  else if (tensor_type == DataTypeImpl::GetType<double>())                 \
+    retval = function<double>(__VA_ARGS__);                                \
+  else if (tensor_type == DataTypeImpl::GetType<int8_t>())                 \
+    retval = function<int8_t>(__VA_ARGS__);                                \
+  else if (tensor_type == DataTypeImpl::GetType<int16_t>())                \
+    retval = function<int16_t>(__VA_ARGS__);                               \
+  else if (tensor_type == DataTypeImpl::GetType<int32_t>())                \
+    retval = function<int32_t>(__VA_ARGS__);                               \
+  else if (tensor_type == DataTypeImpl::GetType<int64_t>())                \
+    retval = function<int64_t>(__VA_ARGS__);                               \
+  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())                \
+    retval = function<uint8_t>(__VA_ARGS__);                               \
+  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())               \
+    retval = function<uint16_t>(__VA_ARGS__);                              \
+  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())               \
+    retval = function<uint32_t>(__VA_ARGS__);                              \
+  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())               \
+    retval = function<uint64_t>(__VA_ARGS__);                              \
+  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())              \
+    retval = function<MLFloat16>(__VA_ARGS__);                             \
+  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())               \
+  retval = function<BFloat16>(__VA_ARGS__)  
 }  // namespace utils
 }  // namespace onnxruntime
