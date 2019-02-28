@@ -119,7 +119,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         }
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node{*it};
-          if (output_node.OpType() == "Cast" ) {
+          if (output_node.OpType() == "Cast") {
             // Skip if the node's output is also the output of the graph
             if (graph_outputs.find(output_node.OutputDefs()[0]->Name()) != graph_outputs.end()) {
               continue;
