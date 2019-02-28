@@ -26,12 +26,12 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     // Fill weights_to_train_ according to weights_to_train
     weights_to_train_ = weights_to_train;
 
+    // Compute the gradient graph def.
     GradientGraphBuilder grad_graph_builder(&model_->MainGraph(), {loss_function_output_name}, weights_to_train, loss_function_output_name);
-    ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+    auto gradient_graph_def = grad_graph_builder.Build();
 
-    model_->MainGraph().SetGraphResolveNeeded();
-    model_->MainGraph().SetGraphProtoSyncNeeded();
-    ORT_RETURN_IF_ERROR(model_->MainGraph().Resolve());
+    // Augment the graph.
+    ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(model_->MainGraph(), gradient_graph_def));
     return DoPostLoadProcessing(*model_);
   }
 

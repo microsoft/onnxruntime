@@ -17,7 +17,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace training {
 
-GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
+GradientGraphBuilder::GradientGraphBuilder(const Graph* graph,
                                            const std::vector<std::string>& y_node_arg_names,
                                            const std::vector<std::string>& x_node_arg_names,
                                            std::string loss_node_arg_name) : graph_(graph),
@@ -26,7 +26,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (node_arg != nullptr) {
       y_node_args_.push_back(node_arg);
-      y_node_arg_names_.push_back(name);
     } else {
       ORT_THROW("Node arg ", name, " is not found in the graph.");
     }
@@ -36,22 +35,10 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (node_arg != nullptr) {
       x_node_args_.push_back(node_arg);
-      x_node_arg_names_.push_back(name);
     } else {
       ORT_THROW("Node arg ", name, " is not found in the graph.");
     }
   }
-}
-
-void GradientGraphBuilder::AddLossGradient() {
-  // add loss gradient
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.add_dims(1);
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  tensor_proto.add_float_data(1.f);
-  tensor_proto.set_name(loss_node_arg_name_ + "_grad");
-
-  graph_->AddInitializedTensor(tensor_proto);
 }
 
 std::unordered_set<const Node*> GradientGraphBuilder::BFS(const std::vector<const NodeArg*>& starting_node_args) {
@@ -84,10 +71,19 @@ std::unordered_set<const Node*> GradientGraphBuilder::BFS(const std::vector<cons
   return visited;
 }
 
-Status GradientGraphBuilder::Build() {
-  AddLossGradient();
+GraphAugmenter::GraphDefs GradientGraphBuilder::Build() {
+  GraphAugmenter::GraphDefs gradient_graph_defs;
 
-  graph_->SetWeightsToTrain(x_node_arg_names_);
+  // add "gradient of the loss" node, always 1.
+  {
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.add_dims(1);
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_proto.add_float_data(1.f);
+    tensor_proto.set_name(GradientBuilderBase::GradientName(loss_node_arg_name_));
+
+    gradient_graph_defs.AddInitializers({tensor_proto});
+  }
 
   std::unordered_set<const Node*> visited = BFS(x_node_args_);
 
@@ -154,10 +150,10 @@ Status GradientGraphBuilder::Build() {
 
     GradientBuilderFn gradient_builder_func = registry.GetGradientBuilderFunc(node->OpType());
     GradientBuilderBase* gradient_builder = gradient_builder_func(node, output_args_need_grad, input_args_need_grad);
-    std::vector<OpDef> op_defs = gradient_builder->GetGradientDefs();
+    std::vector<NodeDef> node_defs = gradient_builder->GetGradientDefs();
 
     // updates arg name if gradient accumulation is needed
-    for (auto& op_def : op_defs) {
+    for (auto& op_def : node_defs) {
       for (auto& arg : op_def.output_args) {
         std::string& arg_name = arg.name;
         auto found = pending_.find(arg_name);
@@ -171,56 +167,30 @@ Status GradientGraphBuilder::Build() {
       }
     }
 
-    AddGradientNodes(op_defs);
+    gradient_graph_defs.AddNodeDefs(node_defs);
   }
 
   // Accumulate Gradients
   for (auto pair : pending_) {
     if (pair.second > 1) {
       std::string arg_name = pair.first;
-      std::vector<NodeArg*> input_args, output_args;
-      output_args.push_back(graph_->GetNodeArg(arg_name));
+      std::vector<ArgDef> input_args, output_args;
+      output_args.push_back({arg_name, graph_->GetNodeArg(arg_name)->TypeAsProto()});
+
       for (auto node_arg_name : gradients_to_accumulate_[arg_name]) {
-        input_args.push_back(graph_->GetNodeArg(node_arg_name));
+        input_args.push_back({node_arg_name, graph_->GetNodeArg(node_arg_name)->TypeAsProto()});
       }
 
-      graph_->AddNode(
-          "", /*name*/
-          "AddN",
-          "", /*description*/
-          input_args,
-          output_args,
-          nullptr,
-          "" /*domain*/);
+      gradient_graph_defs.AddNodeDefs({NodeDef("AddN", input_args, output_args)});
     }
   }
 
-  return Status::OK();
-}
-
-void GradientGraphBuilder::AddGradientNodes(const std::vector<OpDef>& op_defs) {
-  for (const OpDef& op_def : op_defs) {
-    std::vector<NodeArg*> input_args, output_args;
-
-    for (const auto& arg : op_def.input_args) {
-      NodeArg& node_arg = graph_->GetOrCreateNodeArg(arg.name, arg.type_proto);
-      input_args.push_back(&node_arg);
-    }
-
-    for (const auto& arg : op_def.output_args) {
-      NodeArg& node_arg = graph_->GetOrCreateNodeArg(arg.name, arg.type_proto);
-      output_args.push_back(&node_arg);
-    }
-
-    // TODO: the node should have a metadata indicating gradient node
-    graph_->AddNode(op_def.node_name,
-                    op_def.op_type,
-                    "", /*description*/
-                    input_args,
-                    output_args,
-                    &op_def.attr,
-                    "" /*domain*/);
+  // Set the gradients as graph outputs.
+  for (auto x_node_arg : x_node_args_) {
+    gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
   }
+
+  return gradient_graph_defs;
 }
 
 }  // namespace training

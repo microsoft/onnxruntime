@@ -2227,7 +2227,9 @@ Status Graph::SetGraphInputsOutputs() {
   // if something is coming from outer scope, consider it already added
   std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
 
-  if (loaded_from_model_file) {
+  if (loaded_from_model_file && graph_input_order_.empty() && graph_output_order_.empty()) {
+    // When the graph is loaded from file and inputs/outputs are not programmatically modified.
+
     // Collect all graph inputs/outputs specified in original graph proto
     std::unordered_set<std::string> specified_graph_inputs;
     std::unordered_set<std::string> specified_graph_outputs;
@@ -2312,14 +2314,8 @@ Status Graph::SetGraphInputsOutputs() {
           // fine to catch this issue later?
         }
 
-        if (!weights_to_train_.empty()) {
-          std::unordered_set<std::string> value_info_names;
-          if (value_info_names.find(input_arg->Name()) == value_info_names.end()) {
-            value_info_names.insert(input_arg->Name());
-            value_info_.push_back(input_arg);
-          } else if (specified_graph_value_info.erase(input_arg->Name()) >= 1) {
-            value_info_.push_back(input_arg);
-          }
+        if (specified_graph_value_info.erase(input_arg->Name()) >= 1) {
+          value_info_.push_back(input_arg);
         }
       }
     }
@@ -2341,13 +2337,6 @@ Status Graph::SetGraphInputsOutputs() {
     // preserve output order
     for (auto& graph_output : graph_proto_->output()) {
       graph_outputs_.push_back(output_name_to_node_arg.at(graph_output.name()));
-    }
-
-    for (auto weight_to_train : weights_to_train_) {
-      auto found = output_name_to_node_arg.find(weight_to_train + "_grad");
-      if (found != output_name_to_node_arg.end()) {
-        graph_outputs_.push_back(found->second);
-      }
     }
   } else {
     std::unordered_map<std::string, const NodeArg*> output_name_to_node_arg;
@@ -2420,7 +2409,14 @@ Status Graph::SetGraphInputsOutputs() {
           // Remove the output arg name from graph outputs since it's
           // the input of this node, which we call it intermediate result
           // and store it in <m_valueinfo>.
-          value_info_.push_back(input_arg);
+          if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
+            value_info_.push_back(input_arg);
+          }
+
+          // However, if the output's order is preserved, it should still be an output.
+          if (find(graph_output_order_.begin(), graph_output_order_.end(), input_arg) != graph_output_order_.end()) {
+            graph_output_args[input_arg->Name()] = input_arg;
+          }
         }
       }
     }
@@ -2438,6 +2434,12 @@ Status Graph::SetGraphInputsOutputs() {
     for (auto& name : ordered_output_names) {
       auto graph_output = graph_output_args.find(name);
       if (graph_output != end) {
+        // if outputs' order are perserved, only set the preserved ones as graph outputs.
+        if (!graph_output_order_.empty()) {
+          if (find(graph_output_order_.begin(), graph_output_order_.end(), graph_output->second) == graph_output_order_.end()) {
+            continue;
+          }
+        }
         graph_outputs_.push_back(graph_output->second);
       }
     }

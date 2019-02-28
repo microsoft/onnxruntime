@@ -7,54 +7,10 @@
 #include <string>
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/training/graph_augmenter.h"
 
 namespace onnxruntime {
 namespace training {
-
-struct ArgDef {
-  ArgDef(std::string name, const ONNX_NAMESPACE::TypeProto* type) : name(name), type_proto(type) {}
-  std::string name;
-  const ONNX_NAMESPACE::TypeProto* type_proto;
-};
-
-struct OpDef {
-  OpDef(const std::string& op_type,
-        const std::vector<ArgDef>& input_args,
-        const std::vector<ArgDef>& output_args) : op_type(op_type),
-                                                  input_args(input_args),
-                                                  output_args(output_args){};
-  OpDef(const std::string& op_type,
-        const std::vector<ArgDef>& input_args,
-        const std::vector<ArgDef>& output_args,
-        const NodeAttributes& attr) : op_type(op_type),
-                                      input_args(input_args),
-                                      output_args(output_args),
-                                      attr(attr){};
-
-  OpDef(const std::string& op_type,
-        const std::string& node_name,
-        const std::vector<ArgDef>& input_args,
-        const std::vector<ArgDef>& output_args) : op_type(op_type),
-                                                  node_name(node_name),
-                                                  input_args(input_args),
-                                                  output_args(output_args){};
-
-  OpDef(const std::string& op_type,
-        const std::string& node_name,
-        const std::vector<ArgDef>& input_args,
-        const std::vector<ArgDef>& output_args,
-        const NodeAttributes& attr) : op_type(op_type),
-                                      node_name(node_name),
-                                      input_args(input_args),
-                                      output_args(output_args),
-                                      attr(attr){};
-
-  std::string op_type;
-  std::string node_name;
-  std::vector<ArgDef> input_args;
-  std::vector<ArgDef> output_args;
-  NodeAttributes attr;
-};
 
 class GradientBuilderBase {
  public:
@@ -67,7 +23,7 @@ class GradientBuilderBase {
   }
 
   // TODO: make this protected? Currently, compiler failure prevents it
-  virtual std::vector<OpDef> GetGradientDefs() = 0;
+  virtual std::vector<NodeDef> GetGradientDefs() = 0;
 
  protected:
   ArgDef I(const int i) {
@@ -146,10 +102,10 @@ class GradientBuilderBase {
   std::unordered_set<std::string> gradient_outputs_;
 };
 
-class EmptyGradientBuilder : GradientBuilderBase {
+class EmptyGradientBuilder : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
-  virtual std::vector<OpDef> GetGradientDefs() {
-    return std::vector<OpDef>();
+  virtual std::vector<NodeDef> GetGradientDefs() {
+    return std::vector<NodeDef>();
   }
 };
 

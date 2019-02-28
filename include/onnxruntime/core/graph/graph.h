@@ -744,7 +744,7 @@ class Graph {
     graph_output_order_ = outputs;
   }
 
-  Node* GetProducerNode(std::string node_arg_name) {
+  const Node* GetProducerNode(std::string node_arg_name) const {
     auto iter = node_arg_to_producer_node_.find(node_arg_name);
 
     if (iter != node_arg_to_producer_node_.end()) {
@@ -754,8 +754,8 @@ class Graph {
     return nullptr;
   }
 
-  std::vector<Node*> GetConsumerNodes(std::string node_arg_name) {
-    std::vector<Node*> results;
+  std::vector<const Node*> GetConsumerNodes(std::string node_arg_name) const {
+    std::vector<const Node*> results;
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
 
     for (; iter != node_arg_to_consumer_nodes_.end() && iter->first == node_arg_name; iter++) {
@@ -763,10 +763,6 @@ class Graph {
       results.push_back(GetNode(node_index));
     }
     return results;
-  }
-
-  void SetWeightsToTrain(std::vector<std::string> weights_to_train) {
-    weights_to_train_ = weights_to_train;
   }
 
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node. 
@@ -1015,9 +1011,6 @@ class Graph {
 
   // Explicit graph output order to be used when constructing a Graph manually.
   std::vector<const NodeArg*> graph_output_order_;
-
-  // Used by the training module to indicate weights to train
-  std::vector<std::string> weights_to_train_;
 };
 
 }  // namespace onnxruntime
