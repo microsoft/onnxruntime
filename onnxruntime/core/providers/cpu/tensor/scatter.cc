@@ -31,11 +31,11 @@ ONNX_CPU_OPERATOR_KERNEL(
     Scatter);
 
 template <class Tin>
-Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, const Tensor* updates_input,
+Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
-  const Tin* indices_data = indecies_input->template Data<Tin>();
-  const auto num_indices = indecies_input->Shape().Size();
+  const Tin* indices_data = indices_input->template Data<Tin>();
+  const auto num_indices = indices_input->Shape().Size();
   for (int64_t i = 0; i < num_indices; ++i) {
     Tin idx = indices_data[i];
     if (idx < 0 || idx >= input_data_shape[axis]) {
@@ -46,7 +46,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, c
 
   const auto input_elements = input_data_shape.Size();
   const auto element_bytes = data_input->DataType()->Size();
-  const auto total_input_bytes = input_elements * element_bytes;
+  const auto total_input_bytes = data_input->Size();
 
   const uint8_t* src_base = reinterpret_cast<const uint8_t*>(data_input->DataRaw());
   uint8_t* dst_base = reinterpret_cast<uint8_t*>(data_output->MutableDataRaw());
@@ -54,7 +54,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, c
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy
-  if (data_input != data_output) {
+  if (src_base != dst_base) {
     if (is_string_type) {
       const std::string* str_begin = data_input->template Data<std::string>();
       const std::string* str_end = str_begin + input_elements;
@@ -67,61 +67,63 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indecies_input, c
 
   // Now poke updates
   const auto data_batches = input_data_shape.SizeToDimension(axis);
-  const auto data_batch_bytes = input_data_shape.SizeFromDimension(axis) * element_bytes;
+  const auto data_batch = input_data_shape.SizeFromDimension(axis);
+  const auto data_batch_bytes = data_batch * element_bytes;
+  assert(data_batches * data_batch == input_elements);
+
   const auto block = input_data_shape.SizeFromDimension(axis + 1);
   const auto block_bytes = block * element_bytes;
 
-  // Initialize with zeros.
   const uint8_t* update_data = reinterpret_cast<const uint8_t*>(updates_input->DataRaw());
-  for (int64_t batch = 0; batch < data_batches; ++batch) {
+  for (int64_t index = 0; index < input_elements; ++index) {
+    const auto batch = index / data_batch;
+    const auto update_idx = index % num_indices;
     const auto batch_bytes_offset = batch * data_batch_bytes;
-    for (int64_t update_idx = 0; update_idx < num_indices; ++update_idx) {
-      const Tin axis_idx = indices_data[update_idx];
-      const auto block_offset = (block > 1) ? update_idx % block : 0;
-      const auto dst_offset_bytes = batch_bytes_offset + axis_idx * block_bytes +
-                                    block_offset * element_bytes;
+    const Tin axis_idx = indices_data[update_idx];
+    const auto block_offset = (block > 1) ? index % block : 0;
+    const auto dst_offset_bytes = batch_bytes_offset + axis_idx * block_bytes +
+                                  block_offset * element_bytes;
 
-      assert(dst_offset_bytes < total_input_bytes);
-      if (is_string_type) {
-        reinterpret_cast<std::string*>(dst_base)[dst_offset_bytes / element_bytes] =
-            reinterpret_cast<const std::string*>(update_data)[update_idx];
-      } else {
-        // Copy the element
-        auto src_offset_bytes = update_idx * element_bytes;
-        memcpy(dst_base + dst_offset_bytes, update_data + src_offset_bytes, element_bytes);
-      }
+    assert(dst_offset_bytes < total_input_bytes);
+    if (is_string_type) {
+      reinterpret_cast<std::string*>(dst_base)[dst_offset_bytes / element_bytes] =
+          reinterpret_cast<const std::string*>(update_data)[update_idx];
+    } else {
+      // Copy the element
+      auto src_offset_bytes = update_idx * element_bytes;
+      memcpy(dst_base + dst_offset_bytes, update_data + src_offset_bytes, element_bytes);
     }
   }
   return Status::OK();
 }
 
 Status Scatter::Compute(OpKernelContext* context) const {
-  auto data_input = context->Input<Tensor>(0);
+  const auto* data_input = context->Input<Tensor>(0);
   const auto& input_data_shape = data_input->Shape();
   const auto axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
 
-  auto indices_input = context->Input<Tensor>(1);
-  auto updates_input = context->Input<Tensor>(2);
+  const auto* indices_input = context->Input<Tensor>(1);
+  const auto* updates_input = context->Input<Tensor>(2);
 
   if (data_input->DataType() != updates_input->DataType()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "data type is different from updates type");
   }
 
-  auto& indicies_dims = indices_input->Shape().GetDims();
+  auto& indices_dims = indices_input->Shape().GetDims();
   auto& updates_dims = updates_input->Shape().GetDims();
-  if (indicies_dims.size() != updates_dims.size()) {
+  if (indices_dims.size() != updates_dims.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Indicies and updates must have the same number of dimensions");
+                           "Indices and updates must have the same number of dimensions");
   }
 
-  for (size_t i = 0; i < indicies_dims.size(); ++i) {
-    if (indicies_dims[i] != updates_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indicies vs updates dimensions differs at position=", i,
-                             " ", indicies_dims[i], " vs ", updates_dims[i]);
+  for (size_t i = 0; i < indices_dims.size(); ++i) {
+    if (indices_dims[i] != updates_dims[i]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i,
+                             " ", indices_dims[i], " vs ", updates_dims[i]);
     }
   }
 
-  auto data_output = context->Output(0, input_data_shape);
+  auto* data_output = context->Output(0, input_data_shape);
 
   MLDataType Tind_type = indices_input->DataType();
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {

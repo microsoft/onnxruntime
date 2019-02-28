@@ -67,6 +67,31 @@ TEST(ScatterOpTest, WithAxisThreeDims) {
   test.Run();
 }
 
+TEST(ScatterOpTest, ThreeDimsWithAxisGE_1) {
+  OpTester test("Scatter", Scatter_ver);
+  test.AddAttribute<int64_t>("axis", 2);
+
+  test.AddInput<int64_t>("data", {1, 3, 3},
+                         {1, 2, 3,
+                          4, 5, 6,
+                          7, 8, 9});
+
+  test.AddInput<int64_t>("indices", {1, 3, 3},
+                         {2, 1, 0,
+                          2, 1, 0,
+                          2, 1, 0});
+
+  test.AddInput<int64_t>("updates", {1, 3, 3},
+                         {11, 12, 13,
+                          14, 15, 16,
+                          17, 18, 19});
+  test.AddOutput<int64_t>("y", {1, 3, 3},
+                          {13, 12, 11,
+                           16, 15, 14,
+                           19, 18, 17});
+  test.Run();
+}
+
 TEST(ScatterOpTest, WithAxisStrings) {
   OpTester test("Scatter", Scatter_ver);
   test.AddAttribute<int64_t>("axis", 1);
@@ -97,7 +122,7 @@ TEST(ScatterOpTest, InvalidAxis) {
   test.AddInput<int64_t>("indices", {1, 2}, {1, 3});
   test.AddInput<float>("updates", {1, 2}, {1.1f, 2.1f});
   test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "onnxruntime::HandleNegativeAxis axis >= -tensor_rank && axis <= tensor_rank - 1 was false. axis 4 is not in valid range [-2,1]");
+  test.Run(OpTester::ExpectResult::kExpectFailure);
 }
 
 TEST(ScatterOpTest, IndicesUpdatesDimsDonotMatch) {
@@ -108,7 +133,7 @@ TEST(ScatterOpTest, IndicesUpdatesDimsDonotMatch) {
   test.AddInput<int64_t>("indices", {1, 3}, {1, 3, 3});
   test.AddInput<float>("updates", {1, 2}, {1.1f, 2.1f});
   test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Indicies vs updates dimensions differs at position=1 3 vs 2");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2");
 }
 }  // namespace test
 }  // namespace onnxruntime
