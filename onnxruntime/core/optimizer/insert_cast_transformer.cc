@@ -105,7 +105,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
       if (node.OpType() == "Cast") {
         // if cast's next node is also cast and next cast's output type equal to cast's input type
         // remove those two cast.
-		// boolean is an exception case for this optimization
+        // boolean is an exception case for this optimization
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
         if (*src_type == "tensor(bool)" || *dst_type == "tensor(bool)") return Status::OK();
@@ -116,11 +116,11 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         std::unordered_set<std::string> graph_outputs(output_args.size());
         for (auto output_arg : output_args) {
           graph_outputs.emplace(output_arg->Name());
-		}
+        }
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node{*it};
           if (output_node.OpType() == "Cast" ) {
-			// Skip if the node's output is also the output of the graph
+            // Skip if the node's output is also the output of the graph
             if (graph_outputs.find(output_node.OutputDefs()[0]->Name()) != graph_outputs.end()) {
               continue;
             }
