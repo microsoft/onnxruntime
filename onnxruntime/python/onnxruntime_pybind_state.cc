@@ -15,6 +15,12 @@
 #define BACKEND_PROC "CPU"
 #endif
 
+#if USE_TRT
+#define BACKEND_PROC "GPU"
+#else
+#define BACKEND_PROC "CPU"
+#endif
+
 #if USE_OPENMP
 #define BACKEND_OPENMP "-OPENMP"
 #else
@@ -49,6 +55,9 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
+#ifdef USE_TRT
+#include "core/providers/trt/trt_provider_factory.h"
+#endif
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
@@ -59,6 +68,7 @@
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_TRT();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, bool f, const char*, const char*, const char*);
@@ -196,6 +206,12 @@ void InitializeSession(InferenceSession* sess) {
 #ifdef USE_CUDA
   {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+  }
+#endif
+
+#ifdef USE_TRT
+  {
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_TRT());
   }
 #endif
 

@@ -526,6 +526,9 @@ def main():
         args.build = True
         args.test = True
 
+    if args.use_trt:
+        args.use_cuda = True
+
     if args.build_wheel:
         args.enable_pybind = True
     
