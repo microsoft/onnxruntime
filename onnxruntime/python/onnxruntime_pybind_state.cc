@@ -15,12 +15,6 @@
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_TRT
-#define BACKEND_PROC "GPU"
-#else
-#define BACKEND_PROC "CPU"
-#endif
-
 #if USE_OPENMP
 #define BACKEND_OPENMP "-OPENMP"
 #else
