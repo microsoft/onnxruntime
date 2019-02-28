@@ -241,7 +241,7 @@
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
               }
-         }
+         },
       {
          "component":{
             "type":"git",
@@ -251,6 +251,22 @@
             }
          }
       },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "repositoryUrl":"https://github.com/protocolbuffers/protobuf.git"
+              }
+         },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
+               "repositoryUrl":"https://github.com/BVLC/caffe.git"
+              }
+         },
       {
          "component":{
             "Type":"other",
