@@ -113,16 +113,13 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         int child_removed = 0;
         int num_child = 0;
         auto output_args = graph.GetOutputs();
-        std::unordered_set<std::string> graph_outputs(output_args.size());
-        for (auto output_arg : output_args) {
-          graph_outputs.emplace(output_arg->Name());
-		}
+        std::unordered_set<const onnxruntime::NodeArg*> graph_outputs(output_args.begin(), output_args.end());
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node{*it};
           if (output_node.OpType() == "Cast" ) {
 			// Skip if the node's output is also the output of the graph
-            if (graph_outputs.find(output_node.OutputDefs()[0]->Name()) != graph_outputs.end()) {
-              continue;
+            if (graph_outputs.find(output_node.OutputDefs()[0]) != graph_outputs.end()) {
+              break;
             }
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
