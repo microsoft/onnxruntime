@@ -71,7 +71,6 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
-set(ONNX_CUSTOM_PROTOC_EXECUTABLE "F:/onnxruntime/build/Windows/Debug/external/protobuf/cmake/Debug/protoc.exe")
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -93,9 +92,10 @@ endif()
 # Dummy code
 message(${CMAKE_SYSTEM_NAME})
 message(${CMAKE_HOST_SYSTEM_NAME})
-set (CMAKE_SYSTEM_PROCESSOR ARM64)
 message(${CMAKE_SYSTEM_PROCESSOR})
 message(${CMAKE_HOST_SYSTEM_PROCESSOR})
+message(${CMAKE_GENERATOR_PLATFORM})
+message(${CMAKE_VS_PLATFORM_NAME})
 #set(CMAKE_SYSTEM_PROCESSOR ARM64)
 #message(${CMAKE_SYSTEM_PROCESSOR})
 message(${CMAKE_CROSSCOMPILING})
@@ -218,18 +218,21 @@ if(onnxruntime_USE_PREBUILT_PB AND NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQU
 
 # option 2
 elseif(NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
+  message("option 2")
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
   set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
   set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
-  #add_executable(protobuf::protoc ALIAS protoc)
+  get_filename_component(
+  _PROTOBUF_INSTALL_PREFIX
+  ${ONNX_CUSTOM_PROTOC_EXECUTABLE}
+  DIRECTORY)
   include(protobuf_function.cmake)
  
 # option 3  
 else()
   # use protobuf as a submodule
+  message("option 3")
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
   set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
   set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
