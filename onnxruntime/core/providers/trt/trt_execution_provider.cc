@@ -44,7 +44,7 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  for (auto& index : node_index) {
+  for (const auto& index : node_index) {
     const Node* node = graph.GetNode(index);
     graph_build.AddNode(*node);
   }
