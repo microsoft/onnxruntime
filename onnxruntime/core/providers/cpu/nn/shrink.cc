@@ -58,7 +58,8 @@ Status ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, flo
 
 template <>
 Status ShrinkImpl<bool>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input types for the Shrink operator are constrained to all numeric types only. Got bool type here.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input types for the Shrink operator are constrained \
+  to all numeric types only. Got bool type here.");
 }
 
 }  // namespace shrink_internal
