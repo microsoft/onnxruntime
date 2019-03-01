@@ -419,7 +419,7 @@ class InferenceSession::Impl {
                                     const std::vector<MLValue>& feeds) {
     const auto begin_names = feed_names.cbegin();
     const auto end_names = feed_names.cend();
-    for (auto& arg : input_def_list_) {
+    for (auto& arg : required_input_def_list_) {
       auto& arg_name = arg->Name();
       if (arg_name.empty()) {
         continue;
