@@ -415,8 +415,8 @@ class InferenceSession::Impl {
                   "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
   }
 
-  common::Status ValidateInputTypes(const std::vector<std::string>& feed_names,
-                                    const std::vector<MLValue>& feeds) {
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
+                                const std::vector<MLValue>& feeds) {
     const auto begin_names = feed_names.cbegin();
     const auto end_names = feed_names.cend();
     for (auto& arg : required_input_def_list_) {
@@ -427,7 +427,8 @@ class InferenceSession::Impl {
 
       auto feed_names_entry = std::find(begin_names, end_names, arg_name);
       if (feed_names_entry == end_names) {
-        continue;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Missing required input: ", arg_name);
       }
 
       auto idx = feed_names_entry - begin_names;
@@ -450,58 +451,6 @@ class InferenceSession::Impl {
         return retval;
       }
     }
-    return Status::OK();
-  }
-
-  common::Status ValidateInputNames(const std::vector<std::string>& feed_names) {
-    std::string missing_required_inputs;
-
-    const auto begin_names = feed_names.cbegin();
-    const auto end_names = feed_names.cend();
-    std::for_each(required_model_input_names_.cbegin(), required_model_input_names_.cend(),
-                  [&](const std::string& required_input) {
-                    if (std::find(begin_names, end_names, required_input) == end_names) {
-                      if (!missing_required_inputs.empty())
-                        missing_required_inputs += ",";
-
-                      missing_required_inputs += required_input;
-                    }
-                  });
-
-    if (!missing_required_inputs.empty()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Missing required inputs: ", missing_required_inputs);
-    }
-
-    bool valid = true;
-    std::ostringstream invalid_names;
-    for (const auto& name : feed_names) {
-      if (model_input_names_.find(name) == model_input_names_.end()) {
-        valid = false;
-        invalid_names << " " << name;
-      }
-    }
-
-    if (!valid) {
-      std::ostringstream ostr;
-      std::for_each(std::begin(model_input_names_),
-                    std::end(model_input_names_),
-                    [&ostr](const std::string& elem) {
-                      ostr << elem << " ";
-                    });
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Names:", invalid_names.str(),
-                             ". Valid input names are: ", ostr.str());
-    }
-
-    return Status::OK();
-  }
-
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<MLValue>& feeds) {
-    ORT_RETURN_IF_ERROR(ValidateInputNames(feed_names));
-    //TODO: It should also validate the input shapes?
-    ORT_RETURN_IF_ERROR(ValidateInputTypes(feed_names, feeds));
     return Status::OK();
   }
 
