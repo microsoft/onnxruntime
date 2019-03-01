@@ -417,19 +417,9 @@ class InferenceSession::Impl {
 
   common::Status ValidateInputs(const std::vector<std::string>& feed_names,
                                 const std::vector<MLValue>& feeds) {
-    if (required_input_def_list_.size() != feed_names.size() || feed_names.size() != feeds.size()) {
-      std::ostringstream ostr;
-      std::for_each(std::begin(required_model_input_names_),
-                    std::end(required_model_input_names_),
-                    [&ostr](const std::string& elem) {
-                      ostr << elem << " ";
-                    });
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid inputs. Valid input names are: ", ostr.str());
-    }
-
     const auto begin_names = feed_names.cbegin();
     const auto end_names = feed_names.cend();
+    std::unordered_set<ptrdiff_t> required_feed_ids;
     for (auto& arg : required_input_def_list_) {
       auto& arg_name = arg->Name();
       if (arg_name.empty()) {
@@ -443,25 +433,44 @@ class InferenceSession::Impl {
       }
 
       auto idx = feed_names_entry - begin_names;
+      required_feed_ids.insert(idx);
       auto& input_ml_value = feeds.at(idx);
       auto expected_type = utils::GetMLDataType(*arg);
 
-      if (!input_ml_value.IsTensor()) {
+      if (input_ml_value.IsTensor()) {
+        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
+        ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
+      } else {
         auto input_type = input_ml_value.Type();
-        auto retval = CheckTypes(input_type, expected_type);
-        if (!retval.IsOK()) {
-          return retval;
-        }
-        continue;
-      }
-
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      auto retval = CheckTypes(input_element_type, expected_element_type);
-      if (!retval.IsOK()) {
-        return retval;
+        ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
       }
     }
+
+    if (feeds.size() > required_feed_ids.size()) {
+      // More feeds are offered.
+      // In the case of overriding some initializers (which are also taken as graph inputs).
+      for (size_t i = 0; i < feeds.size(); ++i) {
+        if (required_feed_ids.count(i) > 0) {
+          continue;
+        }
+        auto iter = input_def_map_.find(feed_names[i]);
+        if (input_def_map_.end() == iter) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid Feed Input Names: ", feed_names[i]);
+        }
+
+        auto& input_ml_value = feeds.at(i);
+        ORT_ENFORCE(input_ml_value.IsTensor());
+        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
+
+        auto expected_type = utils::GetMLDataType(*iter->second);
+        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+
+        ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
+      }
+    }
+
     return Status::OK();
   }
 
@@ -750,11 +759,11 @@ class InferenceSession::Impl {
     }
 
     // save all valid inputs
-    const auto& all_inputs = graph.GetInputsIncludingInitializers();
-    input_def_list_.reserve(all_inputs.size());
+    auto& all_inputs = graph.GetInputsIncludingInitializers();
+    input_def_map_.reserve(all_inputs.size());
     model_input_names_.reserve(all_inputs.size());
-    for (const auto& elem : all_inputs) {
-      input_def_list_.push_back(elem);
+    for (auto elem : all_inputs) {
+      input_def_map_.insert({elem->Name(), elem});
       model_input_names_.insert(elem->Name());
     }
 
@@ -880,7 +889,7 @@ class InferenceSession::Impl {
 
   ModelMetadata model_metadata_;
   InputDefList required_input_def_list_;
-  InputDefList input_def_list_;
+  std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 
   // names of model inputs and outputs used for quick validation.

@@ -110,7 +110,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
+            Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
             session.Dispose();
         }
 
@@ -537,7 +537,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var container = new List<NamedOnnxValue>();
                 container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-                Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
+                Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
             }
         }
 
