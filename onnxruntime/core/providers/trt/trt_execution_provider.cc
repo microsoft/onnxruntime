@@ -59,9 +59,9 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // Get supported node list
   SubGraphCollection_t supported_nodes_vector;
   TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
-  const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
-  const auto& trt_network = InferObject(trt_builder->createNetwork());
-  const auto& trt_parser = InferObject(nvonnxparser::createParser(trt_network.get(), trt_logger));
+  auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+  auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+  auto trt_parser  = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(trt_network.get(), trt_logger));
   trt_parser->supportsModel(string_buf.data(), string_buf.size(), supported_nodes_vector);
   model_proto.release_graph();
 
@@ -241,7 +241,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     const auto& graph_value_info = model_proto.graph().value_info();
     const auto& output_defs = fused_node->OutputDefs();
     std::vector<int> output_to_add;
-    for (int i = 0, end = fused_node->OutputDefs().size(); i < end; ++i) {
+    for (int i = 0, end = output_defs.size(); i < end; ++i) {
       const std::string& output_name = output_defs[i]->Name();
       if (output_set.find(output_name) == output_set.end()) {
         for (int j = 0, end = graph_value_info.size(); j < end; ++j) {
@@ -252,9 +252,9 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
       }
     }
 
-    auto* output_add = model_proto.mutable_graph()->mutable_output()->Add();
+    auto* mutable_output = model_proto.mutable_graph()->mutable_output();
     for (const auto& i : output_to_add) {
-      *output_add = graph_value_info[i];
+      *(mutable_output->Add()) = graph_value_info[i];
     }
 
     // Set version
@@ -265,17 +265,17 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     model_proto.SerializeToString(&string_buf);
 
     TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
-    const auto& trt_builder = InferObject(nvinfer1::createInferBuilder(trt_logger));
-    const auto& trt_network = InferObject(trt_builder->createNetwork());
-    const auto& trt_parser = InferObject(nvonnxparser::createParser(trt_network.get(), trt_logger));
+    auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
+    auto trt_parser  = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(trt_network.get(), trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
     trt_builder->setMaxBatchSize(max_batch_size);
     trt_builder->setMaxWorkspaceSize(max_workspace_size);
-    const auto& trt_engine = InferObject(trt_builder->buildCudaEngine(*trt_network.get()));
+    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
 
     // Build TensorRT context
-    const auto& trt_context = InferObject(trt_engine->createExecutionContext());
+    auto trt_context = unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
     ORT_ENFORCE(trt_context != nullptr);
 
     // Get input shape and binding index
@@ -317,9 +317,9 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));
 
     // Save engine, context and input/output info to map
-    parsers_[fused_node->Name()] = trt_parser;
-    engines_[fused_node->Name()] = trt_engine;
-    contexts_[fused_node->Name()] = trt_context;
+    parsers_.emplace(fused_node->Name(), std::move(trt_parser));
+    engines_.emplace(fused_node->Name(), std::move(trt_engine));
+    contexts_.emplace(fused_node->Name(), std::move(trt_context));
     input_info_[fused_node->Name()].push_back(input_indexes);
     input_info_[fused_node->Name()].push_back(input_binding_indexes);
     input_info_[fused_node->Name()].push_back(input_dim_sizes);

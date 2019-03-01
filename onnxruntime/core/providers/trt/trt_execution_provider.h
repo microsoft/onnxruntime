@@ -32,12 +32,7 @@ struct InferDeleter {
 };
 
 template <typename T>
-inline std::shared_ptr<T> InferObject(T* obj) {
-  if (!obj) {
-    throw std::runtime_error("Failed to create object");
-  }
-  return std::shared_ptr<T>(obj, InferDeleter());
-}
+using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
 class TRTLogger : public nvinfer1::ILogger {
   nvinfer1::ILogger::Severity verbosity_;
@@ -94,9 +89,9 @@ class TRTExecutionProvider : public IExecutionProvider {
 
  private:
   int device_id_;
-  std::unordered_map<std::string, std::shared_ptr<nvonnxparser::IParser>> parsers_;
-  std::unordered_map<std::string, std::shared_ptr<nvinfer1::ICudaEngine>> engines_;
-  std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> contexts_;
+  std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
+  std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;
+  std::unordered_map<std::string, unique_pointer<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> output_shapes_;
