@@ -202,6 +202,15 @@ def install_python_deps():
     dep_packages = ['setuptools', 'wheel', 'numpy']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
+def install_hosting_deps():
+    vcpkg_path = os.path.join("cmake", "external", "vcpkg")
+    file_ending = '.bat' if is_windows() else '.sh'
+    boostrap_path = os.path.join(vcpkg_path, 'bootstrap-vcpkg' + file_ending)
+    run_subprocess([boostrap_path])
+
+    vcpkg_executable = os.path.join(vcpkg_path, 'vcpkg')
+    run_subprocess([vcpkg_executable, 'install', 'boost-beast', 'rapidjson'])
+
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
         return False
@@ -332,7 +341,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
-    cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=/home/trmccorm/vcpkg/scripts/buildsystems/vcpkg.cmake"]
+    toolchain_path = os.path.join('cmake', 'external', 'vcpkg', 'scripts', 'buildsystems', 'vcpkg.cmake')
+    cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + toolchain_path]
 
     if is_windows():
         cmake_args += cmake_extra_args
@@ -574,6 +584,8 @@ def main():
             install_python_deps()
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
+        if (args.build_hosting):
+            install_hosting_deps()
 
         if args.enable_onnx_tests or args.download_test_data:
             if not args.test_data_url or not args.test_data_checksum:
