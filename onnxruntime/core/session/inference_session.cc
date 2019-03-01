@@ -417,6 +417,17 @@ class InferenceSession::Impl {
 
   common::Status ValidateInputs(const std::vector<std::string>& feed_names,
                                 const std::vector<MLValue>& feeds) {
+    if (required_input_def_list_.size() != feed_names.size() || feed_names.size() != feeds.size()) {
+      std::ostringstream ostr;
+      std::for_each(std::begin(required_model_input_names_),
+                    std::end(required_model_input_names_),
+                    [&ostr](const std::string& elem) {
+                      ostr << elem << " ";
+                    });
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid inputs. Valid input names are: ", ostr.str());
+    }
+
     const auto begin_names = feed_names.cbegin();
     const auto end_names = feed_names.cend();
     for (auto& arg : required_input_def_list_) {
