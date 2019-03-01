@@ -122,6 +122,5 @@ common::Status ExecuteGraph(const SessionState& session_state,
   else if (tensor_type == DataTypeImpl::GetType<BFloat16>())               \
   retval = function<BFloat16>(__VA_ARGS__)
 
-
 }  // namespace utils
 }  // namespace onnxruntime
