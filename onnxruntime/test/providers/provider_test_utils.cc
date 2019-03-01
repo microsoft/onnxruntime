@@ -463,7 +463,9 @@ void OpTester::Run(ExpectResult expect_result,
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
           auto reg = execution_provider->GetKernelRegistry();
-          if (!reg || !reg->TryFindKernel(node, execution_provider->Type())) {
+          if (!reg) {
+            continue;
+          } else if (!reg->TryFindKernel(node, execution_provider->Type())) {
             valid = false;
             break;
           }
