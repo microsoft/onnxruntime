@@ -432,23 +432,9 @@ class InferenceSession::Impl {
 
       auto idx = feed_names_entry - begin_names;
       auto& input_ml_value = feeds.at(idx);
-      auto input_type = input_ml_value.Type();
       auto expected_type = utils::GetMLDataType(*arg);
-
-      if (!input_ml_value.IsTensor()) {
-        auto retval = CheckTypes(input_type, expected_type);
-        if (!retval.IsOK()) {
-          return retval;
-        }
-        continue;
-      }
-
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      auto retval = CheckTypes(input_element_type, expected_element_type);
-      if (!retval.IsOK()) {
-        return retval;
-      }
+      auto input_type = input_ml_value.Type();
+      ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
     return Status::OK();
   }
