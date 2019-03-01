@@ -8,7 +8,6 @@
 #include <limits>
 #include <gsl/pointers>
 
-#include "path_lib.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/op_kernel.h"
@@ -17,76 +16,13 @@
 #include "core/framework/allocator.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
+#include "core/framework/path_lib.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace {
-class ExternalDataInfo {
- private:
-  std::basic_string<ORTCHAR_T> rel_path;
-  //-1 means doesn't exist
-  ptrdiff_t offset;
-  //-1 means doesn't exist
-  ptrdiff_t length;
-  std::string checksum;
 
- public:
-  std::basic_string<ORTCHAR_T> GetRelPath() const { return rel_path; }
-
-  ptrdiff_t GetOffset() const { return offset; }
-  ptrdiff_t GetLength() const { return length; }
-
-  const std::string& GetChecksum() const { return checksum; }
-
-  // If the value of 'offset' or 'length' field is larger the max value of ssize_t, this function will treat it as a
-  // wrong value and return FAIL.
-  static Status Create(const ::google::protobuf::RepeatedPtrField<::onnx::StringStringEntryProto>& input,
-                       std::unique_ptr<ExternalDataInfo>* out) {
-    *out = std::make_unique<ExternalDataInfo>();
-    const int input_size = input.size();
-    for (int i = 0; i != input_size; ++i) {
-      StringStringEntryProto stringmap = input[i];
-      if (!stringmap.has_key())
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a key for the external data info");
-      if (!stringmap.has_value())
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
-      if (stringmap.key() == "location" && !stringmap.value().empty()) {
-#ifndef _WIN32
-        (*out)->rel_path = stringmap.value();
-#else
-        std::string s = stringmap.value();
-        if (s.size() >= std::numeric_limits<int>::max()) throw std::runtime_error("length overflow");
-        const int src_len = static_cast<int>(s.size() + 1);
-        const int len = MultiByteToWideChar(CP_ACP, 0, s.data(), src_len, nullptr, 0);
-        assert(len > 0);
-        std::wstring ret(static_cast<size_t>(len) - 1, '\0');
-        const int r = MultiByteToWideChar(CP_ACP, 0, s.data(), src_len, (wchar_t*)ret.data(), len);
-        assert(len == r);
-        (*out)->rel_path = ret;
-#endif
-      } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
-        char* end;
-        (*out)->offset = OrtStrtoPtrDiff(stringmap.value().c_str(), &end, 10);
-        if (end != stringmap.value().c_str() + stringmap.value().length())
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", stringmap.value(), " failed");
-      } else if (stringmap.key() == "length" && !stringmap.value().empty()) {
-        char* end;
-        (*out)->length = OrtStrtoPtrDiff(stringmap.value().c_str(), &end, 10);
-        if (end != stringmap.value().c_str() + stringmap.value().length())
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", stringmap.value(), " failed");
-      } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {
-        (*out)->checksum = stringmap.value();
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error!");
-      }
-    }
-    if ((*out)->rel_path.empty()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Missing 'location'");
-    }
-    return Status::OK();
-  }
-};
 
 //TODO: will move OrtBuffer into env.cc and let  ReadFileAsString return an OrtBuffer instead of string
 //So that, we can put fclose into the destructor of OrtBuffer.
@@ -379,9 +315,9 @@ std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::Te
 
 template <typename T>
 common::Status GetTensorByTypeFromTensorProto(const TensorProto& tensor_proto, const TensorShape& tensor_shape,
-                                              std::unique_ptr<Tensor>* p_tensor, const OrtAllocatorInfo& alloc,
+                                              const OrtAllocatorInfo& alloc,
                                               const void* raw_data, size_t raw_data_len, void* preallocated,
-                                              size_t preallocated_size) {
+                                              size_t preallocated_size, std::unique_ptr<Tensor>& out_tensor) {
   int64_t tensor_size = tensor_shape.Size();
   // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
   if (tensor_size < 0 || static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
@@ -401,14 +337,14 @@ common::Status GetTensorByTypeFromTensorProto(const TensorProto& tensor_proto, c
   t = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), tensor_shape, preallocated, alloc);
   ORT_RETURN_IF_ERROR(
       ::onnxruntime::utils::UnpackTensor(tensor_proto, raw_data, raw_data_len, t->MutableData<T>(), tensor_size));
-  *p_tensor = std::move(t);
+  out_tensor = std::move(t);
   return common::Status::OK();
 }
 
-#define CASE_PROTO(X, Y)                                                                                              \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                                \
-    ORT_RETURN_IF_ERROR(GetTensorByTypeFromTensorProto<Y>(tensor_proto, tensor_shape, &p_tensor, allocator, raw_data, \
-                                                          raw_data_len, preallocated, preallocated_size));            \
+#define CASE_PROTO(X, Y)                                                                                             \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                               \
+    ORT_RETURN_IF_ERROR(GetTensorByTypeFromTensorProto<Y>(tensor_proto, tensor_shape, allocator, raw_data,           \
+                                                          raw_data_len, preallocated, preallocated_size, p_tensor)); \
     break;
 
 struct UnInitializeParam {
@@ -494,7 +430,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
         return Status(common::ONNXRUNTIME, common::FAIL, "string tensor can not have raw data");
 
       std::unique_ptr<ExternalDataInfo> external_data_info;
-      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), &external_data_info));
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
       if (external_data_info->GetOffset() > 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Cannot support tensor data with offset > 0");
       }

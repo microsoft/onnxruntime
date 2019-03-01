@@ -260,10 +260,10 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, con
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model", ToMBString(file_path),
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
                                  " failed. File doesn't exist");
         case EINVAL:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model", ToMBString(file_path), " failed");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }

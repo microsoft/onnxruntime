@@ -118,7 +118,8 @@ class WindowsEnv : public Env {
     out->resize(filesize.QuadPart, '\0');
     char* wptr = const_cast<char*>(out->data());
     auto length_remain = filesize.QuadPart;
-    do {
+    DWORD readed = 0;
+    for (; length_remain > 0; wptr += readed, length_remain -= readed) {
       //read at most 1GB each time
       DWORD bytes_to_read;
       if (length_remain > (1 << 30)) {
@@ -126,19 +127,16 @@ class WindowsEnv : public Env {
       } else {
         bytes_to_read = static_cast<DWORD>(length_remain);
       }
-      DWORD readed = 0;
       if (ReadFile(hFile, wptr, bytes_to_read, &readed, nullptr) != TRUE) {
         int err = GetLastError();
-        _snprintf_s(errbuf, _TRUNCATE, "%s:%d ReadFile %ls fail, errcode = %d", __FILE__, (int)__LINE__, fname, err);
-        return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+        out->clear();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail, errcode =", err);
       }
       if (readed != bytes_to_read) {
-        _snprintf_s(errbuf, _TRUNCATE, "%s:%d ReadFile %ls fail", __FILE__, (int)__LINE__, fname);
-        return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+        out->clear();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail: unexpected end");
       }
-      wptr += readed;
-      length_remain -= readed;
-    } while (length_remain > 0);
+    }
     return common::Status::OK();
   }
 
