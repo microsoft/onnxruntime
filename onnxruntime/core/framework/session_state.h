@@ -80,8 +80,9 @@ class SessionState {
   /**
   * Adds an initialized tensor (weight) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
+  * This function will take a shallow copy of d if d is not NULL
   */
-  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback& d);
+  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d);
 
   /**
   * Gets the list of all initialized tensors (weights) so that it can be used by the
