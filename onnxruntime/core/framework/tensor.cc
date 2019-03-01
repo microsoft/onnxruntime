@@ -8,7 +8,7 @@
 using namespace std;
 namespace onnxruntime {
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, BufferNakedPtr p_data, const OrtAllocatorInfo& alloc,
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
                int64_t offset)
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);

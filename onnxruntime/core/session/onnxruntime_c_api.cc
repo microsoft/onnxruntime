@@ -532,7 +532,7 @@ ORT_API_STATUS_IMPL(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* 
       ORT_C_API_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<256>(proto, out));
       break;
     default:
-      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "invalid alignment");
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Invalid alignment, which can only be 0 or 256");
   }
   return nullptr;
   API_IMPL_END

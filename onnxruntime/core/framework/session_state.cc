@@ -48,7 +48,8 @@ Status SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlva
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid mlvalue index ", mlvalue_index);
   }
   auto p = initialized_tensors_.insert({mlvalue_index, mlvalue});
-  if (!p.second) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated mlvalue index ", mlvalue_index);
+  if (!p.second) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated mlvalue index:", mlvalue_index,
+                                        ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
   if (d.f) deleter_for_initialized_tensors_[mlvalue_index] = d;
   return Status::OK();
 }

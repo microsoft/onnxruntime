@@ -123,7 +123,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs,
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
   for (const auto& entry : initializers) {
-    auto mlvalue_index = entry.first;
+    int mlvalue_index = entry.first;
     all_values_[mlvalue_index] = entry.second;
   }
 

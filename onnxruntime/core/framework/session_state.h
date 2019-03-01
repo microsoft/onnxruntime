@@ -86,6 +86,7 @@ class SessionState {
   /**
   * Gets the list of all initialized tensors (weights) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
+  * The lifetime of returned MLValues are limited by this SessionState object.
   */
   const std::unordered_map<int, MLValue>& GetInitializedTensors() const;
 

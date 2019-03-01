@@ -60,8 +60,11 @@ class Tensor final {
   /**
    * Create tensor with given type, shape, pre-allocate memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
+   * \param data A preallocated buffer. Can be NULL if the shape is empty.
+   *              Tensor does not own the data and will not delete it
+   * \param alloc Where the buffer('data') was allocated from
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, BufferNakedPtr p_data, const OrtAllocatorInfo& alloc,
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
          int64_t offset = 0);
 
   /**
