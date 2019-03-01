@@ -12,6 +12,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
+        setVcvars: false
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
@@ -40,6 +41,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: $(buildArch)
+        setVcVars: false
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:

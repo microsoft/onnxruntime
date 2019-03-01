@@ -10,12 +10,13 @@ jobs:
 
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
+        EnvSetupScript: 'setup_env_cuda.bat'
+        buildArch: 'amd64'  # amd64 is needed for vcvars target arch
+        setVcvars: true 
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" '
+        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" '
         buildArch: $(buildArch)
         buildConfig: $(buildConfig)
 
@@ -25,31 +26,3 @@ jobs:
         artifactName: 'onnxruntime-win-gpu-$(buildArch)'
 
     - template: templates/clean-agent-build-directory-step.yml
-
-- job: Windows_Packaging_GPU_x86
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildConfig: 'RelWithDebInfo'
-    buildArch: 'x86'
-
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
-
-    - template: templates/windows-build-and-test-steps.yml
-      parameters:
-        buildAdditionalParams: ' --use_openmp --x86  --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" '
-        buildArch: $(buildArch)
-        buildConfig: $(buildConfig)
-
-    - template: templates/windows-artifacts-package-and-publish-steps.yml
-      parameters:
-        buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-gpu-$(buildArch)'
-
-    - template: templates/clean-agent-build-directory-step.yml
-
