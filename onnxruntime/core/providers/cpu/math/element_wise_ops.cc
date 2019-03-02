@@ -396,26 +396,26 @@ Status Sqrt<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Pow<float>::Compute(OpKernelContext* context) const {
-  const Tensor& Y = *context->Input<Tensor>(1);
-  std::function<void(EigenVectorMap<float>, ConstEigenVectorMap<float>, float)> input1scalar =
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = Eigen::pow(input0.array(), input1); };
-  if (Y.Shape().Size() == 1) {
-    float value = *Y.Data<float>();
-    if (value == 2.0) {
-      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::square(input0.array()); };
-    } else if (value == 3.0) {
-      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::cube(input0.array()); };
-    }
-  }
-
-  return BroadcastTwo<float, float>(
-      *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0, input1.array()); },
-      input1scalar,
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0.array(), input1.array()); });
-}
+//template <>
+//Status Pow<float>::Compute(OpKernelContext* context) const {
+//  const Tensor& Y = *context->Input<Tensor>(1);
+//  std::function<void(EigenVectorMap<float>, ConstEigenVectorMap<float>, float)> input1scalar =
+//      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = Eigen::pow(input0.array(), input1); };
+//  if (Y.Shape().Size() == 1) {
+//    float value = *Y.Data<float>();
+//    if (value == 2.0) {
+//      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::square(input0.array()); };
+//    } else if (value == 3.0) {
+//      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::cube(input0.array()); };
+//    }
+//  }
+//
+//  return BroadcastTwo<float, float>(
+//      *context,
+//      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0, input1.array()); },
+//      input1scalar,
+//      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0.array(), input1.array()); });
+//}
 
 template <>
 Status Exp<float>::Compute(OpKernelContext* ctx) const {
@@ -1353,6 +1353,39 @@ public:
     }
   }
 
+  static void vec_square_f128(const float* a, float* r, int64_t num) {
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        a += 4;
+        va = _mm_mul_ps(va, va);
+        _mm_storeu_ps(r, va);
+        num -= 4;
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      float v = *a++;
+      *r++ = v * v;
+    }
+  }
+
+  static void vec_cube_f128(const float* a, float* r, int64_t num) {
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        a += 4;
+        __m128 a2 = _mm_mul_ps(va, va);
+        va = _mm_mul_ps(va, a2);
+        _mm_storeu_ps(r, va);
+        num -= 4;
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      float v = *a++;
+      *r++ = v * v * v;
+    }
+  }
+
   static void scala_sub_vec_f128(const float& v, const float* b, float* r,  int64_t num) {
     __m128 va = _mm_set1_ps(v);
     while (num >= 4) {
@@ -1522,6 +1555,7 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
   );
 }
 
+
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
   return Broadcast2Wrapper::ExecuteOperator<T, T>(
@@ -1548,5 +1582,36 @@ Status Div<float>::Compute(OpKernelContext* context) const {
   );
 }
 
-}  // namespace onnxruntime
+template <>
+Status Pow<float>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<float, float>(
+    context, 
+    [](const float& v, const float* b, float* r, int64_t num) -> void {
+        ConstEigenVectorMap<float> vb(b, num);
+        EigenVectorMap<float> vr(r, num);
+        vr = Eigen::pow(v, vb.array());
+    }, 
+    [](const float* a, const float& v, float* r, int64_t num) {
+        if (v == 2.0) {
+          Broadcast2Wrapper::vec_square_f128(a, r, num);
+        }
+        else if (v == 3.0) {
+          Broadcast2Wrapper::vec_cube_f128(a, r, num);
+        }
+        else {
+          ConstEigenVectorMap<float> va(a, num);
+          EigenVectorMap<float> vr(r, num);
+          vr = Eigen::pow(va.array(), v);
+        }
+    }, 
+    [](const float* a, const float* b, float* r, int64_t num) {
+        ConstEigenVectorMap<float> va(a, num);
+        ConstEigenVectorMap<float> vb(b, num);
+        EigenVectorMap<float> vr(r, num);
+        vr = Eigen::pow(va.array(), vb.array());
+    }
+  );
+}
+
+} // namespace onnxruntime
 
