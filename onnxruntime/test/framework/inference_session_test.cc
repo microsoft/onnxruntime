@@ -946,7 +946,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names: unknown_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names:unknown_input. Valid input names are: required_input optional_input "));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
