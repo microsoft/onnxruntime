@@ -569,10 +569,10 @@ def main():
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
 
-        #if args.enable_onnx_tests or args.download_test_data:
-            #if not args.test_data_url or not args.test_data_checksum:
-            #    raise UsageError("The test_data_url and test_data_checksum arguments are required.")
-            #setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
+        if args.enable_onnx_tests or args.download_test_data:
+            if not args.test_data_url or not args.test_data_checksum:
+               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, configs, cmake_extra_defines,
                             args, cmake_extra_args)
