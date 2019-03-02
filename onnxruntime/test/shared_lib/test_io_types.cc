@@ -36,12 +36,14 @@ static void TestModelInfo(const OrtSession* inference_session, bool is_input, co
   ASSERT_EQ(real_dims, dims);
 }
 
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, input_output_type_info) {
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
   SessionOptionsWrapper sf(env);
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   TestModelInfo(inference_session.get(), true, {1, 3, 224, 224});
   TestModelInfo(inference_session.get(), false, {1, 1000, 1, 1});
-}
+#else
+  ASSERT_EQ(1,1);
 #endif
+}
