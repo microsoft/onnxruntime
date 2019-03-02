@@ -202,8 +202,8 @@ def install_python_deps():
     dep_packages = ['setuptools', 'wheel', 'numpy']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
-def install_hosting_deps():
-    vcpkg_folder_path = os.path.join("cmake", "external", "vcpkg")
+def install_hosting_deps(source_dir):
+    vcpkg_folder_path = os.path.join(source_dir, "cmake", "external", "vcpkg")
     vcpkg_executable = os.path.join(vcpkg_folder_path, 'vcpkg')
 
     if (not os.path.exists(vcpkg_executable)):
@@ -343,8 +343,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
-    toolchain_path = os.path.join('cmake', 'external', 'vcpkg', 'scripts', 'buildsystems', 'vcpkg.cmake')
-    cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + toolchain_path]
+    #toolchain_path = os.path.join(cmake_dir, 'external', 'vcpkg', 'scripts', 'buildsystems', 'vcpkg.cmake')
+    #cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + toolchain_path]
 
     if is_windows():
         cmake_args += cmake_extra_args
@@ -587,7 +587,7 @@ def main():
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
         if (args.build_hosting):
-            install_hosting_deps()
+            install_hosting_deps(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
             if not args.test_data_url or not args.test_data_checksum:
