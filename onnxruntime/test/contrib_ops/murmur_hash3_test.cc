@@ -10,6 +10,7 @@ namespace test {
 TEST(MurmurHash3OpTest, DefaultSeed) {
   OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
   test.AddInput<int32_t>("X", {1}, {3L});
+  test.AddAttribute<int64_t>("positive", 0);
   test.AddOutput<int32_t>("Y", {1}, {847579505L});
   test.Run();
 }
@@ -18,6 +19,7 @@ TEST(MurmurHash3OpTest, ZeroSeed) {
   OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
   test.AddInput<int32_t>("X", {1}, {3L});
   test.AddAttribute<int64_t>("seed", 0LL);
+  test.AddAttribute<int64_t>("positive", 0);
   test.AddOutput<int32_t>("Y", {1}, {847579505L});
   test.Run();
 }
@@ -46,10 +48,11 @@ TEST(MurmurHash3OpTest, MoreData) {
   test.Run();
 }
 
-TEST(MurmurHash3OpTest,NonZeroSeed) {
+TEST(MurmurHash3OpTest, NonZeroSeed) {
   OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
   test.AddInput<int32_t>("X", {1}, {3L});
   test.AddAttribute<int64_t>("seed", 42LL);
+  test.AddAttribute<int64_t>("positive", 0);
   test.AddOutput<int32_t>("Y", {1}, {-1823081949L});
   test.Run();
 }
@@ -66,6 +69,7 @@ TEST(MurmurHash3OpTest, StringKeyIntResult) {
   OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
   test.AddInput<std::string>("X", {1}, {"foo"});
   test.AddAttribute<int64_t>("seed", 0LL);
+  test.AddAttribute<int64_t>("positive", 0);
   test.AddOutput<int32_t>("Y", {1}, {-156908512L});
   test.Run();
 }
@@ -78,10 +82,19 @@ TEST(MurmurHash3OpTest, StringKeyUIntResult) {
   test.Run();
 }
 
+TEST(MurmurHash3OpTest, MultipleStringsKeyUIntResult) {
+  OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
+  test.AddInput<std::string>("X", {2}, {"foo", "bar"});
+  test.AddAttribute<int64_t>("seed", 0LL);
+  test.AddOutput<uint32_t>("Y", {2}, {4138058784L, 1158584717L});
+  test.Run();
+}
+
 TEST(MurmurHash3OpTest, StringKeyIntWithSeed42) {
   OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
   test.AddInput<std::string>("X", {1}, {"foo"});
   test.AddAttribute<int64_t>("seed", 42LL);
+  test.AddAttribute<int64_t>("positive", 0);
   test.AddOutput<int32_t>("Y", {1}, {-1322301282L});
   test.Run();
 }

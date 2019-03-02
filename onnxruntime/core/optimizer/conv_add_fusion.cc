@@ -5,7 +5,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_fusion.h"
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 

@@ -7,7 +7,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 //#include "core/optimizer/l2_graph_transformers.h"
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 

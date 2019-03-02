@@ -261,9 +261,11 @@ ORT_API(OrtRunOptions*, OrtCreateRunOptions);
 
 ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions*, unsigned int);
 ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
+ORT_API(void, OrtRunOptionsSetCacheFeedsFetchesInfoEnabled, _In_ OrtRunOptions* options, int bool_value);
 
 ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*);
 ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions*);
+ORT_API(int, OrtRunOptionsGetCacheFeedsFetchesInfoEnabled, _In_ OrtRunOptions*);
 
 // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
 // will exit as soon as possible if the flag is true.
@@ -384,6 +386,12 @@ typedef enum OrtMemType {
 } OrtMemType;
 
 ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out);
+
+/**
+ * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ */
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out)
+ORT_ALL_ARGS_NONNULL;
 
 /**
  * Test if two allocation info are equal

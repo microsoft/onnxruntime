@@ -12,18 +12,15 @@
 #include "test_utils.h"
 using namespace std;
 using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
+using namespace logging;
+
 namespace test {
 
 class XPUExecutionProvider : public IExecutionProvider {
  public:
-  XPUExecutionProvider() = default;
-
-  std::string Type() const override {
-    return onnxruntime::kCpuExecutionProvider;
-  }
+  XPUExecutionProvider() : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {}
 
   Status CopyTensor(const Tensor& src, Tensor& dst) const override {
     ORT_UNUSED_PARAMETER(src);

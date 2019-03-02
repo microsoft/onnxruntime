@@ -21,7 +21,7 @@ Status ForAllSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
 bool IsSingleInSingleOutNode(const Node& node);
 
 /** Return the attribute of a Node with a given name. */
-const onnx::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
 
 /** Retrieve the values for a repeated attribute of a node and place them to the values vector. */
 template <typename T>
@@ -30,7 +30,7 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
                                     std::vector<T>& values) {
   const auto* attr = utils::GetNodeAttribute(node, attr_name);
   if (attr) {
-    values = onnx::RetrieveValues<T>(*attr);
+    values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
     return true;
   } else {
     return false;

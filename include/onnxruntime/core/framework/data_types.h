@@ -186,6 +186,7 @@ class DataTypeImpl {
 
   static const std::vector<MLDataType>& AllTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
+  static const std::vector<MLDataType>& AllNumericTensorTypes();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);

@@ -5,7 +5,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_bn_fusion.h"
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
@@ -35,7 +35,7 @@ Status ConvBNFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int gr
 
     // Get value of attribute group
     const onnxruntime::NodeAttributes& conv_attributes = conv_node.GetAttributes();
-    const onnx::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
+    const ONNX_NAMESPACE::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
     if (group_attr != nullptr &&
         group_attr->type() == AttributeProto_AttributeType_INT &&
         group_attr->has_i() && group_attr->i() != 1) {
@@ -44,7 +44,7 @@ Status ConvBNFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int gr
 
     // Get value of attribute epsilon
     const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
-    const onnx::AttributeProto* attr = &(attributes.find("epsilon")->second);
+    const ONNX_NAMESPACE::AttributeProto* attr = &(attributes.find("epsilon")->second);
     if (attr == nullptr || attr->type() != AttributeProto_AttributeType_FLOAT) {
       continue;
     }

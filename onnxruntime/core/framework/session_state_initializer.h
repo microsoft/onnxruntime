@@ -20,6 +20,7 @@ namespace logging {
 class Logger;
 }
 
+// Don't use this class before graph partition is done
 class SessionStateInitializer {
  public:
   SessionStateInitializer(onnxruntime::Graph& graph,

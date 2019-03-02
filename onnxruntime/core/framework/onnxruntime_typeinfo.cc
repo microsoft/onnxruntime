@@ -92,14 +92,14 @@ const DataTypeImpl* ElementTypeFromProto(int type) {
   }
 }
 
-OrtStatus* OrtTypeInfo::FromDataTypeImpl(const onnx::TypeProto* input, OrtTypeInfo** out) {
+OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input, OrtTypeInfo** out) {
   if (input->has_tensor_type()) {
-    const ::onnx::TypeProto_Tensor& onnx_tensor_info = input->tensor_type();
+    const ::ONNX_NAMESPACE::TypeProto_Tensor& onnx_tensor_info = input->tensor_type();
     const DataTypeImpl* type = ElementTypeFromProto(onnx_tensor_info.elem_type());
     OrtStatus* st;
     OrtTensorTypeAndShapeInfo* info = nullptr;
     if (onnx_tensor_info.has_shape()) {
-      const ::onnx::TensorShapeProto& s = onnx_tensor_info.shape();
+      const ::ONNX_NAMESPACE::TensorShapeProto& s = onnx_tensor_info.shape();
       std::vector<int64_t> shape_data(s.dim_size());
       for (int i = 0; i != s.dim_size(); ++i) {
         auto& t = s.dim(i);

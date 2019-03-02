@@ -580,7 +580,7 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   initializer_tensor.set_name("unused");
   initializer_tensor.add_dims(1);
   initializer_tensor.add_float_data(1.f);
-  initializer_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+  initializer_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   graph.AddInitializedTensor(initializer_tensor);
   ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 1);
