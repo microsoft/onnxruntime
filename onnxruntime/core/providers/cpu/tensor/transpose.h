@@ -48,14 +48,14 @@ class TransposeBase {
     if (perm_specified_)
       p_perm = &perm_;
     else {
-      for (int i = 0; i < rank; ++i)
+      for (size_t i = 0; i < rank; ++i)
         default_perm[i] = rank - i - 1;
       p_perm = &default_perm;
     }
 
     // Determine shape of output
     output_dims.resize(rank);
-    for (int i = 0; i < rank; i++) {
+    for (size_t i = 0; i < rank; i++) {
       size_t inpdim = (*p_perm)[i];
       output_dims[i] = input_dims[inpdim];
     }

@@ -33,27 +33,127 @@ void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upp
   }
 }
 
+// IncrementIndex: Increment an index into a tensor (in lexicographic ordering), wrapping
+// around the specified upper_bound.
+void IncrementIndexAndUpdateOffset(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound, int64_t num_axes, 
+                                   int64_t& offset, const std::vector<size_t>& stride){
+  for (int64_t k = num_axes - 1; k >= 0; --k) {
+    index[k]++;
+    offset += (int64_t)stride[k];
+    if (index[k] < upper_bound[k]) break;
+    offset -= index[k] * (int64_t)stride[k];
+    index[k] = 0;
+  }
+}
+
+
+#ifdef USE_OPENMP
+template <typename T>
+static void OMP_DoTransposeImpl(int64_t num_axes, int64_t split_axes, const std::vector<int64_t>& target_dims,
+                                size_t num_blocks, size_t num_elts_in_block, 
+                                const std::vector<size_t>& mapped_strides, const T* source, T* target) {
+  const int64_t max_splits = 32;
+  int64_t num_splits = std::min(target_dims[split_axes], max_splits);
+  int64_t remain_splits = target_dims[split_axes] % num_splits;
+  int64_t num_blocks_per_col = num_blocks / target_dims[split_axes];
+  int64_t num_cols_per_split = target_dims[split_axes] / num_splits;
+
+  #pragma omp parallel for
+  for (int64_t split = 0; split < num_splits; ++split) {
+    int64_t start_col = (split < remain_splits) ? 
+                        (split * (1 + num_cols_per_split)) : 
+                        ((split - remain_splits) * num_cols_per_split + remain_splits * (1+num_cols_per_split));
+    int64_t blocks_in_split = num_blocks_per_col * ((split < remain_splits)? (num_cols_per_split + 1) : num_cols_per_split);
+
+    // index used to iterate over target iteration-space
+    std::vector<int64_t> target_index(num_axes, 0LL);
+    target_index[split_axes] = start_col;
+
+    int64_t stride_after_split = 1;
+    for (int64_t n = ((int64_t)target_dims.size()) - 1; n > split_axes; --n) {
+      stride_after_split *= (int64_t)target_dims[n];
+    }
+    T* target_in_split = target + start_col * stride_after_split;
+    size_t blocksize = num_elts_in_block * sizeof(T);
+    int64_t source_offset = (int64_t)ComputeOffset(target_index, mapped_strides, num_axes);
+    for (int64_t i = 0; i < blocks_in_split; ++i) {
+      // copy
+      memcpy(target_in_split, source + source_offset, blocksize);
+      target_in_split += num_elts_in_block;
+
+      // increment target_index,  update offset
+      IncrementIndexAndUpdateOffset(target_index, target_dims, num_axes, source_offset, mapped_strides);
+    }
+  }
+}
+#endif
+
 // DoTranspose: copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
 template <typename T>
 static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const T* source, T* target) {
-  size_t blocksize = num_elts_in_block * sizeof(float);
+  #ifdef USE_OPENMP
+  int64_t split_axes = 0;
+  while (split_axes < num_axes-1 && target_dims[split_axes] == 1) ++split_axes;
+  OMP_DoTransposeImpl(num_axes, split_axes, target_dims, num_blocks, num_elts_in_block, stride, source, target);
+  return;
+  #endif
+
+  int64_t blocksize = num_elts_in_block * sizeof(float);
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
-  for (size_t i = 0; i < num_blocks; ++i) {
-    // convert target_index into an offset in source data
-    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
+  // convert target_index into an offset in source data
+  int64_t	source_offset = (int64_t)ComputeOffset(target_index, stride, num_axes);
+  for (int64_t i = 0; i < (int64_t)num_blocks; ++i) {
     // copy
     memcpy(target, source + source_offset, blocksize);
+    target += num_elts_in_block;
 
     // increment target_index:
-    IncrementIndex(target_index, target_dims, num_axes);
-    target += num_elts_in_block;
+    IncrementIndexAndUpdateOffset(target_index, target_dims, num_axes, source_offset, stride);
   }
 }
+
+#ifdef USE_OPENMP
+template <typename T>
+static void OMP_DoTransposeEltWise(int64_t num_axes, int64_t split_axes, const std::vector<int64_t>& target_dims,
+                                   size_t num_blocks, const std::vector<size_t>& mapped_strides, const T* source, T* target) {
+  const int64_t max_splits = 32;
+  int64_t num_splits = std::min(target_dims[split_axes], max_splits);
+  int64_t remain_splits = target_dims[split_axes] % num_splits;
+  int64_t num_blocks_per_col = num_blocks / target_dims[split_axes];
+  int64_t num_cols_per_split = target_dims[split_axes] / num_splits;
+
+  #pragma omp parallel for
+  for (int64_t split = 0; split < num_splits; ++split) {
+    int64_t start_col = (split < remain_splits) ? 
+                        (split * (1 + num_cols_per_split)) : 
+                        ((split - remain_splits) * num_cols_per_split + remain_splits * (1+num_cols_per_split));
+    int64_t blocks_in_split = num_blocks_per_col * ((split < remain_splits)? (num_cols_per_split + 1) : num_cols_per_split);
+
+    // index used to iterate over target iteration-space
+    std::vector<int64_t> target_index(num_axes, 0LL);
+    target_index[split_axes] = start_col;
+    int64_t stride_after_split = 1;
+    for (int64_t n = ((int64_t)target_dims.size()) - 1; n > split_axes; --n) {
+      stride_after_split *= (int64_t)target_dims[n];
+    }
+    T* target_in_split = target + start_col * stride_after_split;
+    // convert target_index into an offset in source data
+    int64_t source_offset = (int64_t)ComputeOffset(target_index, mapped_strides, num_axes);
+    for (int64_t i = 0; i < blocks_in_split; ++i) {
+      // copy
+      *target_in_split++ = *(source + source_offset);
+
+      // increment target_index:
+      IncrementIndexAndUpdateOffset(target_index, target_dims, num_axes, source_offset, mapped_strides);
+    }
+  }                                     
+}
+#endif
+
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
@@ -61,18 +161,23 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
 template <typename T>
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const T* source, T* target) {
+  #ifdef USE_OPENMP
+  int64_t split_axes = 0;
+  while (split_axes < num_axes-1 && target_dims[split_axes] == 1) ++split_axes;
+  OMP_DoTransposeEltWise(num_axes, split_axes, target_dims, num_blocks, stride, source, target);
+  return;
+  #endif
+
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
-  for (size_t i = 0; i < num_blocks; ++i) {
-    // convert target_index into an offset in source data
-    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
-
+  // convert target_index into an offset in source data
+  int64_t source_offset = (int64_t)ComputeOffset(target_index, stride, num_axes);
+  for (int64_t i = 0; i < (int64_t)num_blocks; ++i) {
     // copy
-    *target = *(source + source_offset);
+    *target++ = *(source + source_offset);
 
     // increment target_index:
-    IncrementIndex(target_index, target_dims, num_axes);
-    target++;
+    IncrementIndexAndUpdateOffset(target_index, target_dims, num_axes, source_offset, stride);
   }
 }
 
@@ -89,11 +194,11 @@ template <typename T>
 static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
-  auto rank = input_shape.NumDimensions();
+  int64_t rank = static_cast<int64_t>(input_shape.NumDimensions());
 
   std::vector<size_t> stride(rank);
-  for (int i = 0; i < rank; i++) {
-    size_t inpdim = permutations[i];
+  for (int64_t i = 0; i < rank; i++) {
+    auto inpdim = permutations[i];
     if (inpdim + 1 < rank)
       stride[i] = input_shape.SizeFromDimension(inpdim + 1);
     else

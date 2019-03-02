@@ -4,6 +4,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/mlas/inc/mlas.h"
+#include <x86intrin.h>
 
 namespace onnxruntime {
 
@@ -319,41 +320,41 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Erf<float>);
 
-template <typename T>
-Status Add<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 + input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() + input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 + input1; });
-}
+//template <typename T>
+//Status Add<T>::Compute(OpKernelContext* context) const {
+//  return BroadcastTwo<T, T>(
+//      *context,
+//      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 + input1.array(); },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() + input1; },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 + input1; });
+//}
 
-template <typename T>
-Status Sub<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 - input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() - input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 - input1; });
-}
-
-template <typename T>
-Status Mul<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 * input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() * input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseProduct(input1); });
-}
-
-template <typename T>
-Status Div<T>::Compute(OpKernelContext* context) const {
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 / input1.array(); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() / input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseQuotient(input1); });
-}
+//template <typename T>
+//Status Sub<T>::Compute(OpKernelContext* context) const {
+//  return BroadcastTwo<T, T>(
+//      *context,
+//      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 - input1.array(); },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() - input1; },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 - input1; });
+//}
+//
+//template <typename T>
+//Status Mul<T>::Compute(OpKernelContext* context) const {
+//  return BroadcastTwo<T, T>(
+//      *context,
+//      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 * input1.array(); },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() * input1; },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseProduct(input1); });
+//}
+//
+//template <typename T>
+//Status Div<T>::Compute(OpKernelContext* context) const {
+//  return BroadcastTwo<T, T>(
+//      *context,
+//      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 / input1.array(); },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() / input1; },
+//      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseQuotient(input1); });
+//}
 
 template <>
 Status Floor<float>::Compute(OpKernelContext* ctx) const {
@@ -1061,4 +1062,491 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+
+class Broadcast2Util {
+public:
+  static std::vector<int64_t> calcStrides(const std::vector<int64_t>& dims) {
+    std::vector<int64_t> stride(dims.size(), 1LL);
+    for (int64_t i = (int64_t)dims.size() - 2; i >= 0; --i) {
+      stride[i] = stride[i+1] * dims[i+1];
+    }
+    return stride;
+  }
+  
+  static void extend_prefix_with_1(std::vector<int64_t>& a, size_t num_axes) {
+    if (a.size() < num_axes) {
+      auto temp = std::vector<int64_t>(num_axes - a.size(), 1LL);
+      temp.insert(temp.end(), a.begin(), a.end());
+      a.swap(temp);
+    }
+  }
+  
+  static bool calcResultDims(const std::vector<int64_t>& a, const std::vector<int64_t>& b, std::vector<int64_t>& r) {
+    r.clear();
+    if (a.size() == 0 && b.size() == 0) return true;
+  
+    std::vector<int64_t> ta(a);
+    std::vector<int64_t> tb(b);
+    if (ta.size() == 0) ta.emplace_back(1LL);
+    if (tb.size() == 0) tb.emplace_back(1LL);
+    int64_t num_axes = (uint64_t)std::max(ta.size(), tb.size());
+    extend_prefix_with_1(ta, num_axes);
+    extend_prefix_with_1(tb, num_axes);
+    
+    for (int64_t i = 0; i < num_axes; ++i) {
+      if (ta[i] == tb[i]) {
+        r.push_back(ta[i]);
+      }
+      else if (ta[i] == 1LL) {
+        r.push_back(tb[i]);
+      }
+      else if (tb[i] == 1LL) {
+        r.push_back(ta[i]);
+      }
+      else {
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  // calc effective compact dims for broadcast2
+  static bool calcCompactDims(const std::vector<int64_t>& a_orig, const std::vector<int64_t>& b_orig,
+                              std::vector<int64_t>& a, std::vector<int64_t>& b, std::vector<int64_t>& r)
+  {
+    std::vector<int64_t> ta(a_orig);
+    std::vector<int64_t> tb(b_orig);
+    if (ta.size() == 0) ta.emplace_back(1LL);
+    if (tb.size() == 0) tb.emplace_back(1LL);
+    auto num_axes = std::max(ta.size(), tb.size());
+    extend_prefix_with_1(ta, num_axes);
+    extend_prefix_with_1(tb, num_axes);
+    
+    a.clear();
+    b.clear();
+    r.clear();
+    for (int64_t i = (int64_t)num_axes - 1; i >= 0; --i) {
+      if (ta[i] == 1LL && tb[i] == 1LL) continue;  // squeeze
+      if (ta[i] != 1LL && tb[i] != 1LL && ta[i] != tb[i]) return false; //Can not broadcast
+  
+      if (a.size() > 0 &&
+          ((a.back() == b.back() && ta[i] == tb[1]) ||
+              (a.back() > b.back() && ta[i] > tb[i]) ||
+              (a.back() < b.back() && ta[i] < tb[i]))) {
+        a.back() *= ta[i];
+        b.back() *= tb[i];
+        continue;
+      }
+  
+      if (a.size() > 0) r.emplace_back(std::max(a.back(), b.back()));
+      a.emplace_back(ta[i]);
+      b.emplace_back(tb[i]);
+    }
+    if (a.size() == 0) {
+      a.emplace_back(1LL); b.emplace_back(1LL); r.emplace_back(1LL);
+      return true;
+    }
+    r.emplace_back(std::max(a.back(), b.back()));
+    std::reverse(a.begin(), a.end());
+    std::reverse(b.begin(), b.end());
+    std::reverse(r.begin(), r.end());
+    return true;
+  }
+};
+
+
+template<typename TIn, typename TOut>
+class Broadcast2Operator {
+public:
+  // dimsA,  dimsB, dimsR is compacted by Broadcast2Util::calcCompactDims()
+  Broadcast2Operator(
+      const TIn* a, const std::vector<int64_t>& dimsA,
+      const TIn* b, const std::vector<int64_t>& dimsB,
+      TOut* r, const std::vector<int64_t>& dimsR) 
+    : a_(a), dimsA_(dimsA), b_(b), dimsB_(dimsB), r_(r), dimsR_(dimsR), 
+      num_axes_((int64_t)dimsA.size()), 
+      strideA_(Broadcast2Util::calcStrides(dimsA)), 
+      strideB_(Broadcast2Util::calcStrides(dimsB)), 
+      strideR_(Broadcast2Util::calcStrides(dimsR)) {
+        target_size_ = 1LL;
+        for (int64_t i = 0; i < (int64_t)dimsR.size(); ++i) { target_size_ *= dimsR[i]; }
+  }
+
+  template<typename FuncScalaOpVec, typename FuncVecOpScala,  typename FuncVecOpVec>
+  void op_axes_by_axes(int axes, int64_t start_row, int64_t num_rows, int64_t offsetA, int64_t offsetB, int64_t offsetR,
+                       FuncScalaOpVec scalaOpVec, FuncVecOpScala vecOpScala, FuncVecOpVec vecOpVec) {
+    /*
+    std::vector<int64_t> idxA(num_axes_, 0);
+    std::vector<int64_t> idxB(num_axes_, 0);
+    std::vector<int64_t> idxR(num_axes_, 0);
+    std::vector<int64_t> dimsR(dimsR_);
+    dimsR[0] = num_rows;
+
+    TOut* r = r_ + start_row * strideR_[0];
+    const TIn* b = b_ + (dimsB_[0] > 1) ? (start_row * strideB_[0]) : 0LL
+    const TIn* a = a_ + (dimsA_[0] > 1) ? (start_row * strideA_[0]) : 0LL;
+
+    int64_t block_size = dim
+    */
+
+
+    if (axes >= num_axes_ - 1LL) { // last axes
+      TOut* r = r_ + offsetR + start_row * strideR_[axes];
+      if (dimsB_[axes] == 1LL) {
+        vecOpScala(a_ + offsetA + start_row * strideA_[axes], *(b_ + offsetB), r, num_rows);
+      }
+      else if (dimsA_[axes] != 1LL) {
+        vecOpVec(a_ + offsetA + start_row * strideA_[axes], b_ + offsetB + start_row * strideB_[axes], r, num_rows);
+      }
+      else {
+        scalaOpVec(*(a_ + offsetA), b_ + offsetB + start_row * strideB_[axes], r, num_rows);
+      }
+    }
+    else {
+      offsetR += start_row * strideR_[axes];
+      if (dimsA_[axes] == 1LL) {
+        offsetB += start_row * strideB_[axes];
+        for (int64_t last_row = start_row + num_rows; start_row < last_row; ++start_row) {
+          op_axes_by_axes(axes+1, 0, dimsR_[axes+1], offsetA, offsetB, offsetR, scalaOpVec, vecOpScala, vecOpVec);
+          offsetR += strideR_[axes];
+          offsetB += strideB_[axes];
+        }
+      }
+      else if (dimsB_[axes] == 1LL) {
+        offsetA += start_row * strideA_[axes];
+        for (int64_t last_row = start_row + num_rows; start_row < last_row; ++start_row) {
+          op_axes_by_axes(axes+1, 0, dimsR_[axes+1], offsetA, offsetB, offsetR, scalaOpVec, vecOpScala, vecOpVec);
+          offsetR += strideR_[axes];
+          offsetA += strideA_[axes];
+        }
+      }
+      else {
+        offsetA += start_row * strideA_[axes];
+        offsetB += start_row * strideB_[axes];
+        for (int64_t last_row = start_row + num_rows; start_row < last_row; ++start_row) {
+          op_axes_by_axes(axes+1, 0, dimsR_[axes+1], offsetA, offsetB, offsetR, scalaOpVec, vecOpScala, vecOpVec);
+          offsetR += strideR_[axes];
+          offsetA += strideA_[axes];
+          offsetB += strideB_[axes];
+        }
+      }
+    }
+  }
+
+  template<typename FuncScalaOpVec, typename FuncVecOpScala,  typename FuncVecOpVec>
+  void execute_op(FuncScalaOpVec scalaOpVec, FuncVecOpScala vecOpScala, FuncVecOpVec vecOpVec) {
+
+    int64_t num_splits = 1LL;
+    int64_t rows_per_split = dimsR_[0];
+    int64_t remain_rows = 0LL;
+
+    #ifdef USE_OPENMP
+    // always split at 0
+    if (target_size_ >= 524288) {
+      int64_t num_elems_per_row = strideR_[0];
+      int64_t min_split_size = 2*65536; //64K
+      int64_t max_splits = 48;
+      int64_t min_rows_per_split = (min_split_size + (num_elems_per_row - 1)) / num_elems_per_row;
+      num_splits = (dimsR_[0] + min_rows_per_split - 1) / min_rows_per_split;
+      num_splits = std::min(max_splits, num_splits);
+      rows_per_split = (dimsR_[0] + num_splits - 1) / num_splits;
+      remain_rows = dimsR_[0] % num_splits;
+    }
+
+    #pragma omp parallel for
+    #endif
+    for (int64_t split = 0; split < num_splits; ++split) {
+      int64_t start_row = (split < remain_rows) ? (split * (rows_per_split + 1)) : (remain_rows * (rows_per_split + 1) + (split - remain_rows)*rows_per_split);
+      int64_t num_rows = (split < remain_rows) ? (rows_per_split + 1) : (rows_per_split);
+      op_axes_by_axes(0, start_row,  num_rows, 0LL,  0LL,  0LL, scalaOpVec, vecOpScala, vecOpVec);
+    }
+  }
+
+private:
+  const TIn* a_;
+  std::vector<int64_t> dimsA_;
+  const TIn* b_;
+  std::vector<int64_t> dimsB_;
+  TOut* r_;
+  std::vector<int64_t> dimsR_;
+
+  int64_t num_axes_;
+  int64_t target_size_;
+
+  std::vector<int64_t> strideA_;
+  std::vector<int64_t> strideB_;
+  std::vector<int64_t> strideR_;
+}; // Broadcast2Operator
+
+
+class Broadcast2Wrapper {
+public:
+  template<typename TIn, typename TOut>
+  static Status ExecuteOperator(OpKernelContext* context, 
+                                std::function<void(const TIn& value, const TIn* vec, TOut* out, int64_t num)> scalaOpVec,
+                                std::function<void(const TIn* vec, const TIn& value, TOut* out, int64_t num)> vecOpScala, 
+                                std::function<void(const TIn* vec0, const TIn* vec1, TOut* out, int64_t num)> vecOpVec) {
+    const Tensor* t0 = context->Input<Tensor>(0);
+    const Tensor* t1 = context->Input<Tensor>(1);
+    auto dims0 = t0->Shape().GetDims();
+    auto dims1 = t1->Shape().GetDims();
+    std::vector<int64_t> cd0, cd1, cdr, dr;
+  
+    if (!Broadcast2Util::calcResultDims(dims0, dims1, dr)) {
+      throw 1;
+    }
+  
+    Tensor* out = context->Output(0, dr);
+    Broadcast2Util::calcCompactDims(dims0, dims1, cd0,  cd1,  cdr);
+    Broadcast2Operator<TIn, TOut> bo(t0->Data<TIn>(), cd0, t1->Data<TIn>(), cd1, out->MutableData<TOut>(), cdr);
+    bo.execute_op(scalaOpVec, vecOpScala, vecOpVec);
+    return Status::OK();
+  }
+
+public:
+  static void scala_add_vec_f128(const float& v, const float* b, float* r,  int64_t num) {
+    __m128 va = _mm_set1_ps(v);
+    while (num >= 4) {
+        __m128 vb = _mm_loadu_ps(b);
+        num -= 4;
+        vb = _mm_add_ps(va, vb);
+        b += 4;
+        _mm_storeu_ps(r, vb);
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = v + (*b++);
+    }
+  }
+
+  static void vec_add_scala_f128(const float* a, const float& v, float* r,  int64_t num) {
+    __m128 vb = _mm_set1_ps(v);
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        num -= 4;
+        va = _mm_add_ps(va, vb);
+        a += 4;
+        _mm_storeu_ps(r, va);
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (*a++ / v);
+    }
+  }
+
+  static void vec_add_vec_f128(const float* a, const float* b,  float* r, int64_t num) {
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        __m128 vb = _mm_loadu_ps(b);
+        a += 4;
+        b += 4;
+        va = _mm_add_ps(va, vb);
+        _mm_storeu_ps(r, va);
+        num -= 4;
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (*a++ + *b++);
+    }
+  }
+
+  static void scala_sub_vec_f128(const float& v, const float* b, float* r,  int64_t num) {
+    __m128 va = _mm_set1_ps(v);
+    while (num >= 4) {
+        __m128 vb = _mm_loadu_ps(b);
+        num -= 4;
+        vb = _mm_sub_ps(va, vb);
+        b += 4;
+        _mm_storeu_ps(r, vb);
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = v + (*b++);
+    }
+  }
+
+  static void vec_sub_scala_f128(const float* a, const float& v, float* r,  int64_t num) {
+    __m128 vb = _mm_set1_ps(v);
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        num -= 4;
+        va = _mm_sub_ps(va, vb);
+        a += 4;
+        _mm_storeu_ps(r, va);
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (*a++ / v);
+    }
+  }
+
+  static void vec_sub_vec_f128(const float* a, const float* b,  float* r, int64_t num) {
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        __m128 vb = _mm_loadu_ps(b);
+        a += 4;
+        b += 4;
+        va = _mm_sub_ps(va, vb);
+        _mm_storeu_ps(r, va);
+        num -= 4;
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (*a++ + *b++);
+    }
+  }
+
+  static void scala_div_vec_f128(const float& v, const float* b, float* r,  int64_t num) {
+    __m128 va = _mm_set1_ps(v);
+    while (num >= 4) {
+        __m128 vb = _mm_loadu_ps(b);
+        num -= 4;
+        vb = _mm_div_ps(va, vb);
+        b += 4;
+        _mm_storeu_ps(r, vb);
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (v / *b++);
+    }
+  }
+
+  static void vec_div_scala_f128(const float* a, const float& v, float* r,  int64_t num) {
+    __m128 vb = _mm_set1_ps(v);
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        num -= 4;
+        va = _mm_div_ps(va, vb);
+        a += 4;
+        _mm_storeu_ps(r, va);
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (*a++ / v);
+    }
+  }
+
+  static void vec_div_vec_f128(const float* a, const float* b,  float* r, int64_t num) {
+    while (num >= 4) {
+        __m128 va = _mm_loadu_ps(a);
+        __m128 vb = _mm_loadu_ps(b);
+        a += 4;
+        b += 4;
+        va = _mm_div_ps(va, vb);
+        _mm_storeu_ps(r, va);
+        num -= 4;
+        r += 4;
+    }
+
+    while (num-- > 0) {
+      *r++ = (*a++ / *b++);
+    }
+  }
+};
+
+template <typename T>
+Status Add<T>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<T, T>(
+    context, 
+    [](const T& v, const T* b, T* r, int64_t num) -> void {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (v + *b++); }
+    }, 
+    [](const T* a, const T& v, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ + v); }
+    }, 
+    [](const T* a, const T* b, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ + *b++); }
+    }
+  );
+}
+
+template <>
+Status Add<float>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<float, float>(
+    context, 
+    Broadcast2Wrapper::scala_add_vec_f128, 
+    Broadcast2Wrapper::vec_add_scala_f128, 
+    Broadcast2Wrapper::vec_add_vec_f128
+  );
+}
+
+template <typename T>
+Status Sub<T>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<T, T>(
+    context, 
+    [](const T& v, const T* b, T* r, int64_t num) -> void {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (v - *b++); }
+    }, 
+    [](const T* a, const T& v, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ - v); }
+    }, 
+    [](const T* a, const T* b, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ - *b++); }
+    }
+  );
+}
+
+
+template <>
+Status Sub<float>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<float, float>(
+    context, 
+    Broadcast2Wrapper::scala_sub_vec_f128, 
+    Broadcast2Wrapper::vec_sub_scala_f128, 
+    Broadcast2Wrapper::vec_sub_vec_f128
+  );
+}
+
+
+template <typename T>
+Status Mul<T>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<T, T>(
+    context, 
+    [](const T& v, const T* b, T* r, int64_t num) -> void {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (v * *b++); }
+    }, 
+    [](const T* a, const T& v, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ * v); }
+    }, 
+    [](const T* a, const T* b, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ * *b++); }
+    }
+  );
+}
+
+template <typename T>
+Status Div<T>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<T, T>(
+    context, 
+    [](const T& v, const T* b, T* r, int64_t num) -> void {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (v / *b++); }
+    }, 
+    [](const T* a, const T& v, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ / v); }
+    }, 
+    [](const T* a, const T* b, T* r, int64_t num) {
+        for (int64_t i = 0; i < num; ++i) { *r++ = (*a++ / *b++); }
+    }
+  );
+}
+
+template <>
+Status Div<float>::Compute(OpKernelContext* context) const {
+  return Broadcast2Wrapper::ExecuteOperator<float, float>(
+    context, 
+    Broadcast2Wrapper::scala_div_vec_f128, 
+    Broadcast2Wrapper::vec_div_scala_f128, 
+    Broadcast2Wrapper::vec_div_vec_f128
+  );
+}
+
 }  // namespace onnxruntime
+
