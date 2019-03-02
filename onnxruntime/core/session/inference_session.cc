@@ -456,8 +456,15 @@ class InferenceSession::Impl {
         }
         auto iter = input_def_map_.find(feed_names[i]);
         if (input_def_map_.end() == iter) {
+          std::ostringstream ostr;
+          std::for_each(std::begin(model_input_names_),
+                        std::end(model_input_names_),
+                        [&ostr](const std::string& elem) {
+                          ostr << elem << " ";
+                        });
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Invalid Feed Input Names: ", feed_names[i]);
+                                 "Invalid Feed Input Names:", feed_names[i],
+                                 ". Valid input names are: ", ostr.str());
         }
 
         auto& input_ml_value = feeds.at(i);
