@@ -36,6 +36,7 @@ static void TestModelInfo(const OrtSession* inference_session, bool is_input, co
   ASSERT_EQ(real_dims, dims);
 }
 
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, input_output_type_info) {
   SessionOptionsWrapper sf(env);
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
@@ -43,3 +44,4 @@ TEST_F(CApiTest, input_output_type_info) {
   TestModelInfo(inference_session.get(), true, {1, 3, 224, 224});
   TestModelInfo(inference_session.get(), false, {1, 1000, 1, 1});
 }
+#endif
