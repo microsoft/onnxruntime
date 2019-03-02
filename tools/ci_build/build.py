@@ -203,12 +203,14 @@ def install_python_deps():
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def install_hosting_deps():
-    vcpkg_path = os.path.join("cmake", "external", "vcpkg")
-    file_ending = '.bat' if is_windows() else '.sh'
-    boostrap_path = os.path.join(vcpkg_path, 'bootstrap-vcpkg' + file_ending)
-    run_subprocess([boostrap_path])
+    vcpkg_folder_path = os.path.join("cmake", "external", "vcpkg")
+    vcpkg_executable = os.path.join(vcpkg_folder_path, 'vcpkg')
 
-    vcpkg_executable = os.path.join(vcpkg_path, 'vcpkg')
+    if (not os.path.exists(vcpkg_executable)):
+        file_ending = '.bat' if is_windows() else '.sh'
+        boostrap_path = os.path.join(vcpkg_folder_path, 'bootstrap-vcpkg' + file_ending)
+        run_subprocess([boostrap_path])
+
     run_subprocess([vcpkg_executable, 'install', 'boost-beast', 'rapidjson'])
 
 def check_md5(filename, expected_md5):
