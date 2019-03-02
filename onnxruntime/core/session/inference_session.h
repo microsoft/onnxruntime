@@ -59,6 +59,14 @@ struct SessionOptions {
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
+  // Specifies the optimization level to enable for this session
+  // Current levels are 0, 1 and 2
+  // 0 -> disables all the optimizations
+  // 1 -> enables basic optimizations
+  // 2 -> enables all fusions
+  // default is set to 1
+  unsigned max_graph_optimization_level = 1;
+
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
 };
@@ -125,9 +133,11 @@ class InferenceSession {
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
+    * Every transformer needs to be registered at a specific level. Allowed levels are 1 and 2
+    * Default is 2
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer);
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, unsigned int level = 2);
 
   /**
   * Load custom ops implemented in a dynamically linked shared library.

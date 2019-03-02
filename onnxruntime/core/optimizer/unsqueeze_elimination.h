@@ -9,10 +9,11 @@ namespace onnxruntime {
 
 class UnsqueezeElimination : public onnxruntime::GraphTransformer {
  public:
-  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
+  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node", 
+      TransformerLevel::Optional_L2, std::vector<std::string>{onnxruntime::kCpuExecutionProvider}){}
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;  
 };
 
 }  // namespace onnxruntime

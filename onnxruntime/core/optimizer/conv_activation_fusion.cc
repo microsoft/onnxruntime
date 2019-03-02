@@ -5,6 +5,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_activation_fusion.h"
+//#include "core/optimizer/l2_graph_transformers.h"
 
 using namespace onnx;
 using namespace ::onnxruntime::common;
@@ -46,10 +47,16 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto node = graph.GetNode(index);
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
-
+    
     if (!utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
       continue;
     }
+
+    // Apply this transformer only if this nodes execution provider is compatible with this transformer.
+    if (!IsProviderCompatible(node->GetExecutionProviderType())) {
+      continue;
+    }
+
     const Node& next_node = *(node->OutputNodesBegin());
     if (!IsFusableActivation(next_node) || graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;

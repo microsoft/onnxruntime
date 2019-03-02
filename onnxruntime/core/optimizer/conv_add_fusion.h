@@ -9,10 +9,11 @@ namespace onnxruntime {
 
 class ConvAddFusion : public onnxruntime::GraphTransformer {
  public:
-  ConvAddFusion() noexcept : onnxruntime::GraphTransformer("ConvAddFusion", "Fusing Add into Conv") {}
+  ConvAddFusion() noexcept 
+      : onnxruntime::GraphTransformer("ConvAddFusion", "Fusing Add into Conv", 
+          TransformerLevel::Optional_L2, std::vector<std::string>{onnxruntime::kCpuExecutionProvider}){}
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;  
 };
-
 }  // namespace onnxruntime

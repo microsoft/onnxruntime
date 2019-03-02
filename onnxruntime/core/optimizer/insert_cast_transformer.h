@@ -11,12 +11,13 @@ namespace onnxruntime {
 class InsertCastTransformer : public onnxruntime::GraphTransformer {
  public:
   InsertCastTransformer(const std::string& name)
-      : onnxruntime::GraphTransformer(name, "Transformer to insert cast node that casts float16 to float for cpu nodes"),
+      : onnxruntime::GraphTransformer(name, "Transformer to insert cast node that casts float16 to float for cpu nodes", 
+        TransformerLevel::Default_Global, std::vector<std::string>{}),
         force_cpu_fp32_(true) {
   }
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;  
 
   bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const;
 
@@ -24,6 +25,6 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   // will introduce many cast between fp32 and fp16, which will slow the execution.
   // A better solution is to have a cost model to evaluate does it works to place the node on float16.
   // Here for simplify, we only force the single-node-float16 sub-graph to float32
-  bool force_cpu_fp32_;
+  bool force_cpu_fp32_;  
 };
 }  // namespace onnxruntime

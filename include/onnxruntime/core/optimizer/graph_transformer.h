@@ -9,6 +9,14 @@
 
 namespace onnxruntime {
 
+enum TransformerLevel {
+  Default_Global = 0,
+  Default_ProviderSpecific = 1,
+  Optional_L1 = 2,
+  Optional_L2 = 4,  
+  MaxTransformerLevel = 8
+};
+
 /**
 @class GraphTransformer
 
@@ -16,8 +24,8 @@ The interface for in-place transformation of a Graph.
 */
 class GraphTransformer {
  public:
-  GraphTransformer(const std::string& name, const std::string& desc)
-      : name_(name), desc_(desc) {
+  GraphTransformer(const std::string& name, const std::string& desc, const TransformerLevel level, std::vector<std::string>&& providers)
+      : name_(name), desc_(desc), level_(level), compatible_providers_{std::move(providers)} {
   }
 
   virtual ~GraphTransformer() = default;
@@ -32,11 +40,24 @@ class GraphTransformer {
     return desc_;
   }
 
+   /** Gets the level of this graph transformer. */
+  const TransformerLevel Level() const noexcept {
+    return level_;
+  }
+
+  /** Checks whether nodes assigned provider is compatible with this transformer. */
+  bool IsProviderCompatible(const std::string& providerType) const {
+    if (providerType.empty() || std::find(compatible_providers_.begin(), compatible_providers_.end(), providerType) != compatible_providers_.end()) {
+      return true;
+    }
+    return false;
+  }
+
   /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  common::Status Apply(Graph& graph, bool& modified) const;
+  common::Status Apply(Graph& graph, bool& modified) const;  
 
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
@@ -49,7 +70,7 @@ class GraphTransformer {
 
     return Status::OK();
   }
-
+  
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
 
@@ -61,9 +82,11 @@ class GraphTransformer {
   // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
   // completes (if 'modified' is true) should suffice.
   virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level = 0) const = 0;
-
+  
   const std::string name_;
   const std::string desc_;
+  const TransformerLevel level_;
+  const std::vector<std::string> compatible_providers_;
 };
 
 /**
@@ -85,8 +108,8 @@ each with different trade offs. At the moment, we define one that performs top-d
 */
 class RuleBasedGraphTransformer : public GraphTransformer {
  public:
-  RuleBasedGraphTransformer(const std::string& name, const std::string& desc)
-      : GraphTransformer(name, desc) {}
+  RuleBasedGraphTransformer(const std::string& name, const std::string& desc, const TransformerLevel level, std::vector<std::string>&& providers)
+      : GraphTransformer(name, desc, level, std::move(providers)){}
 
   /**
   Register a rewriting rule.
@@ -130,8 +153,8 @@ This is a rule-based Graph transformer that applies rules by performing top-down
 */
 class TopDownRuleBasedTransformer : public RuleBasedGraphTransformer {
  public:
-  TopDownRuleBasedTransformer(const std::string& name, const std::string& desc)
-      : RuleBasedGraphTransformer(name, desc) {}
+  TopDownRuleBasedTransformer(const std::string& name, const std::string& desc, const TransformerLevel level, std::vector<std::string> providers)
+      : RuleBasedGraphTransformer(name, desc, level, std::move(providers)) {}
 
  private:
   // Performs a single top-down traversal of the graph and applies all registered rules.

@@ -14,7 +14,8 @@ namespace onnxruntime {
 class MemcpyTransformer : public GraphTransformer {
  public:
   MemcpyTransformer(const std::vector<std::string>& provider_types, const KernelRegistryManager& registry_manager)
-      : GraphTransformer("MemcpyTransformer", "Insert nodes to copy memory between devices when needed"),
+      : GraphTransformer("MemcpyTransformer", "Insert nodes to copy memory between devices when needed", 
+        TransformerLevel::Default_Global, std::vector<std::string>{}),
         provider_types_{provider_types},
         registry_manager_{registry_manager} {}
 

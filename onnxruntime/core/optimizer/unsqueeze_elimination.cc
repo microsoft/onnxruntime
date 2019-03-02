@@ -19,6 +19,11 @@ Status UnsqueezeElimination::ApplyImpl(onnxruntime::Graph& graph, bool& modified
       continue;
     }
 
+    // Apply this transformer only if this nodes execution provider is compatible with this transformer.
+    if (!IsProviderCompatible(node.GetExecutionProviderType())) {
+      continue;
+    }
+
     const onnxruntime::NodeAttributes& attributes = node.GetAttributes();
     const onnx::AttributeProto* attr = &attributes.find("axes")->second;
     if (attr == nullptr || attr->type() != AttributeProto_AttributeType_INTS) {

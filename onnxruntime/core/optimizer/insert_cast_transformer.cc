@@ -94,7 +94,9 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
   RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer",
-                                                      "Transformer to remove duplicate Cast nodes.") {
+                                                      "Transformer to remove duplicate Cast nodes.",
+                                                      TransformerLevel::Default_Global,
+                                                      std::vector<std::string>{}) {
   }
 
  private:

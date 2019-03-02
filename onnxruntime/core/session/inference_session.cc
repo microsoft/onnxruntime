@@ -57,7 +57,7 @@ class InferenceSession::Impl {
  public:
   Impl(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
       : session_options_{session_options},
-        graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
+        graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps, session_options_.max_graph_optimization_level},
         logging_manager_{logging_manager},
         session_state_{execution_providers_},
         insert_cast_transformer_{"CastFloat16Transformer"} {
@@ -101,11 +101,11 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, unsigned int level) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
-    return graph_transformation_mgr_.Register(std::move(p_graph_transformer));
+    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
   }
 
   common::Status LoadCustomOps(const std::vector<std::string>& dso_list) {
@@ -218,24 +218,26 @@ class InferenceSession::Impl {
                                        const InsertCastTransformer& insert_cast_transformer,
                                        SessionState& session_state) {
     // The transformer order:
-    // 1. built-in graph rewriter
-    // 2. each execution provider's transformer
-    // 3. do node placement according to kernel definition
+    // 1. built-in basic graph transformations
+    // 2. do node placement according to kernel definition
+    // 3. apply all enabled graph transformations
     // 4. insert copy nodes
     // 5. insert cast nodes.
-
-    // first apply the default/system/basic graph to graph optimizations.
-    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
+    
+    // Pre-Graph_Partition stage - only apply the default/system/basic graph to graph optimizations.
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformations(graph, TransformationStage::PrePartition));
 
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
     ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
 
-    bool modified = false;
+    // Post-Graph_Partition stage - apply all the enabled transformers
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformations(graph, TransformationStage::PostPartition));
 
+    bool modified = false;
     // Insert cast node/s.
     ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
-
+    
     std::vector<std::string> provider_types;
     for (auto& provider_ptr : providers) {
       provider_types.push_back(provider_ptr->Type());
@@ -1028,8 +1030,8 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return impl_->RegisterExecutionProvider(std::move(p_exec_provider));
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
-  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer));
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, unsigned int level) {
+  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), level);
 }
 
 common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {

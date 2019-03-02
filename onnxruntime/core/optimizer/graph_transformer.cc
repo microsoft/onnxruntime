@@ -42,6 +42,11 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int 
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
 
+    // Apply this transformer only if this nodes execution provider is compatible with this transformer.
+    if (!IsProviderCompatible(node->GetExecutionProviderType())) {
+      continue;
+    }
+
     // Get the rules that should be fired for this node.
     const std::vector<std::unique_ptr<RewriteRule>>* rules = GetRewriteRules(node->OpType());
 

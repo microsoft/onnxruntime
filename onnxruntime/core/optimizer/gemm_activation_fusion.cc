@@ -48,6 +48,12 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
+
+    // Apply this transformer only if this nodes execution provider is compatible with this transformer.
+    if (!IsProviderCompatible(node.GetExecutionProviderType())) {
+      continue;
+    }
+
     const Node& next_node = *(node.OutputNodesBegin());
     if (!IsFusableActivation(next_node)) {
       continue;

@@ -18,10 +18,15 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
-
+    
     if (!(utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 1) ||
           utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 9)) ||
         node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    // Apply this transformer only if this nodes execution provider is compatible with this transformer.
+    if (!IsProviderCompatible(node.GetExecutionProviderType())) {
       continue;
     }
 

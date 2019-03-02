@@ -18,6 +18,11 @@ Status ConvBNFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int gr
       continue;
     }
 
+    // Apply this transformer only if this nodes execution provider is compatible with this transformer.
+    if (!IsProviderCompatible(node.GetExecutionProviderType())) {
+      continue;
+    }
+
     const Node& next_node = *node.OutputNodesBegin();
     if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
