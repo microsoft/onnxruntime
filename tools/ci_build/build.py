@@ -499,6 +499,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
             #limit concurrency to 1
             run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
           else:
+            print('running test in single threaded mode')  
             run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
