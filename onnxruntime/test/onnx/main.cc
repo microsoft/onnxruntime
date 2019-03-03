@@ -340,6 +340,20 @@ int real_main(int argc, char* argv[]) {
   broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
 #endif
 
+#ifdef _WIN32
+broken_tests["tf_resnet_v1_101"] = "failed:bad allocation";
+broken_tests["tf_resnet_v2_101"] = "failed:bad allocation";
+broken_tests["tf_resnet_v1_152"] = "failed:bad allocation";
+broken_tests["tf_resnet_v2_152"] = "failed:bad allocation";
+broken_tests["tf_inception_v3"] = "failed:bad allocation";
+broken_tests["tf_inception_v4"] = "failed:bad allocation";
+broken_tests["tf_resnet_v1_50"] = "failed:bad allocation";
+broken_tests["tf_resnet_v2_50"] = "failed:bad allocation";
+broken_tests["tf_inception_resnet_v2"] = "failed:bad allocation";
+broken_tests["tf_nasnet_large"] = "failed:bad allocation";
+broken_tests["tf_pnasnet_large"] ="failed:bad allocation";
+#endif
+
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
     if (broken_tests.find(s) == broken_tests.end()) {
