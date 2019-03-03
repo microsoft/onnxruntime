@@ -499,7 +499,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
             #limit concurrency to 1
             run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
           else:
-            run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+            run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -594,10 +594,7 @@ def main():
             if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
             else:
-              if (args.x86):  
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False)
-              else:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
 
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
