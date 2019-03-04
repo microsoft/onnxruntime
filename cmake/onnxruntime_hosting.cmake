@@ -6,7 +6,6 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 endif()
 
 project(onnxruntime_hosting)
-set(CMAKE_CXX_STANDARD 14)
 
 include_directories(${PROJECT_NAME}" PRIVATE ${ONNXRUNTIME_ROOT}/hosting/include")
 
