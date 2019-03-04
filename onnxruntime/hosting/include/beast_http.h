@@ -17,14 +17,16 @@
 namespace http = beast::http;      // from <boost/beast/http.hpp>
 namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
-using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
 namespace onnxruntime {
+
+using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
 // Accepts incoming connections and launches the sessions
 class App {
  public:
   App() {
+    // TODO: defaults should come from central place
     address_ = boost::asio::ip::make_address_v4("0.0.0.0");
     port_ = 8080;
     threads_ = std::thread::hardware_concurrency();

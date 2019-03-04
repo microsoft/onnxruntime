@@ -8,7 +8,7 @@
 
 namespace http = boost::beast::http;  // from <boost/beast/http.hpp>
 
-namespace {
+namespace onnxruntime {
 
 class Http_Context {
  public:

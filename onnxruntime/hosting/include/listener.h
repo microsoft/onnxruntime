@@ -28,21 +28,21 @@ class listener : public std::enable_shared_from_this<listener> {
     // Open the acceptor
     acceptor_.open(endpoint.protocol(), ec);
     if (ec) {
-      beast_server::error_handling(ec, "open");
+      error_handling(ec, "open");
       return;
     }
 
     // Allow address reuse
     acceptor_.set_option(net::socket_base::reuse_address(true), ec);
     if (ec) {
-      beast_server::error_handling(ec, "set_option");
+      error_handling(ec, "set_option");
       return;
     }
 
     // Bind to the routes address
     acceptor_.bind(endpoint, ec);
     if (ec) {
-      beast_server::error_handling(ec, "bind");
+      error_handling(ec, "bind");
       return;
     }
 
@@ -50,7 +50,7 @@ class listener : public std::enable_shared_from_this<listener> {
     acceptor_.listen(
         net::socket_base::max_listen_connections, ec);
     if (ec) {
-      beast_server::error_handling(ec, "listen");
+      error_handling(ec, "listen");
       return;
     }
   }
@@ -74,7 +74,7 @@ class listener : public std::enable_shared_from_this<listener> {
 
   void on_accept(beast::error_code ec) {
     if (ec) {
-      beast_server::error_handling(ec, "accept");
+      error_handling(ec, "accept");
     } else {
       // Create the session and run it
       std::make_shared<http_session>(

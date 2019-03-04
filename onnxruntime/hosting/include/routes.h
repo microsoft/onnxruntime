@@ -7,12 +7,11 @@
 #include <regex>
 #include <unordered_map>
 #include <boost/beast/http.hpp>
-
 #include "http_context.h"
 
 namespace http = boost::beast::http;  // from <boost/beast/http.hpp>
 
-namespace {
+namespace onnxruntime {
 
 using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 

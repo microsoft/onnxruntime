@@ -9,7 +9,7 @@
 namespace po = boost::program_options;
 
 void test_request(const std::string& name, const std::string& version,
-                  const std::string& action, Http_Context& context) {
+                  const std::string& action, onnxruntime::Http_Context& context) {
   std::stringstream ss;
 
   ss << "\tModel Name: " << name << std::endl;
