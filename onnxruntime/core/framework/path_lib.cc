@@ -24,7 +24,6 @@ inline Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
     return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "UNC path is not supported yet");
   }
   PathRemoveBackslashW(pszPath);
-  //cut head
   PWSTR pszLast = PathSkipRootW(pszPath);
   if (pszLast == nullptr) pszLast = pszPath;
   if (*pszLast == L'\0') {

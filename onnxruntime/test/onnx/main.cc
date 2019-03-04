@@ -301,8 +301,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     {"scatter_without_axis", "opset 9 not supported yet"},
     {"scan_sum", "opset 9 not supported yet"},
     {"shrink", "opset 9 not supported yet"},
-    {"shrink_hard", "opset 9 not supported yet"},
-    {"shrink_soft", "opset 9 not supported yet"},
     {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
     {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
     {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -313,7 +311,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
     {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
     {"tf_inception_v4", "Cast opset 9 not supported yet"}};
-  // clang-format on
+
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_2d_pads"] = "cudnn pooling only support input dimension >= 3";
@@ -330,6 +328,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   broken_tests["fp16_shufflenet"] = "still have issue on Linux";
   broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
 #endif
+  // clang-format on
 
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
