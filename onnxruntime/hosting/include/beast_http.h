@@ -54,6 +54,7 @@ class App {
     // Create and launch a listening port
     std::make_shared<listener>(routes, ioc, tcp::endpoint{address_, port_})->run();
 
+    // TODO: use logger
     std::cout << "Listening at: \n"
               << std::endl;
     std::cout << "\thttp://" << address_ << ":" << port_ << std::endl;
