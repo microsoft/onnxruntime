@@ -50,7 +50,7 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
-#include "core/providers/trt/trt_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
@@ -62,7 +62,7 @@
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_TRT();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, bool f, const char*, const char*, const char*);
@@ -205,7 +205,7 @@ void InitializeSession(InferenceSession* sess) {
 
 #ifdef USE_TENSORRT
   {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_TRT());
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt());
   }
 #endif
 
