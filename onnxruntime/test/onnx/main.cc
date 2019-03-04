@@ -341,17 +341,16 @@ int real_main(int argc, char* argv[]) {
 #endif
 
 #ifdef _WIN32
-broken_tests["tf_resnet_v1_101"] = "failed:bad allocation";
-broken_tests["tf_resnet_v2_101"] = "failed:bad allocation";
-broken_tests["tf_resnet_v1_152"] = "failed:bad allocation";
-broken_tests["tf_resnet_v2_152"] = "failed:bad allocation";
-broken_tests["tf_inception_v3"] = "failed:bad allocation";
-broken_tests["tf_inception_v4"] = "failed:bad allocation";
-broken_tests["tf_resnet_v1_50"] = "failed:bad allocation";
-broken_tests["tf_resnet_v2_50"] = "failed:bad allocation";
-broken_tests["tf_inception_resnet_v2"] = "failed:bad allocation";
-broken_tests["tf_nasnet_large"] = "failed:bad allocation";
-broken_tests["tf_pnasnet_large"] ="failed:bad allocation";
+  broken_tests["resnet101v2"] = "failed:bad allocation";
+  broken_tests["resnet152v2"] = "failed:bad allocation";
+  broken_tests["tf_inception_resnet_v2"] = "failed:bad allocation";
+  broken_tests["tf_inception_v4"] = "failed:bad allocation";
+  broken_tests["tf_nasnet_large"] = "failed:bad allocation";
+  broken_tests["tf_resnet_v1_101"] = "failed:bad allocation";
+  broken_tests["tf_resnet_v1_152"] = "failed:bad allocation";
+  broken_tests["tf_resnet_v2_101"] = "failed:bad allocation";
+  broken_tests["tf_resnet_v2_152"] = "failed:bad allocation";
+  broken_tests["vgg19"] = "failed:bad allocation";
 #endif
 
   int result = 0;
