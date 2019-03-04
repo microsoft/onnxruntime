@@ -15,11 +15,12 @@
 #include "routes.h"
 #include "util.h"
 
-namespace onnxruntime {
-
 namespace net = boost::asio;       // from <boost/asio.hpp>
 namespace beast = boost::beast;    // from <boost/beast.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
+
+namespace onnxruntime {
+
 using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
 class http_session : public std::enable_shared_from_this<http_session> {
