@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "trt_execution_provider.h"
-#include "trt_allocator.h"
+#include "tensorrt_execution_provider.h"
+#include "tensorrt_allocator.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
@@ -21,24 +21,24 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
-TRTExecutionProvider::TRTExecutionProvider()
-    : IExecutionProvider{onnxruntime::kTRTExecutionProvider} {
+TensorrtExecutionProvider::TensorrtExecutionProvider()
+    : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider} {
   DeviceAllocatorRegistrationInfo trt_device_info({OrtMemTypeCPU, [](int) {
-                                                     return std::make_unique<TRTPinnedAllocator>();
+                                                     return std::make_unique<TensorrtPinnedAllocator>();
                                                    },
                                                    std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(trt_device_info));
   DeviceAllocatorRegistrationInfo default_device_info({OrtMemTypeDefault, [](int) {
-                                                         return std::make_unique<TRTAllocator>();
+                                                         return std::make_unique<TensorrtAllocator>();
                                                        },
                                                        std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(default_device_info));
 }
 
-TRTExecutionProvider::~TRTExecutionProvider() {}
+TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
-TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
+TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Construct modelproto from graph
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
@@ -58,7 +58,7 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Get supported node list
   SubGraphCollection_t supported_nodes_vector;
-  TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
+  TensorrtLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
   auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
   auto trt_parser  = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(trt_network.get(), trt_logger));
@@ -169,17 +169,17 @@ TRTExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-std::shared_ptr<KernelRegistry> TRTExecutionProvider::GetKernelRegistry() const {
+std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
   return nullptr;
 }
 
-common::Status TRTExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
+common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
   ORT_UNUSED_PARAMETER(src);
   ORT_UNUSED_PARAMETER(dst);
   return Status::OK();
 }
 
-common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     std::unordered_map<std::string, int> input_map;
@@ -264,7 +264,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     string string_buf;
     model_proto.SerializeToString(&string_buf);
 
-    TRTLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
+    TensorrtLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser  = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(trt_network.get(), trt_logger));
@@ -330,7 +330,7 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     // Create function state
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      std::unique_ptr<TRTFuncState> p = std::make_unique<TRTFuncState>();
+      std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(), engines_[context->node_name].get(), contexts_[context->node_name].get(),
             input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name]};
       *state = p.release();
@@ -340,14 +340,14 @@ common::Status TRTExecutionProvider::Compile(const std::vector<onnxruntime::Node
     // Release function state
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
-        delete static_cast<TRTFuncState*>(state);
+        delete static_cast<TensorrtFuncState*>(state);
     };
 
     // Create compute function
     compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
       ORT_UNUSED_PARAMETER(num_inputs);
       ORT_UNUSED_PARAMETER(num_outputs);
-      TRTFuncState* trt_state = reinterpret_cast<TRTFuncState*>(state);
+      TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::vector<int> input_indexes = (trt_state->input_info)[0];
       std::vector<int> input_binding_indexes = (trt_state->input_info)[1];
       std::vector<int> input_dim_sizes = (trt_state->input_info)[2];

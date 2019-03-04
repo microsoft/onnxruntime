@@ -180,7 +180,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         //prepare the func kernel
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
-        if (node->GetExecutionProviderType() == onnxruntime::kTRTExecutionProvider) {
+        if (node->GetExecutionProviderType() == onnxruntime::kTensorrtExecutionProvider) {
           builder.SetDefaultInputsMemoryType(OrtMemTypeCPUInput);
           builder.SetDefaultOutputMemoryType(OrtMemTypeCPUOutput);
         }

@@ -49,7 +49,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
-#ifdef USE_TRT
+#ifdef USE_TENSORRT
 #include "core/providers/trt/trt_provider_factory.h"
 #endif
 #ifdef USE_MKLDNN
@@ -203,7 +203,7 @@ void InitializeSession(InferenceSession* sess) {
   }
 #endif
 
-#ifdef USE_TRT
+#ifdef USE_TENSORRT
   {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_TRT());
   }

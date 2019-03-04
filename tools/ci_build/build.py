@@ -119,8 +119,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice packages")
     parser.add_argument("--brain_slice_client_package_name", help="Name of brainslice client package")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
-    parser.add_argument("--use_trt", action='store_true', help="Build with TensorRT")
-    parser.add_argument("--trt_path", help="Path to TensorRT installation dir")
+    parser.add_argument("--use_tensorrt", action='store_true', help="Build with TensorRT")
+    parser.add_argument("--tensorrt_path", help="Path to TensorRT installation dir")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -277,6 +277,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
+                 "-G" + "CodeBlocks - Unix Makefiles",#slx
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=ON",
@@ -299,7 +300,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_BRAINSLICE=" + ("ON" if args.use_brainslice else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
-                 "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
+                 "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -309,8 +310,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (args.brain_slice_package_path, args.brain_slice_client_package_name),
             "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (args.brain_slice_package_path, bs_shared_lib_name)]
 
-    if args.use_trt:
-        cmake_args += ["-DTENSORRT_ROOT=%s" % args.trt_path]
+    if args.use_tensorrt:
+        cmake_args += ["-DTENSORRT_ROOT=%s" % args.tensorrt_path]
         cmake_args += ["-DCUDA_HOME=%s" % args.cuda_home]
 
     if args.use_llvm:
@@ -526,7 +527,7 @@ def main():
         args.build = True
         args.test = True
 
-    if args.use_trt:
+    if args.use_tensorrt:
         args.use_cuda = True
 
     if args.build_wheel:

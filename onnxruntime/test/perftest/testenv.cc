@@ -60,9 +60,9 @@ Status SessionFactory::Create(std::shared_ptr<InferenceSession>& sess, const pat
 #else
       ORT_THROW("This executable was not built with BrainSlice");
 #endif
-    } else if (provider == kTRTExecutionProvider) {
-#ifdef USE_TRT
-      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultTRTExecutionProvider());
+    } else if (provider == kTensorrtExecutionProvider) {
+#ifdef USE_TENSORRT
+      RegisterExecutionProvider(sess.get(), onnxruntime::test::DefaultTensorrtExecutionProvider());
 #else
       ORT_THROW("TensorRT is not supported in this build");
 #endif

@@ -10,8 +10,8 @@
 namespace onnxruntime {
 
 static const int kBatchSize = 1;
-static const int max_batch_size = 1;
-static const int max_workspace_size = 1 << 30;
+static const int max_batch_size = 16;
+static const int max_workspace_size = 16 << 20;
 
 #define CHECK(status)                       \
   do {                                      \
@@ -34,12 +34,12 @@ struct InferDeleter {
 template <typename T>
 using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
-class TRTLogger : public nvinfer1::ILogger {
+class TensorrtLogger : public nvinfer1::ILogger {
   nvinfer1::ILogger::Severity verbosity_;
   std::ostream* ostream_;
 
  public:
-  TRTLogger(Severity verbosity = Severity::kWARNING,
+  TensorrtLogger(Severity verbosity = Severity::kWARNING,
             std::ostream& ostream = std::cout)
       : verbosity_(verbosity), ostream_(&ostream) {}
   void log(Severity severity, const char* msg) override {
@@ -49,12 +49,12 @@ class TRTLogger : public nvinfer1::ILogger {
 };
 
 // Information needed to construct trt execution providers.
-struct TRTExecutionProviderInfo {
+struct TensorrtExecutionProviderInfo {
   int device_id{0};
 };
 
 // Information to construct kernel function state.
-struct TRTFuncState {
+struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
@@ -67,10 +67,10 @@ struct TRTFuncState {
 };
 
 // Logical device representation.
-class TRTExecutionProvider : public IExecutionProvider {
+class TensorrtExecutionProvider : public IExecutionProvider {
  public:
-  TRTExecutionProvider();
-  virtual ~TRTExecutionProvider();
+  TensorrtExecutionProvider();
+  virtual ~TensorrtExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,

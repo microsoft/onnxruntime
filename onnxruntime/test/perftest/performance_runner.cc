@@ -76,8 +76,8 @@ bool PerformanceRunner::Initialize() {
     onnxruntime::kMklDnnExecutionProvider,
 #endif
 #ifdef USE_CUDA
-    #ifdef USE_TRT
-        onnxruntime::kTRTExecutionProvider,
+    #ifdef USE_TENSORRT
+        onnxruntime::kTensorrtExecutionProvider,
     #else
         onnxruntime::kCudaExecutionProvider,
     #endif

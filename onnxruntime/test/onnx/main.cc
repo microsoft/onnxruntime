@@ -31,7 +31,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'trt'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'tensorrt'. Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -82,7 +82,7 @@ int real_main(int argc, char* argv[]) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  bool enable_trt = false;
+  bool enable_tensorrt = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
@@ -132,8 +132,8 @@ int real_main(int argc, char* argv[]) {
             enable_mkl = true;
           } else if (!MyStrCmp(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("trt"))) {
-            enable_trt = true;
+          } else if (!MyStrCmp(optarg, ORT_TSTR("tensorrt"))) {
+            enable_tensorrt = true;
           } else {
             usage();
             return -1;
@@ -225,9 +225,9 @@ int real_main(int argc, char* argv[]) {
       return -1;
 #endif
     }
-    if (enable_trt) {
-#ifdef USE_TRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
+    if (enable_tensorrt) {
+#ifdef USE_TENSORRT
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;

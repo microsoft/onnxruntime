@@ -168,12 +168,12 @@ file(GLOB_RECURSE onnxruntime_test_tvm_src
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
 
-if(onnxruntime_USE_TRT)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/trt/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_trt)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_trt)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_trt)
-  list(APPEND onnx_test_libs onnxruntime_providers_trt)
+if(onnxruntime_USE_TENSORRT)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+  list(APPEND onnx_test_libs onnxruntime_providers_tensorrt)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
@@ -185,6 +185,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

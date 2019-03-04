@@ -59,7 +59,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     if (provider != onnxruntime::kCpuExecutionProvider &&
         provider != onnxruntime::kMklDnnExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
-        provider != onnxruntime::kTRTExecutionProvider) {
+        provider != onnxruntime::kTensorrtExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
       modified = copy_impl.ModifyGraph(registry_manager_);
     }

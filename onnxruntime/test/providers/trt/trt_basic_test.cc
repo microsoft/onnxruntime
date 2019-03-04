@@ -25,7 +25,7 @@ void VerifyOutputs(const std::vector<MLValue>& fetches,
   ASSERT_EQ(expected_values, found);
 }
 
-TEST(TRTExecutionProviderTest, FunctionTest) {
+TEST(TensorrtExecutionProviderTest, FunctionTest) {
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -63,11 +63,11 @@ TEST(TRTExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   MLValue ml_value_x;
-  CreateMLValue<float>(TestTRTExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
   MLValue ml_value_y;
-  CreateMLValue<float>(TestTRTExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
   MLValue ml_value_z;
-  CreateMLValue<float>(TestTRTExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -83,12 +83,12 @@ TEST(TRTExecutionProviderTest, FunctionTest) {
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
   SessionOptions so;
-  so.session_logid = "TRTExecutionProviderTest.FunctionTest";
+  so.session_logid = "TensorrtExecutionProviderTest.FunctionTest";
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so};
-  session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TRTExecutionProvider>());
+  session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
