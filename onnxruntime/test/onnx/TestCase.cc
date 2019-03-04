@@ -183,7 +183,7 @@ static Status SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>
 }
 
 Status LoopDataFile(int test_data_pb_fd, OrtAllocator* env,
-                    const std::vector<onnx::ValueInfoProto> value_info, std::unordered_map<std::string, OrtValue*>& name_data_map, std::ostringstream& oss) {
+                    const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info, std::unordered_map<std::string, OrtValue*>& name_data_map, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
@@ -295,7 +295,7 @@ class OnnxTestCase : public ITestCase {
   }
   //If we cannot get input name from input_pbs, we'll use names like "data_0","data_1",... It's dirty hack
   // for https://github.com/onnx/onnx/issues/679
-  ::onnxruntime::common::Status ConvertTestData(OrtSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
+  ::onnxruntime::common::Status ConvertTestData(OrtSession* session, const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs,
                                                 bool is_input, std::unordered_map<std::string, OrtValue*>& out);
   std::string node_name_;
   std::once_flag model_parsed_;
@@ -513,13 +513,13 @@ Status OnnxTestCase::LoadTestData(OrtSession* session, size_t id, std::unordered
           });
   ORT_RETURN_IF_ERROR(SortTensorFileNames(test_data_pb_files));
 
-  std::vector<onnx::TensorProto> test_data_pbs;
+  std::vector<ONNX_NAMESPACE::TensorProto> test_data_pbs;
   ORT_RETURN_IF_ERROR(LoadTensors(test_data_pb_files, &test_data_pbs));
   ORT_RETURN_IF_ERROR(ConvertTestData(session, test_data_pbs, is_input, name_data_map));
   return Status::OK();
 }
 
-Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx::TensorProto>& test_data_pbs,
+Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs,
                                      bool is_input, std::unordered_map<std::string, OrtValue*>& out) {
   bool has_valid_names = true;
   std::vector<std::string> var_names(test_data_pbs.size());
@@ -553,7 +553,7 @@ Status OnnxTestCase::ConvertTestData(OrtSession* session, const std::vector<onnx
   }
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
     std::string name = var_names[input_index];
-    const onnx::TensorProto& input = test_data_pbs[input_index];
+    const ONNX_NAMESPACE::TensorProto& input = test_data_pbs[input_index];
     std::string s = input.SerializeAsString();
     MLValue* v1;
     ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(allocator, s.data(), (int)s.size(), (OrtValue**)&v1));

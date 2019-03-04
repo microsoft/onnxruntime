@@ -3,7 +3,7 @@
 
 #include "core/optimizer/unsqueeze_elimination.h"
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
@@ -20,7 +20,7 @@ Status UnsqueezeElimination::ApplyImpl(onnxruntime::Graph& graph, bool& modified
     }
 
     const onnxruntime::NodeAttributes& attributes = node.GetAttributes();
-    const onnx::AttributeProto* attr = &attributes.find("axes")->second;
+    const ONNX_NAMESPACE::AttributeProto* attr = &attributes.find("axes")->second;
     if (attr == nullptr || attr->type() != AttributeProto_AttributeType_INTS) {
       continue;
     }

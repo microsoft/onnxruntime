@@ -56,7 +56,7 @@ class ScanOpTester : public OpTester {
         TensorProto value_tensor;
         value_tensor.add_dims(1);
         value_tensor.add_float_data(kOuterNodeAddValue);
-        value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+        value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         constant.AddAttribute("value", value_tensor);
 
@@ -122,7 +122,7 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
       if (!options.scalar_loop_state_value)
         value_tensor.add_dims(1);
       value_tensor.add_float_data(1.f);
-      value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+      value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       constant.AddAttribute("value", value_tensor);
     }
