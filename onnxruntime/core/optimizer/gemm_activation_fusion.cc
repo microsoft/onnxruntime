@@ -6,7 +6,7 @@
 #include "core/graph/graph_utils.h"
 #include <deque>
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 

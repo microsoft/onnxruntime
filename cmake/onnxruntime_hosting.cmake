@@ -6,7 +6,6 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 endif()
 
 project(onnxruntime_hosting)
-set(CMAKE_CXX_STANDARD 14)
 
 find_package(Boost 1.68 COMPONENTS system coroutine context thread program_options REQUIRED)
 

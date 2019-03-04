@@ -76,7 +76,7 @@ using namespace onnxruntime;
   } while (0)
 
 Status CreateModelFromStr(const char* str, std::unique_ptr<Model>* out) {
-  onnx::ModelProto mp;
+  ONNX_NAMESPACE::ModelProto mp;
   if (!google::protobuf::TextFormat::ParseFromString(str, &mp)) throw std::runtime_error("load model failed");
   *out = std::make_unique<Model>(mp);
   return Status::OK();
@@ -168,7 +168,7 @@ static void BM_PartitionModel_tiny_yolo(benchmark::State& state) {
   auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
   auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
 
-  onnx::ModelProto model_proto;
+  ONNX_NAMESPACE::ModelProto model_proto;
   if (!model_proto.ParseFromCodedStream(coded_input.get())) throw std::runtime_error("open test data failed");
   std::unique_ptr<ExecutionProviders> execution_providers;
   BM_BREAK_IF_ERROR(CreateExecutionProviders(&execution_providers));
@@ -198,7 +198,7 @@ static void BM_PartitionModel_inception_v4(benchmark::State& state) {
   auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
   auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
 
-  onnx::ModelProto model_proto;
+  ONNX_NAMESPACE::ModelProto model_proto;
   if (!model_proto.ParseFromCodedStream(coded_input.get())) throw std::runtime_error("open test data failed");
   std::unique_ptr<ExecutionProviders> execution_providers;
   BM_BREAK_IF_ERROR(CreateExecutionProviders(&execution_providers));

@@ -180,7 +180,7 @@ static Status SortTensorFileNames(std::vector<path>& input_pb_files) {
 
 //Doesn't support file size >2 GB
 Status LoopDataFile(int test_data_pb_fd, AllocatorPtr allocator,
-                    const std::vector<onnx::ValueInfoProto> value_info, onnxruntime::NameMLValMap& name_data_map, std::ostringstream& oss) {
+                    const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info, onnxruntime::NameMLValMap& name_data_map, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
@@ -308,8 +308,8 @@ class OnnxTestCase : public ITestCase {
   }
   //If we cannot get input name from input_pbs, we'll use names like "data_0","data_1",... It's dirty hack
   // for https://github.com/onnx/onnx/issues/679
-  ::onnxruntime::common::Status ConvertTestData(const std::vector<onnx::TensorProto>& test_data_pbs,
-                                                const std::vector<onnx::ValueInfoProto> value_info, onnxruntime::NameMLValMap& out);
+  ::onnxruntime::common::Status ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs,
+                                                const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info, onnxruntime::NameMLValMap& out);
   std::string node_name_;
   std::once_flag model_parsed_;
 
@@ -438,7 +438,7 @@ Status OnnxTestCase::LoadTestData(size_t id, onnxruntime::NameMLValMap& name_dat
   }
   ORT_RETURN_IF_ERROR(SortTensorFileNames(test_data_pb_files));
 
-  std::vector<onnx::TensorProto> test_data_pbs;
+  std::vector<ONNX_NAMESPACE::TensorProto> test_data_pbs;
   ORT_RETURN_IF_ERROR(LoadTensors(test_data_pb_files, &test_data_pbs));
   ORT_RETURN_IF_ERROR(ConvertTestData(test_data_pbs, is_input ? input_value_info_ : output_value_info_, name_data_map));
   return Status::OK();
@@ -467,8 +467,8 @@ Status OnnxTestCase::FromPbFiles(const std::vector<path>& files, std::vector<MLV
   return Status::OK();
 }
 
-Status OnnxTestCase::ConvertTestData(const std::vector<onnx::TensorProto>& test_data_pbs,
-                                     const std::vector<onnx::ValueInfoProto> value_info, onnxruntime::NameMLValMap& out) {
+Status OnnxTestCase::ConvertTestData(const std::vector<ONNX_NAMESPACE::TensorProto>& test_data_pbs,
+                                     const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info, onnxruntime::NameMLValMap& out) {
   int len = static_cast<int>(value_info.size());
   bool has_valid_names = true;
   //"0","1",...
@@ -501,13 +501,13 @@ Status OnnxTestCase::ConvertTestData(const std::vector<onnx::TensorProto>& test_
         snprintf(buf, sizeof(buf), "%d", i);
         snprintf(buf2, sizeof(buf2), "data_%d", i);
         snprintf(buf3, sizeof(buf3), "gpu_0/data_%d", i);
-        if (use_number_names && std::find_if(value_info.begin(), value_info.end(), [buf](const onnx::ValueInfoProto& info) {
+        if (use_number_names && std::find_if(value_info.begin(), value_info.end(), [buf](const ONNX_NAMESPACE::ValueInfoProto& info) {
                                   return info.name() == buf;
                                 }) == value_info.end()) use_number_names = false;
-        if (use_data_number_names && std::find_if(value_info.begin(), value_info.end(), [buf2](const onnx::ValueInfoProto& info) {
+        if (use_data_number_names && std::find_if(value_info.begin(), value_info.end(), [buf2](const ONNX_NAMESPACE::ValueInfoProto& info) {
                                        return info.name() == buf2;
                                      }) == value_info.end()) use_data_number_names = false;
-        if (use_data_number_names && std::find_if(value_info.begin(), value_info.end(), [buf3](const onnx::ValueInfoProto& info) {
+        if (use_data_number_names && std::find_if(value_info.begin(), value_info.end(), [buf3](const ONNX_NAMESPACE::ValueInfoProto& info) {
                                        return info.name() == buf3;
                                      }) == value_info.end()) use_gpu_data_number_names = false;
       }
@@ -532,7 +532,7 @@ Status OnnxTestCase::ConvertTestData(const std::vector<onnx::TensorProto>& test_
   }
   for (size_t input_index = 0; input_index != test_data_pbs.size(); ++input_index) {
     std::string name = var_names[input_index];
-    const onnx::TensorProto& input = test_data_pbs[input_index];
+    const ONNX_NAMESPACE::TensorProto& input = test_data_pbs[input_index];
     MLValue v1;
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(input, allocator_, nullptr, 0, v1));
     out.insert(std::make_pair(name, v1));
