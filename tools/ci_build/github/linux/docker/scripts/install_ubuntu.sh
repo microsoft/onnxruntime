@@ -59,9 +59,9 @@ if [ $PYTHON_VER != "3.5" ]; then
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.5 2
     update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy
 fi
 
+/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy==1.15.0
 rm -rf /var/lib/apt/lists/*
 
 mkdir -p /tmp/azcopy
