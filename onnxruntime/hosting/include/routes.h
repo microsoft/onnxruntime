@@ -12,6 +12,8 @@
 
 namespace http = boost::beast::http;  // from <boost/beast/http.hpp>
 
+namespace {
+
 using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
 class Routes {
@@ -61,5 +63,7 @@ class Routes {
  private:
   std::unordered_map<http::verb, std::vector<std::pair<std::regex, handler_fn>>> fn_table;
 };
+
+} // namespace onnxruntime
 
 #endif  //BEAST_SERVER_ROUTES_H

@@ -20,6 +20,8 @@ namespace beast = boost::beast;    // from <boost/beast.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
+namespace onnxruntime {
+
 class http_session : public std::enable_shared_from_this<http_session> {
  private:
   const std::shared_ptr<Routes> routes_;
@@ -150,5 +152,7 @@ class http_session : public std::enable_shared_from_this<http_session> {
     // At this point the connection is closed gracefully
   }
 };
+
+} // namespace onnxruntime
 
 #endif  //BEAST_SERVER_HTTP_SESSION_H

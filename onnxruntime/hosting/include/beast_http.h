@@ -19,6 +19,8 @@ namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
+namespace onnxruntime {
+
 // Accepts incoming connections and launches the sessions
 class App {
  public:
@@ -73,3 +75,7 @@ class App {
   unsigned short port_;
   int threads_;
 };
+
+} // namespace onnxruntime
+
+

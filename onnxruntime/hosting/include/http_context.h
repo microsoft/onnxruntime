@@ -8,6 +8,8 @@
 
 namespace http = boost::beast::http;  // from <boost/beast/http.hpp>
 
+namespace {
+
 class Http_Context {
  public:
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
@@ -15,5 +17,7 @@ class Http_Context {
 
   Http_Context() = default;
 };
+
+} // namespace onnxruntime
 
 #endif  //BEAST_SERVER_HTTP_CONTEXT_H

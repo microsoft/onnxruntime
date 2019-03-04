@@ -13,6 +13,8 @@
 namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
+namespace onnxruntime {
+
 class listener : public std::enable_shared_from_this<listener> {
   const std::shared_ptr<Routes> routes_;
   tcp::acceptor acceptor_;
@@ -85,5 +87,7 @@ class listener : public std::enable_shared_from_this<listener> {
     do_accept();
   }
 };
+
+} // namespace onnxruntime
 
 #endif  //BEAST_SERVER_LISTENER_H
