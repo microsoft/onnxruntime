@@ -64,6 +64,9 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
+  onnxruntime::SessionOptions options {};
+  onnxruntime::InferenceSession session(options);
+
   auto const boost_address = boost::asio::ip::make_address(vm["address"].as<std::string>());
 
   onnxruntime::App app{};
