@@ -148,7 +148,7 @@ Status BuildSubgraph(const Graph& graph,
   }
 
   //TODO Check if we don't need to resolve the graph.
-  ORT_ENFORCE(subgraph.Resolve().IsOK());
+  ORT_RETURN_IF_ERROR(subgraph.Resolve());
 
   return Status::OK();
 }
