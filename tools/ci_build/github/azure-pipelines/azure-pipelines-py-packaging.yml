@@ -84,6 +84,13 @@ jobs:
         environmentName: 'py$(python.version)'
         packageSpecs: 'python=$(python.version)'
         cleanEnvironment: true
+    
+    - task: BatchScript@1
+      displayName: 'Install Numpy'
+      inputs:
+        filename: 'python'
+        arguments: ' -m pip install numpy==1.15.0'
+        workingFolder: "$(Build.SourcesDirectory)"
 
     - task: BatchScript@1
       displayName: 'Run build script'
@@ -133,6 +140,13 @@ jobs:
         environmentName: 'py$(python.version)'
         packageSpecs: 'python=$(python.version)'
         cleanEnvironment: true
+        
+    - task: BatchScript@1
+      displayName: 'Install Numpy'
+      inputs:
+        filename: 'python'
+        arguments: ' -m pip install numpy==1.15.0'
+        workingFolder: "$(Build.SourcesDirectory)"
 
     - task: PowerShell@1
       displayName: 'Set CUDA path'
@@ -196,7 +210,7 @@ jobs:
         cleanEnvironment: true
 
     - script: |
-        sudo python -m pip install numpy
+        sudo python -m pip install numpy==1.15.0
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel
       displayName: 'Command Line Script'
