@@ -9,13 +9,15 @@
 #include <stdexcept>
 #ifdef _WIN32
 #include <Windows.h>
-#include <pathcch.h>
+#include <time.h>  //strftime
 #else
 #include <libgen.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <time.h>    //strftime
 #include <stddef.h>  //ptrdiff_t
 #endif
+#include "core/common/status.h"
 #include "core/session/onnxruntime_c_api.h"
 
 using PATH_CHAR_TYPE = ORTCHAR_T;
@@ -73,8 +75,15 @@ inline long OrtStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr, int base) 
   return wcstol(nptr, endptr, base);
 }
 
+namespace onnxruntime {
+
+/**
+ * return which dir contains this file path
+ */
+common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& output);
+
 template <typename T>
-inline int CompareCString(const T* s1, const T* s2);
+int CompareCString(const T* s1, const T* s2);
 
 template <>
 inline int CompareCString<char>(const char* s1, const char* s2) {
@@ -182,18 +191,7 @@ void LoopDir(const std::wstring& dir_name, T func) {
   }
 }
 
-inline std::wstring GetDirNameFromFilePath(const std::wstring& s) {
-  std::wstring input = s;
-  if (input.empty()) throw std::runtime_error("illegal input path");
-  if (input.back() == L'\\') input.resize(input.size() - 1);
-  std::wstring ret(input);
-  if (PathCchRemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1) != S_OK) {
-    throw std::runtime_error("illegal input path");
-  }
-  ret.resize(wcslen(ret.c_str()));
-  return ret;
-}
-
+//TODO: rewrite it with PathFindNextComponentW
 template <typename PATH_CHAR_TYPE>
 inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s) {
   if (s.empty()) return std::basic_string<PATH_CHAR_TYPE>(1, GetDot<PATH_CHAR_TYPE>());
@@ -282,6 +280,9 @@ void LoopDir(const std::string& dir_name, T func) {
 #endif
 template <typename T>
 inline T ReplaceFilename(const T& input, const T& new_value) {
-  T ret = GetDirNameFromFilePath(input);
+  T ret;
+  ORT_ENFORCE(GetDirNameFromFilePath(input, ret).IsOK());
   return ConcatPathComponent(ret, new_value);
 }
+
+}  // namespace onnxruntime

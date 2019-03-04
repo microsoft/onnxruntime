@@ -441,7 +441,8 @@ Status OnnxTestCase::ParseModel() {
 
 Status OnnxTestCase::SetModelPath(const PATH_CHAR_TYPE* m) {
   model_url_ = m;
-  std::basic_string<PATH_CHAR_TYPE> test_case_dir = GetDirNameFromFilePath(model_url_);
+  std::basic_string<PATH_CHAR_TYPE> test_case_dir;
+  ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_url_, test_case_dir));
   LoopDir(test_case_dir, [&test_case_dir, this](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
     if (filename[0] == '.') return true;
     if (f_type == OrtFileType::TYPE_DIR) {

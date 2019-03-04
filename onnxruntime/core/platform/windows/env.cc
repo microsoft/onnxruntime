@@ -98,19 +98,16 @@ class WindowsEnv : public Env {
     if (!out) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'out' cannot be NULL");
     }
-    char errbuf[512];
     HANDLE hFile = CreateFileW(fname, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
       int err = GetLastError();
-      _snprintf_s(errbuf, _TRUNCATE, "%s:%d open file %ls fail, errcode = %d", __FILE__, (int)__LINE__, fname, err);
-      return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(fname), " fail, errcode =", err);
     }
     std::unique_ptr<void, decltype(&CloseHandle)> handler_holder(hFile, CloseHandle);
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(hFile, &filesize)) {
       int err = GetLastError();
-      _snprintf_s(errbuf, _TRUNCATE, "%s:%d GetFileSizeEx %ls fail, errcode = %d", __FILE__, (int)__LINE__, fname, err);
-      return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
     }
     // check the file file for avoiding allocating a zero length buffer
     if (filesize.QuadPart == 0)  // empty file

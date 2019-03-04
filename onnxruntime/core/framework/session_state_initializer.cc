@@ -193,6 +193,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(env, proto_path.c_str(), tensor_proto, m, mlvalue, deleter);
   }
+  //alloc_info.name is not 'CPU'
   const IExecutionProvider* provider = exec_providers.Get(alloc_info);
   if (provider == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid allocation info. Provider name = ", alloc_info.name);
@@ -206,18 +207,16 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
   }
-
-  size_t len;
-  ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &len));
-
-  std::unique_ptr<Tensor> p_tensor;
   // deserialize to CPU first for non-CPU allocator, then alloc and copy
-  AllocatorPtr deserialize_alloc_ptr = exec_providers.Get(kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
-  void* buffer = deserialize_alloc_ptr->Alloc(len);
+  size_t cpu_tensor_length;
+  ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
+  OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
+  std::unique_ptr<Tensor> p_tensor;
   MLValue tmp_mlvalue;
   OrtCallback d;
   ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
-      env, proto_path.c_str(), tensor_proto, MemBuffer(buffer, len, deserialize_alloc_ptr->Info()), tmp_mlvalue, d));
+      env, proto_path.c_str(), tensor_proto, MemBuffer(data.get(), cpu_tensor_length, info), tmp_mlvalue, d));
   const Tensor& p_deserialize_tensor = tmp_mlvalue.Get<Tensor>();
 
   p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
@@ -225,7 +224,6 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   // TODO: does this function work for string tensor?
   Status copy_status = provider->CopyTensor(p_deserialize_tensor, *p_tensor);
   if (d.f) d.f(d.param);
-  deserialize_alloc_ptr->Free(buffer);
   if (!copy_status.IsOK()) {
     if (copy_status.ErrorMessage().empty()) {
       // The windows execution provider does not return any error message today for CopyTensor since it is

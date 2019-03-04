@@ -27,6 +27,9 @@ namespace utils {
 std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
 /**
  * deserialize a TensorProto into a preallocated memory buffer.
+ * \param tensor_proto_path A local file path of where the 'input' was loaded from. Can be NULL if the tensor proto doesn't
+ *                        have any external data or it was loaded from current working dir. This path could be either a
+ *                        relative path or an absolute path.
  */
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                                     const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, MLValue& value,

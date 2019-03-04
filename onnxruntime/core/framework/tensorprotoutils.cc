@@ -436,7 +436,8 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       }
       std::basic_string<ORTCHAR_T> full_path;
       if (tensor_proto_path != nullptr) {
-        full_path = ConcatPathComponent<ORTCHAR_T>(tensor_proto_path, external_data_info->GetRelPath());
+        ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(tensor_proto_path, full_path));
+        full_path = ConcatPathComponent<ORTCHAR_T>(full_path, external_data_info->GetRelPath());
       } else {
         full_path = external_data_info->GetRelPath();
       }

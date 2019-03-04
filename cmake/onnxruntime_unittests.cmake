@@ -381,12 +381,7 @@ set(onnx_test_libs
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto)
 
-if(WIN32)
-  list(APPEND onnx_test_libs Pathcch)
-endif()
-
 list(APPEND onnx_test_libs debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
-
 
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})

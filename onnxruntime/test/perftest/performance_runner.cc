@@ -76,8 +76,12 @@ bool PerformanceRunner::Initialize() {
     LOGF_DEFAULT(ERROR, "input path is not a valid model");
     return false;
   }
-  std::basic_string<PATH_CHAR_TYPE> test_case_dir =
-      GetDirNameFromFilePath(performance_test_config_.model_info.model_file_path);
+  std::basic_string<PATH_CHAR_TYPE> test_case_dir;
+  auto st = GetDirNameFromFilePath(performance_test_config_.model_info.model_file_path, test_case_dir);
+  if (!st.IsOK()) {
+    LOGF_DEFAULT(ERROR, "input path is not a valid model");
+    return false;
+  }
   std::basic_string<PATH_CHAR_TYPE> model_name = GetLastComponent(test_case_dir);
   // TODO: remove the input and model name's dependency on directory tree
   if (CompareCString(model_name.c_str(), ORT_TSTR("test_")) == 0) {
@@ -154,7 +158,7 @@ bool PerformanceRunner::Initialize() {
   }
 
   std::unordered_map<std::string, OrtValue*> feeds;
-  auto st = test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds, true);
+  st = test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds, true);
   if (!st.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load data failed " << test_case->GetTestCaseName();
     return false;

@@ -71,7 +71,8 @@ static void CreateTestFile(FILE** out, std::basic_string<ORTCHAR_T>* final_filen
   *final_filename = filename;
 }
 
-TEST_F(CApiTest, load_float_tensor_with_external_data) {
+template <bool use_current_dir>
+static void run_external_data_test() {
   FILE* fp;
   std::basic_string<ORTCHAR_T> filename;
   CreateTestFile(&fp, &filename);
@@ -93,7 +94,15 @@ TEST_F(CApiTest, load_float_tensor_with_external_data) {
   std::vector<float> output(3);
   OrtValue* value;
   OrtCallback* deleter;
-  auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
+  std::basic_string<ORTCHAR_T> cwd;
+  if (use_current_dir) {
+    DWORD len = GetCurrentDirectory(0, nullptr);
+    ASSERT_NE(len, (DWORD)0);
+    cwd.resize(static_cast<size_t>(len) - 1, '\0');
+    len = GetCurrentDirectoryW(len, (ORTCHAR_T*)cwd.data());
+    ASSERT_NE(len, (DWORD)0);
+  }
+  auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), cwd.empty() ? nullptr : cwd.c_str(), output.data(),
                                      output.size() * sizeof(float), &value, &deleter);
 #ifdef _WIN32
   ASSERT_EQ(TRUE, DeleteFileW(filename.c_str()));
@@ -106,6 +115,10 @@ TEST_F(CApiTest, load_float_tensor_with_external_data) {
   ASSERT_EQ(output[1], 2.2f);
   ASSERT_EQ(output[2], 3.5f);
   OrtReleaseValue(value);
+}
+TEST_F(CApiTest, load_float_tensor_with_external_data) {
+  run_external_data_test<true>();
+  run_external_data_test<false>();
 }
 
 #if defined(__amd64__) || defined(_M_X64)
