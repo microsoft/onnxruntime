@@ -52,7 +52,7 @@ apt-get update
 apt-get install -y dotnet-sdk-2.2
 rm -rf /tmp/dotnet || true
 
-if [ $PYTHON_VER != "3.5" ]; then
+if [ $PYTHON_VER!="3.5" ]; then
     apt-get install -y --no-install-recommends \
             python${PYTHON_VER} \
             python${PYTHON_VER}-dev
