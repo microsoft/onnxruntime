@@ -54,9 +54,13 @@ int main(int argc, char* argv[]) {
 
     po::notify(vm);  // throws on error, so do after help
   } catch (po::error& e) {
-    std::cerr << "ERROR: " << e.what() << std::endl
+    std::cerr << "An error with program arguments occurred with error: " << e.what() << std::endl
               << std::endl;
     std::cerr << desc << std::endl;
+    return EXIT_FAILURE;
+  } catch (const std::exception& e) {
+    std::cerr << "An unknown problem occurred with error: " << e.what() << std::endl
+              << std::endl;
     return EXIT_FAILURE;
   }
 
