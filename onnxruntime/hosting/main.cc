@@ -33,14 +33,13 @@ int main(int argc, char* argv[]) {
   int port;
   int threads;
 
-
   po::options_description desc("Allowed options");
   desc.add_options()
           ("help,h", "Print a help message")
           ("address,a", po::value(&address), "The base HTTP address")
-          ("port, p", po::value(&port), "HTTP port to listen to requests")
-          ("threads, t", po::value(&threads), "Number of http threads")
-          ("model_path, m", po::value(&model_path), "Path of the model file");
+          ("port,p", po::value(&port), "HTTP port to listen to requests")
+          ("threads,t", po::value(&threads), "Number of http threads")
+          ("model_path,m", po::value(&model_path), "Path of the model file");
 
   po::variables_map vm;
   try
@@ -48,7 +47,7 @@ int main(int argc, char* argv[]) {
     po::store(po::parse_command_line(argc, argv, desc), vm); // can throw
 
     if (vm.count("help")) {
-      std::cout << "ONNX Hosting application" << std::endl
+      std::cout << "ONNX Hosting: host an ONNX model for inferencing with ONNXRuntime\n" << std::endl
                 << desc << std::endl;
       return EXIT_SUCCESS;
     }
