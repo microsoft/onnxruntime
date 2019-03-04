@@ -28,6 +28,7 @@ void test_request(const std::string& name, const std::string& version,
 }
 
 int main(int argc, char* argv[]) {
+  // TODO: create configuration class for all configuration related params
   std::string model_path;
   std::string address;
   int port;
