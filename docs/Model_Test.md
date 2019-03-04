@@ -24,8 +24,8 @@ e.g.
 Download the files from: https://github.com/onnx/models. Unzip them.
 (TODO: put a full copy on Azure blob, instead of downloading these files from different sources individually)
 
-# Compile onnxruntime_test_runner and run the tests
-onnxruntime_test_runner is a C++ program. Its source code is in onnxruntime/test/onnx directory.
+# Compile onnx_test_runner and run the tests
+onnx_test_runner is a C++ program. Its source code is in onnxruntime/test/onnx directory.
 
 Usage: onnx_test_runner [options...] <data_root>    
 Options:    

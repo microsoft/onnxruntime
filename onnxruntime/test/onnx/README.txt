@@ -1,4 +1,4 @@
-onnxruntime_test_runner [options...] <data_root>
+onnx_test_runner [options...] <data_root>
 Options:
         -j [models]: Specifies the number of models to run simultaneously.
         -c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.
@@ -27,10 +27,10 @@ How to run node tests:
        backend-test-tools generate-data -o C:\testdata
     backend-test-tools is a tool under C:\Python35\Scripts (If your python was installed to C:\Python35)
 
-3. compile onnxruntime_test_runner and run
-      onnxruntime_test_runner <test_data_dir>
+3. compile onnx_test_runner and run
+      onnx_test_runner <test_data_dir>
 	e.g.
-	  onnxruntime_test_runner C:\testdata\node
+	  onnx_test_runner C:\testdata\node
 
 
 How to run model tests:
@@ -42,7 +42,7 @@ How to run model tests:
 	  You may change C:\testdata to any directory in your disk.
    Full document: https://www.1eswiki.com/wiki/VSTS_Drop
 
-2. compile onnxruntime_test_runner and run
-   onnxruntime_test_runner <test_data_dir>
+2. compile onnx_test_runner and run
+   onnx_test_runner <test_data_dir>
    e.g.
-	 onnxruntime_test_runner C:\testdata
+	 onnx_test_runner C:\testdata
