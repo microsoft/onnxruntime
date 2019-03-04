@@ -87,6 +87,9 @@ Use the individual flags to only run the specified stages.
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
 
+    # Build ONNX hosting
+    parser.add_argument("--build_hosting", action='store_true', help="Build hosting application for the ONNXRuntime.")
+
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
                         help="Extra definitions to pass to CMake during build system generation. " +
@@ -199,6 +202,17 @@ def install_python_deps():
     dep_packages = ['setuptools', 'wheel', 'numpy']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
+def install_hosting_deps(source_dir):
+    vcpkg_folder_path = os.path.join(source_dir, "cmake", "external", "vcpkg")
+    vcpkg_executable = os.path.join(vcpkg_folder_path, 'vcpkg')
+
+    if (not os.path.exists(vcpkg_executable)):
+        file_ending = '.bat' if is_windows() else '.sh'
+        boostrap_path = os.path.join(vcpkg_folder_path, 'bootstrap-vcpkg' + file_ending)
+        run_subprocess([boostrap_path])
+
+    run_subprocess([vcpkg_executable, 'install', 'boost-beast', 'rapidjson'])
+
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
         return False
@@ -300,6 +314,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
+                 "-Donnxruntime_BUILD_HOSTING=" + ("ON" if args.build_hosting else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -568,6 +583,8 @@ def main():
             install_python_deps()
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
+        if (args.build_hosting):
+            install_hosting_deps(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
             if not args.test_data_url or not args.test_data_checksum:

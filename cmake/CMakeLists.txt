@@ -65,6 +65,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TRT "Build with TensorRT support" OFF)
+option(onnxruntime_BUILD_HOSTING "Build ONNX hosting service" ON) #TODO: make default off before going into master
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -563,4 +564,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
   set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
   include(onnxruntime_unittests.cmake)
+endif()
+
+if (onnxruntime_BUILD_HOSTING)
+  include(onnxruntime_hosting.cmake)
 endif()
