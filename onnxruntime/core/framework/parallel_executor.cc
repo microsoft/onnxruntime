@@ -67,7 +67,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
   ORT_RETURN_IF_ERROR(root_frame_->GetOutputs(fetches));
   VLOGS(logger, 1) << "Done execution.";
 
-  if (root_frame_->HasPlan()) {
+  if (root_frame_->HasMemoryPatternPlanner()) {
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
@@ -131,7 +131,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
                 graph_viewer->GetNode(node_index)->Name());
     }
 
-    OpKernelContextInternal op_kernel_context(*root_frame_, *p_op_kernel, logger,
+    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
 

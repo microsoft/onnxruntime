@@ -148,23 +148,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void ThrowDuplicateInput()
-        {
-            var tuple = OpenSessionSqueezeNet();
-            var session = tuple.Item1;
-            var inputData = tuple.Item2;
-            var tensor = tuple.Item3;
-            var inputMeta = session.InputMetadata;
-            var container = new List<NamedOnnxValue>();
-            var nov = NamedOnnxValue.CreateFromTensor<float>("data_0", tensor);
-            container.Add(nov);
-            container.Add(nov);
-            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] duplicated input name", ex.Message);
-            session.Dispose();
-        }
-
-        [Fact]
         private void ThrowExtraInputs()
         {
             var tuple = OpenSessionSqueezeNet();

@@ -231,8 +231,9 @@
             "git":{
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
-              }
-         },
+            }
+         }    
+      },
       {
          "component":{
             "type":"git",
