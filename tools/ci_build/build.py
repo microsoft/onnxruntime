@@ -211,7 +211,7 @@ def install_hosting_deps(source_dir):
         boostrap_path = os.path.join(vcpkg_folder_path, 'bootstrap-vcpkg' + file_ending)
         run_subprocess([boostrap_path])
 
-    run_subprocess([vcpkg_executable, 'install', 'boost-beast', 'rapidjson'])
+    run_subprocess([vcpkg_executable, 'install', 'boost-beast', 'boost-program-options', 'rapidjson'])
 
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
