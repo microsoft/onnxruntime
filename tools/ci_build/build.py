@@ -495,6 +495,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd.append(onnx_test_data_dir)
         
         if enable_parallel_executor_test:
+          run_subprocess([exe] + cmd, cwd=cwd)  
           if provider == 'mkldnn':
             #limit concurrency to 1
             run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
