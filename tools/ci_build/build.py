@@ -493,14 +493,15 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
-        run_subprocess([exe, '-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
+        
         if enable_parallel_executor_test:
           if provider == 'mkldnn':
             #limit concurrency to 1
             run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
           else:
-            print('running test in single threaded mode')  
-            run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
+            run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+        else:
+          run_subprocess([exe, '-c', '1', '-j', '1'] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -594,6 +595,8 @@ def main():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
             if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
+            elif args.x86:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False)  
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
 
