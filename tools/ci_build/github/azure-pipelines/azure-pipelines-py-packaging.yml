@@ -1,70 +1,4 @@
 jobs:
-- job: Ubuntu1604_py_Wheels
-  pool: Linux-CPU
-  strategy:
-    matrix:
-      Python35:
-        python.version: '3.5'
-      Python36:
-        python.version: '3.6'
-      Python37:
-        python.version: '3.7'
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-
-    - task: ShellScript@2
-      displayName: 'Run build script'
-      inputs:
-        scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
-
-    - task: CopyFiles@2
-      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/onnxruntime-*-manylinux1_x86_64.whl'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        ArtifactName: onnxruntime
-
-    - template: templates/clean-agent-build-directory-step.yml
-
-- job: Ubuntu1604_py_GPU_Wheels
-  pool: Linux-GPU
-  strategy:
-    matrix:
-      Python35:
-        python.version: '3.5'
-      Python36:
-        python.version: '3.6'
-      Python37:
-        python.version: '3.7'
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-
-    - task: ShellScript@2
-      displayName: 'Run build script'
-      inputs:
-        scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
-
-    - task: CopyFiles@2
-      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/onnxruntime*-manylinux1_x86_64.whl'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        ArtifactName: onnxruntime_gpu
-
-    - template: templates/clean-agent-build-directory-step.yml
-
 - job: Windows_py_Wheels
   pool: Win-CPU
   strategy:
@@ -84,13 +18,6 @@ jobs:
         environmentName: 'py$(python.version)'
         packageSpecs: 'python=$(python.version)'
         cleanEnvironment: true
-    
-    - task: BatchScript@1
-      displayName: 'Install Numpy'
-      inputs:
-        filename: 'python'
-        arguments: ' -m pip install numpy==1.15.0'
-        workingFolder: "$(Build.SourcesDirectory)"
 
     - task: BatchScript@1
       displayName: 'Run build script'
@@ -140,13 +67,6 @@ jobs:
         environmentName: 'py$(python.version)'
         packageSpecs: 'python=$(python.version)'
         cleanEnvironment: true
-        
-    - task: BatchScript@1
-      displayName: 'Install Numpy'
-      inputs:
-        filename: 'python'
-        arguments: ' -m pip install numpy==1.15.0'
-        workingFolder: "$(Build.SourcesDirectory)"
 
     - task: PowerShell@1
       displayName: 'Set CUDA path'
@@ -187,44 +107,5 @@ jobs:
         filename: deactivate
       continueOnError: true
       condition: always()
-
-    - template: templates/clean-agent-build-directory-step.yml
-
-- job: MacOS_py_Wheels
-  pool:
-    vmImage: 'macOS-10.13'
-  strategy:
-    matrix:
-      Python35:
-        python.version: '3.5'
-      Python36:
-        python.version: '3.6'
-      Python37:
-        python.version: '3.7'
-  steps:
-    - task: CondaEnvironment@1
-      inputs:
-        createCustomEnvironment: true
-        environmentName: 'py$(python.version)'
-        packageSpecs: 'python=$(python.version)'
-        cleanEnvironment: true
-
-    - script: |
-        sudo python -m pip install numpy==1.15.0
-        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel
-      displayName: 'Command Line Script'
-
-    - task: CopyFiles@2
-      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-      inputs:
-        SourceFolder: '$(Build.SourcesDirectory)'
-        Contents: '**/dist/onnxruntime-*.whl'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        ArtifactName: onnxruntime
 
     - template: templates/clean-agent-build-directory-step.yml
