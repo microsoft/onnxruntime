@@ -346,6 +346,7 @@ int real_main(int argc, char* argv[]) {
   broken_tests["tf_inception_resnet_v2"] = "failed:bad allocation";
   broken_tests["tf_inception_v4"] = "failed:bad allocation";
   broken_tests["tf_nasnet_large"] = "failed:bad allocation";
+  broken_tests["tf_pnasnet_large"] = "failed:bad allocation";
   broken_tests["tf_resnet_v1_101"] = "failed:bad allocation";
   broken_tests["tf_resnet_v1_152"] = "failed:bad allocation";
   broken_tests["tf_resnet_v2_101"] = "failed:bad allocation";
