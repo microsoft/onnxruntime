@@ -4,7 +4,6 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/mlas/inc/mlas.h"
-#include <x86intrin.h>
 
 namespace onnxruntime {
 
@@ -1192,19 +1191,20 @@ public:
     TOut* r = r_ + start_row * strideR_[0];
     const TIn* b = b_ + start_row * strideA_[0];
     const TIn* a = a_ + start_row * strideB_[0];
+    const int64_t span_size = dims.back();
 
     while (true) {
       if (strideB_.back() == 0LL) {
-        vecOpScala(a, *b, r, dims.back());
+        vecOpScala(a, *b, r, span_size);
       }
       else if (strideA_.back() != 0LL) {
-        vecOpVec(a, b, r, dims.back());
+        vecOpVec(a, b, r, span_size);
       }
       else {
-        scalaOpVec(*a, b, r, dims.back());
+        scalaOpVec(*a, b, r, span_size);
       }
 
-      r += dims.back();
+      r += span_size;
       int i = num_axes_ - 2;
       for ( ; i >= 0; --i) {
         a += strideA_[i];
