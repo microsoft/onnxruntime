@@ -11,7 +11,6 @@
 #include <Windows.h>
 #include <time.h>  //strftime
 #else
-#include <libgen.h>
 #include <sys/types.h>
 #include <dirent.h>
 #include <time.h>    //strftime
@@ -208,13 +207,6 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
 }
 
 #else
-inline std::string GetDirNameFromFilePath(const std::string& input) {
-  char* s = strdup(input.c_str());
-  std::string ret = dirname(s);
-  free(s);
-  return ret;
-}
-
 inline std::string GetLastComponent(const std::string& input) {
   char* s = strdup(input.c_str());
   std::string ret = basename(s);

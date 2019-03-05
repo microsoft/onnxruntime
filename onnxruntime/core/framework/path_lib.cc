@@ -4,10 +4,14 @@
 #include "path_lib.h"
 #include "core/common/status.h"
 #include "core/common/common.h"
-#include <pathcch.h>
 #include <assert.h>
+#ifdef _WIN32
 #include <shlwapi.h>
+#else
+#include <libgen.h>
+#endif
 
+#ifdef _WIN32
 namespace onnxruntime {
 namespace {
 //starting from pszPath_end-1, backsearch the first char that is not L'/'
@@ -66,3 +70,15 @@ common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std
   return Status::OK();
 }
 }  // namespace onnxruntime
+#else
+namespace onnxruntime {
+
+common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& input,
+                                      std::basic_string<ORTCHAR_T>& output) {
+  char* s = strdup(input.c_str());
+  output = dirname(s);
+  free(s);
+  return Status::OK();
+}
+}  // namespace onnxruntime
+#endif

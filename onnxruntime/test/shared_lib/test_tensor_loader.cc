@@ -96,12 +96,20 @@ static void run_external_data_test() {
   OrtCallback* deleter;
   std::basic_string<ORTCHAR_T> cwd;
   if (use_current_dir) {
+#ifdef _WIN32
     DWORD len = GetCurrentDirectory(0, nullptr);
     ASSERT_NE(len, (DWORD)0);
     cwd.resize(static_cast<size_t>(len) - 1, '\0');
     len = GetCurrentDirectoryW(len, (ORTCHAR_T*)cwd.data());
     ASSERT_NE(len, (DWORD)0);
     cwd.append(ORT_TSTR("\\fake.onnx"));
+#else
+    char* p = getcwd(nullptr, 0);
+    ASSERT_NE(p, nullptr);
+    cwd = p;
+    free(p);
+    cwd.append(ORT_TSTR("/fake.onnx"));
+#endif
   }
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), cwd.empty() ? nullptr : cwd.c_str(), output.data(),
                                      output.size() * sizeof(float), &value, &deleter);

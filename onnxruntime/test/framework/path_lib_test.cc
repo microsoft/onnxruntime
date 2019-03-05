@@ -29,19 +29,37 @@ TEST(PathTest, trailing_slash2) {
 TEST(PathTest, windows_root) {
   PATH_EXPECT("C:\\", "C:\\");
 }
-
-TEST(PathTest, single) {
-  PATH_EXPECT(".", "abc");
-}
-
 TEST(PathTest, root) {
   PATH_EXPECT("\\", "\\");
 }
-
 TEST(PathTest, invalid_double_slash) {
   std::basic_string<ORTCHAR_T> ret;
   auto st = onnxruntime::GetDirNameFromFilePath(ORT_TSTR("\\\\"), ret);
   ASSERT_FALSE(st.IsOK());
+}
+#else
+TEST(PathTest, simple) {
+  PATH_EXPECT("/Windows", "/Windows/a.txt");
+}
+
+TEST(PathTest, trailing_slash) {
+  PATH_EXPECT("/Windows", "/Windows/system32/");
+}
+
+TEST(PathTest, trailing_slash2) {
+  PATH_EXPECT("/Windows", "/Windows//system32/");
+}
+
+TEST(PathTest, root) {
+  PATH_EXPECT("/", "/");
+}
+
+TEST(PathTest, double_slash) {
+  PATH_EXPECT("//", "//");
+}
+#endif
+TEST(PathTest, single) {
+  PATH_EXPECT(".", "abc");
 }
 
 TEST(PathTest, dot) {
@@ -52,4 +70,3 @@ TEST(PathTest, dot_dot) {
   PATH_EXPECT(".", "..");
 }
 
-#endif
