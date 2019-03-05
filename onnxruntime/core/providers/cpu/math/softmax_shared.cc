@@ -32,6 +32,7 @@
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/mlas/inc/mlas.h"
 
 #include "gsl/gsl_algorithm"
 #include "gsl/gsl_util"
@@ -67,24 +68,107 @@ common::Status SoftmaxCPU(const int64_t N,
   math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, nullptr);
 
   // Exponentiation
-  math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
+  //math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
+
+  int num_split = 1;
+  // Exponentiation
+  #if defined USE_OPENMP
+  const int max_split = 48;
+  const int min_split_size = 16384;
+  num_split = std::min((nd + min_split_size - 1) / min_split_size, max_split);
+  #endif
+  if (num_split > 1) {
+    int split_size = nd / num_split;
+    #pragma omp parallel for
+    for (int split = 0; split < num_split; ++split) {
+      int split_start = split * split_size;
+      int real_sz = (split < num_split - 1) ? split_size : nd - split_start;
+      //math::Exp<float, CPUMathUtil>(real_sz, Ydata + split_start, Ydata + split_start, nullptr);
+      MlasComputeExpf(Ydata + split_start, Ydata + split_start, real_sz);
+    }
+  }
+  else {
+    //math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
+    MlasComputeExpf(Ydata, Ydata, nd);
+  }
+
   math::Gemv<float, CPUMathUtil>(CblasNoTrans, n, d, 1, Ydata, sum_multiplier, 0, scale, nullptr);
 
   // Do division
   if (!logarithmic) {
-    for (int i = 0; i < N; ++i) {
-      for (int j = 0; j < D; ++j) {
-        Ydata[i * D + j] /= scale[i];
+    num_split = 1;
+    #if defined USE_OPENMP
+    int min_row_per_split = (min_split_size + d - 1) / d;
+    num_split = std::min((n + min_row_per_split - 1) / min_row_per_split, max_split);
+    #endif
+    if (num_split > 1) {
+      int rows_per_split = n / num_split;
+      #pragma omp parallel for
+      for (int split = 0; split < num_split; ++split) {
+        int start_row = split * rows_per_split;
+        int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
+        for (int i = start_row, e = start_row + real_row_count; i < e; ++i) {
+          for (int j = 0; j < D; ++j) {
+            Ydata[i * D + j] /= scale[i];
+          }
+        }
+      }
+    }
+    else {
+      for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < D; ++j) {
+          Ydata[i * D + j] /= scale[i];
+        }
       }
     }
   } else {
-    for (int i = 0; i < N; ++i) {
-      for (int j = 0; j < D; ++j) {
-        Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log(fmaxf(scale[i], 1e-20f));
+    num_split = 1;
+    #if defined USE_OPENMP
+    int min_row_per_split = (min_split_size + D - 1) / D;
+    num_split = std::min((n + min_row_per_split - 1) / min_row_per_split, max_split);
+    #endif
+    if (num_split > 1) {
+      int rows_per_split = N / num_split;
+      #pragma omp parallel for
+      for (int split = 0; split < num_split; ++split) {
+        int start_row = split * rows_per_split;
+        int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
+        for (int i = start_row, e = start_row + real_row_count; i < e; ++i) {
+          for (int j = 0; j < D; ++j) {
+            Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log(fmaxf(scale[i], 1e-20f));
+          }
+        }
+      }
+    }
+    else {
+      for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < D; ++j) {
+          Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log(fmaxf(scale[i], 1e-20f));
+        }
       }
     }
   }
 
   return Status::OK();
 }
+
+//  math::Gemv<float, CPUMathUtil>(CblasNoTrans, n, d, 1, Ydata, sum_multiplier, 0, scale, nullptr);
+//
+//  // Do division
+//  if (!logarithmic) {
+//    for (int i = 0; i < N; ++i) {
+//      for (int j = 0; j < D; ++j) {
+//        Ydata[i * D + j] /= scale[i];
+//      }
+//    }
+//  } else {
+//    for (int i = 0; i < N; ++i) {
+//      for (int j = 0; j < D; ++j) {
+//        Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log(fmaxf(scale[i], 1e-20f));
+//      }
+//    }
+//  }
+//
+//  return Status::OK();
+//}
 }  // namespace onnxruntime
