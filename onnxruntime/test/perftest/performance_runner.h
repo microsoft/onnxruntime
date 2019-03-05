@@ -111,6 +111,7 @@ class PerformanceRunner {
   // not owned
   OrtSession* session_object_ = nullptr;
   std::vector<const char*> input_names_;
+  std::unordered_map<std::string, OrtValue*> feeds_;
   std::vector<OrtValue*> input_values_;
   HeapBuffer b_;
   std::vector<std::string> output_names_;

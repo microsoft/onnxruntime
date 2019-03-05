@@ -142,7 +142,8 @@ bool PerformanceRunner::Initialize() {
     sf.EnableSequentialExecution();
   else
     sf.DisableSequentialExecution();
-
+  fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config_.run_config.session_thread_pool_size);
+  sf.SetSessionThreadPoolSize(performance_test_config_.run_config.session_thread_pool_size);
   session_object_ = sf.OrtCreateSession(test_case->GetModelUrl());
 
   auto provider_type = performance_test_config_.machine_config.provider_type_name;
@@ -157,17 +158,16 @@ bool PerformanceRunner::Initialize() {
     return false;
   }
 
-  std::unordered_map<std::string, OrtValue*> feeds;
-  st = test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds, true);
+  st = test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds_, true);
   if (!st.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load data failed " << test_case->GetTestCaseName();
     return false;
   }
 
-  input_names_.resize(feeds.size());
-  input_values_.resize(feeds.size());
+  input_names_.resize(feeds_.size());
+  input_values_.resize(feeds_.size());
   size_t input_index = 0;
-  for (auto& kvp : feeds) {
+  for (auto& kvp : feeds_) {
     input_names_[input_index] = kvp.first.c_str();
     input_values_[input_index] = kvp.second;
     ++input_index;
