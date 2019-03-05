@@ -91,7 +91,7 @@ namespace perftest {
         break;
       case 'x':
         test_config.run_config.enable_sequential_execution = false;
-        test_config.run_config.session_thread_pool_size = static_cast<int>(strtol(optarg, nullptr, 10));
+        test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.session_thread_pool_size <= 0) {
           return false;
         }
