@@ -10,6 +10,7 @@
 #include "core/common/status.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/ml_value.h"
+#include "core/framework/node_index_info.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
 #include "core/graph/graph_viewer.h"
@@ -17,31 +18,92 @@
 namespace onnxruntime {
 
 class SessionState;
+class MLValueNameIdxMap;
 class MLValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 
-struct MLValueAllocationParameters {
-  MLValueAllocationParameters() = default;
-  MLValueAllocationParameters(const TensorShape* shape)
-      : tensor_shape{shape} {}
+class IExecutionFrame {
+ protected:
+  IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
+                  const std::vector<MLValue>& feeds,
+                  const std::unordered_map<int, MLValue>& initializers,
+                  const std::vector<int>& fetch_mlvalue_idxs,
+                  const std::vector<MLValue>& fetches,
+                  const MLValueNameIdxMap& mlvalue_idx_map,
+                  const NodeIndexInfo& node_index_info);
 
-  const TensorShape& GetTensorShape() const {
-    static const TensorShape s_empty_tensor_shape;
-    return tensor_shape != nullptr ? *tensor_shape : s_empty_tensor_shape;
+ public:
+  virtual ~IExecutionFrame();
+
+  // Get the index for the first entry of the given node.
+  int GetNodeOffset(NodeIndex index) const {
+    return node_index_info_.GetNodeOffset(index);
   }
 
+  // Return nullptr if index map to an value that is an unused optional input/output
+  const MLValue* GetNodeInputOrOutputMLValue(int index) const;
+  MLValue* GetMutableNodeInputOrOutputMLValue(int index);
+
+  // TO DO: make it thread safe
+  // This method is not thread safe!
+  // Return S_OK and nullptr if index map to an value that is an unused optional input/output
+  // Shape is required for tensors but not traditional ML values.
+  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, MLValue*& p_mlvalue);
+
+  // write the output values to the 'fetches' vector
+  Status GetOutputs(std::vector<MLValue>& fetches);
+
+  AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const;
+
+  Status ReleaseMLValue(int mlvalue_idx);
+
+ protected:
+  // get the mlvalue_idx from NodeIndexInfo
+  int GetNodeIdxToMLValueIdx(int index) const;
+
+  MLValue& GetMutableMLValue(int mlvalue_index) {
+    return const_cast<MLValue&>(GetMLValue(mlvalue_index));
+  }
+
+  virtual Status ReleaseMLValueImpl(int mlvalue_idx);
+
+  // returns true if the mlvalue_idx is an output from the graph
+  bool IsOutput(int mlvalue_idx) const;
+
  private:
-  const TensorShape* tensor_shape{};
-  // todo: is there any parameter needed for ml types?
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
+
+  void Init(const std::vector<int>& feed_mlvalue_idxs,
+            const std::vector<MLValue>& feeds,
+            const std::unordered_map<int, MLValue>& initializers,
+            const std::vector<int>& fetch_mlvalue_idxs,
+            const std::vector<MLValue>& fetches,
+            const MLValueNameIdxMap& mlvalue_idx_map);
+
+  const MLValue& GetMLValue(int mlvalue_index) const {
+    ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
+    return all_values_[mlvalue_index];
+  }
+
+  virtual AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const = 0;
+  virtual Status CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue_idx, const TensorShape* shape) = 0;
+
+  const NodeIndexInfo& node_index_info_;
+
+  // All the intermediate values for the entire graph.
+  // Input and Output values are passed in by executors
+  std::vector<MLValue> all_values_;
+
+  const std::vector<int> fetch_mlvalue_idxs_;
 };
 
-class ExecutionFrame {
+class ExecutionFrame final : public IExecutionFrame {
  public:
   ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
                  const std::vector<MLValue>& feeds,
                  const std::vector<int>& fetch_mlvalue_idxs,
-                 std::vector<MLValue>& fetches,
+                 const std::vector<MLValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
@@ -51,104 +113,59 @@ class ExecutionFrame {
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
-  Status AllocateMLValueTensorSelfOwnBuffer(int mlvalue_index,
+  Status AllocateMLValueTensorSelfOwnBuffer(MLValue& mlvalue,
+                                            int mlvalue_index,
                                             MLDataType element_type,
                                             const OrtAllocatorInfo& location,
                                             const TensorShape& shape,
                                             bool create_fence = false);
 
-  Status AllocateMLValueTensorPreAllocateBuffer(int mlvalue_index_to_allocate,
+  Status AllocateMLValueTensorPreAllocateBuffer(MLValue& mlvalue,
                                                 int mlvalue_index_reuse,
                                                 MLDataType element_type,
                                                 const OrtAllocatorInfo& location,
                                                 const TensorShape& shape,
                                                 bool create_fence = false);
-  const MLValue& GetMLValue(int mlvalue_index) const {
-    ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
-    return all_values_[mlvalue_index];
-  }
-
-  MLValue& GetMutableMLValue(int mlvalue_index) {
-    ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
-    return all_values_[mlvalue_index];
-  }
-
-  // Get the index for the first entry of the given node.
-  int GetNodeOffset(NodeIndex index) const;
-
-  // Return nullptr if index map to an value that is an unused optional input/output
-  const MLValue* GetNodeInputOrOutputMLValue(int index) const;
-  MLValue* GetMutableNodeInputOrOutputMLValue(int index);
-
-  // TO DO: make it thread safe
-  // This method is not thread safe!
-  // Return S_OK and nullptr if index map to an value that is an unused optional input/output
-  Status GetOrCreateNodeOutputMLValue(int index,
-                                      const MLValueAllocationParameters& parameters,
-                                      MLValue*& p_mlvalue);
-
-  AllocatorPtr GetAllocator(const OrtAllocatorInfo& info);
-
-  // write the output values to the 'fetches' vector
-  Status GetOutputs(std::vector<MLValue>& fetches);
-
-  Status ReleaseMLValue(int mlvalue_idx);
-
-  const SessionState& GetSessionState() const {
-    return session_state_;
-  }
 
   Status GeneratePatterns(MemoryPatternGroup* out) const;
 
-  bool HasPlan() const {
+  bool HasMemoryPatternPlanner() const {
     return planner_ != nullptr;
   }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
-  void Init(const std::vector<int>& feed_mlvalue_idxs,
-            const std::vector<MLValue>& feeds,
-            const std::vector<int>& fetch_mlvalue_idxs,
-            std::vector<MLValue>& fetches,
-            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators);
+  AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
+  Status ReleaseMLValueImpl(int mlvalue_idx) override;
+  Status CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue_idx, const TensorShape* shape) override;
 
-  common::Status AllocateAsPerAllocationPlan(int mlvalue_index,
-                                             const MLValueAllocationParameters& parameters);
+  common::Status AllocateAsPerAllocationPlan(MLValue& mlvalue,
+                                             int mlvalue_index,
+                                             const TensorShape* shape);
 
-  Status AllocateMLValueTensorSelfOwnBufferHelper(int mlvalue_index,
+  Status AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue,
+                                                  int mlvalue_index,
                                                   MLDataType element_type,
                                                   const OrtAllocatorInfo& location,
                                                   const TensorShape& shape,
                                                   bool create_fence);
 
-  Status AllocateTensorWithPreAllocateBufferHelper(MLValue* p_mlvalue,
+  Status AllocateTensorWithPreAllocateBufferHelper(MLValue& mlvalue,
                                                    void* pBuffer,
                                                    MLDataType element_type,
                                                    const OrtAllocatorInfo& location,
                                                    const TensorShape& shape);
 
   void TraceAllocate(int mlvalue_idx, size_t size);
-
   void TraceFree(int mlvalue_idx);
 
-  const SequentialExecutionPlan::AllocPlanPerValue& GetAllocationPlan(int mlvalue_idx);
+  const AllocPlanPerValue& GetAllocationPlan(int mlvalue_idx);
 
-  Status status_;
-
-  const NodeIndexInfo& node_index_info_;
-
-  // All the intermediate values for the entire graph.
-  // Input and Output values are passed in by executors
-  std::vector<MLValue> all_values_;
-
-  // i-th kernel is still waiting for pending_counts_[i] inputs.
-  std::vector<int> pending_counts_;  // not used currently
+  const SessionState& session_state_;
 
   // map of index to custom allocator
   std::unordered_map<int, IExecutor::CustomAllocator> custom_allocators_;
-
-  const SessionState& session_state_;
 
   // If we already have cached memory pattern on these input shapes
   // Use this mem pattern that create a big chunk for all the internal
@@ -158,10 +175,6 @@ class ExecutionFrame {
   // If no cached memory pattern, and we enable the memory pattern optimization
   // use this planner_ to trace the memory allocation in current executor.
   std::unique_ptr<MLValuePatternPlanner> planner_;
-
-  // Record the ml value indices for output values. we won't include those
-  // values' allocation in memory pattern, as they can't be shared.
-  const std::vector<int>& fetch_mlvalue_idxs_;
 
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtAllocatorInfo, BufferUniquePtr> buffers_;

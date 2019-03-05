@@ -48,10 +48,10 @@
       {
          "component":{
             "type":"git",
-          "git": {
-            "commitHash": "b37fc6df4e426650cb0d48fc69519d0cae1584ae",
-            "repositoryUrl": "https://github.com/onnx/onnx.git"
-          }
+            "git":{
+               "commitHash":"873ddbbc33c6e54d90c5628387edd391fb651dfc",
+               "repositoryUrl":"https://github.com/onnx/onnx.git"
+            }
          }
       },
       {
@@ -189,6 +189,59 @@
             }
          }
       },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"217f52fb121ef92491e5d5f71394b07ce4ead1d0",
+               "repositoryUrl":"https://github.com/KjellKod/g3log.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"50893291621658f355bc5b4d450a8d06a563053d",
+               "repositoryUrl":"https://github.com/madler/zlib.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"d264a2603493fecda607c1d1cda87fedba77d36b",
+               "repositoryUrl":"https://github.com/Microsoft/CNTK.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"971e2e89d08deeae0139d3011d15646fdac13c92",
+               "repositoryUrl":"https://github.com/numpy/numpy.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"90537289a04ef5d572496240e2ac3a881be518d2",
+               "repositoryUrl":"https://github.com/pytorch/pytorch.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
+               "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
+              }
+         }
       {
          "component":{
             "type":"git",
