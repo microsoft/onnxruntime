@@ -196,7 +196,7 @@ def install_ubuntu_deps(args):
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
 def install_python_deps():
-    dep_packages = ['setuptools', 'wheel', 'numpy']
+    dep_packages = ['setuptools', 'wheel', 'numpy==1.15.0']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
