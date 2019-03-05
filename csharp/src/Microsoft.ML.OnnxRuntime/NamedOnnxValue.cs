@@ -299,6 +299,11 @@ namespace Microsoft.ML.OnnxRuntime
                     nativeElementType = TensorElementType.UInt8;
                     dataBufferLength = dt.Buffer.Length * sizeof(byte);
                 }
+                else if (typeof(T) == typeof(string))
+                {
+                    nativeElementType = TensorElementType.String;
+                    dataBufferLength = dt.Buffer.Length * IntPtr.Size;
+                }
                 //TODO: Not supporting boolean for now. bool is non-blittable, the interop needs some care, and possibly need to copy
                 //else if (typeof(T) == typeof(bool))
                 //{
@@ -340,7 +345,7 @@ namespace Microsoft.ML.OnnxRuntime
         DataTypeMax = 17
     }
 
-    internal enum OnnxType
+    internal enum OnnxValueType
     {
         ONNX_TYPE_UNKNOWN = 0,
         ONNX_TYPE_TENSOR = 1,
@@ -389,6 +394,10 @@ namespace Microsoft.ML.OnnxRuntime
                     width = sizeof(ulong);
                     break;
                 case TensorElementType.UInt8:
+                    type = typeof(byte);
+                    width = sizeof(byte);
+                    break;
+                case TensorElementType.String:
                     type = typeof(byte);
                     width = sizeof(byte);
                     break;

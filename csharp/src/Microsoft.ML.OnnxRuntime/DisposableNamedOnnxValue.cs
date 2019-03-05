@@ -4,17 +4,18 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics.Tensors;
+using System.Runtime.InteropServices;
 
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    public interface IDisposableReadOnlyCollection<T>: IReadOnlyCollection<T>, IDisposable
+    public interface IDisposableReadOnlyCollection<T> : IReadOnlyCollection<T>, IDisposable
     {
 
     }
 
     internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
-        where T: IDisposable
+        where T : IDisposable
     {
 
         #region IDisposable Support
@@ -58,11 +59,11 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
 
-    public class DisposableNamedOnnxValue: NamedOnnxValue, IDisposable
+    public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
         protected IDisposable _nativeMemoryManager;
         protected DisposableNamedOnnxValue(string name, Object value, IDisposable nativeMemoryManager)
-            :base(name, value)
+            : base(name, value)
         {
             _nativeMemoryManager = nativeMemoryManager;
         }
@@ -117,6 +118,9 @@ namespace Microsoft.ML.OnnxRuntime
                 case TensorElementType.UInt8:
                     result = DisposableNamedOnnxValueFromNativeTensor<byte>(name, nativeOnnxValue);
                     break;
+                case TensorElementType.String:
+                    result = DisposableNamedOnnxValueFromNativeTensor<string>(name, nativeOnnxValue);
+                    break;
                 default:
                     throw new NotSupportedException("Tensor of element type: " + elemType + " is not supported");
 
@@ -139,13 +143,13 @@ namespace Microsoft.ML.OnnxRuntime
             var onnxValueType = NativeMethods.OrtGetValueType(nativeOnnxValue);
             switch (onnxValueType)
             {
-                case OnnxType.ONNX_TYPE_TENSOR:
+                case OnnxValueType.ONNX_TYPE_TENSOR:
                     return CreateTensorFromOnnxValue(name, nativeOnnxValue);
 
-                case OnnxType.ONNX_TYPE_SEQUENCE:
+                case OnnxValueType.ONNX_TYPE_SEQUENCE:
                     IntPtr count = IntPtr.Zero;
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueCount(nativeOnnxValue, out count));
-                    var sequence = new List<DisposableNamedOnnxValue>();
+                    var sequence = new DisposableList<DisposableNamedOnnxValue>();
                     for (long i = 0; i < count.ToInt64(); i++)
                     {
                         IntPtr nativeOnnxValueSeq;
@@ -155,7 +159,7 @@ namespace Microsoft.ML.OnnxRuntime
                     }
                     return new DisposableNamedOnnxValue(name, sequence, null);
 
-                case OnnxType.ONNX_TYPE_MAP:
+                case OnnxValueType.ONNX_TYPE_MAP:
                     IntPtr typeAndShape = IntPtr.Zero;
                     IntPtr nativeOnnxValueMapKeys = IntPtr.Zero;
                     IntPtr nativeOnnxValueMapValues = IntPtr.Zero;
@@ -172,9 +176,9 @@ namespace Microsoft.ML.OnnxRuntime
                     switch (elemType)
                     {
                         case TensorElementType.Int64:
-                            return DisposableNamedMapFromNativeMap<Int64, float>(string.Empty, nativeOnnxValueMapKeys, nativeOnnxValueMapValues);
+                            return DisposableNamedOnnxValueFromNativeMap<Int64, float>(string.Empty, nativeOnnxValueMapKeys, nativeOnnxValueMapValues);
                         case TensorElementType.String:
-                            return DisposableNamedMapFromNativeMap<string, float>(string.Empty, nativeOnnxValueMapKeys, nativeOnnxValueMapValues);
+                            return DisposableNamedOnnxValueFromNativeMap<string, float>(string.Empty, nativeOnnxValueMapKeys, nativeOnnxValueMapValues);
                         default:
                             throw new NotSupportedException("Map of element type: " + elemType + " is not supported");
                     }
@@ -185,47 +189,53 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static DisposableNamedOnnxValue DisposableNamedOnnxValueFromNativeTensor<T>(string name, IntPtr nativeOnnxValue)
         {
-            NativeOnnxTensorMemory<T> nativeTensorWrapper = new NativeOnnxTensorMemory<T>(nativeOnnxValue);
-            DenseTensor<T> dt = new DenseTensor<T>(nativeTensorWrapper.Memory, nativeTensorWrapper.Dimensions);
-            return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
+            if (typeof(T) == typeof(string))
+            {
+                var nativeTensorWrapper = new NativeOnnxTensorMemory<byte>(nativeOnnxValue, true);
+                var dt = new DenseTensor<string>(nativeTensorWrapper.MemoryString(), nativeTensorWrapper.Dimensions);
+                return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
+            }
+            else
+            {
+                NativeOnnxTensorMemory<T> nativeTensorWrapper = new NativeOnnxTensorMemory<T>(nativeOnnxValue);
+                DenseTensor<T> dt = new DenseTensor<T>(nativeTensorWrapper.Memory, nativeTensorWrapper.Dimensions);
+                return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
+            }
         }
 
-        private static DisposableNamedOnnxValue DisposableNamedMapFromNativeMap<K,V>(string name, IntPtr nativeOnnxValueKeys, IntPtr nativeOnnxValueValues)
+        private static DisposableNamedOnnxValue DisposableNamedOnnxValueFromNativeMap<K, V>(string name, IntPtr nativeOnnxValueKeys, IntPtr nativeOnnxValueValues)
         {
-            var map = new Dictionary<K, V>();
-            IntPtr typeInfo = IntPtr.Zero;
-            IntPtr typeInfoTensor = IntPtr.Zero;
+            var nativeTensorWrapperValues = new NativeOnnxTensorMemory<V>(nativeOnnxValueValues);
+            var denseTensorValues = new DenseTensor<V>(nativeTensorWrapperValues.Memory, nativeTensorWrapperValues.Dimensions);
 
-            var onnxValueType = NativeMethods.OrtGetValueType(nativeOnnxValueKeys);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTypeInfo(nativeOnnxValueKeys, out typeInfo));
-            var meta = InferenceSession.GetMetadataFromTypeInfo(typeInfo);
-
-            var nativeTensorWrapperKeys = new NativeOnnxTensorMemory<K>(nativeOnnxValueKeys).GetSpan();
-            var nativeTensorWrapperValues = new NativeOnnxTensorMemory<V>(nativeOnnxValueValues).GetSpan();
-
-            for (int i=0; i < nativeTensorWrapperKeys.Length; i++)
+            if (typeof(K) == typeof(string))
             {
-                if (typeof(K) == typeof(string))
+                var map = new Dictionary<string, V>();
+                var nativeTensorWrapper = new NativeOnnxTensorMemory<byte>(nativeOnnxValueKeys, true);
+                var denseTensorKeys = new DenseTensor<string>(nativeTensorWrapper.MemoryString(), nativeTensorWrapper.Dimensions);
+                for (var i = 0; i < denseTensorKeys.Length; i++)
                 {
-                    // TODO: add support for string
+                    map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
                 }
-                else
-                {
-                    // types K and V are always valid blittable types
-                    var k = (K) Convert.ChangeType(nativeTensorWrapperKeys[i], typeof(K));
-                    var v = (V) Convert.ChangeType(nativeTensorWrapperValues[i], typeof(V));
-                    map.Add(k, v);
-                }
+                // release native memory
+                nativeTensorWrapperValues.Dispose();
+                nativeTensorWrapper.Dispose();
+                return new DisposableNamedOnnxValue(string.Empty, map, null);
             }
-
-            // release native objects
-            if (typeInfo != IntPtr.Zero)
+            else
             {
-                NativeMethods.OrtReleaseTypeInfo(typeInfo);
+                var map = new Dictionary<K, V>();
+                var nativeTensorWrapper = new NativeOnnxTensorMemory<K>(nativeOnnxValueKeys);
+                var denseTensorKeys = new DenseTensor<K>(nativeTensorWrapper.Memory, nativeTensorWrapper.Dimensions);
+                for (var i = 0; i < denseTensorKeys.Length; i++)
+                {
+                    map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
+                }
+                // release native memory
+                nativeTensorWrapperValues.Dispose();
+                nativeTensorWrapper.Dispose();
+                return new DisposableNamedOnnxValue(string.Empty, map, null);
             }
-            NativeMethods.OrtReleaseValue(nativeOnnxValueKeys);
-            NativeMethods.OrtReleaseValue(nativeOnnxValueValues);
-            return new DisposableNamedOnnxValue(string.Empty, map, null);
         }
 
         #region IDisposable Support
