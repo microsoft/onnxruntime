@@ -116,7 +116,6 @@ class InferenceSession::Impl {
     }
 
     session_state_.SetThreadPool(thread_pool_.get());
-    session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern);
     session_profiler_.Initialize(session_logger_);
     session_state_.SetProfiler(session_profiler_);
     if (session_options.enable_profiling) {

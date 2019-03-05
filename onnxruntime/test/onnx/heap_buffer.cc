@@ -13,4 +13,7 @@ HeapBuffer::~HeapBuffer() {
   for (auto d : deleters_) {
     OrtRunCallback(d);
   }
+  for (void* p : buffers_) {
+    free(p);
+  }
 }

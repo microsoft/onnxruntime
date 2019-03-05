@@ -186,7 +186,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
-  if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
+  if (session_state.GetExecutionPlan()) {
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {

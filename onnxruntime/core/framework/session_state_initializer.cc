@@ -266,7 +266,7 @@ static common::Status AllocatePlannedBuffers(const MemoryPatternGroup& mem_patte
 }
 
 /**
- * When it succeeded, p could be NULL if the tensor will not have any element
+ * When it succeeded, p could be NULL if the tensor with 'mlvalue_index' will not have any element
  */
 static common::Status GetPreallocatedBuffer(const MemoryPatternGroup& mem_patterns, const OrtAllocatorInfo& location,
                                             int mlvalue_index,
@@ -340,7 +340,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
     auto& location = execution_plan.allocation_plan[mlvalue_index].location;
     void* buffer = nullptr;
-    size_t len;
+    size_t len = 0;
     // TODO: if the tensor need be copied, does it have enough room?
     ORT_RETURN_IF_ERROR(
         GetPreallocatedBuffer(mem_patterns, location, mlvalue_index, weights_buffers, name, buffer, len));

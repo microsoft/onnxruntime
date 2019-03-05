@@ -12,12 +12,12 @@ class HeapBuffer {
   ~HeapBuffer();
   void* AllocMemory(size_t size) {
     void* p = malloc(size);
-    buffers.push_back(p);
+    buffers_.push_back(p);
     return p;
   }
   void AddDeleter(OrtCallback* d);
 
  private:
   std::vector<OrtCallback*> deleters_;
-  std::vector<void*> buffers;
+  std::vector<void*> buffers_;
 };
