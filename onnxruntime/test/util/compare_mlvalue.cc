@@ -384,8 +384,8 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     ONNXTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
     if (real_type != expected_type) {
       std::ostringstream oss;
-      oss << "expect " << ElementTypeToString(expected_type)
-          << " got " << ElementTypeToString(real_type);
+      oss << "expect " << ElementTypeToString((MLDataType)expected_type)
+          << " got " << ElementTypeToString((MLDataType)real_type);
 
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
