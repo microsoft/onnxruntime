@@ -20,7 +20,7 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
                                  const std::vector<MLValue>& feeds,
                                  const std::unordered_map<int, MLValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs,
-                                 std::vector<MLValue>& fetches,
+                                 const std::vector<MLValue>& fetches,
                                  const MLValueNameIdxMap& mlvalue_idx_map,
                                  const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
@@ -163,7 +163,7 @@ bool IExecutionFrame::IsOutput(int mlvalue_idx) const {
 ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
                                const std::vector<MLValue>& feeds,
                                const std::vector<int>& fetch_mlvalue_idxs,
-                               std::vector<MLValue>& fetches,
+                               const std::vector<MLValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
