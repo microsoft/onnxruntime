@@ -7,7 +7,8 @@
 
 namespace onnxruntime {
 namespace test {
-void CreateTestFile(FILE** out, std::basic_string<ORTCHAR_T>& filename_template);
+void CreateTestFile(FILE*& out, std::basic_string<ORTCHAR_T>& filename_template);
+void CreateTestFile(int& out, std::basic_string<ORTCHAR_T>& filename_template);
 void DeleteFileFromDisk(const ORTCHAR_T* path);
 
 }  // namespace test

@@ -64,7 +64,7 @@ template <bool use_current_dir>
 static void run_external_data_test() {
   FILE* fp;
   std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
-  CreateTestFile(&fp, filename);
+  CreateTestFile(fp, filename);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
                                                                          DeleteFileFromDisk);
   float test_data[] = {1.0f, 2.2f, 3.5f};
@@ -122,7 +122,7 @@ TEST_F(CApiTest, load_float_tensor_with_external_data) {
 TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
   std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
-  CreateTestFile(&fp, filename);
+  CreateTestFile(fp, filename);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
                                                                          DeleteFileFromDisk);
   std::vector<int> data(524288, 1);

@@ -206,11 +206,17 @@ class InferenceSession::Impl {
   template <typename T>
   common::Status Load(const T& model_uri) {
     model_location_ = ToWideString(model_uri);
-    auto loader = [this, &model_uri](std::shared_ptr<onnxruntime::Model>& model) {
-      return onnxruntime::Model::Load(model_uri, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
+      return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
     };
 
-    return Load(loader, "model_loading_uri");
+    common::Status st = Load(loader, "model_loading_uri");
+    if (!st.IsOK()) {
+      std::ostringstream oss;
+      oss << "Load model from " << ToMBString(model_uri) << " failed:" << st.ErrorMessage();
+      return common::Status(st.Category(), st.Code(), oss.str());
+    }
+    return Status::OK();
   }
 
   common::Status Load(const ModelProto& model_proto) {

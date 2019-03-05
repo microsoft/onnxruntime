@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/platform/env.h"
 #include "onnx_protobuf.h"
 #include <google/protobuf/text_format.h>
 #include "test_fixture.h"
@@ -9,18 +10,18 @@
 namespace onnxruntime {
 namespace test {
 namespace {
-void write_string_to_temp_file(const ORTCHAR_T* test_data, std::basic_string<ORTCHAR_T>& filename) {
-  FILE* fp;
-  CreateTestFile(&fp, filename);
+void WriteStringToTempFile(const char* test_data, std::basic_string<ORTCHAR_T>& filename) {
+  int fd;
+  CreateTestFile(fd, filename);
   onnx::ModelProto mp;
   if (!google::protobuf::TextFormat::ParseFromString(test_data, &mp)) {
     throw std::runtime_error("protobuf parsing failed");
   }
-  std::string s = mp.SerializeAsString();
-  size_t written = fwrite(s.data(), 1, s.size(), fp);
-  if (written != s.size()) throw std::runtime_error("write file failed");
-  size_t ret = fclose(fp);
-  if (ret != 0) throw std::runtime_error("close file failed");
+  if (!mp.SerializeToFileDescriptor(fd))
+    throw std::runtime_error("write file failed");
+  auto st = Env::Default().FileClose(fd);
+  if (!st.IsOK())
+    throw std::runtime_error("close file failed");
 }
 }  // namespace
 
@@ -73,10 +74,10 @@ TEST_F(CApiTest, model_missing_data) {
       "}\n"
       "opset_import {\n"
       "  domain: \"\"\n"
-      "  version: 10\n"
+      "  version: 9\n"
       "}";
-  std::basic_string<ORTCHAR_T> model_url("model_XXXXXX");
-  write_string_to_temp_file(test_data, model_url);
+  std::basic_string<ORTCHAR_T> model_url(ORT_TSTR("model_XXXXXX"));
+  WriteStringToTempFile(test_data, model_url);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(model_url.c_str()),
                                                                          DeleteFileFromDisk);
   std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
@@ -87,7 +88,7 @@ TEST_F(CApiTest, model_missing_data) {
 }
 
 TEST_F(CApiTest, model_with_external_data) {
-  const ORTCHAR_T* test_data_begin = ORT_TSTR(
+  const char* test_data_begin =
       "ir_version: 4\n"
       "graph {\n"
       "  node {\n"
@@ -104,9 +105,9 @@ TEST_F(CApiTest, model_with_external_data) {
       "    name: \"X\"\n"
       "    data_location: 1\n"
       "    external_data {\n"
-      "      value: \"");
+      "      value: \"";
 
-  const ORTCHAR_T* test_data_end = ORT_TSTR(
+  const char* test_data_end =
       "\"\n"
       "      key:   \"location\"\n"
       "    }\n"
@@ -143,12 +144,12 @@ TEST_F(CApiTest, model_with_external_data) {
       "}\n"
       "opset_import {\n"
       "  domain: \"\"\n"
-      "  version: 10\n"
-      "}");
-  std::basic_string<ORTCHAR_T> model_url("model_XXXXXX");
-  std::basic_string<ORTCHAR_T> raw_data_url("raw_data_XXXXXX");
+      "  version: 9\n"
+      "}\n";
+  std::basic_string<ORTCHAR_T> model_url(ORT_TSTR("model_XXXXXX"));
+  std::basic_string<ORTCHAR_T> raw_data_url(ORT_TSTR("raw_data_XXXXXX"));
   FILE* fp;
-  CreateTestFile(&fp, raw_data_url);
+  CreateTestFile(fp, raw_data_url);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter2(const_cast<ORTCHAR_T*>(raw_data_url.c_str()),
                                                                           DeleteFileFromDisk);
   float raw_data[3000];
@@ -157,17 +158,18 @@ TEST_F(CApiTest, model_with_external_data) {
     ASSERT_EQ(raw_data_len, fwrite(raw_data, 1, raw_data_len, fp));
   }
   ASSERT_EQ(0, fclose(fp));
-  std::basic_ostringstream<ORTCHAR_T> oss;
-  oss << test_data_begin << raw_data_url << test_data_end;
-  std::basic_string<ORTCHAR_T> model_data = oss.str();
-  write_string_to_temp_file(model_data.c_str(), model_url);
+  std::ostringstream oss;
+  oss << test_data_begin << ToMBString(raw_data_url) << test_data_end;
+  const std::string model_data = oss.str();
+  WriteStringToTempFile(model_data.c_str(), model_url);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(model_url.c_str()),
                                                                          DeleteFileFromDisk);
   std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
-  OrtSession* ret;
-  auto st = ::OrtCreateSession(env, model_url.c_str(), so.get(), &ret);
+  OrtSession* session;
+  auto st = ::OrtCreateSession(env, model_url.c_str(), so.get(), &session);
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
   OrtReleaseStatus(st);
+  ::OrtReleaseSession(session);
 }
 }  // namespace test
 }  // namespace onnxruntime
