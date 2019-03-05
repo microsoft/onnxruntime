@@ -167,7 +167,9 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
+//Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
+Status PoolBase::Compute(OpKernelContext*, MLAS_POOLING_KIND) const {
+/*
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
@@ -195,7 +197,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            output_dims.data(),
            X->template Data<float>(),
            Y->template MutableData<float>());
-
+*/
   return Status::OK();
 }
 

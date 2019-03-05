@@ -94,7 +94,8 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
         conv_buf_p[unfolded_inx * num_filters + filter_inx] += bias[filter_inx];
       }
-    MlasComputeTanh(conv_buf_p, pactivationbuf, words_unfolded_width * num_filters);
+
+    //MlasComputeTanh(conv_buf_p, pactivationbuf, words_unfolded_width * num_filters);
 
     float* activationbuf_cur_ptr = pactivationbuf;
     for (int64_t pool_word_inx = word_inx; pool_word_inx < tmp_word_inx; pool_word_inx++) {

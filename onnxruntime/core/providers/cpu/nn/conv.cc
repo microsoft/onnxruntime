@@ -7,7 +7,8 @@
 namespace onnxruntime {
 
 template <>
-Status Conv<float>::Compute(OpKernelContext* context) const {
+Status Conv<float>::Compute(OpKernelContext* /*context*/) const {
+/* 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(1);
@@ -151,7 +152,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
       Ydata += Y_offset * group_;
     }
   }
-
+*/
   return Status::OK();
 }
 

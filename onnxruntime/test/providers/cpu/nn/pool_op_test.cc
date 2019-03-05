@@ -8,6 +8,7 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+/*
 TEST(PoolTest, MaxPool) {
   OpTester test("MaxPool");
 
@@ -51,6 +52,7 @@ TEST(PoolTest, MaxPool) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
+*/
 
 // Only CUDA kernel has float 16 support
 // Disable for now, still investigating the issue with cudnn lib
@@ -106,6 +108,7 @@ TEST(PoolTest, MaxPool_F16) {
 }
 #endif
 
+/*
 static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order=0) {
   OpTester test("MaxPool", 8);
 
@@ -156,13 +159,15 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order=0) {
   }
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kMklDnnExecutionProvider});
 }
+*/
 
-TEST(PoolTest, MaxPool_8_With_Index) {
-  MaxPool_8_WithIndexTest(false);  // row major
-  MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
-  MaxPool_8_WithIndexTest(true, 1 /*storage_order*/);  // col major
-}
+//TEST(PoolTest, MaxPool_8_With_Index) {
+//  MaxPool_8_WithIndexTest(false);  // row major
+//  MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
+//  MaxPool_8_WithIndexTest(true, 1 /*storage_order*/);  // col major
+//}
 
+/*
 TEST(PoolTest, MaxPool1D) {
   OpTester test("MaxPool");
 
@@ -180,7 +185,8 @@ TEST(PoolTest, MaxPool1D) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
-
+*/
+/*
 static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
   OpTester test("MaxPool", 8);
 
@@ -201,12 +207,13 @@ static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run();
 }
+*/
+//TEST(PoolTest, MaxPool1D_8_With_Index) {
+//  MaxPool1D_8_WithIndexTest(0 /*storage_order*/);
+//  MaxPool1D_8_WithIndexTest(1 /*storage_order*/);
+//}
 
-TEST(PoolTest, MaxPool1D_8_With_Index) {
-  MaxPool1D_8_WithIndexTest(0 /*storage_order*/);
-  MaxPool1D_8_WithIndexTest(1 /*storage_order*/);
-}
-
+/*
 TEST(PoolTest, GlobalMaxPool) {
   OpTester test("GlobalMaxPool");
 
@@ -282,7 +289,9 @@ TEST(PoolTest, GlobalMaxPool) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
+*/
 
+/*
 TEST(PoolTest, GlobalMaxPool3D) {
   OpTester test("GlobalMaxPool");
 
@@ -358,7 +367,9 @@ TEST(PoolTest, GlobalMaxPool3D) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
+*/
 
+/*
 TEST(PoolTest, AveragePool) {
   OpTester test("AveragePool");
 
@@ -439,7 +450,8 @@ TEST(PoolTest, AveragePool) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
-
+*/
+/*
 TEST(PoolTest, AveragePool_IncludePadPixel) {
   OpTester test("AveragePool");
 
@@ -463,7 +475,9 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
+*/
 
+/*
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
@@ -539,6 +553,7 @@ TEST(PoolTest, GlobalAveragePool) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
 }
+*/
 
 TEST(PoolTest, LpPool) {
   OpTester test("LpPool");

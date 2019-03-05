@@ -283,6 +283,7 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
+/*
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";
 
@@ -337,6 +338,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(), rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
 }
+*/
 
 }  // namespace test
 }  // namespace onnxruntime

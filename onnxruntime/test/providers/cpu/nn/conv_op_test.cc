@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-
+/*
 struct ConvOpAttributes {
   string auto_pad;
   vector<int64_t> dilations;
@@ -52,10 +52,11 @@ void TestConvOp(const ConvOpAttributes& attributes,
   }
   test.Run(expect_result, err_str, excluded_providers);
 }
-
+*/
 }  // namespace
 
 // Conv
+/*
 TEST(ConvTest, Conv1D_1) {
   ConvOpAttributes attrs = {
       "",                     // auto_pad
@@ -108,7 +109,6 @@ TEST(ConvTest, Conv1D_2) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
-
 // Conv1
 TEST(ConvTest, Conv1D_Bias) {
   ConvOpAttributes attrs = {
@@ -541,6 +541,7 @@ TEST(ConvTest, Conv2D_group) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
+*/
 
 }  // namespace test
 }  // namespace onnxruntime

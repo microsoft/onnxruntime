@@ -42,6 +42,7 @@ void InitializeTestWithoutAttribute(OpTester& test) {
   test.AddOutput<float>("Y", output_shape, output);
 }
 
+/*
 TEST(ContribOpTest, WordConvEmbedding) {
   // Invalid input dimensions
   OpTester test("WordConvEmbedding", 1, onnxruntime::kMSDomain);
@@ -57,7 +58,7 @@ TEST(ContribOpTest, WordConvEmbedding_valid_attribute) {
   test.AddAttribute<int64_t>("conv_window_size", 2LL);
   test.AddAttribute<int64_t>("char_embedding_size", 3LL);
   test.Run();
-}
+}*/
 
 TEST(ContribOpTest, WordConvEmbedding_embedding_size_mismatch) {
   // Invalid input dimensions

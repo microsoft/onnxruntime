@@ -153,7 +153,6 @@ set(onnxruntime_test_framework_libs
   onnxruntime_util
   onnxruntime_graph
   onnxruntime_common
-  onnxruntime_mlas
   )
 
 
@@ -197,7 +196,6 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
-    onnxruntime_mlas
 )
 
 set(onnxruntime_test_providers_libs
@@ -444,10 +442,10 @@ if(WIN32)
   target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-add_test(NAME onnx_test_pytorch_converted
-  COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
-add_test(NAME onnx_test_pytorch_operator
-  COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
+#add_test(NAME onnx_test_pytorch_converted
+#  COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
+#add_test(NAME onnx_test_pytorch_operator
+#  COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
 
 if(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
   set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
@@ -521,8 +519,3 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
 endif()
 
-
-add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
-target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas)
-set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")

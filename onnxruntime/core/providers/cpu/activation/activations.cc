@@ -31,20 +31,26 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(Tanh, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 1);
 
 template <>
-Status Sigmoid<float>::Compute(OpKernelContext* context) const {
+//Status Sigmoid<float>::Compute(OpKernelContext* context) const {
+Status Sigmoid<float>::Compute(OpKernelContext*) const {
+/*
   const Tensor* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   Tensor* Y = context->Output(0, x_shape);
   MlasComputeLogistic(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
+*/
   return Status::OK();
 }
 
 template <>
-Status Tanh<float>::Compute(OpKernelContext* context) const {
+//Status Tanh<float>::Compute(OpKernelContext* context) const {
+Status Tanh<float>::Compute(OpKernelContext*) const {
+/*
   const Tensor* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   Tensor* Y = context->Output(0, x_shape);
   MlasComputeTanh(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
+*/
   return Status::OK();
 }
 

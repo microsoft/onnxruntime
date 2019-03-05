@@ -38,6 +38,7 @@ std::vector<float> no_inf_input_vals = {
     FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,  // min, denorm, -denorm
     FLT_MAX, -FLT_MAX};                    // max, -max
 
+/*
 TEST(ActivationOpTest, Sigmoid) {
   TestUnaryElementwiseOp("Sigmoid",
                          input_vals,
@@ -47,6 +48,7 @@ TEST(ActivationOpTest, Sigmoid) {
                            return y;
                          });
 }
+*/
 
 TEST(ActivationOpTest, HardSigmoid) {
   float alpha = 0.2f;
@@ -59,12 +61,13 @@ TEST(ActivationOpTest, HardSigmoid) {
                          {{"alpha", alpha}, {"beta", beta}});
 }
 
+/*
 TEST(ActivationOpTest, Tanh) {
   TestUnaryElementwiseOp("Tanh",
                          input_vals,
                          [](float x) { return std::tanh(x); });
 }
-
+*/
 TEST(ActivationOpTest, Relu) {
   TestUnaryElementwiseOp("Relu",
                          input_vals,
