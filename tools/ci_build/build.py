@@ -345,7 +345,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         toolchain_path = os.path.join(cmake_dir, 'external', 'vcpkg', 'scripts', 'buildsystems', 'vcpkg.cmake')
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + toolchain_path]
 
-
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
     if is_windows():
