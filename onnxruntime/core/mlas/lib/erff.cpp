@@ -296,6 +296,6 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
   MlasPlatform.ExpfKernelRoutine(Input, Output, N);
 #else
-  MlasExpfKernel(Input, Output, N);
+  MlasExpfKernelFma3(Input, Output, N);
 #endif
 }

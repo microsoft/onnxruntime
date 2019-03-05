@@ -60,31 +60,59 @@ common::Status SoftmaxCPU(const int64_t N,
   const int d = gsl::narrow_cast<int>(D);
   const int nd = gsl::narrow_cast<int>(N * D);
 
-  math::RowwiseMax<float, CPUMathUtil>(n, d, Xdata, rowmax, nullptr);
+  int num_split = 1;
+  // Exponentiation
+  #if defined USE_OPENMP
+  const int max_split = 48;
+  const int min_split_size = 16384;
+  int min_row_per_split = (min_split_size + d - 1) / d;
+  num_split = std::min((n + min_row_per_split - 1) / min_row_per_split, max_split);
+  int rows_per_split = n / num_split;
+  #endif
 
-  // Put the intermediate result X - max(X) into Y by first copying X to Y, and then subtracting max from each entry
-  gsl::copy(gsl::make_span(Xdata, nd), gsl::make_span(Ydata, nd));
+  if (num_split > 1) {
+    #pragma omp parallel for
+    for (int split = 0; split < num_split; ++split) {
+      int start_row = split * rows_per_split;
+      int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
+      int split_start = start_row * d;
+      math::RowwiseMax<float, CPUMathUtil>(real_row_count, d, Xdata + split_start, rowmax + start_row, nullptr);
+    }
+  }
+  else {
+    math::RowwiseMax<float, CPUMathUtil>(n, d, Xdata, rowmax, nullptr);
+  }
+
+
+  if (num_split > 1) {
+    #pragma omp parallel for
+    for (int split = 0; split < num_split; ++split) {
+      int start_row = split * rows_per_split;
+      int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
+      int split_start = start_row * d;
+      int real_elem_count = real_row_count * d;
+      gsl::copy(gsl::make_span(Xdata + split_start, real_elem_count), gsl::make_span(Ydata + split_start, real_elem_count));
+    }
+  }
+  else {
+    // Put the intermediate result X - max(X) into Y by first copying X to Y, and then subtracting max from each entry
+    gsl::copy(gsl::make_span(Xdata, nd), gsl::make_span(Ydata, nd));
+  }
 
   math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, nullptr);
 
   // Exponentiation
   //math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
 
-  int num_split = 1;
-  // Exponentiation
-  #if defined USE_OPENMP
-  const int max_split = 48;
-  const int min_split_size = 16384;
-  num_split = std::min((nd + min_split_size - 1) / min_split_size, max_split);
-  #endif
   if (num_split > 1) {
-    int split_size = nd / num_split;
     #pragma omp parallel for
     for (int split = 0; split < num_split; ++split) {
-      int split_start = split * split_size;
-      int real_sz = (split < num_split - 1) ? split_size : nd - split_start;
-      //math::Exp<float, CPUMathUtil>(real_sz, Ydata + split_start, Ydata + split_start, nullptr);
-      MlasComputeExpf(Ydata + split_start, Ydata + split_start, real_sz);
+      int start_row = split * rows_per_split;
+      int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
+      int split_start = start_row * d;
+      int real_elem_count = real_row_count * d;
+      //math::Exp<float, CPUMathUtil>(real_elem_count, Ydata + split_start, Ydata + split_start, nullptr);
+      MlasComputeExpf(Ydata + split_start, Ydata + split_start, real_elem_count);
     }
   }
   else {
@@ -96,13 +124,7 @@ common::Status SoftmaxCPU(const int64_t N,
 
   // Do division
   if (!logarithmic) {
-    num_split = 1;
-    #if defined USE_OPENMP
-    int min_row_per_split = (min_split_size + d - 1) / d;
-    num_split = std::min((n + min_row_per_split - 1) / min_row_per_split, max_split);
-    #endif
     if (num_split > 1) {
-      int rows_per_split = n / num_split;
       #pragma omp parallel for
       for (int split = 0; split < num_split; ++split) {
         int start_row = split * rows_per_split;
@@ -122,13 +144,7 @@ common::Status SoftmaxCPU(const int64_t N,
       }
     }
   } else {
-    num_split = 1;
-    #if defined USE_OPENMP
-    int min_row_per_split = (min_split_size + D - 1) / D;
-    num_split = std::min((n + min_row_per_split - 1) / min_row_per_split, max_split);
-    #endif
     if (num_split > 1) {
-      int rows_per_split = N / num_split;
       #pragma omp parallel for
       for (int split = 0; split < num_split; ++split) {
         int start_row = split * rows_per_split;
