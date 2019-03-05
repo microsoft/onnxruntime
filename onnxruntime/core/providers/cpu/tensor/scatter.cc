@@ -66,10 +66,8 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   }
 
   // Now poke updates
-  const auto data_batches = input_data_shape.SizeToDimension(axis);
   const auto data_batch = input_data_shape.SizeFromDimension(axis);
   const auto data_batch_bytes = data_batch * element_bytes;
-  assert(data_batches * data_batch == input_elements);
 
   const auto block = input_data_shape.SizeFromDimension(axis + 1);
   const auto block_bytes = block * element_bytes;
