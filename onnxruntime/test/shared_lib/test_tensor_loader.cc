@@ -5,10 +5,14 @@
 #include "onnx_protobuf.h"
 
 #include "test_fixture.h"
+#include "file_util.h"
+
 #ifdef _WIN32
 #include <Windows.h>
 #endif
-using namespace onnxruntime;
+
+namespace onnxruntime {
+namespace test {
 
 TEST_F(CApiTest, load_simple_float_tensor_not_enough_space) {
   // construct a tensor proto
@@ -56,26 +60,13 @@ TEST_F(CApiTest, load_simple_float_tensor) {
   OrtReleaseValue(value);
 }
 
-static void CreateTestFile(FILE** out, std::basic_string<ORTCHAR_T>* final_filename) {
-  ORTCHAR_T filename[] = ORT_TSTR("tensor_XXXXXX");
-#ifdef _WIN32
-  ASSERT_EQ(0, _wmktemp_s(filename, _countof(filename)));
-  FILE* fp = nullptr;
-  ASSERT_EQ(0, _wfopen_s(&fp, filename, ORT_TSTR("w")));
-#else
-  int fd = mkstemp(filename);
-  ASSERT_TRUE(fd >= 0);
-  FILE* fp = fdopen(fd, "w");
-#endif
-  *out = fp;
-  *final_filename = filename;
-}
-
 template <bool use_current_dir>
 static void run_external_data_test() {
   FILE* fp;
-  std::basic_string<ORTCHAR_T> filename;
-  CreateTestFile(&fp, &filename);
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
+  CreateTestFile(&fp, filename);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
+                                                                         DeleteFileFromDisk);
   float test_data[] = {1.0f, 2.2f, 3.5f};
   ASSERT_EQ(sizeof(test_data), fwrite(test_data, 1, sizeof(test_data), fp));
   ASSERT_EQ(0, fclose(fp));
@@ -111,13 +102,9 @@ static void run_external_data_test() {
     cwd.append(ORT_TSTR("/fake.onnx"));
 #endif
   }
-  auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), cwd.empty() ? nullptr : cwd.c_str(), output.data(),
-                                     output.size() * sizeof(float), &value, &deleter);
-#ifdef _WIN32
-  ASSERT_EQ(TRUE, DeleteFileW(filename.c_str()));
-#else
-  ASSERT_EQ(0, unlink(filename.c_str()));
-#endif
+  auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), cwd.empty() ? nullptr : cwd.c_str(),
+                                     output.data(), output.size() * sizeof(float), &value, &deleter);
+
   // check the result
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
   ASSERT_EQ(output[0], 1.0f);
@@ -134,8 +121,10 @@ TEST_F(CApiTest, load_float_tensor_with_external_data) {
 
 TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   FILE* fp;
-  std::basic_string<ORTCHAR_T> filename;
-  CreateTestFile(&fp, &filename);
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
+  CreateTestFile(&fp, filename);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
+                                                                         DeleteFileFromDisk);
   std::vector<int> data(524288, 1);
   const size_t len = data.size() * sizeof(int);
   for (int i = 0; i != 1025; ++i) {
@@ -161,11 +150,6 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   OrtCallback* deleter;
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
                                      output.size() * sizeof(int), &value, &deleter);
-#ifdef _WIN32
-  ASSERT_EQ(TRUE, DeleteFileW(filename.c_str()));
-#else
-  ASSERT_EQ(0, unlink(filename.c_str()));
-#endif
   // check the result
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
   int* buffer;
@@ -177,3 +161,5 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   OrtReleaseValue(value);
 }
 #endif
+}  // namespace test
+}  // namespace onnxruntime

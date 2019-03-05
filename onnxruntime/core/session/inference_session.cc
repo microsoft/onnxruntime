@@ -8,13 +8,14 @@
 #include "core/session/inference_session.h"
 
 #include <memory>
-#include "core/platform/ort_mutex.h"
 #include <sstream>
 #include <unordered_set>
 #include <list>
 
 #include "core/common/logging/logging.h"
 #include "core/common/task_thread_pool.h"
+#include "core/platform/notification.h"
+#include "core/platform/ort_mutex.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
@@ -35,14 +36,12 @@
 #include "core/framework/session_state.h"
 #include "core/framework/session_state_initializer.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/path_lib.h"
-#include "core/optimizer/transformer_memcpy.h"
 #include "core/framework/utils.h"
+#include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
-#include "core/platform/notification.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
@@ -206,6 +205,7 @@ class InferenceSession::Impl {
 
   template <typename T>
   common::Status Load(const T& model_uri) {
+    model_location_ = ToWideString(model_uri);
     auto loader = [this, &model_uri](std::shared_ptr<onnxruntime::Model>& model) {
       return onnxruntime::Model::Load(model_uri, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
     };

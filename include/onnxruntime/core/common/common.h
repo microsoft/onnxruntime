@@ -204,5 +204,10 @@ inline std::string ToMBString(const std::string& s) { return s; }
  * DO NOT assume the result string is encoded in UTF-8
  */
 std::string ToMBString(const std::wstring& s);
+
+std::wstring ToWideString(const std::string& s);
+inline std::wstring ToWideString(const std::wstring& s) { return s; }
+#else
+inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 }  // namespace onnxruntime

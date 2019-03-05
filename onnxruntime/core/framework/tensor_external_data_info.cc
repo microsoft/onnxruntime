@@ -23,19 +23,7 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
     if (!stringmap.has_value())
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
     if (stringmap.key() == "location" && !stringmap.value().empty()) {
-#ifndef _WIN32
-      out->rel_path_ = stringmap.value();
-#else
-      const std::string& s = stringmap.value();
-      if (s.size() >= std::numeric_limits<int>::max()) throw std::runtime_error("length overflow");
-      const int src_len = static_cast<int>(s.size() + 1);
-      const int len = MultiByteToWideChar(CP_ACP, 0, s.data(), src_len, nullptr, 0);
-      assert(len > 0);
-      std::wstring ret(static_cast<size_t>(len) - 1, '\0');
-      const int r = MultiByteToWideChar(CP_ACP, 0, s.data(), src_len, (wchar_t*)ret.data(), len);
-      assert(len == r);
-      out->rel_path_ = ret;
-#endif
+      out->rel_path_ = ToWideString(stringmap.value());
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
       char* end;
       out->offset_ = OrtStrToPtrDiff(stringmap.value().c_str(), &end);
