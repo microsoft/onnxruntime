@@ -78,6 +78,7 @@ namespace onnxruntime {
 
 /**
  * return which dir contains this file path
+ * if s equals to '//', the behavior of this function is undefined.
  */
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& output);
 std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s);

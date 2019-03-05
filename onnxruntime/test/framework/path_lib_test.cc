@@ -53,10 +53,6 @@ TEST(PathTest, trailing_slash2) {
 TEST(PathTest, root) {
   PATH_EXPECT("/", "/");
 }
-
-TEST(PathTest, double_slash) {
-  PATH_EXPECT("//", "//");
-}
 #endif
 TEST(PathTest, single) {
   PATH_EXPECT(".", "abc");
