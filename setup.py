@@ -53,7 +53,7 @@ with open(README) as f:
 # Setup
 setup(
     name=package_name,
-    version='0.2.1',
+    version='0.3.0',
     description='ONNX Runtime Python bindings',
     long_description=long_description,
     author='Microsoft Corporation',
@@ -71,6 +71,7 @@ setup(
     },
     extras_require={
         'backend': ['onnx>=1.2.3'],
+        'numpy': ['numpy>=1.15.0']
     },
     entry_points= {
         'console_scripts': [
