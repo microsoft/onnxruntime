@@ -111,13 +111,13 @@ common::Status SoftmaxCPU(const int64_t N,
       int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
       int split_start = start_row * d;
       int real_elem_count = real_row_count * d;
-      //math::Exp<float, CPUMathUtil>(real_elem_count, Ydata + split_start, Ydata + split_start, nullptr);
-      MlasComputeExpf(Ydata + split_start, Ydata + split_start, real_elem_count);
+      math::Exp<float, CPUMathUtil>(real_elem_count, Ydata + split_start, Ydata + split_start, nullptr);
+      //MlasComputeExpf(Ydata + split_start, Ydata + split_start, real_elem_count);
     }
   }
   else {
-    //math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
-    MlasComputeExpf(Ydata, Ydata, nd);
+    math::Exp<float, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
+    //MlasComputeExpf(Ydata, Ydata, nd);
   }
 
   math::Gemv<float, CPUMathUtil>(CblasNoTrans, n, d, 1, Ydata, sum_multiplier, 0, scale, nullptr);
