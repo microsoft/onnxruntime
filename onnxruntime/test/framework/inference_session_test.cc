@@ -951,7 +951,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // missing required
   status = RunOptionalInputTest(false, true, false);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required inputs: required_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
