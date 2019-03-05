@@ -5,11 +5,11 @@
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "core/graph/contrib_ops/gradient_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
 #include "core/training/gradient_builder.h"
+#include "core/training/gradient_schema_defs.h"
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -39,10 +39,9 @@ Status Environment::Initialize() {
       RegisterOnnxMLOperatorSetSchema();
       RegisterOnnxFunctionBuilder();
 
-      // preserve this order: this depends on operatorsetschema registration.
-      GradientOps::RegisterGradientSchemas();
-
 #ifdef ENABLE_TRAINING
+      // preserve this order: this depends on operatorsetschema registration.
+      training::RegisterGradientSchemas();
       training::RegisterGradientBuilders();
 #endif
     });

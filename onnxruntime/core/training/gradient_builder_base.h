@@ -12,6 +12,8 @@
 namespace onnxruntime {
 namespace training {
 
+typedef std::vector<NodeDef> GradientDef;
+
 class GradientBuilderBase {
  public:
   GradientBuilderBase(
@@ -22,8 +24,14 @@ class GradientBuilderBase {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
+  virtual ~GradientBuilderBase() {}
+
+  virtual bool CopyAttributes() const {
+    return true;
+  }
+
   // TODO: make this protected? Currently, compiler failure prevents it
-  virtual std::vector<NodeDef> GetGradientDefs() = 0;
+  virtual GradientDef GetGradientDefs() = 0;
 
  protected:
   ArgDef I(const int i) {
@@ -104,8 +112,15 @@ class GradientBuilderBase {
 
 class EmptyGradientBuilder : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
-  virtual std::vector<NodeDef> GetGradientDefs() {
-    return std::vector<NodeDef>();
+  virtual GradientDef GetGradientDefs() {
+    return GradientDef();
+  }
+};
+
+class UnSupportedGradientBuilder : public GradientBuilderBase {
+  using GradientBuilderBase::GradientBuilderBase;
+  virtual GradientDef GetGradientDefs() {
+    ORT_ENFORCE(false, "Gradient should not be requested for this operator");
   }
 };
 

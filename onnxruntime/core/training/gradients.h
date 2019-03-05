@@ -12,12 +12,12 @@
 #include "core/common/const_pointer_container.h"
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
-#include "core/graph/contrib_ops/gradient_schema_defs.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/training/gradient_builder_base.h"
+#include "core/training/gradient_schema_defs.h"
 
 namespace onnxruntime {
 namespace training {

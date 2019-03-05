@@ -237,6 +237,8 @@ int main(int /*argc*/, char* /*args*/[]) {
   // Step 1: Load the model and generate gradient graph in a training session.
   SessionOptions so;
   TrainingSession training_session{so};
+
+  // TODO: TERMINATE_IF_FAILED swallows some errors and messes up the call stack. Perhaps, find an alternative for debug mode ?
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_WITH_COST_PATH));
   TERMINATE_IF_FAILED(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss"));
   training_session.Save(BACKWARD_MODEL_PATH, true /*include_gradient_graph*/);
@@ -265,7 +267,7 @@ int main(int /*argc*/, char* /*args*/[]) {
 
       TERMINATE_IF_FAILED(training_session.Run(fw_feeds, training_output_names, &gradient_fetches));
 
-      //  Gradient descent: update weights in the modified model, with the output of Step 5
+      // Gradient descent: update weights in the modified model, with the output of Step 5
       // Here we modify the in-memory MLValue so that next training iteration can be run without model saving and reloading.
       // TODO: modify the graph_proto so that the new weights could be saved.
 

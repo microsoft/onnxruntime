@@ -133,7 +133,6 @@ GraphAugmenter::GraphDefs GradientGraphBuilder::Build() {
   // so far, backward_visited are the minimum node in between
   // visited_node_args are the node_args involved
 
-  auto registry = GradientBuilderRegistry::GetGradientBuilderRegistry();
   for (auto node : backward_visited) {
     //TODO: might not need two sets, the union of them might be enough
     std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
@@ -148,9 +147,7 @@ GraphAugmenter::GraphDefs GradientGraphBuilder::Build() {
       }
     }
 
-    GradientBuilderFn gradient_builder_func = registry.GetGradientBuilderFunc(node->OpType());
-    GradientBuilderBase* gradient_builder = gradient_builder_func(node, output_args_need_grad, input_args_need_grad);
-    std::vector<NodeDef> node_defs = gradient_builder->GetGradientDefs();
+    GradientDef node_defs = GetGradientForOp(node, output_args_need_grad, input_args_need_grad);
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {

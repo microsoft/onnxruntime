@@ -8,8 +8,8 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx)
-onnxruntime_add_include_to_target(onnxruntime_training  gsl onnx onnx_proto protobuf::libprotobuf)
-target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+onnxruntime_add_include_to_target(onnxruntime_training  onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
+target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_srcs})
 

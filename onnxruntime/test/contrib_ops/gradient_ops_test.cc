@@ -39,6 +39,7 @@ TEST(GradientOps, SoftmaxGrad) {
     return 0.0f;
   };
 
+  test.AddAttribute<int64_t>("axis", 0);
   test.AddInput<float>("dY", {3}, {0, 0, 0});
   test.AddInput<float>("Y", {3}, {0, 0, 0});
 
