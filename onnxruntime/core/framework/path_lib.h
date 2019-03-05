@@ -80,6 +80,7 @@ namespace onnxruntime {
  * return which dir contains this file path
  */
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& output);
+std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s);
 
 template <typename T>
 int CompareCString(const T* s1, const T* s2);
@@ -191,7 +192,6 @@ void LoopDir(const std::wstring& dir_name, T func) {
 }
 
 //TODO: rewrite it with PathFindNextComponentW
-template <typename PATH_CHAR_TYPE>
 inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s) {
   if (s.empty()) return std::basic_string<PATH_CHAR_TYPE>(1, GetDot<PATH_CHAR_TYPE>());
   std::basic_string<PATH_CHAR_TYPE> input = s;
@@ -207,13 +207,6 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
 }
 
 #else
-inline std::string GetLastComponent(const std::string& input) {
-  char* s = strdup(input.c_str());
-  std::string ret = basename(s);
-  free(s);
-  return ret;
-}
-
 inline OrtFileType DTToFileType(unsigned char t) {
   switch (t) {
     case DT_BLK:

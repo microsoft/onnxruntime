@@ -80,5 +80,12 @@ common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& input,
   free(s);
   return Status::OK();
 }
+
+std::string GetLastComponent(const std::string& input) {
+  char* s = strdup(input.c_str());
+  std::string ret = basename(s);
+  free(s);
+  return ret;
+}
 }  // namespace onnxruntime
 #endif
