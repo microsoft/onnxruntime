@@ -364,6 +364,7 @@ int real_main(int argc, char* argv[]) {
   broken_tests["tf_inception_v3"] = "failed: type mismatch";
   broken_tests["tf_inception_v4"] = "failed: type mismatch";
   broken_tests["tf_resnet_v1_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_50"] = "failed: type mismatch";
   broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
   broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
   broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
