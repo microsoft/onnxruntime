@@ -75,17 +75,10 @@ common::Status SoftmaxCPU(const int64_t N,
     for (int split = 0; split < num_split; ++split) {
       int start_row = split * rows_per_split;
       int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
-      int split_start = start_row * d;
-      math::RowwiseMax<float, CPUMathUtil>(real_row_count, d, Xdata + split_start, rowmax + start_row, nullptr);
-    }
-
-    #pragma omp parallel for
-    for (int split = 0; split < num_split; ++split) {
-      int start_row = split * rows_per_split;
-      int real_row_count = (split < num_split - 1) ? rows_per_split : (n - start_row);
-      int split_start = start_row * d;
       int real_elem_count = real_row_count * d;
+      int split_start = start_row * d;
       gsl::copy(gsl::make_span(Xdata + split_start, real_elem_count), gsl::make_span(Ydata + split_start, real_elem_count));
+      math::RowwiseMax<float, CPUMathUtil>(real_row_count, d, Ydata + split_start, rowmax + start_row, nullptr);
     }
 
     math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax, sum_multiplier, 1, Ydata, nullptr);
@@ -157,23 +150,4 @@ common::Status SoftmaxCPU(const int64_t N,
   return Status::OK();
 }
 
-//  math::Gemv<float, CPUMathUtil>(CblasNoTrans, n, d, 1, Ydata, sum_multiplier, 0, scale, nullptr);
-//
-//  // Do division
-//  if (!logarithmic) {
-//    for (int i = 0; i < N; ++i) {
-//      for (int j = 0; j < D; ++j) {
-//        Ydata[i * D + j] /= scale[i];
-//      }
-//    }
-//  } else {
-//    for (int i = 0; i < N; ++i) {
-//      for (int j = 0; j < D; ++j) {
-//        Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log(fmaxf(scale[i], 1e-20f));
-//      }
-//    }
-//  }
-//
-//  return Status::OK();
-//}
 }  // namespace onnxruntime
