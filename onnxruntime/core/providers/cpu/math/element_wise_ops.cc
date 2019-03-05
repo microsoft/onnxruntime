@@ -1205,7 +1205,7 @@ public:
       }
 
       r += span_size;
-      int i = num_axes_ - 2;
+      int64_t i = num_axes_ - 2;
       for ( ; i >= 0; --i) {
         a += strideA_[i];
         b += strideB_[i];
