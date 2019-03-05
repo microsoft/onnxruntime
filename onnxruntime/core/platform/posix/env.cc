@@ -102,19 +102,15 @@ class PosixEnv : public Env {
     if (!fname) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
     }
-    char errbuf[512];
     int fd = open(fname, O_RDONLY);
     if (fd < 0) {
       int err = errno;
-      snprintf(errbuf, sizeof(errbuf), "%s:%d open file %s fail:%s, errcode = %d", __FILE__, __LINE__, fname,
-               strerror(err), err);
-      return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", fname, " fail, errcode =", err);
     }
     struct stat stbuf;
     if ((fstat(fd, &stbuf) != 0) || (!S_ISREG(stbuf.st_mode))) {
       (void)close(fd);
-      snprintf(errbuf, sizeof(errbuf), "%s:%d read file %s fail", __FILE__, __LINE__, fname);
-      return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get file '", fname, "' size fail");
     }
     if (stbuf.st_size == 0) {
       out->clear();
@@ -128,8 +124,7 @@ class PosixEnv : public Env {
         if (bytes_readed <= 0) {
           int err = errno;
           (void)close(fd);
-          snprintf(errbuf, sizeof(errbuf), "%s:%d read file %s fail, errcode = %d", __FILE__, __LINE__, fname, err);
-          return common::Status(common::ONNXRUNTIME, common::FAIL, errbuf);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read file '", fname, "' fail, error code = ", err);
         }
         assert(static_cast<size_t>(bytes_readed) <= bytes_to_read);
         wptr += bytes_readed;
