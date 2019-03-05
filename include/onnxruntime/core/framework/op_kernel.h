@@ -20,7 +20,7 @@
 #include "onnx/defs/schema.h"
 
 namespace onnxruntime {
-class ExecutionFrame;
+class IExecutionFrame;
 class OpKernelContext;
 class OpKernelWrapper;
 
@@ -35,7 +35,7 @@ class OpKernel {
     return op_kernel_info_.node();
   }
 
-  const ::onnxruntime::KernelDef& KernelDef() const {
+  const onnxruntime::KernelDef& KernelDef() const {
     return op_kernel_info_.GetKernelDef();
   }
 
@@ -61,7 +61,7 @@ class OpKernelContext {
  public:
   using ArgMap = std::unordered_map<std::string, size_t>;
 
-  explicit OpKernelContext(ExecutionFrame* frame,
+  explicit OpKernelContext(IExecutionFrame* frame,
                            const OpKernel* kernel,
                            const logging::Logger& logger);
 
@@ -151,18 +151,19 @@ class OpKernelContext {
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
-  const SessionState& GetSessionState() const;
 
   const MLValue* GetImplicitInputMLValue(int index) const;
 
  private:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
+
   Status GetOrCreateOutputMLValue(int index, MLValue*& value);
 
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;
   int GetOutputArgIndex(int index) const;
 
-  ExecutionFrame* execution_frame_{nullptr};
+  IExecutionFrame* execution_frame_{nullptr};
   const OpKernel* kernel_{nullptr};
   const logging::Logger* logger_{nullptr};
 

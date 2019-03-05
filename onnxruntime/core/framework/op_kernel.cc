@@ -9,7 +9,7 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-OpKernelContext::OpKernelContext(ExecutionFrame* frame,
+OpKernelContext::OpKernelContext(IExecutionFrame* frame,
                                  const OpKernel* kernel,
                                  const logging::Logger& logger)
     : execution_frame_(frame),
@@ -32,16 +32,12 @@ MLValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
-  // In this case, it's assumed that the tensor hasn't been allocated yet,
-  // so that it's calling ExecutionFrame to create a tensor in the given position with given shape.
-  MLValueAllocationParameters parameters{&shape};
-
   //: Though we don't need to give 'ret' an initial value, GCC would generate a warning if we don't do that
   //"error: 'ret' may be used uninitialized in this function"
   //This warning only exists in Release build.
   //I believe it's a false alarm.
   MLValue* p_ml_value = nullptr;
-  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), parameters, p_ml_value);
+  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), &shape, p_ml_value);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value;
 }
@@ -102,8 +98,7 @@ Fence_t OpKernelContext::OutputFence(int index) const {
 
 Status OpKernelContext::GetOrCreateOutputMLValue(int index, MLValue*& p_value) {
   auto output_arg_index = GetOutputArgIndex(index);
-  MLValueAllocationParameters parameters;
-  ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, parameters, p_value).IsOK());
+  ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, p_value).IsOK());
   return Status::OK();
 }
 
@@ -121,10 +116,6 @@ int OpKernelContext::GetOutputArgIndex(int index) const {
 
 onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
   return kernel_->Node().Index();
-}
-
-const SessionState& OpKernelContext::GetSessionState() const {
-  return execution_frame_->GetSessionState();
 }
 
 const MLValue* OpKernelContext::GetInputMLValue(int index) const {

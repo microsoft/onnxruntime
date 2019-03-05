@@ -401,18 +401,23 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
                     _In_ const char* const* output_names1, size_t output_names_len, _Out_ OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  ::onnxruntime::NameMLValMap in;
   const int queue_id = 0;
+
+  std::vector<std::string> feed_names(input_len);
+  std::vector<MLValue> feeds(input_len);
+
   for (size_t i = 0; i != input_len; ++i) {
-    auto kvp = in.insert(std::make_pair(std::string(input_names[i]),
-                                        *reinterpret_cast<const ::onnxruntime::MLValue*>(input[i])));
-    if (!kvp.second) {
-      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "duplicated input name");
+    if (input_names[i] == nullptr || input_names[i][0] == '\0') {
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
     }
-    ::onnxruntime::MLValue& value = kvp.first->second;
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+
+    feed_names[i] = input_names[i];
+    auto& mlvalue = feeds[i] = *reinterpret_cast<const ::onnxruntime::MLValue*>(input[i]);
+
+    if (mlvalue.Fence())
+      mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
   }
+
   // Create output feed
   std::vector<std::string> output_names(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
@@ -434,9 +439,9 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
-    status = session->Run(op, in, output_names, &fetches);
+    status = session->Run(op, feed_names, feeds, output_names, &fetches);
   } else {
-    status = session->Run(*run_options, in, output_names, &fetches);
+    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches);
   }
 
   if (!status.IsOK())
