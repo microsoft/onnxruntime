@@ -114,17 +114,6 @@ TEST(ScatterOpTest, NegativeAxis) {
   test.Run();
 }
 
-TEST(ScatterOpTest, InvalidAxis) {
-  OpTester test("Scatter", Scatter_ver);
-  test.AddAttribute<int64_t>("axis", 4);
-
-  test.AddInput<float>("data", {1, 5}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
-  test.AddInput<int64_t>("indices", {1, 2}, {1, 3});
-  test.AddInput<float>("updates", {1, 2}, {1.1f, 2.1f});
-  test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
-}
-
 TEST(ScatterOpTest, IndicesUpdatesDimsDonotMatch) {
   OpTester test("Scatter", Scatter_ver);
   test.AddAttribute<int64_t>("axis", 1);
