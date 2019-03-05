@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
-set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
+set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include ${Boost_INCLUDE_DIR})
 if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
@@ -502,6 +502,14 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
 endif()
 
+if (onnxruntime_BUILD_HOSTING)
+  AddTest(
+    TARGET onnxruntime_hosting_tests
+    SOURCES "${TEST_SRC_DIR}/hosting/test_main.cc" "${TEST_SRC_DIR}/hosting/http_routes_tests.cc"
+    LIBS ${Boost_LIBRARIES} onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
+    DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
+  )
+endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)

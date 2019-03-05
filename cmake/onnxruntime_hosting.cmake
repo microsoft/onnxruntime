@@ -19,6 +19,7 @@ onnxruntime_add_include_to_target(${PROJECT_NAME} onnxruntime_session gsl)
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${ONNXRUNTIME_ROOT}
         ${Boost_INCLUDE_DIR}
+        PUBLIC
         ${ONNXRUNTIME_ROOT}/hosting/include)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
