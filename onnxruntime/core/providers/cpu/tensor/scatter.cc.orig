@@ -66,67 +66,79 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   }
 
   // Now poke updates
+<<<<<<< Updated upstream
+=======
 
-  const auto& upd_shape = updates_input->Shape();
-  const auto num_dims = input_data_shape.NumDimensions();
-  assert(num_dims > 0);
-
-  // Allocate and zero out counts. We are expecting that input and
-  // update ranks are the same so the vectors of equal length
-  // This is validated
-  std::vector<int64_t> dim_counters(num_dims);
-
-  // Create weights for each input dimension so we can map
-  // update dimensions to input/output dimensions
-  std::vector<int64_t> out_weights(num_dims);
-
-  out_weights.back() = 1;
-  if (out_weights.size() > 1) {
-    for (int64_t i = int64_t(num_dims - 2); i >= 0; --i) {
-      out_weights[i] = input_data_shape[i] * out_weights[i + 1];
-    }
+  // Pre-compute original dim sizes in elements
+  std::vector<int64_t> input_dim_sizes(input_data_shape.NumDimensions());
+  input_dim_sizes[input_dim_sizes.size() - 1] = 1;
+  for (size_t d = input_dim_sizes.size() - 2; d >= 0; ++d) {
+    input_dim_sizes[d] = input_data_shape[d] * input_data_shape[d + 1];
   }
 
-  const uint8_t* update_data = reinterpret_cast<const uint8_t*>(updates_input->DataRaw());
-  for (int64_t index = 0; index < num_indices;) {
-    const Tin axis_idx = indices_data[index];
+  // Data batches number we are going to update
+  // is limited by the dims of the updates that appear
+  // before the axis value. E.g for dims [2,3,3] of updates and axis=1
+  // we are going to address only batches 0 and 1 even though input
+  // data may have more in that dimension
+  const auto& upd_shape = updates_input->Shape();
+  const auto data_batches = upd_shape.SizeToDimension(axis);
+  // Number of elements in a single batch per input
+>>>>>>> Stashed changes
+  const auto data_batch = input_data_shape.SizeFromDimension(axis);
+  const auto data_batch_bytes = data_batch * element_bytes;
 
-    // Compute the offset
-    size_t dst_offset = 0;
-    for (size_t i = 0; i < num_dims; ++i) {
-      if (i == size_t(axis)) {
-        dst_offset += axis_idx * out_weights[i];
-      } else {
-        dst_offset += dim_counters[i] * out_weights[i];
+  // Dims considered when computing batch offsets
+  const int64_t first_batch_upd_dim = 1;
+  const int64_t last_batch_upd_dim = 0;
+  if (axis > 1) {
+    last_batch_upd_dim = axis - 1;
+  }
+
+  // Dims considered when computing block offsets
+  const int64_t first_block_upd_dim = axis + 1;
+  const int64_t last_block_upd_dim = 0;
+  // Not the last dimension
+  if (axis - 1 < upd_shape.NumDimensions()) {
+    last_block_upd_dim = upd_shape.NumDimensions() - 1;
+  }
+
+  // A block is a number of elements addressable under the axis
+  // In case of axis being the last axis (element offset), block
+  // would have a value of 1 and it is not necessary to compute
+  // offset within a block
+  const auto block = input_data_shape.SizeFromDimension(axis + 1);
+  const auto block_bytes = block * element_bytes;
+
+  const uint8_t* update_data = reinterpret_cast<const uint8_t*>(updates_input->DataRaw());
+  for (int64_t batch = 0; batch < data_batches; ++batch) {
+    size_t batch_bytes_offset = 0;
+    if (axis > 0) {
+      auto b = batch;
+      size_t batches_offset = 0;
+      for (size_t d = 0; d < axis - 1; ++d) {
+        if (b >= upd_shape[d]) {
+          batches_offset += (b / upd_shape[d]) * input_data_shape[d];
+          b %= upd_shape[d];
+        }
       }
+      batch_bytes_offset = batch_offset * data_batch_bytes;
     }
 
-    const size_t dst_offset_bytes = dst_offset * element_bytes;
+    const auto update_idx = index % num_indices;
+    const Tin axis_idx = indices_data[update_idx];
+    const auto block_offset = (block > 1) ? index % block : 0;
+    const auto dst_offset_bytes = batch_bytes_offset + axis_idx * block_bytes +
+                                  block_offset * element_bytes;
+
     assert(dst_offset_bytes < total_input_bytes);
     if (is_string_type) {
-      reinterpret_cast<std::string*>(dst_base)[dst_offset] =
-          reinterpret_cast<const std::string*>(update_data)[index];
+      reinterpret_cast<std::string*>(dst_base)[dst_offset_bytes / element_bytes] =
+          reinterpret_cast<const std::string*>(update_data)[update_idx];
     } else {
       // Copy the element
-      // TODO: Replace memcpy
-      auto src_offset_bytes = index * element_bytes;
+      auto src_offset_bytes = update_idx * element_bytes;
       memcpy(dst_base + dst_offset_bytes, update_data + src_offset_bytes, element_bytes);
-    }
-
-    if (++index == num_indices) {
-      break;
-    }
-    // Increment counters
-    for (int64_t i = int64_t(num_dims - 1); i >= 0; --i) {
-      auto v = ++dim_counters[i];
-      assert(v <= upd_shape[i]);
-      if (v < upd_shape[i]) {
-        // No carry, done
-        break;
-      }
-      // No carry for the most significant dim
-      assert(i > 0);
-      dim_counters[i] = 0;
     }
   }
   return Status::OK();
@@ -148,7 +160,7 @@ Status Scatter::Compute(OpKernelContext* context) const {
   auto& updates_dims = updates_input->Shape().GetDims();
   if (indices_dims.size() != updates_dims.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Indices and updates must have the same rank");
+                           "Indices and updates must have the same number of dimensions");
   }
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
