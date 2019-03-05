@@ -239,7 +239,9 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
+set_target_properties(re2 PROPERTIES FOLDER "External/re2")
 add_library(date ALIAS tz)
+set_target_properties(tz PROPERTIES FOLDER "External/tz")
 add_library(gsl ALIAS GSL)
 
 # bounds checking behavior.
