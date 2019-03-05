@@ -42,7 +42,9 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
           Env::Default(), nullptr, tensor_proto, MemBuffer(data.get(), cpu_tensor_length, info), mlvalue, d));
 
       initializers_[idx] = mlvalue;
-      deleter_for_initialized_tensors_[idx] = d;
+      buffer_for_initialized_tensors_[idx] = std::move(data);
+      if (d.f != nullptr)
+        deleter_for_initialized_tensors_[idx] = d;
     }
 
     return Status::OK();

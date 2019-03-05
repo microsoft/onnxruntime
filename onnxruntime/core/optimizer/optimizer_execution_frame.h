@@ -58,6 +58,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     MLValueNameIdxMap mlvalue_name_idx_map_;
     std::unordered_map<int, const NodeArg*> mlvalue_idx_nodearg_map_;
     std::unordered_map<int, MLValue> initializers_;
+    std::unordered_map<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
     // This data structure is for unintializing string tensors and
     // munmap memory region and close file descriptor
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;

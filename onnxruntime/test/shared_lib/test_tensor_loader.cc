@@ -101,6 +101,7 @@ static void run_external_data_test() {
     cwd.resize(static_cast<size_t>(len) - 1, '\0');
     len = GetCurrentDirectoryW(len, (ORTCHAR_T*)cwd.data());
     ASSERT_NE(len, (DWORD)0);
+    cwd.append(ORT_TSTR("\\fake.onnx"));
   }
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), cwd.empty() ? nullptr : cwd.c_str(), output.data(),
                                      output.size() * sizeof(float), &value, &deleter);
