@@ -70,14 +70,14 @@ namespace perftest {
         }
         break;
       case 'r':
-        test_config.run_config.repeated_times = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+        test_config.run_config.repeated_times = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.repeated_times <= 0) {
           return false;
         }
         test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
         break;
       case 't':
-        test_config.run_config.duration_in_seconds = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+        test_config.run_config.duration_in_seconds = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.repeated_times <= 0) {
           return false;
         }

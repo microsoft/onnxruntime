@@ -24,6 +24,10 @@ class Logger;
 // Don't use this class before graph partition is done
 class SessionStateInitializer {
  public:
+  /**
+   *
+   * \param graph_loc The file path of where the graph was loaded. e.g. /tmp/test_squeezenet/model.onnx
+   */
   SessionStateInitializer(const std::basic_string<PATH_CHAR_TYPE>& graph_loc, onnxruntime::Graph& graph,
                           SessionState& session_state, const ExecutionProviders& providers,
                           KernelRegistryManager& kernel_registry_manager);

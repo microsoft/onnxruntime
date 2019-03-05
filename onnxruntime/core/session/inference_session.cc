@@ -984,7 +984,7 @@ class InferenceSession::Impl {
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   InsertCastTransformer insert_cast_transformer_;
-  // TODO: fill it
+  // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<PATH_CHAR_TYPE> model_location_;
 };  // namespace onnxruntime
 

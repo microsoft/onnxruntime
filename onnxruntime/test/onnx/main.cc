@@ -94,21 +94,21 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
           logging_level = ORT_LOGGING_LEVEL_INFO;
           break;
         case 'c':
-          concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (concurrent_session_runs <= 0) {
             usage();
             return -1;
           }
           break;
         case 'j':
-          p_models = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          p_models = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (p_models <= 0) {
             usage();
             return -1;
           }
           break;
         case 'r':
-          repeat_count = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          repeat_count = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (repeat_count <= 0) {
             usage();
             return -1;

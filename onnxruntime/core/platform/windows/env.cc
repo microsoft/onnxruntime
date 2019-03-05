@@ -110,8 +110,10 @@ class WindowsEnv : public Env {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
     }
     // check the file file for avoiding allocating a zero length buffer
-    if (filesize.QuadPart == 0)  // empty file
+    if (filesize.QuadPart == 0) {  // empty file
+      out->clear();
       return Status::OK();
+    }
     out->resize(filesize.QuadPart, '\0');
     char* wptr = const_cast<char*>(out->data());
     auto length_remain = filesize.QuadPart;

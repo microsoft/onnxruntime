@@ -154,7 +154,7 @@ static int ExtractFileNo(const std::basic_string<CHAR_T>& name) {
   std::basic_string<CHAR_T> number_str = name.substr(p2, p1 - p2);
   const CHAR_T* start = number_str.c_str();
   const CHAR_T* end = number_str.c_str();
-  long ret = OrtStrtol(start, const_cast<CHAR_T**>(&end), 10);
+  long ret = OrtStrtol(start, const_cast<CHAR_T**>(&end));
   if (end == start) {
     ORT_THROW("parse file name failed");
   }

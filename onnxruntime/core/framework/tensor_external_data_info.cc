@@ -38,12 +38,12 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
 #endif
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
       char* end;
-      out->offset_ = OrtStrtoPtrDiff(stringmap.value().c_str(), &end, 10);
+      out->offset_ = OrtStrToPtrDiff(stringmap.value().c_str(), &end);
       if (end != stringmap.value().c_str() + stringmap.value().length())
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", stringmap.value(), " failed");
     } else if (stringmap.key() == "length" && !stringmap.value().empty()) {
       char* end;
-      out->length_ = OrtStrtoPtrDiff(stringmap.value().c_str(), &end, 10);
+      out->length_ = OrtStrToPtrDiff(stringmap.value().c_str(), &end);
       if (end != stringmap.value().c_str() + stringmap.value().length())
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", stringmap.value(), " failed");
     } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {

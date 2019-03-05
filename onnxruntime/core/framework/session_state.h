@@ -24,7 +24,6 @@
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
-#include "core/session/onnxruntime_c_api.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>

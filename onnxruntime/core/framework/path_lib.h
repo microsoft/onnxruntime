@@ -22,22 +22,22 @@
 using PATH_CHAR_TYPE = ORTCHAR_T;
 
 template <typename T>
-long OrtStrtol(const T* nptr, T** endptr, int base);
+long OrtStrtol(const T* nptr, T** endptr);
 
 /**
  * Convert a C string to ssize_t(or ptrdiff_t)
  * @return the converted integer value.
  */
 template <typename T>
-ptrdiff_t OrtStrtoPtrDiff(const T* nptr, T** endptr, int base);
+ptrdiff_t OrtStrToPtrDiff(const T* nptr, T** endptr);
 
 template <>
-inline ptrdiff_t OrtStrtoPtrDiff<wchar_t>(const wchar_t* nptr, wchar_t** endptr, int base) {
+inline ptrdiff_t OrtStrToPtrDiff<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
 #ifdef _WIN32
   // TODO: on x86_32, it should be wcstol
-  return _wcstoi64(nptr, endptr, base);
+  return _wcstoi64(nptr, endptr, 10);
 #else
-  return wcstol(nptr, endptr, base);
+  return wcstol(nptr, endptr, 10);
 #endif
 }
 
@@ -55,23 +55,23 @@ inline size_t OrtStrftime<wchar_t>(wchar_t* strDest, size_t maxsize, const wchar
 }
 
 template <>
-inline ptrdiff_t OrtStrtoPtrDiff<char>(const char* nptr, char** endptr, int base) {
+inline ptrdiff_t OrtStrToPtrDiff<char>(const char* nptr, char** endptr) {
 #ifdef _WIN32
   // TODO: on x86_32, it should be strtol
-  return _strtoi64(nptr, endptr, base);
+  return _strtoi64(nptr, endptr, 10);
 #else
-  return strtol(nptr, endptr, base);
+  return strtol(nptr, endptr, 10);
 #endif
 }
 
 template <>
-inline long OrtStrtol<char>(const char* nptr, char** endptr, int base) {
-  return strtol(nptr, endptr, base);
+inline long OrtStrtol<char>(const char* nptr, char** endptr) {
+  return strtol(nptr, endptr, 10);
 }
 
 template <>
-inline long OrtStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr, int base) {
-  return wcstol(nptr, endptr, base);
+inline long OrtStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
+  return wcstol(nptr, endptr, 10);
 }
 
 namespace onnxruntime {
