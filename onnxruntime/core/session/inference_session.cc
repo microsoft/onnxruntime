@@ -53,6 +53,61 @@
 using namespace ONNX_NAMESPACE;
 
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
+const onnxruntime::DataTypeImpl* TensorElementDataTypeToMLDataType(ONNXTensorElementDataType type);
+
+namespace onnxruntime {
+const char* ElementTypeToString(MLDataType type) {
+  if (type == DataTypeImpl::GetType<float>()) {
+    return "tensor(float)";
+  } else if (type == DataTypeImpl::GetType<bool>()) {
+    return "tensor(bool)";
+  }
+
+  else if (type == DataTypeImpl::GetType<int32_t>()) {
+    return "tensor(int32)";
+  }
+
+  else if (type == DataTypeImpl::GetType<double>()) {
+    return "tensor(double)";
+  }
+
+  else if (type == DataTypeImpl::GetType<std::string>()) {
+    return "tensor(string)";
+  }
+
+  else if (type == DataTypeImpl::GetType<uint8_t>()) {
+    return "tensor(uint8)";
+  }
+
+  else if (type == DataTypeImpl::GetType<uint16_t>()) {
+    return "tensor(uint16)";
+  }
+
+  else if (type == DataTypeImpl::GetType<int16_t>()) {
+    return "tensor(int16)";
+  }
+
+  else if (type == DataTypeImpl::GetType<int64_t>()) {
+    return "tensor(int64)";
+  }
+
+  else if (type == DataTypeImpl::GetType<uint32_t>()) {
+    return "tensor(uint32)";
+  }
+
+  else if (type == DataTypeImpl::GetType<uint64_t>()) {
+    return "tensor(uint64)";
+  }
+
+  else if (type == DataTypeImpl::GetType<MLFloat16>()) {
+    return "tensor(MLFloat16)";
+  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+    return "tensor(bfloat16)";
+  } else {
+    return "unknown";
+  }
+}
+}  // namespace onnxruntime
 
 // TODO: Move this into a shared header file
 struct OrtTensorTypeAndShapeInfo {
@@ -189,14 +244,31 @@ class InferenceSession::Impl {
 
     schemas_container->domain = onnxruntime::kOnnxDomain;
     schemas_container->baseline_opset_version = 5;
-    schemas_container->opset_version = 7;
+    schemas_container->opset_version = 9;
 
     for (auto& op : ops) {
       ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
+
+      auto input_count = op->GetInputTypeCount(op);
+      for (size_t i = 0; i < input_count; i++) {
+        auto type = op->GetInputType(op, i);
+
+        schema.Input(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+      }
+
+      auto output_count = op->GetOutputTypeCount(op);
+      for (size_t i = 0; i < output_count; i++) {
+        auto type = op->GetOutputType(op, i);
+
+        schema.Output(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+      }
+
+#if 0
       schema.Input(0,
                    "A",
                    "First operand, should share the type with the second operand.",
                    "T");
+
       schema.Input(
           1,
           "B",
@@ -204,19 +276,21 @@ class InferenceSession::Impl {
           "If broadcasting is disabled it should be of the same size.",
           "T");
       schema.Output(0, "C", "Result, has same dimensions and type as A", "T");
+#endif
+
       schema.TypeConstraint(
           "T",
           OpSchema::numeric_types_for_math_reduction(),
           "Constrain input and output types to high-precision numeric tensors.");
-      schema.SinceVersion(7);
+      schema.SinceVersion(5);
       schema.AllowUncheckedAttributes();
 
       schemas_container->schemas_list.push_back(schema);
 
       KernelDefBuilder def_builder;
-      def_builder.SetName("Foo")
+      def_builder.SetName(op->GetName(op))
           .SetDomain(onnxruntime::kOnnxDomain)
-          .SinceVersion(7)
+          .SinceVersion(5)
           .Provider(onnxruntime::kCpuExecutionProvider)
           .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new FooKernel(info, *op); };
