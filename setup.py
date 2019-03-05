@@ -71,6 +71,7 @@ setup(
     },
     extras_require={
         'backend': ['onnx>=1.2.3'],
+        'numpy': ['numpy>=1.15.0']
     },
     entry_points= {
         'console_scripts': [
