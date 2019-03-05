@@ -16,9 +16,9 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private bool _disposed;
         private int _referenceCount;
-        private IntPtr _onnxValueHandle;
-        private IntPtr _dataBufferPointer;
-        private string[] _dataBufferAsString;
+        private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
+        private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
+        private string[] _dataBufferAsString; // string tensor values copied into managed memory
         private int _elementCount;
         private int _elementWidth;
         private int[] _dimensions;
@@ -64,6 +64,8 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 else
                 {
+                    if (typeof(T) != typeof(byte))
+                        throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " T = " + nameof(T) + ". Should = byte, when isStringTensor is true");
                     ulong strLen;
                     var offsets = new ulong[_elementCount];
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
@@ -112,6 +114,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+
         ~NativeOnnxTensorMemory()
         {
             Dispose(false);
@@ -172,10 +175,13 @@ namespace Microsoft.ML.OnnxRuntime
             return span;
         }
 
-        public Memory<String> MemoryString()
+        public Memory<String> GetBytesAsStringMemory()
         {
             if (IsDisposed)
                 throw new ObjectDisposedException(nameof(NativeOnnxTensorMemory<T>));
+
+            if (typeof(T) != typeof(byte))
+                throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>.GetBytesAsStringMemory) + ": T must be byte");
 
             return (_dataBufferAsString == null) ? new Memory<string>() : new Memory<string>(_dataBufferAsString);
         }
@@ -195,12 +201,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-
         public override void Unpin()
         {
             Release();
         }
-
 
         private bool Release()
         {
@@ -247,9 +251,5 @@ namespace Microsoft.ML.OnnxRuntime
             arraySegment = default(ArraySegment<T>);
             return false;
         }
-
-
-
-
     }
 }

@@ -58,7 +58,6 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
     }
 
-
     public class DisposableNamedOnnxValue : NamedOnnxValue, IDisposable
     {
         protected IDisposable _nativeMemoryManager;
@@ -67,7 +66,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             _nativeMemoryManager = nativeMemoryManager;
         }
-
 
         internal static DisposableNamedOnnxValue CreateTensorFromOnnxValue(string name, IntPtr nativeOnnxValue)
         {
@@ -192,7 +190,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (typeof(T) == typeof(string))
             {
                 var nativeTensorWrapper = new NativeOnnxTensorMemory<byte>(nativeOnnxValue, true);
-                var dt = new DenseTensor<string>(nativeTensorWrapper.MemoryString(), nativeTensorWrapper.Dimensions);
+                var dt = new DenseTensor<string>(nativeTensorWrapper.GetBytesAsStringMemory(), nativeTensorWrapper.Dimensions);
                 return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
             }
             else
@@ -212,7 +210,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 var map = new Dictionary<string, V>();
                 var nativeTensorWrapper = new NativeOnnxTensorMemory<byte>(nativeOnnxValueKeys, true);
-                var denseTensorKeys = new DenseTensor<string>(nativeTensorWrapper.MemoryString(), nativeTensorWrapper.Dimensions);
+                var denseTensorKeys = new DenseTensor<string>(nativeTensorWrapper.GetBytesAsStringMemory(), nativeTensorWrapper.Dimensions);
                 for (var i = 0; i < denseTensorKeys.Length; i++)
                 {
                     map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
