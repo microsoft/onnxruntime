@@ -71,33 +71,56 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   const auto num_dims = input_data_shape.NumDimensions();
   assert(num_dims > 0);
 
-  // Allocate and zero out counts. We are expecting that input and
-  // update ranks are the same so the vectors of equal length
-  // This is validated
+  // Allocate and zero out counts. The input/output is of the same rank as
+  // indices/updates but the actual dimensions of indices/updates must be less or equal
+  // than that of input/output because we can update no more elements than
+  // the input contains. As we walk through the indices/updates
+  // we maintain dimension count as we will need to use it
+  // to compute output offset but using input/output dim values.
+  // We treat the whole array as a number where each element having
+  // different cardinality according to the upd_shape dimensions.
+  // As each counter reaches its max (upd_shape) it resets to zero
+  // and we carry to the more significant dim (right to left)
   std::vector<int64_t> dim_counters(num_dims);
 
-  // Create weights for each input dimension so we can map
-  // update dimensions to input/output dimensions
-  std::vector<int64_t> out_weights(num_dims);
+  // This vector contains number of lower dimension elements per
+  // unit. For example, for the dimensions of [2, 3] the vector
+  // would contain [3, 1] since for each count of dim 0 it
+  // contains 3 elements of dim 1. The last value is always 1.
+  // We use it to compute output element offset. For a given value of
+  // counters we multiple each counter value per corresponding entry of dim_block_size value
+  // and add up resulting the output element offset. However, for dimensions
+  // that are equal to the specified axis value we take indices_data[index]
+  // instead of the counter value.
+  // E.g. for 2-dim and axis=0
+  //    output[indices[i][j], j] = updates[i][j]
+  // for axis 1
+  //    output[i, indices[i][j]] = updates[i][j]
+  std::vector<int64_t> dim_block_size(num_dims);
 
-  out_weights.back() = 1;
-  if (out_weights.size() > 1) {
+  dim_block_size.back() = 1;
+  if (num_dims > 1) {
+    // We start at num_dims - 2 because we already pre-populated
+    // the last element above
     for (int64_t i = int64_t(num_dims - 2); i >= 0; --i) {
-      out_weights[i] = input_data_shape[i] * out_weights[i + 1];
+      dim_block_size[i] = input_data_shape[i] * dim_block_size[i + 1];
     }
   }
 
   const uint8_t* update_data = reinterpret_cast<const uint8_t*>(updates_input->DataRaw());
+  // For every update we compute the destination offset and copy it there
   for (int64_t index = 0; index < num_indices;) {
     const Tin axis_idx = indices_data[index];
 
     // Compute the offset
+    // See comments above for dim_block_size
     size_t dst_offset = 0;
     for (size_t i = 0; i < num_dims; ++i) {
       if (i == size_t(axis)) {
-        dst_offset += axis_idx * out_weights[i];
+        // replace the counter with the update index for this dim
+        dst_offset += axis_idx * dim_block_size[i];
       } else {
-        dst_offset += dim_counters[i] * out_weights[i];
+        dst_offset += dim_counters[i] * dim_block_size[i];
       }
     }
 
@@ -107,8 +130,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
       reinterpret_cast<std::string*>(dst_base)[dst_offset] =
           reinterpret_cast<const std::string*>(update_data)[index];
     } else {
-      // Copy the element
-      // TODO: Replace memcpy
+      // Copy an element
       auto src_offset_bytes = index * element_bytes;
       memcpy(dst_base + dst_offset_bytes, update_data + src_offset_bytes, element_bytes);
     }
@@ -117,6 +139,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
       break;
     }
     // Increment counters
+    // See comments for dim_counters above
     for (int64_t i = int64_t(num_dims - 1); i >= 0; --i) {
       auto v = ++dim_counters[i];
       assert(v <= upd_shape[i]);
