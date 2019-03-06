@@ -203,11 +203,11 @@ struct MyCustomKernel {
   void Compute(OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count) {
     const float* X;
     const float* Y;
-    OrtGetTensorMutableData(inputs[0], &reinterpret_cast<void*>(const_cast<float*>(X)));
-    OrtGetTensorMutableData(inputs[0], &reinterpret_cast<void*>(const_cast<float*>(Y)));
+    OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X)));
+    OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&Y)));
 
     float* out;
-    OrtGetTensorMutableData(outputs[0], &reinterpret_cast<void*>(out));
+    OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out));
 
     int64_t size = OrtTensorDimensions(inputs[0]).ElementCount();
     for (int64_t i = 0; i < size; i++) {

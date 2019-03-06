@@ -130,8 +130,9 @@ const onnxruntime::DataTypeImpl* TensorElementDataTypeToMLDataType(ONNXTensorEle
       return onnxruntime::DataTypeImpl::GetType<uint32_t>();
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
       return onnxruntime::DataTypeImpl::GetType<uint64_t>();
+    default:
+      return nullptr;
   }
-  return nullptr;
 }
 
 OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
