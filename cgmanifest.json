@@ -242,6 +242,7 @@
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
               }
          }
+      },
       {
          "component":{
             "type":"git",
