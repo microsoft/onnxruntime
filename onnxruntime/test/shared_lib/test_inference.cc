@@ -192,9 +192,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 template <typename T, size_t N>
-constexpr size_t countof(T (&arr)[N]) {
-  return std::extent<T[N]>::value;
-}
+constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
   MyCustomKernel(OrtKernelInfo& /*info*/) {
