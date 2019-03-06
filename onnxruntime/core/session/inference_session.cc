@@ -37,7 +37,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/session_state_initializer.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/tensorutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/transformer_memcpy.h"
