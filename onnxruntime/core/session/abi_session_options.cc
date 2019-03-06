@@ -42,7 +42,7 @@ ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options) {
 }
 
 // enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix) {
+ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;
   options->value.profile_file_prefix = profile_file_prefix;
 }
@@ -51,16 +51,8 @@ ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options) {
   options->value.profile_file_prefix.clear();
 }
 
-// enable the memory pattern optimization.
-// The idea is if the input shapes are the same, we could trace the internal memory allocation
-// and generate a memory pattern for future request. So next time we could just do one allocation
-// with a big chunk for all the internal memory allocation.
-ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options) {
-  options->value.enable_mem_pattern = true;
-}
-ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
-  options->value.enable_mem_pattern = false;
-}
+ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions*) {}
+ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions*) {}
 
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.

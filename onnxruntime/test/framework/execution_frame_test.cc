@@ -118,12 +118,9 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({3, 2});
-  void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
   //create fake ml value with owned buffer.
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                               shape,
-                                                              buffer,
-                                                              cpu_allocator->Info(),
                                                               cpu_allocator);
   MLValue value;
   value.Init(p_tensor.release(),
@@ -155,7 +152,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   EXPECT_TRUE(p_tensor_arg_0);
   EXPECT_EQ(p_tensor_arg_0->Shape(), shape);
   EXPECT_EQ(p_tensor_arg_0->DataType(), DataTypeImpl::GetType<float>());
-  EXPECT_EQ(p_tensor_arg_0->template MutableData<float>(), buffer);
+  EXPECT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
 
 TEST(ExecutionFrameTest, MemPatternTest) {
