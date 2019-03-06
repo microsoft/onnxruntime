@@ -744,7 +744,7 @@ class Graph {
     graph_output_order_ = outputs;
   }
 
-  const Node* GetProducerNode(std::string node_arg_name) const {
+  const Node* GetProducerNode(const std::string& node_arg_name) const {
     auto iter = node_arg_to_producer_node_.find(node_arg_name);
 
     if (iter != node_arg_to_producer_node_.end()) {
@@ -754,7 +754,7 @@ class Graph {
     return nullptr;
   }
 
-  std::vector<const Node*> GetConsumerNodes(std::string node_arg_name) const {
+  std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
     std::vector<const Node*> results;
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
 

@@ -43,6 +43,7 @@ typedef vector<uint8_t> Image;
 
 class DataSet {
  public:
+  DataSet() {}
   DataSet(vector<Image> images, vector<Label> labels) : num_samples_(int(images.size())),
                                                         images_(images),
                                                         labels_(labels),
@@ -224,7 +225,7 @@ int main(int /*argc*/, char* /*args*/[]) {
   TERMINATE_IF_FAILED(Environment::Create(env));
   mnist::MNIST_dataset<std::vector, std::vector<uint8_t>, uint8_t> dataset = {};
 
-  // Step 0: Read MNIST data
+  //Step 0 : Read MNIST data
   bool load_mnist_data = true;
   if (load_mnist_data) {
     dataset = mnist::read_dataset<std::vector, std::vector, uint8_t, uint8_t>(MNIST_DATA_PATH);

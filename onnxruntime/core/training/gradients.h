@@ -22,6 +22,8 @@
 namespace onnxruntime {
 namespace training {
 
+typedef std::unordered_set<const Node*> NodeSet;
+
 class GradientGraphBuilder {
  public:
   /**
@@ -39,11 +41,14 @@ class GradientGraphBuilder {
                        const std::vector<std::string>& x_node_arg_names_,
                        std::string loss_node_arg_name);
 
-  GraphAugmenter::GraphDefs Build();
+  Status Build(GraphAugmenter::GraphDefs& gradient_graph_defs);
 
  private:
   std::vector<const NodeArg*> y_node_args_;
   std::vector<const NodeArg*> x_node_args_;
+
+  NodeSet y_nodes_;
+  NodeSet x_nodes_;
 
   const Graph* graph_;
 
@@ -56,11 +61,18 @@ class GradientGraphBuilder {
   std::unordered_map<std::string, int> pending_;
 
   /**
-  Perferms a BFS on the graph
-  @param starting_node_args Starting node args
-  @returns All the nodes visited during BFS
+  Perferms a ReverseBFS on the graph
+  @param nodes Starting nodes for ReverseBFS
+  @returns All the nodes visited during ReverseBFS
   */
-  std::unordered_set<const Node*> BFS(const std::vector<const NodeArg*>& starting_node_args);
+  NodeSet ReverseBFS(const NodeSet& nodes);
+
+  /**
+  Check if 'x_node_args_' are reachable from 'y_node_args_' for computing the partial derivative
+  @param reachable_nodes All the nodes reachable from the 'y_node_args_'
+  @returns OK if all 'x_node_args_' are reachable, else an ONNXRUNTIME INVALID_ARGUMENT status 
+  */
+  Status CheckNodeArgsReachable(const NodeSet& reachable_nodes);
 };
 
 }  // namespace training

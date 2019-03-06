@@ -47,9 +47,11 @@ class TrainingSessionImpl : public InferenceSession::Impl {
   Status BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
     // Fill weights_to_train_ according to weights_to_train
     weights_to_train_ = weights_to_train;
+
     ORT_RETURN_IF_ERROR(BuildGradientGraph(model_->MainGraph(),
                                            loss_function_output_name,
                                            weights_to_train_));
+
     return DoPostLoadProcessing(*model_);
   }
 
@@ -80,8 +82,8 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     ORT_RETURN_IF_ERROR(Model::Load(original_model_uri_, new_model));
     ORT_RETURN_IF_ERROR(new_model->UpdateWeights(GetWeights()));
 
-    if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/
-        || opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
+    if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
+        opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
       ORT_RETURN_IF_ERROR(AddLossFuncion(new_model->MainGraph(), loss_func_info_));
     }
 
@@ -111,11 +113,15 @@ class TrainingSessionImpl : public InferenceSession::Impl {
   static Status BuildGradientGraph(Graph& graph,
                                    const std::string& loss_function_output_name,
                                    const std::vector<std::string>& node_arg_names_to_train) {
-    return GraphAugmenter::AugmentGraph(graph, GradientGraphBuilder(&graph,
-                                                                    {loss_function_output_name},
-                                                                    node_arg_names_to_train,
-                                                                    loss_function_output_name)
-                                                   .Build());
+    // Compute the gradient graph def.
+    GradientGraphBuilder grad_graph_builder(&graph,
+                                            {loss_function_output_name},
+                                            node_arg_names_to_train,
+                                            loss_function_output_name);
+    GraphAugmenter::GraphDefs gradient_graph_def;
+    ORT_RETURN_IF_ERROR(grad_graph_builder.Build(gradient_graph_def));
+
+    return GraphAugmenter::AugmentGraph(graph, gradient_graph_def);
   }
 
   vector<string> weights_to_train_;
