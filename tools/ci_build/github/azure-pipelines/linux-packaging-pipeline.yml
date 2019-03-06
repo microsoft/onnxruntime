@@ -14,7 +14,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Linux_C_API_Packaging_CPU_x86
-  pool: LINUX_CPU
+  pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
 
