@@ -63,7 +63,7 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, bool custom_op, OrtCustomOp* custom_op_ptr = nullptr) {
+                   int provider_type, bool custom_op, OrtCustomOpDomain* custom_op_domain_ptr = nullptr) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
@@ -93,8 +93,8 @@ void TestInference(OrtEnv* env, T model_uri,
   if (custom_op) {
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
-  if (custom_op_ptr) {
-    OrtAddCustomOp(sf, custom_op_ptr);
+  if (custom_op_domain_ptr) {
+    OrtAddCustomOpDomain(sf, custom_op_domain_ptr);
   }
 
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
@@ -218,6 +218,7 @@ struct MyCustomKernel {
 
 struct MyCustomOp : OrtCustomOp {
   MyCustomOp() {
+    OrtCustomOp::version = ORT_API_VERSION;
     OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*info); };
     OrtCustomOp::GetName = [](OrtCustomOp* this_) { return "Foo"; };
 
@@ -245,8 +246,10 @@ TEST_F(CApiTest, custom_op_handler) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   MyCustomOp custom_op;
+  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 5, 7);
+  OrtCustomOpDomain_Add(custom_op_domain, &custom_op);
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
 }
 
 struct OCRCustomKernel {
@@ -276,8 +279,9 @@ struct OCRCustomKernel {
 
 struct OCRCustomOp : OrtCustomOp {
   OCRCustomOp() {
+    OrtCustomOp::version = ORT_API_VERSION;
     OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, OrtKernelInfo* info, void** output) { *output = new OCRCustomKernel(*info); };
-    OrtCustomOp::GetName = [](OrtCustomOp* this_) { return "GenerateMsDenseboxSeglinksProposalsasdf"; };
+    OrtCustomOp::GetName = [](OrtCustomOp* this_) { return "GenerateMsDenseboxSeglinksProposals"; };
 
     static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
     OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* this_) { return _countof(c_inputTypes); };
@@ -303,8 +307,11 @@ TEST_F(CApiTest, custom_op_handler_ocr) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   OCRCustomOp custom_op;
+  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 9, 10);
+  OrtCustomOpDomain_Add(custom_op_domain, &custom_op);
 
-  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
+  //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
+  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
   //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x_opset7.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
 }
 

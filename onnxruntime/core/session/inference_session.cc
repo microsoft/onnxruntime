@@ -238,72 +238,59 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status AddCustomOps(const std::vector<OrtCustomOp*>& ops) {
+  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
     auto custom_registry = std::make_shared<CustomRegistry>();
-    auto schemas_container = std::make_unique<SchemasContainer>();
 
-    schemas_container->domain = onnxruntime::kOnnxDomain;
-    schemas_container->baseline_opset_version = 5;
-    schemas_container->opset_version = 9;
+    for (auto& domain : op_domains) {
+      auto schemas_container = std::make_unique<SchemasContainer>();
 
-    for (auto& op : ops) {
-      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
+      schemas_container->domain = domain->domain_;
+      schemas_container->baseline_opset_version = domain->op_version_start_;
+      schemas_container->opset_version = domain->op_version_end_;
 
-      auto input_count = op->GetInputTypeCount(op);
-      for (size_t i = 0; i < input_count; i++) {
-        auto type = op->GetInputType(op, i);
+      for (auto& op : domain->custom_ops_) {
+        ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
 
-        schema.Input(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+        auto input_count = op->GetInputTypeCount(op);
+        for (size_t i = 0; i < input_count; i++) {
+          auto type = op->GetInputType(op, i);
+
+          schema.Input(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+        }
+
+        auto output_count = op->GetOutputTypeCount(op);
+        for (size_t i = 0; i < output_count; i++) {
+          auto type = op->GetOutputType(op, i);
+
+          schema.Output(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+        }
+
+        schema.TypeConstraint(
+            "T",
+            OpSchema::numeric_types_for_math_reduction(),
+            "Constrain input and output types to high-precision numeric tensors.");
+        schema.SinceVersion(domain->op_version_start_);
+        schema.AllowUncheckedAttributes();
+
+        schemas_container->schemas_list.push_back(schema);
+
+        KernelDefBuilder def_builder;
+        def_builder.SetName(op->GetName(op))
+            .SetDomain(onnxruntime::kOnnxDomain)
+            .SinceVersion(domain->op_version_start_)
+            .Provider(onnxruntime::kCpuExecutionProvider)
+            .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
+        KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new FooKernel(info, *op); };
+        KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
+
+        custom_registry->RegisterCustomKernel(create_info);
       }
 
-      auto output_count = op->GetOutputTypeCount(op);
-      for (size_t i = 0; i < output_count; i++) {
-        auto type = op->GetOutputType(op, i);
-
-        schema.Output(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
-      }
-
-#if 0
-      schema.Input(0,
-                   "A",
-                   "First operand, should share the type with the second operand.",
-                   "T");
-
-      schema.Input(
-          1,
-          "B",
-          "Second operand. With broadcasting can be of smaller size than A. "
-          "If broadcasting is disabled it should be of the same size.",
-          "T");
-      schema.Output(0, "C", "Result, has same dimensions and type as A", "T");
-#endif
-
-      schema.TypeConstraint(
-          "T",
-          OpSchema::numeric_types_for_math_reduction(),
-          "Constrain input and output types to high-precision numeric tensors.");
-      schema.SinceVersion(5);
-      schema.AllowUncheckedAttributes();
-
-      schemas_container->schemas_list.push_back(schema);
-
-      KernelDefBuilder def_builder;
-      def_builder.SetName(op->GetName(op))
-          .SetDomain(onnxruntime::kOnnxDomain)
-          .SinceVersion(5)
-          .Provider(onnxruntime::kCpuExecutionProvider)
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
-      KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new FooKernel(info, *op); };
-      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-
-      custom_registry->RegisterCustomKernel(create_info);
+      ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
+                                                         schemas_container->domain,
+                                                         schemas_container->baseline_opset_version,
+                                                         schemas_container->opset_version));
     }
-
-    ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
-                                                       schemas_container->domain,
-                                                       schemas_container->baseline_opset_version,
-                                                       schemas_container->opset_version));
-
     RegisterCustomRegistry(custom_registry);
     return Status::OK();
   }
@@ -315,6 +302,8 @@ class InferenceSession::Impl {
 
     // Insert session-level customized kernel registry.
     kernel_registry_manager_.RegisterKernelRegistry(custom_registry);
+    //    if (custom_schema_registries_.empty())
+    //      custom_schema_registries_.push_back();
     custom_schema_registries_.push_back(custom_registry);
     return Status::OK();
   }
@@ -1259,7 +1248,7 @@ common::Status InferenceSession::LoadCustomOps(const std::vector<std::string>& d
   return impl_->LoadCustomOps(dso_list);
 }
 
-common::Status InferenceSession::AddCustomOps(const std::vector<OrtCustomOp*>& ops) {
-  return impl_->AddCustomOps(ops);
+common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) {
+  return impl_->AddCustomOpDomains(ops);
 }
 }  // namespace onnxruntime

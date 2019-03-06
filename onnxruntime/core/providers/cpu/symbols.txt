@@ -1,4 +1,4 @@
-OrtAddCustomOp
+OrtAddCustomOpDomain
 OrtAllocatorAlloc
 OrtAllocatorFree
 OrtAllocatorGetInfo
@@ -12,6 +12,7 @@ OrtCloneSessionOptions
 OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
+OrtCreateCustomOpDomain
 OrtCreateDefaultAllocator
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
@@ -21,6 +22,7 @@ OrtCreateSessionOptions
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
 OrtCreateTensorWithDataAsOrtValue
+OrtCustomOpDomain_Add
 OrtDisableCpuMemArena
 OrtDisableMemPattern
 OrtDisableProfiling
@@ -45,6 +47,7 @@ OrtGetValueType
 OrtIsTensor
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
+OrtReleaseCustomOpDomain
 OrtReleaseEnv
 OrtReleaseRunOptions
 OrtReleaseSession
