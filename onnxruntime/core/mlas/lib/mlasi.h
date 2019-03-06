@@ -566,6 +566,33 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
+inline
+MLAS_FLOAT32X4
+MlasFloorFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return Vector; //TBD
+#elif defined(MLAS_SSE2_INTRINSICS)
+    MLAS_FLOAT32X4 tmp = _mm_cvttepi32_ps(_mm_cvttps_epi32(Vector));
+    MLAS_FLOAT32X4 mask = _mm_cmpgt_ps(tmp, Vector);
+    mask = _mm_and_ps(mask, _mm_set1_ps(1.0f));
+    return _mm_sub_ps(tmp, mask);
+#endif
+}
+
+// calc 2^N
+inline
+MLAS_FLOAT32X4
+MlasLDExpFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return Vector; //TBD
+#elif defined(MLAS_SSE2_INTRINSICS)
+    __mm128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
+    return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
+#endif
+}
+
 //
 // Reads a platform specific time stamp counter.
 //

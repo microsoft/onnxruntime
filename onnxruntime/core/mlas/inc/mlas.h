@@ -206,6 +206,14 @@ MlasComputeTanh(
     size_t N
     );
 
+void
+MLASCALL
+MlasComputeExp(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
 //
 // Half-precision floating-point routines.
 //
