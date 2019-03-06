@@ -25,8 +25,7 @@ backend_test.exclude(r'('
 '|^test_convtranspose_1d_cpu.*'
 '|^test_convtranspose_3d_cpu.*'
 '|^test_constantofshape_*.*'
-'|^test_scatter_with_axis_cpu.*'
-'|^test_scatter_without_axis_cpu.*'
+
 '|^test_AvgPool1d_cpu.*'
 '|^test_AvgPool1d_stride_cpu.*'
 '|^test_AvgPool2d_cpu.*'
@@ -63,6 +62,7 @@ backend_test.exclude(r'('
 '|^test_operator_non_float_params_cpu.*'
 '|^test_operator_params_cpu.*'
 '|^test_operator_pow_cpu.*'
+'|^test_shrink_cpu.*'
 ')')
 
 # import all test cases at global scope to make
