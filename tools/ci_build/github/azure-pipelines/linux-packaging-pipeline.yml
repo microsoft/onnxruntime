@@ -1,0 +1,43 @@
+jobs:
+- job: Linux_C_API_Packaging_CPU_x64
+  pool: Linux-CPU
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+      displayName: 'Build and Test Linux on Docker'
+    - template: templates/c-api-artifacts-package-and-publish-steps.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x64'
+          libraryName: 'libonnxruntime.so'
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Linux_C_API_Packaging_CPU_x86
+  pool: LINUX_CPU
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --x86 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+      displayName: 'Build and Test Linux on Docker'
+    - template: templates/c-api-artifacts-package-and-publish-steps.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x86'
+          libraryName: 'libonnxruntime.so'
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Linux_C_API_Packaging_GPU_x64
+  pool: Linux-GPU-CUDA10
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+      displayName: 'Build and Test Linux on Docker'
+    - template: templates/c-api-artifacts-package-and-publish-steps.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x86'
+          libraryName: 'libonnxruntime.so'
+    - template: templates/clean-agent-build-directory-step.yml
+
