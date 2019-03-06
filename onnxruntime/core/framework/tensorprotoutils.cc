@@ -109,6 +109,7 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
 }
 }  // namespace
 
+
 namespace onnxruntime {
 namespace utils {
 
@@ -367,6 +368,12 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
+static void ORT_API_CALL DeleteHeapBuffer(void* param) noexcept {
+  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
+  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
+  delete p;
+}
+
 ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
                     enum ONNXTensorElementDataType type) {
   try {
@@ -392,11 +399,6 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
-static void DeleteHeapBuffer(void* param) noexcept {
-  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
-  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
-  delete p;
-}
 
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, MLValue& value,
@@ -411,6 +413,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       OrtReleaseStatus(status);
       return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
     }
+    
     deleter.f = DeleteHeapBuffer;
     deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
   } else {

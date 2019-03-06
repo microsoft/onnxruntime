@@ -1,0 +1,38 @@
+# sets up common build tools for the windows build machines before build
+
+parameters:
+  buildConfig: 'RelWithDebInfo'
+  artifactName: 'onnxruntime-linux-x64'
+  libraryName: 'libonnxruntime.so'
+steps:
+    - task: CmdLine@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        script: |
+          mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}
+          mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
+          mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
+          echo "Directories created"            
+          cp $(Build.BinariesDirectory)/${{parameters.buildConfig}}/{{parameters.libraryName}} $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
+          cp $(Build.SourcesDirectory)/include/onnxruntime/core/session/onnxruntime_c_api.h  $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
+          # copy the README, licence and TPN
+          cp $(Build.SourcesDirectory)/README.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/README.md
+          cp $(Build.SourcesDirectory)/docs/C_API.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/C_API.md
+          cp $(Build.SourcesDirectory)/LICENSE $(Build.BinariesDirectory)/${{parameters.artifactName}}/LICENSE
+          cp $(Build.SourcesDirectory)/ThirdPartyNotices.txt $(Build.BinariesDirectory)/${{parameters.artifactName}}/ThirdPartyNotices.txt
+
+        workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}' 
+        includeRootFolder: true
+        archiveType: 'tar' # Options: zip, 7z, tar, wim
+        tarCompression: 'gz'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz' 
+        replaceExistingArchive: true 
+      
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz' 
+        artifactName: 'drop-${{parameters.artifactName}}' 
