@@ -89,18 +89,6 @@ if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)  
 endif()
 
-# Dummy code
-message(${CMAKE_SYSTEM_NAME})
-message(${CMAKE_HOST_SYSTEM_NAME})
-message(${CMAKE_SYSTEM_PROCESSOR})
-message(${CMAKE_HOST_SYSTEM_PROCESSOR})
-message(${CMAKE_GENERATOR_PLATFORM})
-message(${CMAKE_VS_PLATFORM_NAME})
-#set(CMAKE_SYSTEM_PROCESSOR ARM64)
-#message(${CMAKE_SYSTEM_PROCESSOR})
-message(${CMAKE_CROSSCOMPILING})
-# End dummy
-
 #must after OpenMP settings
 find_package(Threads)
 
@@ -199,7 +187,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #3. both onnxruntime_USE_PREBUILT_PB and ONNX_CUSTOM_PROTOC_EXECUTABLE are not set
 #   Compile everything from source code. Slowest option.
 
-# option 1
+# mode 1
 if(onnxruntime_USE_PREBUILT_PB AND NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
   get_filename_component(
      _PROTOBUF_INSTALL_PREFIX
@@ -216,9 +204,8 @@ if(onnxruntime_USE_PREBUILT_PB AND NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQU
   endif()
   include(protobuf_function.cmake)
 
-# option 2
+# mode 2
 elseif(NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
-  message("option 2")
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
   set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
   set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
@@ -229,10 +216,9 @@ elseif(NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
   DIRECTORY)
   include(protobuf_function.cmake)
  
-# option 3  
+# mode 3  
 else()
   # use protobuf as a submodule
-  message("option 3")
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
   set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
   set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
@@ -338,7 +324,7 @@ if (MSVC)
 endif()
 
 if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS)
+  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
 if (onnxruntime_USE_MLAS)
@@ -373,7 +359,8 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    # treat warning as error only on x64 platform. For x86, there are too many warnings to fix.
+    # treat warning as error only on x64 platform. 
+    # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")

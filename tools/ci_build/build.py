@@ -276,7 +276,7 @@ def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
                 run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
@@ -334,8 +334,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if pb_home:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=" + os.path.join(pb_home,'bin','protoc'), '-Donnxruntime_USE_PREBUILT_PB=ON']
 
-    if not pb_home and args.path_to_protoc_exe:
-        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % args.path_to_protoc_exe]
+    if not pb_home and path_to_protoc_exe:
+        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -524,6 +524,28 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda):
         if is_ubuntu_1604():
             run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
 
+def build_protobuf_for_windows_host(cmake_path, source_dir, build_dir):
+    if not is_windows():
+        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM64 arch')
+    log.info("Building protoc for host to be used in cross-compiled build process")
+    protoc_build_dir = os.path.join(build_dir, 'host_protoc')
+    os.makedirs(protoc_build_dir, exist_ok=True)
+    # Generate step
+    cmd_args = [cmake_path,
+                os.path.join(source_dir, 'cmake\external\protobuf\cmake'),
+                '-G',
+                'Visual Studio 15 2017',
+                '-Dprotobuf_BUILD_TESTS=OFF',
+                '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
+                '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
+    run_subprocess(cmd_args, cwd= protoc_build_dir)
+    # Build step
+    cmd_args = [cmake_path,
+                "--build", protoc_build_dir,
+                "--config", "Release",
+                "--target", "protoc"]
+    run_subprocess(cmd_args)
+
 def main():
     args = parse_arguments()
 
@@ -568,6 +590,8 @@ def main():
             cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
           elif (args.arm64):
             # Cross-compiling for ARM64 architecture
+            # First build protobuf for host
+            build_protobuf_for_windows_host(cmake_path, source_dir, build_dir)
             cmake_extra_args = ['-A','ARM64', '-G', 'Visual Studio 15 2017']
             # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
             if args.test:
@@ -596,7 +620,14 @@ def main():
                 raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
-        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, configs, cmake_extra_defines,
+        path_to_protoc_exe = None
+        if args.path_to_protoc_exe:
+            path_to_protoc_exe = args.path_to_protoc_exe
+        # Need to provide path to protoc.exe built for host to be used in the cross-compiled build process
+        elif args.arm64:
+            path_to_protoc_exe = os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')
+
+        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
     if (args.clean):
