@@ -589,11 +589,12 @@ class InferenceSession::Impl {
                   "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
   }
 
-  common::Status ValidateInputTypes(const std::vector<std::string>& feed_names,
-                                    const std::vector<MLValue>& feeds) {
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
+                                const std::vector<MLValue>& feeds) {
     const auto begin_names = feed_names.cbegin();
     const auto end_names = feed_names.cend();
-    for (auto& arg : input_def_list_) {
+    std::unordered_set<ptrdiff_t> required_feed_ids;
+    for (auto& arg : required_input_def_list_) {
       auto& arg_name = arg->Name();
       if (arg_name.empty()) {
         continue;
@@ -601,81 +602,56 @@ class InferenceSession::Impl {
 
       auto feed_names_entry = std::find(begin_names, end_names, arg_name);
       if (feed_names_entry == end_names) {
-        continue;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Missing required input: ", arg_name);
       }
 
       auto idx = feed_names_entry - begin_names;
+      required_feed_ids.insert(idx);
       auto& input_ml_value = feeds.at(idx);
-      auto input_type = input_ml_value.Type();
       auto expected_type = utils::GetMLDataType(*arg);
 
-      if (!input_ml_value.IsTensor()) {
-        auto retval = CheckTypes(input_type, expected_type);
-        if (!retval.IsOK()) {
-          return retval;
+      if (input_ml_value.IsTensor()) {
+        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
+        ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
+      } else {
+        auto input_type = input_ml_value.Type();
+        ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
+      }
+    }
+
+    if (feeds.size() > required_feed_ids.size()) {
+      // More feeds are offered.
+      // In the case of overriding some initializers (which are also taken as graph inputs).
+      for (size_t i = 0; i < feeds.size(); ++i) {
+        if (required_feed_ids.count(i) > 0) {
+          continue;
         }
-        continue;
-      }
+        auto iter = input_def_map_.find(feed_names[i]);
+        if (input_def_map_.end() == iter) {
+          std::ostringstream ostr;
+          std::for_each(std::begin(model_input_names_),
+                        std::end(model_input_names_),
+                        [&ostr](const std::string& elem) {
+                          ostr << elem << " ";
+                        });
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Invalid Feed Input Names:", feed_names[i],
+                                 ". Valid input names are: ", ostr.str());
+        }
 
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-      auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-      auto retval = CheckTypes(input_element_type, expected_element_type);
-      if (!retval.IsOK()) {
-        return retval;
-      }
-    }
-    return Status::OK();
-  }
+        auto& input_ml_value = feeds.at(i);
+        ORT_ENFORCE(input_ml_value.IsTensor());
+        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
 
-  common::Status ValidateInputNames(const std::vector<std::string>& feed_names) {
-    std::string missing_required_inputs;
+        auto expected_type = utils::GetMLDataType(*iter->second);
+        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
 
-    const auto begin_names = feed_names.cbegin();
-    const auto end_names = feed_names.cend();
-    std::for_each(required_model_input_names_.cbegin(), required_model_input_names_.cend(),
-                  [&](const std::string& required_input) {
-                    if (std::find(begin_names, end_names, required_input) == end_names) {
-                      if (!missing_required_inputs.empty())
-                        missing_required_inputs += ",";
-
-                      missing_required_inputs += required_input;
-                    }
-                  });
-
-    if (!missing_required_inputs.empty()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Missing required inputs: ", missing_required_inputs);
-    }
-
-    bool valid = true;
-    std::ostringstream invalid_names;
-    for (const auto& name : feed_names) {
-      if (model_input_names_.find(name) == model_input_names_.end()) {
-        valid = false;
-        invalid_names << " " << name;
+        ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
       }
     }
 
-    if (!valid) {
-      std::ostringstream ostr;
-      std::for_each(std::begin(model_input_names_),
-                    std::end(model_input_names_),
-                    [&ostr](const std::string& elem) {
-                      ostr << elem << " ";
-                    });
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Names:", invalid_names.str(),
-                             ". Valid input names are: ", ostr.str());
-    }
-
-    return Status::OK();
-  }
-
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<MLValue>& feeds) {
-    ORT_RETURN_IF_ERROR(ValidateInputNames(feed_names));
-    //TODO: It should also validate the input shapes?
-    ORT_RETURN_IF_ERROR(ValidateInputTypes(feed_names, feeds));
     return Status::OK();
   }
 
@@ -964,11 +940,11 @@ class InferenceSession::Impl {
     }
 
     // save all valid inputs
-    const auto& all_inputs = graph.GetInputsIncludingInitializers();
-    input_def_list_.reserve(all_inputs.size());
+    auto& all_inputs = graph.GetInputsIncludingInitializers();
+    input_def_map_.reserve(all_inputs.size());
     model_input_names_.reserve(all_inputs.size());
-    for (const auto& elem : all_inputs) {
-      input_def_list_.push_back(elem);
+    for (auto elem : all_inputs) {
+      input_def_map_.insert({elem->Name(), elem});
       model_input_names_.insert(elem->Name());
     }
 
@@ -1094,7 +1070,7 @@ class InferenceSession::Impl {
 
   ModelMetadata model_metadata_;
   InputDefList required_input_def_list_;
-  InputDefList input_def_list_;
+  std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 
   // names of model inputs and outputs used for quick validation.

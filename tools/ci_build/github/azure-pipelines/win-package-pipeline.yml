@@ -1,0 +1,59 @@
+jobs:
+- job: Windows_Packaging_CPU_x64
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
+    buildArch: 'x64'
+
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
+        setVcvars: false
+
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp '
+        buildArch: $(buildArch)
+        msbuildPlatform: $(buildArch)
+        buildConfig: $(buildConfig)
+
+    - template: templates/windows-artifacts-package-and-publish-steps.yml
+      parameters:
+        buildConfig: $(buildConfig)
+        artifactName: 'onnxruntime-win-$(buildArch)'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Windows_Packaging_CPU_x86
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
+    buildArch: 'x86'
+
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: $(buildArch)
+        setVcVars: false
+
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp --x86 '
+        buildArch: $(buildArch)
+        msbuildPlatform: 'Win32'
+        buildConfig: $(buildConfig)
+
+    - template: templates/windows-artifacts-package-and-publish-steps.yml
+      parameters:
+        buildConfig: $(buildConfig)
+        artifactName: 'onnxruntime-win-$(buildArch)'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
