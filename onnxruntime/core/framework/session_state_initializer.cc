@@ -184,7 +184,6 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-// This function is not required to check if the preallocated buffer(p_data) has enough room.
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
                                              const ExecutionProviders& exec_providers, MLValue& mlvalue, OrtCallback& deleter) {
@@ -210,7 +209,11 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   // deserialize to CPU first for non-CPU allocator, then alloc and copy
   size_t cpu_tensor_length;
   ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
-  OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  if (m.GetLen() < cpu_tensor_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ", cpu_tensor_length,
+                           ", Got ", m.GetLen());
+  }
+  OrtAllocatorInfo info(CPU, OrtDeviceAllocator, 0, OrtMemTypeDefault);
   std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
   std::unique_ptr<Tensor> p_tensor;
   MLValue tmp_mlvalue;

@@ -14,15 +14,7 @@
 #ifdef _WIN32
 namespace onnxruntime {
 namespace {
-//starting from pszPath_end-1, backsearch the first char that is not L'/'
-inline void backsearch(PWSTR pszPath, PWSTR& pszPath_end) {
-  PWSTR const pszPath_second = pszPath + 1;
-  while (pszPath_end > pszPath_second && *(pszPath_end - 1) == L'/')
-    --pszPath_end;
-  *pszPath_end = L'\0';
-}
-
-inline Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
+Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
   if (PathIsUNCW(pszPath) == TRUE) {
     return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "UNC path is not supported yet");
