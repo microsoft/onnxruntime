@@ -25,6 +25,9 @@ class IExecutor {
 
   virtual ~IExecutor() = default;
 
+  /**
+   * The lifetime of 'fetches' is limited by 'session_state'
+   */
   common::Status Execute(const SessionState& session_state,
                          const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<MLValue>& feeds,
