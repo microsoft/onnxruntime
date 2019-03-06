@@ -3,7 +3,7 @@
 //
 #include "CppUnitTest.h"
 #include <assert.h>
-#include <core/session/onnxruntime_c_api.h>
+#include <onnxruntime_c_api.h>
 
 wchar_t* GetWideString(const char* c) {
   const size_t cSize = strlen(c) + 1;
@@ -75,10 +75,14 @@ namespace UnitTest1
             ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
             OrtSessionOptions* session_option = OrtCreateSessionOptions();
             OrtSession* session;
-            ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
-
             OrtSetSessionThreadPoolSize(session_option, 1);
-            return run_inference(session);
+            ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
+            OrtReleaseSessionOptions(session_option);
+
+            int result = run_inference(session);
+
+            OrtReleaseSession(session);
+            OrtReleaseEnv(env);
         }
 
         TEST_METHOD(TestMethod1)
