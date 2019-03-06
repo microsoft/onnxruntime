@@ -98,8 +98,6 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape
 
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
-  auto status = Status::OK();
-
   // in the future we could support multiple nodes on difference devices using an input, however right now
   // the logic in utils::CopyOneInputAcrossDevices only checks the first entry.
   // Instead of failing silently and adding extra entries that will be ignored, check if the required provider
@@ -130,15 +128,15 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       if (current_provider == new_provider) {
         entries.push_back(node_info);
       } else {
-        ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                        "Using an input in multiple nodes on different devices is not supported currently. Input:",
-                        input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
-                        ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Using an input in multiple nodes on different devices is not supported currently. Input:",
+                               input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
+                               ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
       }
     }
   }
 
-  return status;
+  return Status::OK();
 }
 
 common::Status SessionState::GetInputNodeInfo(const std::string& input_name,

@@ -142,8 +142,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
 
     // If a node requires input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
     if (required_provider_type == onnxruntime::kCpuExecutionProvider &&
-        (input_tensor_loc.mem_type == OrtMemTypeCPU ||
-         input_tensor_loc.mem_type == OrtMemTypeCPUOutput)) {
+        input_tensor_loc.mem_type == OrtMemTypeCPU) {
       new_mlvalue = orig_mlvalue;
       break;
     }
