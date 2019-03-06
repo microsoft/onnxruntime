@@ -83,19 +83,22 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   // and we carry to the more significant dim (right to left)
   std::vector<int64_t> dim_counters(num_dims);
 
-  // This vector contains number of lower dimension elements per
-  // unit. For example, for the dimensions of [2, 3] the vector
-  // would contain [3, 1] since for each count of dim 0 it
-  // contains 3 elements of dim 1. The last value is always 1.
+  // This vector contains number of elements under the dimension.
+  // For example, for the dimensions of [4, 2, 3] the vector
+  // would contain [6, 3, 1] since for each count of dim 1 it
+  // contains 3 elements of dim 2.
+  // For each count of dim 0 we would have 2x3=6 elements.
+  // The last value is always 1.
   // We use it to compute output element offset. For a given value of
   // counters we multiple each counter value per corresponding entry of dim_block_size value
   // and add up resulting the output element offset. However, for dimensions
   // that are equal to the specified axis value we take indices_data[index]
   // instead of the counter value.
-  // E.g. for 2-dim and axis=0
-  //    output[indices[i][j], j] = updates[i][j]
+  // E.g. for 3-dim and axis=0
+  //    output[indices[i][j][k]][j][k] = updates[i][j][k]
   // for axis 1
-  //    output[i, indices[i][j]] = updates[i][j]
+  //    output[i][indices[i][j][k]][k] = updates[i][j][k]
+  // and so on
   std::vector<int64_t> dim_block_size(num_dims);
 
   dim_block_size.back() = 1;
@@ -186,8 +189,8 @@ Status Scatter::Compute(OpKernelContext* context) const {
   // exceed that of the input
   auto& input_dims = input_data_shape.GetDims();
   if (input_dims.size() != indices_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices/updates must have the same rank as input ind rank=",
-                           indices_dims.size(), " vs input rank=", input_dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=",
+                           indices_dims.size(), ". Input rank=", input_dims.size());
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
