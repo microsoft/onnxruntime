@@ -17,6 +17,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<double>(),
+                                          DataTypeImpl::GetTensorType<int>(),
                                       }),
     Split);
 
@@ -28,6 +29,8 @@ Status Split::Compute(OpKernelContext* context) const {
 
   if (data_type == DataTypeImpl::GetType<float>())
     status = ComputeImpl<float>(*context, input);
+  else if (data_type == DataTypeImpl::GetType<int>())
+    status = ComputeImpl<int>(*context, input);
   else if (data_type == DataTypeImpl::GetType<double>()) {
     /* Need to update CopyMatrix to support double...
     status = ComputeImpl<double>(*context, input); */
