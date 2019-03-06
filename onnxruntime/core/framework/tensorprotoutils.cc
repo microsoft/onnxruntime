@@ -109,6 +109,13 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
 }
 }  // namespace
 
+
+void ORT_API_CALL DeleteHeapBuffer(void* param) noexcept {
+  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
+  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
+  delete p;
+}
+
 namespace onnxruntime {
 namespace utils {
 
@@ -392,11 +399,6 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
-static void DeleteHeapBuffer(void* param) noexcept {
-  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
-  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
-  delete p;
-}
 
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, MLValue& value,
@@ -412,11 +414,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
     }
     
-#ifdef _WIN32    
-    deleter.f = (void (__stdcall *)(void *) noexcept)DeleteHeapBuffer;
-#else
     deleter.f = DeleteHeapBuffer;
-#endif
     deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
   } else {
     deleter.f = nullptr;
