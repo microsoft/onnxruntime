@@ -33,13 +33,13 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
+      "\t-x [thread_size]: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, char* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, "m:e:r:t:p:xvhs")) != -1) {
+  while ((ch = getopt(argc, argv, "m:e:r:t:p:x:vhs")) != -1) {
     switch (ch) {
       case 'm':
         if (!strcmp(optarg, "duration")) {
@@ -90,6 +90,10 @@ namespace perftest {
         break;
       case 'x':
         test_config.run_config.enable_sequential_execution = false;
+        test_config.run_config.session_thread_pool_size = static_cast<int>(strtol(optarg, nullptr, 10));
+        if (test_config.run_config.session_thread_pool_size <= 0) {
+          return false;
+        }
         break;
       case '?':
       case 'h':

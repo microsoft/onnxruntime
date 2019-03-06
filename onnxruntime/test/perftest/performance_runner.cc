@@ -92,7 +92,7 @@ bool PerformanceRunner::Initialize() {
 
   SessionFactory sf(std::move(provider_types), true, true);
   sf.enable_sequential_execution = performance_test_config_.run_config.enable_sequential_execution;
-  sf.session_thread_pool_size = 6;
+  sf.session_thread_pool_size = performance_test_config_.run_config.session_thread_pool_size;
 
   auto status = sf.Create(session_object_, test_case->GetModelUrl(), test_case->GetTestCaseName());
   if (!status.IsOK()) {
