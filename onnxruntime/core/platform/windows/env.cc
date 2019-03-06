@@ -93,6 +93,51 @@ class WindowsEnv : public Env {
   void ExecuteTask(const Task& t) const override {
     t.f();
   }
+  common::Status ReadFileAsString(const wchar_t* fname, std::string* out) const override {
+    if (!fname) return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "file name is nullptr");
+    if (!out) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'out' cannot be NULL");
+    }
+    HANDLE hFile = CreateFileW(fname, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+      int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(fname), " fail, errcode =", err);
+    }
+    std::unique_ptr<void, decltype(&CloseHandle)> handler_holder(hFile, CloseHandle);
+    LARGE_INTEGER filesize;
+    if (!GetFileSizeEx(hFile, &filesize)) {
+      int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
+    }
+    // check the file file for avoiding allocating a zero length buffer
+    if (filesize.QuadPart == 0) {  // empty file
+      out->clear();
+      return Status::OK();
+    }
+    out->resize(filesize.QuadPart, '\0');
+    char* wptr = const_cast<char*>(out->data());
+    auto length_remain = filesize.QuadPart;
+    DWORD readed = 0;
+    for (; length_remain > 0; wptr += readed, length_remain -= readed) {
+      //read at most 1GB each time
+      DWORD bytes_to_read;
+      if (length_remain > (1 << 30)) {
+        bytes_to_read = 1 << 30;
+      } else {
+        bytes_to_read = static_cast<DWORD>(length_remain);
+      }
+      if (ReadFile(hFile, wptr, bytes_to_read, &readed, nullptr) != TRUE) {
+        int err = GetLastError();
+        out->clear();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail, errcode =", err);
+      }
+      if (readed != bytes_to_read) {
+        out->clear();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail: unexpected end");
+      }
+    }
+    return common::Status::OK();
+  }
 
   common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const override {
     _wsopen_s(&fd, path.c_str(), _O_RDONLY | _O_SEQUENTIAL | _O_BINARY, _SH_DENYWR, _S_IREAD | _S_IWRITE);
