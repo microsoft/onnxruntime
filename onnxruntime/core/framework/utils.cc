@@ -245,20 +245,6 @@ static common::Status SetupFetchesForExecute(const SessionState& session_state,
 
   new_fetches.resize(num_outputs);
 
-  if (copy_to_new_fetches_cached_values && !copy_to_new_fetches_cached_values->empty()) {
-    // use the cached values
-    ORT_ENFORCE(copy_to_new_fetches_cached_values->size() == num_outputs);
-
-    auto& copy = *copy_to_new_fetches_cached_values;
-    for (size_t i = 0; i < num_outputs; ++i) {
-      if (copy[i]) {
-        new_fetches[i] = fetches[i];
-      }
-    }
-
-    return Status::OK();
-  }
-
   // track which fetches can be copied to new_fetches and used directly in the execution.
   std::vector<bool> local_can_copy_flags(num_outputs, false);
 
@@ -353,15 +339,6 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
                                                std::vector<FeedsFetchesManager::MLValueCopyInfo>* copiers) {
   needed_copy = false;
   auto num_outputs = fetches.size();
-
-  // used the cached copy logic if available
-  if (copiers && !copiers->empty()) {
-    for (size_t idx = 0; idx < num_outputs; ++idx) {
-      ORT_RETURN_IF_ERROR(CopyMLValue((*copiers)[idx], fetches[idx], user_fetches[idx]));
-    }
-
-    return Status::OK();
-  }
 
   if (copiers) {
     // resize so we have default values and only need to update an entry if there's a device copy required.

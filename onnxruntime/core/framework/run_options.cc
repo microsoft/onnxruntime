@@ -22,20 +22,12 @@ ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ co
   return nullptr;
 }
 
-ORT_API(void, OrtRunOptionsSetCacheFeedsFetchesInfoEnabled, _In_ OrtRunOptions* options, int bool_value) {
-  options->cache_feeds_fetches_info = bool_value != 0;
-}
-
 ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions* options) {
   return options->run_log_verbosity_level;
 }
 
 ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions* options) {
   return options->run_tag.c_str();
-}
-
-ORT_API(int, OrtRunOptionsGetCacheFeedsFetchesInfoEnabled, _In_ OrtRunOptions* options) {
-  return options->cache_feeds_fetches_info;
 }
 
 ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions* options, bool value) {
