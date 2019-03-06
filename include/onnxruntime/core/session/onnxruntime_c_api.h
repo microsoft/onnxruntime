@@ -66,7 +66,6 @@ extern "C" {
 #define NO_EXCEPTION
 #endif
 
-
 // Copied from TensorProto::DataType
 // Currently, Ort doesn't support complex64, complex128, bfloat16 types
 typedef enum ONNXTensorElementDataType {
@@ -557,6 +556,7 @@ struct OrtCustomOp {
   void(ORT_API_CALL* KernelCompute)(void* op_kernel, OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count);
   void(ORT_API_CALL* KernelDestroy)(void* op_kernel);
 };
+typedef struct OrtCustomOp;
 
 /*
 * Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
