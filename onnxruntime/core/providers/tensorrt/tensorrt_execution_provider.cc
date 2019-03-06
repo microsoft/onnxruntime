@@ -58,7 +58,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Get supported node list
   SubGraphCollection_t supported_nodes_vector;
-  TensorrtLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
+  TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
   auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
   auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
   auto trt_parser  = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(trt_network.get(), trt_logger));
@@ -100,7 +100,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
         // to the output list
         if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
-          for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
+          for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
             const auto& node_index = it->GetNode().Index();
             const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
 
@@ -138,11 +138,11 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // Sort inputs and outputs by the order they were added
       std::multimap<int, const NodeArg*> inputs, outputs;
 
-      for (auto it = fused_inputs.begin(); it != fused_inputs.end(); ++it) {
+      for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
         inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }
 
-      for (auto it = fused_outputs.begin(); it != fused_outputs.end(); ++it) {
+      for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }
 
@@ -264,13 +264,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     string string_buf;
     model_proto.SerializeToString(&string_buf);
 
-    TensorrtLogger trt_logger(static_cast<nvinfer1::ILogger::Severity>(nvinfer1::ILogger::Severity::kWARNING));
+    TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser  = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(trt_network.get(), trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
-    trt_builder->setMaxBatchSize(max_batch_size);
-    trt_builder->setMaxWorkspaceSize(max_workspace_size);
+    trt_builder->setMaxBatchSize(kMaxBatchSize);
+    trt_builder->setMaxWorkspaceSize(kMaxWorkSpaceSize);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
 
@@ -284,7 +284,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       const std::string& name = trt_network->getInput(i)->getName();
       size_t bindingIndex = trt_engine->getBindingIndex(name.c_str());
 
-      nvinfer1::Dims4 dimensions = static_cast<nvinfer1::Dims4&&>(trt_engine->getBindingDimensions(static_cast<int>(bindingIndex)));
+      nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(bindingIndex));
       size_t dim_size = 1;
       for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
         input_shape[i].push_back(dimensions.d[j]);
@@ -301,7 +301,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       const std::string& name = trt_network->getOutput(i)->getName();
       size_t bindingIndex = trt_engine->getBindingIndex(name.c_str());
 
-      nvinfer1::Dims4 dimensions = static_cast<nvinfer1::Dims4&&>(trt_engine->getBindingDimensions(static_cast<int>(bindingIndex)));
+      nvinfer1::Dims dimensions = trt_engine->getBindingDimensions(static_cast<int>(bindingIndex));
       size_t dim_size = 1;
       for (int j = 0, end = dimensions.nbDims; j < end; ++j) {
         output_shapes[i].push_back(dimensions.d[j]);
@@ -348,50 +348,53 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       ORT_UNUSED_PARAMETER(num_inputs);
       ORT_UNUSED_PARAMETER(num_outputs);
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-      std::vector<int> input_indexes = (trt_state->input_info)[0];
-      std::vector<int> input_binding_indexes = (trt_state->input_info)[1];
-      std::vector<int> input_dim_sizes = (trt_state->input_info)[2];
-      std::vector<int> output_binding_indexes = (trt_state->output_info)[0];
-      std::vector<int> output_dim_sizes = (trt_state->output_info)[1];
+      const std::vector<int>& input_indexes = (trt_state->input_info)[0];
+      const std::vector<int>& input_binding_indexes = (trt_state->input_info)[1];
+      const std::vector<int>& input_dim_sizes = (trt_state->input_info)[2];
+      const std::vector<int>& output_binding_indexes = (trt_state->output_info)[0];
+      const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
       std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
       int num_binding_inputs = input_binding_indexes.size();
       int num_binding_outputs = output_binding_indexes.size();
       cudaStream_t stream;
       CHECK(cudaStreamCreate(&stream));
       std::vector<void*> buffers(num_binding_inputs + num_binding_outputs);
-      std::vector<int> batch_size;
+      int batch_size = 1;
 
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         const auto& tensor_input = input_tensors[input_indexes[i]];
         const auto& tensor_shape = tensor_input.shape;
-        batch_size.push_back(tensor_shape[0]);
+        const int input_batch_size = tensor_shape[0];
+        if (input_batch_size > batch_size) {
+          batch_size = input_batch_size;
+        }
 
         const float* input = static_cast<float*>(tensor_input.data);
-        CHECK(cudaMalloc(&buffers[input_binding_indexes[i]], batch_size[i] * input_dim_sizes[i] * sizeof(float)));
-        CHECK(cudaMemcpy(buffers[input_binding_indexes[i]], input, batch_size[i] * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
+        CHECK(cudaMalloc(&buffers[input_binding_indexes[i]], input_batch_size * input_dim_sizes[i] * sizeof(float)));
+        CHECK(cudaMemcpy(buffers[input_binding_indexes[i]], input, input_batch_size * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
       }
 
       // Allocate cuda memory for outputs
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        CHECK(cudaMalloc(&buffers[output_binding_indexes[i]], batch_size[0] * output_dim_sizes[i] * sizeof(float)));
+        CHECK(cudaMalloc(&buffers[output_binding_indexes[i]], batch_size * output_dim_sizes[i] * sizeof(float)));
       }
 
       // Run TRT inference
-      trt_state->context->enqueue(batch_size[0], &buffers[0], stream, nullptr);
+      trt_state->context->enqueue(batch_size, &buffers[0], stream, nullptr);
 
       // Copy TRT outputs to output tensors
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         // Setup output tensor property
-        output_shapes[i].insert(output_shapes[i].begin(), batch_size[0]);
+        output_shapes[i].insert(output_shapes[i].begin(), batch_size);
         output_tensors[i].dtype = input_tensors[0].dtype;
         // TODO: shape inference
         output_tensors[i].ndim = output_shapes[i].size();
         output_tensors[i].shape = new int64_t[output_tensors[i].ndim];
         memcpy(output_tensors[i].shape, &output_shapes[i][0], sizeof(int64_t) * output_tensors[i].ndim);
-        output_tensors[i].data = (*(trt_state->test_allocate_func))(trt_state->allocator, sizeof(double) * batch_size[0] * output_dim_sizes[i], 64);
+        output_tensors[i].data = (*(trt_state->test_allocate_func))(trt_state->allocator, sizeof(double) * batch_size * output_dim_sizes[i], 64);
 
-        CHECK(cudaMemcpy(output_tensors[i].data, buffers[output_binding_indexes[i]], batch_size[0] * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
+        CHECK(cudaMemcpy(output_tensors[i].data, buffers[output_binding_indexes[i]], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
       }
 
       // Sync stream

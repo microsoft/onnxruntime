@@ -3,24 +3,26 @@
 
 #pragma once
 #include <ctime>
+#include "core/common/logging/logging.h"
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 
 namespace onnxruntime {
 
-static const int kBatchSize = 1;
-static const int max_batch_size = 16;
-static const int max_workspace_size = 16 << 20;
+static const int kMaxBatchSize = 16;
+static const int kMaxWorkSpaceSize = 16 << 20;
 
-#define CHECK(status)                       \
-  do {                                      \
-    auto ret = (status);                    \
-    if (ret != 0) {                         \
-      std::cout << "Cuda failure: " << ret; \
-      abort();                              \
-    }                                       \
-  } while (0)
+#define CHECK(status)                             \
+    do                                            \
+    {                                             \
+        auto ret = (status);                      \
+        if (ret != 0)                             \
+        {                                         \
+            std::cout << "Cuda failure: " << ret; \
+            abort();                              \
+        }                                         \
+    } while (0)
 
 struct InferDeleter {
   template <typename T>
@@ -35,17 +37,25 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
 class TensorrtLogger : public nvinfer1::ILogger {
-  nvinfer1::ILogger::Severity verbosity_;
-  std::ostream* ostream_;
-
- public:
-  TensorrtLogger(Severity verbosity = Severity::kWARNING,
-            std::ostream& ostream = std::cout)
-      : verbosity_(verbosity), ostream_(&ostream) {}
-  void log(Severity severity, const char* msg) override {
-    ORT_UNUSED_PARAMETER(severity);
-    ORT_UNUSED_PARAMETER(msg);
-  }
+    nvinfer1::ILogger::Severity verbosity_;
+public:
+    TensorrtLogger(Severity verbosity=Severity::kWARNING)
+        : verbosity_(verbosity) {}
+    void log(Severity severity, const char* msg) override {
+        if( severity <= verbosity_ ) {
+            time_t rawtime = std::time(0);
+            char buf[256];
+            strftime(&buf[0], 256,
+                     "%Y-%m-%d %H:%M:%S",
+                     std::gmtime(&rawtime));
+            const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" :
+                                  severity == Severity::kERROR          ? "  ERROR" :
+                                  severity == Severity::kWARNING        ? "WARNING" :
+                                  severity == Severity::kINFO           ? "   INFO" :
+                                  "UNKNOWN");
+            LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+        }
+    }
 };
 
 // Information needed to construct trt execution providers.

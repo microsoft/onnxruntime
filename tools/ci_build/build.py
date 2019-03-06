@@ -120,7 +120,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--brain_slice_client_package_name", help="Name of brainslice client package")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument("--use_tensorrt", action='store_true', help="Build with TensorRT")
-    parser.add_argument("--tensorrt_path", help="Path to TensorRT installation dir")
+    parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -271,13 +271,13 @@ def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
                 run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
-                 "-G" + "CodeBlocks - Unix Makefiles",#slx
+                 "-G" + "CodeBlocks - Unix Makefiles",
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=ON",
@@ -285,6 +285,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
+                 "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
@@ -301,6 +302,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
+                 "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -309,10 +311,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_BRAINSLICE_LIB_PATH=%s/%s" % (args.brain_slice_package_path, args.brain_slice_package_name),
             "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (args.brain_slice_package_path, args.brain_slice_client_package_name),
             "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (args.brain_slice_package_path, bs_shared_lib_name)]
-
-    if args.use_tensorrt:
-        cmake_args += ["-DTENSORRT_ROOT=%s" % args.tensorrt_path]
-        cmake_args += ["-DCUDA_HOME=%s" % args.cuda_home]
 
     if args.use_llvm:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
@@ -443,6 +441,22 @@ def setup_cuda_vars(args):
 
     return cuda_home, cudnn_home
 
+def setup_tensorrt_vars(args):
+
+    tensorrt_home = ""
+
+    if (args.use_tensorrt):
+        tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
+
+        tensorrt_home_valid = (tensorrt_home != None and os.path.exists(tensorrt_home))
+
+        if (not tensorrt_home_valid):
+            raise BuildError("tensorrt_home paths must be specified and valid.",
+                             "tensorrt_home='{}' valid={}."
+                             .format(tensorrt_home, tensorrt_home_valid))
+
+    return tensorrt_home
+
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
@@ -548,6 +562,9 @@ def main():
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
 
+    # if using tensorrt, setup tensorrt paths
+    tensorrt_home = setup_tensorrt_vars(args)
+
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
@@ -579,7 +596,7 @@ def main():
                 raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
-        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, configs, cmake_extra_defines,
+        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, args.pb_home, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
     if (args.clean):
