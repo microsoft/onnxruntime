@@ -65,7 +65,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--pb_home", help="Path to protobuf installation")
-    parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. Will be overridden by pb_home if that is set.")
+    parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. Will be overridden by {pb_home}/bin/protoc.exe if {pb_home} is set.")
     parser.add_argument("--download_test_data", action="store_true",
                         help='''Downloads test data without running the tests''')
     parser.add_argument("--test_data_url", help="Test data URL.")
@@ -125,7 +125,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument("--use_trt", action='store_true', help="Build with trt")
     parser.add_argument("--trt_path", action='store_true', help="Path to trt dir")
-
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -308,7 +307,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # By default - we currently support only cross compiling for ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 else "OFF"),
                  ]
-
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
         bs_shared_lib_name = '.'.join((bs_pkg_name[0], 'redist', bs_pkg_name[1]))
@@ -524,9 +522,10 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda):
         if is_ubuntu_1604():
             run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
 
-def build_protobuf_for_windows_host(cmake_path, source_dir, build_dir):
+def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     if not is_windows():
         raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM64 arch')
+
     log.info("Building protoc for host to be used in cross-compiled build process")
     protoc_build_dir = os.path.join(build_dir, 'host_protoc')
     os.makedirs(protoc_build_dir, exist_ok=True)
@@ -591,7 +590,7 @@ def main():
           elif (args.arm64):
             # Cross-compiling for ARM64 architecture
             # First build protobuf for host
-            build_protobuf_for_windows_host(cmake_path, source_dir, build_dir)
+            build_protoc_for_windows_host(cmake_path, source_dir, build_dir)
             cmake_extra_args = ['-A','ARM64', '-G', 'Visual Studio 15 2017']
             # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
             if args.test:
