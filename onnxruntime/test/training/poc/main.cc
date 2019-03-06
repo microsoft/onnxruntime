@@ -22,17 +22,20 @@ const static int MAX_STEPS = 2000;
 const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
 
-//const static char* ORIGINAL_MODEL_PATH = "mnist_fc_model.onnx";
-const static char* ORIGINAL_MODEL_WITH_COST_PATH = "mnist_fc_model_with_cost.onnx";
-//const static char* FORWARD_MODEL_PATH = "mnist_fc_model_fw.onnx";
+const static char* ORIGINAL_MODEL_PATH = "mnist_fc_model.onnx";
+const static char* GENERATED_MODEL_WITH_COST_PATH = "mnist_fc_model_with_cost.onnx";
 const static char* BACKWARD_MODEL_PATH = "mnist_fc_model_bw.onnx";
 const static char* TRAINED_MODEL_PATH = "mnist_fc_model_trained.onnx";
+const static char* TRAINED_MODEL_WITH_COST_PATH = "mnist_fc_model_with_cost_trained.onnx";
 const static char* MNIST_DATA_PATH = "mnist_data";
 
-#define TERMINATE_IF_FAILED(status)                                  \
-  if (!status.IsOK()) {                                              \
-    LOGF_DEFAULT(ERROR, "Failed:%s", status.ErrorMessage().c_str()); \
-    return -1;                                                       \
+#define TERMINATE_IF_FAILED(action)                                    \
+  {                                                                    \
+    auto status = action;                                              \
+    if (!status.IsOK()) {                                              \
+      LOGF_DEFAULT(ERROR, "Failed:%s", status.ErrorMessage().c_str()); \
+      return -1;                                                       \
+    }                                                                  \
   }
 
 typedef uint8_t Label;
@@ -237,11 +240,13 @@ int main(int /*argc*/, char* /*args*/[]) {
   // Step 1: Load the model and generate gradient graph in a training session.
   SessionOptions so;
   TrainingSession training_session{so};
-
-  // TODO: TERMINATE_IF_FAILED swallows some errors and messes up the call stack. Perhaps, find an alternative for debug mode ?
-  TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_WITH_COST_PATH));
+  TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));
+  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", "predictions", "labels", "loss"}));
+  TERMINATE_IF_FAILED(training_session.Save(GENERATED_MODEL_WITH_COST_PATH,
+                                            TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
   TERMINATE_IF_FAILED(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss"));
-  training_session.Save(BACKWARD_MODEL_PATH, true /*include_gradient_graph*/);
+  TERMINATE_IF_FAILED(training_session.Save(BACKWARD_MODEL_PATH,
+                                            TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
   TERMINATE_IF_FAILED(training_session.Initialize());
 
   Optimizer<GradientDescent> optimizer(training_session,
@@ -296,7 +301,10 @@ int main(int /*argc*/, char* /*args*/[]) {
 
     // Save the model at the end of training, with the latest weights
     if (batch_index == MAX_STEPS - 1) {
-      training_session.Save(TRAINED_MODEL_PATH);
+      TERMINATE_IF_FAILED(training_session.Save(TRAINED_MODEL_WITH_COST_PATH,
+                                                TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+      TERMINATE_IF_FAILED(training_session.Save(TRAINED_MODEL_PATH,
+                                                TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
     }
   }
 

@@ -4,6 +4,8 @@
 #pragma once
 #include "core/session/inference_session_impl.h"
 #include "core/framework/ml_value.h"
+#include "loss_function_registry.h"
+#include "core/training/loss_func/loss_func_common.h"
 
 namespace onnxruntime {  // forward declarations
 struct SessionOptions;
@@ -29,25 +31,55 @@ class TrainingSession {
 
   common::Status Load(const std::string& model_uri);
 
-  // TODO: common::Status RegisterCostFuncion ...
+  /** Register a custom loss function before calling AddLossFuncion, when user wants to customize the loss function.
+  @param loss_func_name The op name to be used as a loss function.
+  @remarks When using a custom/standard op as loss function, 2 ops must have been registered:
+             1. an op for loss function, schema:
+                 Inputs:
+                     OUT
+                     LABEL
+                 Outputs:
+                     LOSS
+             2. an op to calculate gradients, schema:
+                 Inputs:
+                     GRADIENT_OF_OUTPUT
+                     OUT
+                     LABEL
+                 Outputs:
+                     GRADIENT_OF_OUT
+                     GRADIENT_OF_LABEL
+           And also in gradient_builder.cc, the gradient builder must have been registered.
+  */
+  common::Status RegisterCustomLossFunction(const std::string& loss_func_name);
+
+  /** Add a system provided or a customized loss function to the model.
+  After the call, the model have one more input named as label_name and one more output named as loss_func_output_name.
+  @param loss_func_info The loss function info.
+  @returns Status indicating success or providing an error message.
+  @remarks The loss_func_name could be either system provided or a custom one.           
+  */
+  common::Status AddLossFuncion(const LossFunctionInfo& loss_func_info);
 
   common::Status BuildGradientGraph(const std::vector<std::string>& weights_to_train, const std::string& loss_function_output_name);
 
   common::Status Initialize();
-
-  // TODO: merge BuildGradientGraph() into Initialize()
-  // We don't do this right now for debugging purpose, because we want to save and check the bw graph before Initialize() which
-  // could make the graph messy due to optimization.
-  common::Status Initialize(const std::vector<std::string>& /*weights_to_train*/, const std::string& /*loss_function_output_name*/) {
-    throw std::runtime_error("Initialize(const std::vector<std::string>&, const std::string&) Not implemented");
-  }
 
   // Compute gradients.
   common::Status Run(const NameMLValMap& feeds,
                      const std::vector<std::string>& output_names,
                      std::vector<MLValue>* p_fetches);
 
-  common::Status Save(const std::string& model_uri, bool include_gradient_graph = false);
+  // Save a model, 3 options:
+  // 1. save with updated weights
+  // 2. save with updated weights and loss function
+  // 3. save with updated weights, loss function and gradients
+  enum class SaveOption {
+    WITH_UPDATED_WEIGHTS,
+    WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC,
+    WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS
+  };
+
+  common::Status Save(const std::string& model_uri, SaveOption opt);
 
   // TODO: remove or refine below temp interfaces.
   NameMLValMap GetWeights() const;

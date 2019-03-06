@@ -1,8 +1,9 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "training_session.h"
 #include "core/training/gradients.h"
+#include "core/training/loss_function_builder.h"
 
 using namespace std;
 
@@ -22,16 +23,33 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return InferenceSession::Impl::Load(model_uri);
   }
 
+  Status RegisterCustomLossFunction(const std::string& loss_func_name) {
+    auto& loss_func_reg = LossFunctionRegistry::GetInstance();
+    try {
+      loss_func_reg.RegisterCustomLossFunction(loss_func_name);
+      return Status::OK();
+    } catch (const OnnxRuntimeException& exp) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register custom loss function.", exp.what());
+    }
+  }
+
+  Status AddLossFuncion(const LossFunctionInfo& loss_func_info) {
+    loss_func_info_ = loss_func_info;
+
+    try {
+      ORT_RETURN_IF_ERROR(AddLossFuncion(model_->MainGraph(), loss_func_info_));
+    } catch (const OnnxRuntimeException& exp) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
+    }
+    return DoPostLoadProcessing(*model_);
+  }
+
   Status BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
     // Fill weights_to_train_ according to weights_to_train
     weights_to_train_ = weights_to_train;
-
-    // Compute the gradient graph def.
-    GradientGraphBuilder grad_graph_builder(&model_->MainGraph(), {loss_function_output_name}, weights_to_train, loss_function_output_name);
-    auto gradient_graph_def = grad_graph_builder.Build();
-
-    // Augment the graph.
-    ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(model_->MainGraph(), gradient_graph_def));
+    ORT_RETURN_IF_ERROR(BuildGradientGraph(model_->MainGraph(),
+                                           loss_function_output_name,
+                                           weights_to_train_));
     return DoPostLoadProcessing(*model_);
   }
 
@@ -55,21 +73,25 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return Status::OK();
   }
 
-  Status Save(const string& model_uri, bool include_gradient_graph) {
-    if (include_gradient_graph) {
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (is_inited_) {
-        return Status(common::ONNXRUNTIME, common::FAIL, "Could not save a model with gradient graph after calling Initialize()");
-      }
-      return Model::Save(*model_, model_uri);
-    } else {
-      // Have to load the original model again.
-      // Because after Initialize(), the model has been optimized and could not be saved correctly.
-      shared_ptr<Model> model;
-      Model::Load(original_model_uri_, model);
-      ORT_RETURN_IF_ERROR(model->UpdateWeights(GetWeights()));
-      return Model::Save(*model, model_uri);
+  Status Save(const string& model_uri, TrainingSession::SaveOption opt) {
+    // Have to load the original model again.
+    // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
+    shared_ptr<Model> new_model;
+    ORT_RETURN_IF_ERROR(Model::Load(original_model_uri_, new_model));
+    ORT_RETURN_IF_ERROR(new_model->UpdateWeights(GetWeights()));
+
+    if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/
+        || opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
+      ORT_RETURN_IF_ERROR(AddLossFuncion(new_model->MainGraph(), loss_func_info_));
     }
+
+    if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
+      ORT_RETURN_IF_ERROR(BuildGradientGraph(new_model->MainGraph(),
+                                             loss_func_info_.loss_name_,
+                                             weights_to_train_));
+    }
+
+    return Model::Save(*new_model, model_uri);
   }
 
   std::unordered_set<std::string> GetModelInputNames() const {
@@ -81,8 +103,25 @@ class TrainingSessionImpl : public InferenceSession::Impl {
   }
 
  private:
+  static Status AddLossFuncion(Graph& graph,
+                               const LossFunctionInfo& loss_func_info) {
+    return GraphAugmenter::AugmentGraph(graph, LossFunctionBuilder().Build(graph, loss_func_info));
+  }
+
+  static Status BuildGradientGraph(Graph& graph,
+                                   const std::string& loss_function_output_name,
+                                   const std::vector<std::string>& node_arg_names_to_train) {
+    return GraphAugmenter::AugmentGraph(graph, GradientGraphBuilder(&graph,
+                                                                    {loss_function_output_name},
+                                                                    node_arg_names_to_train,
+                                                                    loss_function_output_name)
+                                                   .Build());
+  }
+
   vector<string> weights_to_train_;
   string original_model_uri_;
+
+  LossFunctionInfo loss_func_info_;
 };
 
 TrainingSession::TrainingSession(const SessionOptions& session_options,
@@ -95,6 +134,14 @@ TrainingSession::~TrainingSession() {
 
 Status TrainingSession::Load(const string& model_uri) {
   return impl_->Load(model_uri);
+}
+
+Status TrainingSession::RegisterCustomLossFunction(const std::string& loss_func_name) {
+  return impl_->RegisterCustomLossFunction(loss_func_name);
+}
+
+Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
+  return impl_->AddLossFuncion(loss_func_info);
 }
 
 Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
@@ -120,8 +167,8 @@ Status TrainingSession::UpdateWeights(const NameMLValMap& new_weights) {
   return impl_->UpdateWeights(new_weights);
 }
 
-Status TrainingSession::Save(const string& model_uri, bool include_gradient_graph) {
-  return impl_->Save(model_uri, include_gradient_graph);
+Status TrainingSession::Save(const string& model_uri, SaveOption opt) {
+  return impl_->Save(model_uri, opt);
 }
 
 std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {
@@ -131,5 +178,6 @@ std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {
 std::unordered_set<std::string> TrainingSession::GetModelOutputNames() const {
   return impl_->GetModelOutputNames();
 }
+
 }  // namespace training
 }  // namespace onnxruntime

@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace training {
 
 struct ArgDef {
-  ArgDef(std::string name, const ONNX_NAMESPACE::TypeProto* type) : name(name), type_proto(type) {}
+  ArgDef(std::string name, const ONNX_NAMESPACE::TypeProto* type = nullptr) : name(name), type_proto(type) {}
   std::string name;
   const ONNX_NAMESPACE::TypeProto* type_proto;
 };
@@ -75,6 +75,10 @@ class GraphAugmenter {
     }
 
     const std::vector<NodeDef>& NodeDefs() const {
+      return node_defs_;
+    }
+
+    std::vector<NodeDef>& NodeDefs() {
       return node_defs_;
     }
 
