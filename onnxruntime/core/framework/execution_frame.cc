@@ -416,7 +416,7 @@ Status ExecutionFrame::CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue
 }
 
 Status ExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
-  IExecutionFrame::ReleaseMLValueImpl(mlvalue_idx);
+  ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(mlvalue_idx));
   TraceFree(mlvalue_idx);
   return Status::OK();
 }

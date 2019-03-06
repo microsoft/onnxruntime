@@ -224,7 +224,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     return Status(common::ONNXRUNTIME, common::FAIL,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
 
-  const int max_value = std::numeric_limits<uint16_t>::max();
+  constexpr int max_value = std::numeric_limits<uint16_t>::max();
   for (int i = 0; i < static_cast<int>(expected_size); i++) {
     int v = tensor.int32_data()[i];
     if (v < 0 || v > max_value) {
@@ -258,7 +258,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     return Status(common::ONNXRUNTIME, common::FAIL,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
 
-  const int max_value = std::numeric_limits<uint16_t>::max();
+  constexpr int max_value = std::numeric_limits<uint16_t>::max();
   for (int i = 0; i < static_cast<int>(expected_size); i++) {
     int v = tensor.int32_data()[i];
     if (v < 0 || v > max_value) {
