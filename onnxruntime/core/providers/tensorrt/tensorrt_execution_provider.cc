@@ -67,6 +67,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     std::set<size_t> node_set(group.begin(), group.end());
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -148,7 +149,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
       // Assign inputs and outputs to subgraph's meta_def
       auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-      meta_def->name = "TRTKernel";
+      meta_def->name = "TRTKernel_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
       for (const auto& input : inputs) {
@@ -263,7 +264,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     string string_buf;
     model_proto.SerializeToString(&string_buf);
-
+/*
+    //!!!!!!!!!!!test: save ModelProto to file
+    int fd;
+    Env::Default().FileOpenWr("trt_model_proto_compile.onnx", fd);
+    model_proto.SerializeToFileDescriptor(fd);
+*/
     TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
@@ -357,7 +363,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int num_binding_inputs = input_binding_indexes.size();
       int num_binding_outputs = output_binding_indexes.size();
       cudaStream_t stream;
-      CHECK(cudaStreamCreate(&stream));
+      CHECK_CUDA(cudaStreamCreate(&stream));
       std::vector<void*> buffers(num_binding_inputs + num_binding_outputs);
       int batch_size = 1;
 
@@ -371,13 +377,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
 
         const float* input = static_cast<float*>(tensor_input.data);
-        CHECK(cudaMalloc(&buffers[input_binding_indexes[i]], input_batch_size * input_dim_sizes[i] * sizeof(float)));
-        CHECK(cudaMemcpy(buffers[input_binding_indexes[i]], input, input_batch_size * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMalloc(&buffers[input_binding_indexes[i]], input_batch_size * input_dim_sizes[i] * sizeof(float)));
+        CHECK_CUDA(cudaMemcpy(buffers[input_binding_indexes[i]], input, input_batch_size * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
       }
 
       // Allocate cuda memory for outputs
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        CHECK(cudaMalloc(&buffers[output_binding_indexes[i]], batch_size * output_dim_sizes[i] * sizeof(float)));
+        CHECK_CUDA(cudaMalloc(&buffers[output_binding_indexes[i]], batch_size * output_dim_sizes[i] * sizeof(float)));
       }
 
       // Run TRT inference
@@ -392,9 +398,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         output_tensors[i].ndim = output_shapes[i].size();
         output_tensors[i].shape = new int64_t[output_tensors[i].ndim];
         memcpy(output_tensors[i].shape, &output_shapes[i][0], sizeof(int64_t) * output_tensors[i].ndim);
-        output_tensors[i].data = (*(trt_state->test_allocate_func))(trt_state->allocator, sizeof(double) * batch_size * output_dim_sizes[i], 64);
+        output_tensors[i].data = (*(trt_state->test_allocate_func))(trt_state->allocator, 64, sizeof(double) * batch_size * output_dim_sizes[i]);
 
-        CHECK(cudaMemcpy(output_tensors[i].data, buffers[output_binding_indexes[i]], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(output_tensors[i].data, buffers[output_binding_indexes[i]], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
       }
 
       // Sync stream
@@ -404,11 +410,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       cudaStreamDestroy(stream);
 
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        CHECK(cudaFree(buffers[input_binding_indexes[i]]));
+        CHECK_CUDA(cudaFree(buffers[input_binding_indexes[i]]));
       }
 
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        CHECK(cudaFree(buffers[output_binding_indexes[i]]));
+        CHECK_CUDA(cudaFree(buffers[output_binding_indexes[i]]));
       }
 
       return 0;
