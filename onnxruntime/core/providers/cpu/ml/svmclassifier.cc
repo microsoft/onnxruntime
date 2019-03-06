@@ -195,45 +195,9 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       //copy probabilities back into scores
       scores.resize(estimates.size());
       std::copy(estimates.begin(), estimates.end(), scores.begin());
-#if false
-      // Normalization OVR as implemented in scikit-learn.
-    } else if (proba_.size() == 0) {
-      // Applies function first part of _ovr_decision_function (scikit-learn).
-      // ONNX specs imposes one column per class. Libsvm does not do it, scikit-learn does.
-      // If OVR_NORM is defined the function also applies normalisation as
-      // scikit-learn would do in function _ovr_decision_function.
-      // This method has a major drawback because the scores depends on the other observations
-      // due to a rescaling based on a maximum obtained for all predictions
-      // (observations are not independant).
-      /*
-      for i in range(n_classes):
-        for j in range(i + 1, n_classes):
-            sum_of_confidences[:, i] -= confidences[:, k]
-            sum_of_confidences[:, j] += confidences[:, k]
-            k += 1 
-
-        max_confidences = sum_of_confidences.max()
-        min_confidences = sum_of_confidences.min()
-
-        if max_confidences == min_confidences:
-            return votes
-
-        eps = np.finfo(sum_of_confidences.dtype).eps
-        max_abs_confidence = max(abs(max_confidences), abs(min_confidences))
-        scale = (0.5 - eps) / max_abs_confidence
-        return votes + sum_of_confidences * scale
-      */
-      std::vector<float> conf(class_count_, 0.f);
-      float* ps = &(scores[0]);
-      for (int64_t i = 0; i < class_count_; ++i) {
-        for (int64_t j = i + 1; j < class_count_; ++j, ++ps) {
-          conf[i] += *ps;
-          conf[j] -= *ps;
-        }
-      }
-
-      scores = conf;
-#endif
+    // } else if (proba_.size() == 0) {
+    // Normalization will be changed in 0.21.
+    // See https://github.com/scikit-learn/scikit-learn/pull/10440
     }
 
     double maxweight = 0;
