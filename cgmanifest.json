@@ -250,7 +250,8 @@
                "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
                "repositoryUrl":"https://github.com/protocolbuffers/protobuf.git"
               }
-         },
+         }
+      },
       {
          "component":{
             "type":"git",
@@ -258,7 +259,8 @@
                "commitHash":"eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
                "repositoryUrl":"https://github.com/BVLC/caffe.git"
               }
-         },
+         }
+      },
       {
          "component":{
             "Type":"other",
