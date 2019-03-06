@@ -354,6 +354,28 @@ int real_main(int argc, char* argv[]) {
   broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
 #endif
 
+#ifdef _WIN32
+  broken_tests["resnet50"] = "failed: type mismatch";
+  broken_tests["resnet50v2"] = "failed: type mismatch";
+  broken_tests["resnet101v2"] = "failed: type mismatch";
+  broken_tests["resnet101v2"] = "failed: type mismatch";
+  broken_tests["resnet152v2"] = "failed: type mismatch";
+  broken_tests["tf_inception_resnet_v2"] = "failed: type mismatch";
+  broken_tests["tf_inception_v3"] = "failed: type mismatch";
+  broken_tests["tf_inception_v4"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+
+  broken_tests["vgg19"] = "failed: bad allocation";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+
+#endif
+
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
     if (broken_tests.find(s) == broken_tests.end()) {

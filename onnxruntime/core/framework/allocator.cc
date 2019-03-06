@@ -14,7 +14,11 @@ void* CPUAllocator::Alloc(size_t size) {
     return nullptr;
   //default align to 64;
   void* p;
+#ifdef _WIN32
+  size_t alignment = 32;
+#else  
   size_t alignment = 64;
+#endif
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
   if (p == nullptr) throw std::bad_alloc();
