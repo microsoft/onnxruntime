@@ -305,7 +305,7 @@ if (MSVC)
 endif()
 
 if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS)
+  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
 if (onnxruntime_USE_MLAS)
