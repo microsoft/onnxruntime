@@ -411,7 +411,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       OrtReleaseStatus(status);
       return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
     }
-    deleter.f = DeleteHeapBuffer;
+    deleter.f = reinterpret_cast<std::function<void()>>(DeleteHeapBuffer);
     deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
   } else {
     deleter.f = nullptr;
