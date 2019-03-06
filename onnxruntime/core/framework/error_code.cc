@@ -41,3 +41,5 @@ ORT_API(OrtErrorCode, OrtGetErrorCode, _In_ const OrtStatus* status) {
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status) {
   return status->msg;
 }
+
+ORT_API(void, OrtReleaseStatus, OrtStatus* value) { delete[] reinterpret_cast<char*>(value); }

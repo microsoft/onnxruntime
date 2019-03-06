@@ -209,7 +209,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   // Resolve and rerun graph partition
   if (inline_flag) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
-    Partition(graph, export_dll, func_mgr);
+    ORT_RETURN_IF_ERROR(Partition(graph, export_dll, func_mgr));
   }
 
   //For some cases, like fp16 on cpu, right now we don't have any kernel support that.
