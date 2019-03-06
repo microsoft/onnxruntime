@@ -49,12 +49,13 @@ std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) {
   return (out << info.ToString());
 }
 
-ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, const char* name1, OrtAllocatorType type, int id1, OrtMemType mem_type1, OrtAllocatorInfo** out) {
+ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
+                    OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out) {
   *out = new OrtAllocatorInfo(name1, type, id1, mem_type1);
   return nullptr;
 }
 
-ORT_API(void, OrtReleaseAllocatorInfo, OrtAllocatorInfo* p) {
+ORT_API(void, OrtReleaseAllocatorInfo, _Frees_ptr_opt_ OrtAllocatorInfo* p) {
   delete p;
 }
 

@@ -445,13 +445,13 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
               SessionState::NodeInfo node_info(index, &node, kci);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
-                session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
+                ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
                 return Status::OK();
               }
 
               if (implicit_inputs) {
                 if (IsArgNameInInputsOutputs(arg.Name(), *implicit_inputs)) {
-                  session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
+                  ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
                   return Status::OK();
                 }
               }
@@ -476,7 +476,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // copy to a different device is required
       SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci);
       for (const auto& input_def : node_implicit_inputs) {
-        session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info);
+        ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
   }
@@ -498,7 +498,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input MLValue as is given we don't believe it's used anywhere.
       LOGS(session_state.Logger(), WARNING) << "Graph input with name " << name << " is not associated with a node. ";
-      session_state.AddInputNameToNodeInfoMapping(name, empty_node_info);
+      ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(name, empty_node_info));
     }
   }
 
