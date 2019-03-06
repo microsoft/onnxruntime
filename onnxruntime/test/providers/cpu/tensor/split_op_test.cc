@@ -56,6 +56,28 @@ TEST(SplitOperatorTest, Axis0EqualSplit) {
   RunTest(axis, {}, input, outputs);
 }
 
+TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
+  const int64_t axis = 0;
+  std::vector<ShapeAndData> outputs;
+
+  // input shape and data
+  ShapeAndData input = {{4, 2},  // shape
+                        {1, 2,
+                         3, 4,
+                         5, 6,
+                         7, 8}};
+
+  outputs.push_back({{2, 2},
+                     {1, 2,
+                      3, 4}});
+
+  outputs.push_back({{2, 2},
+                     {5, 6,
+                      7, 8}});
+
+  RunTest(axis, {}, input, outputs);
+}
+
 TEST(SplitOperatorTest, Axis0UnequalSplit) {
   const int64_t axis = 0;
   std::vector<ShapeAndData> outputs;
