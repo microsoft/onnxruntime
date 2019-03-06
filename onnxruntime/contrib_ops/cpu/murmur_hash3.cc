@@ -3,10 +3,9 @@
 // domain. The author hereby disclaims copyright to this source code.
 
 //scikit-learn is a Python module for machine learning built on top of SciPy and
-//distributed under the 3-Clause BSD license. See https://github.com/scikit-learn/scikit-learn. 
+//distributed under the 3-Clause BSD license. See https://github.com/scikit-learn/scikit-learn.
 //This material is licensed under the BSD License (see https://github.com/scikit-learn/scikit-learn/blob/master/COPYING);
 /* Modifications Copyright (c) Microsoft. */
-
 
 #include "contrib_ops/cpu/murmur_hash3.h"
 
@@ -157,7 +156,11 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
 
   h1 = fmix(h1);
 
-  *(uint32_t*)out = h1;
+  if (is_positive_) {
+    *(uint32_t*)out = h1;
+  } else {
+    *(int32_t*)out = h1;
+  }
 }
 
 Status MurmurHash3::Compute(OpKernelContext* ctx) const {
@@ -179,7 +182,7 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
       MurmurHash3_x86_32(input_string.c_str(),
                          static_cast<int>(input_string.length()),
                          seed_,
-                         reinterpret_cast<uint32_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
+                         reinterpret_cast<uint8_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
     } else {
       auto output_type = output_tensor->DataType();
       if ((DataTypeImpl::GetType<int32_t>() == keys_type || DataTypeImpl::GetType<uint32_t>() == keys_type) &&

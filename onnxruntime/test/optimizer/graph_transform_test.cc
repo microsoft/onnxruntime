@@ -27,8 +27,6 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
-using namespace onnx;
-
 namespace onnxruntime {
 namespace test {
 
@@ -311,7 +309,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   MLValue ml_value_x;
 
   auto x_f = MLFloat16(math::floatToHalf(1.0));
-  std::vector<int64_t> dims_x = {1,1,3,3};
+  std::vector<int64_t> dims_x = {1, 1, 3, 3};
   std::vector<MLFloat16> values_x;
   for (int i = 0; i < 9; ++i) {
     values_x.push_back(x_f);
@@ -326,7 +324,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
   auto prod_f = MLFloat16(math::floatToHalf(6.0));
-  std::vector<int64_t> expected_dims_prod = {1,1,2,2};
+  std::vector<int64_t> expected_dims_prod = {1, 1, 2, 2};
   std::vector<MLFloat16> expected_values_prod;
   for (int i = 0; i < 4; ++i) {
     expected_values_prod.push_back(prod_f);

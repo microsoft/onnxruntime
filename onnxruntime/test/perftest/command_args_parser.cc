@@ -15,6 +15,7 @@
 #endif
 
 #include <core/graph/constants.h>
+#include <core/framework/path_lib.h>
 
 #include "test_configuration.h"
 
@@ -33,18 +34,18 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
+      "\t-x [thread_size]: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
 
-/*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, char* argv[]) {
+/*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, "m:e:r:t:p:xvhs")) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:vhs"))) != -1) {
     switch (ch) {
       case 'm':
-        if (!strcmp(optarg, "duration")) {
+        if (!CompareCString(optarg, ORT_TSTR("duration"))) {
           test_config.run_config.test_mode = TestMode::kFixDurationMode;
-        } else if (!strcmp(optarg, "times")) {
+        } else if (!CompareCString(optarg, ORT_TSTR("times"))) {
           test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
         } else {
           return false;
@@ -54,29 +55,29 @@ namespace perftest {
         test_config.run_config.profile_file = optarg;
         break;
       case 'e':
-        if (!strcmp(optarg, "cpu")) {
+        if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
-        } else if (!strcmp(optarg, "cuda")) {
+        } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
-        } else if (!strcmp(optarg, "mkldnn")) {
+        } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kMklDnnExecutionProvider;
-        } else if (!strcmp(optarg, "brainslice")) {
+        } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
-        } else if (!strcmp(optarg, "trt")) {
+        } else if (!CompareCString(optarg, ORT_TSTR("trt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTRTExecutionProvider;
         } else {
           return false;
         }
         break;
       case 'r':
-        test_config.run_config.repeated_times = static_cast<int>(strtol(optarg, nullptr, 10));
+        test_config.run_config.repeated_times = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.repeated_times <= 0) {
           return false;
         }
         test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
         break;
       case 't':
-        test_config.run_config.duration_in_seconds = static_cast<int>(strtol(optarg, nullptr, 10));
+        test_config.run_config.duration_in_seconds = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.repeated_times <= 0) {
           return false;
         }
@@ -90,6 +91,10 @@ namespace perftest {
         break;
       case 'x':
         test_config.run_config.enable_sequential_execution = false;
+        test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+        if (test_config.run_config.session_thread_pool_size <= 0) {
+          return false;
+        }
         break;
       case '?':
       case 'h':

@@ -6,58 +6,97 @@
 #include <string>
 #include <sstream>
 #include <assert.h>
+#include <stdexcept>
 #ifdef _WIN32
 #include <Windows.h>
-#include <pathcch.h>
+#include <time.h>  //strftime
 #else
-#include <libgen.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <time.h>    //strftime
+#include <stddef.h>  //ptrdiff_t
 #endif
+#include "core/common/status.h"
 #include "core/session/onnxruntime_c_api.h"
 
+using PATH_CHAR_TYPE = ORTCHAR_T;
+
+template <typename T>
+long OrtStrtol(const T* nptr, T** endptr);
+
+/**
+ * Convert a C string to ssize_t(or ptrdiff_t)
+ * @return the converted integer value.
+ */
+template <typename T>
+ptrdiff_t OrtStrToPtrDiff(const T* nptr, T** endptr);
+
+template <>
+inline ptrdiff_t OrtStrToPtrDiff<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
 #ifdef _WIN32
-typedef wchar_t PATH_CHAR_TYPE;
-#define ORT_TSTR(X) L##X
+  // TODO: on x86_32, it should be wcstol
+  return _wcstoi64(nptr, endptr, 10);
 #else
-typedef char PATH_CHAR_TYPE;
-#define ORT_TSTR(X) (X)
+  return wcstol(nptr, endptr, 10);
 #endif
-
-template <typename T>
-long MyStrtol(const T* nptr, T** endptr, int base);
-
-template <>
-inline long MyStrtol<char>(const char* nptr, char** endptr, int base) {
-  return strtol(nptr, endptr, base);
-}
-
-template <>
-inline long MyStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr, int base) {
-  return wcstol(nptr, endptr, base);
 }
 
 template <typename T>
-inline int MyStrCmp(const T* s1, const T* s2);
+size_t OrtStrftime(T* strDest, size_t maxsize, const T* format, const struct tm* timeptr);
 
 template <>
-inline int MyStrCmp<char>(const char* s1, const char* s2) {
+inline size_t OrtStrftime<char>(char* strDest, size_t maxsize, const char* format, const struct tm* timeptr) {
+  return strftime(strDest, maxsize, format, timeptr);
+}
+
+template <>
+inline size_t OrtStrftime<wchar_t>(wchar_t* strDest, size_t maxsize, const wchar_t* format, const struct tm* timeptr) {
+  return wcsftime(strDest, maxsize, format, timeptr);
+}
+
+template <>
+inline ptrdiff_t OrtStrToPtrDiff<char>(const char* nptr, char** endptr) {
+#ifdef _WIN32
+  // TODO: on x86_32, it should be strtol
+  return _strtoi64(nptr, endptr, 10);
+#else
+  return strtol(nptr, endptr, 10);
+#endif
+}
+
+template <>
+inline long OrtStrtol<char>(const char* nptr, char** endptr) {
+  return strtol(nptr, endptr, 10);
+}
+
+template <>
+inline long OrtStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
+  return wcstol(nptr, endptr, 10);
+}
+
+namespace onnxruntime {
+
+/**
+ * return which dir contains this file path
+ * if s equals to '//', the behavior of this function is undefined.
+ */
+common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& output);
+std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s);
+
+template <typename T>
+int CompareCString(const T* s1, const T* s2);
+
+template <>
+inline int CompareCString<char>(const char* s1, const char* s2) {
   return strcmp(s1, s2);
 }
 
 template <>
-inline int MyStrCmp<wchar_t>(const wchar_t* s1, const wchar_t* s2) {
+inline int CompareCString<wchar_t>(const wchar_t* s1, const wchar_t* s2) {
   return wcscmp(s1, s2);
 }
 
-enum class FileType { TYPE_BLK,
-                      TYPE_CHR,
-                      TYPE_DIR,
-                      TYPE_FIFO,
-                      TYPE_LNK,
-                      TYPE_REG,
-                      TYPE_SOCK,
-                      TYPE_UNKNOWN };
+enum class OrtFileType { TYPE_BLK, TYPE_CHR, TYPE_DIR, TYPE_FIFO, TYPE_LNK, TYPE_REG, TYPE_SOCK, TYPE_UNKNOWN };
 
 template <typename PATH_CHAR_TYPE>
 PATH_CHAR_TYPE GetPathSep();
@@ -116,15 +155,13 @@ std::basic_string<PATH_CHAR_TYPE> ConcatPathComponent(const std::basic_string<PA
   return ret;
 }
 
-inline std::string ToMBString(const std::string& s) { return s; }
-
 #ifdef _WIN32
-inline FileType DTToFileType(DWORD dwFileAttributes) {
+inline OrtFileType DTToFileType(DWORD dwFileAttributes) {
   if (dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-    return FileType::TYPE_DIR;
+    return OrtFileType::TYPE_DIR;
   }
   // TODO: test if it is reg
-  return FileType::TYPE_REG;
+  return OrtFileType::TYPE_REG;
 }
 inline std::string FormatErrorCode(DWORD dw) {
   char* lpMsgBuf;
@@ -155,29 +192,7 @@ void LoopDir(const std::wstring& dir_name, T func) {
   }
 }
 
-inline std::string ToMBString(const std::wstring& s) {
-  if (s.size() >= std::numeric_limits<int>::max()) throw std::runtime_error("length overflow");
-  const int src_len = static_cast<int>(s.size() + 1);
-  const int len = WideCharToMultiByte(CP_ACP, 0, s.data(), src_len, nullptr, 0, nullptr, nullptr);
-  std::string ret(len, '\0');
-  const int r = WideCharToMultiByte(CP_ACP, 0, s.data(), src_len, (char*)ret.data(), len, nullptr, nullptr);
-  assert(len == r);
-  ret.resize(r - 1);
-  return ret;
-}
-inline std::wstring GetDirNameFromFilePath(const std::wstring& s) {
-  std::wstring input = s;
-  if (input.empty()) throw std::runtime_error("illegal input path");
-  if (input.back() == L'\\') input.resize(input.size() - 1);
-  std::wstring ret(input);
-  if (PathCchRemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1) != S_OK) {
-    throw std::runtime_error("illegal input path");
-  }
-  ret.resize(wcslen(ret.c_str()));
-  return ret;
-}
-
-template <typename PATH_CHAR_TYPE>
+//TODO: rewrite it with PathFindNextComponentW
 inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_string<PATH_CHAR_TYPE>& s) {
   if (s.empty()) return std::basic_string<PATH_CHAR_TYPE>(1, GetDot<PATH_CHAR_TYPE>());
   std::basic_string<PATH_CHAR_TYPE> input = s;
@@ -193,38 +208,24 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
 }
 
 #else
-inline std::string GetDirNameFromFilePath(const std::string& input) {
-  char* s = strdup(input.c_str());
-  std::string ret = dirname(s);
-  free(s);
-  return ret;
-}
-
-inline std::string GetLastComponent(const std::string& input) {
-  char* s = strdup(input.c_str());
-  std::string ret = basename(s);
-  free(s);
-  return ret;
-}
-
-inline FileType DTToFileType(unsigned char t) {
+inline OrtFileType DTToFileType(unsigned char t) {
   switch (t) {
     case DT_BLK:
-      return FileType::TYPE_BLK;
+      return OrtFileType::TYPE_BLK;
     case DT_CHR:
-      return FileType::TYPE_CHR;
+      return OrtFileType::TYPE_CHR;
     case DT_DIR:
-      return FileType::TYPE_DIR;
+      return OrtFileType::TYPE_DIR;
     case DT_FIFO:
-      return FileType::TYPE_FIFO;
+      return OrtFileType::TYPE_FIFO;
     case DT_LNK:
-      return FileType::TYPE_LNK;
+      return OrtFileType::TYPE_LNK;
     case DT_REG:
-      return FileType::TYPE_REG;
+      return OrtFileType::TYPE_REG;
     case DT_SOCK:
-      return FileType::TYPE_SOCK;
+      return OrtFileType::TYPE_SOCK;
     default:
-      return FileType::TYPE_UNKNOWN;
+      return OrtFileType::TYPE_UNKNOWN;
   }
 }
 
@@ -265,6 +266,9 @@ void LoopDir(const std::string& dir_name, T func) {
 #endif
 template <typename T>
 inline T ReplaceFilename(const T& input, const T& new_value) {
-  T ret = GetDirNameFromFilePath(input);
+  T ret;
+  ORT_ENFORCE(GetDirNameFromFilePath(input, ret).IsOK());
   return ConcatPathComponent(ret, new_value);
 }
+
+}  // namespace onnxruntime

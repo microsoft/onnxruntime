@@ -164,11 +164,11 @@ class PlannerImpl {
 
   MLValueIndex& Buffer(MLValueIndex n) { return ml_value_info_.at(n).reused_buffer_index; }
 
-  SequentialExecutionPlan::AllocPlanPerValue& AllocPlan(MLValueIndex n) {
+  AllocPlanPerValue& AllocPlan(MLValueIndex n) {
     return plan_.allocation_plan.at(n);
   }
 
-  SequentialExecutionPlan::AllocPlanPerValue& AllocPlan(const MLValueName& name) {
+  AllocPlanPerValue& AllocPlan(const MLValueName& name) {
     return AllocPlan(Index(name));
   }
 
@@ -198,13 +198,13 @@ class PlannerImpl {
   // Find if there exists some input tensor that we can use in-place for output_arg
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, MLValueIndex* reusable_input) {
     auto p_output_arg = node.OutputDefs()[output_arg_num];
-    auto p_opkernel_def = utils::GetKernelDef(kernel_registry_, node);
+    const KernelCreateInfo* ci;
+    Status st = kernel_registry_.SearchKernelRegistry(node, &ci);
+    if (!st.IsOK() || ci == nullptr || ci->kernel_def == nullptr) {
+      return false;
+    }
 
-    // Note: We expect a KernelDef to be available at this point. If it is not available, the
-    // planner would have returned an error status earlier on.
-    ORT_ENFORCE(nullptr != p_opkernel_def);
-
-    const std::vector<std::pair<int, int>>& alias_map = p_opkernel_def->Alias();
+    const std::vector<std::pair<int, int>>& alias_map = ci->kernel_def->Alias();
     auto& input_args = node.InputDefs();
     for (auto pair : alias_map) {
       if (pair.second == output_arg_num) {
@@ -219,7 +219,7 @@ class PlannerImpl {
       }
     }
 
-    const std::vector<std::pair<int, int>>& inplace_map = p_opkernel_def->MayInplace();
+    const std::vector<std::pair<int, int>>& inplace_map = ci->kernel_def->MayInplace();
     for (auto pair : inplace_map) {
       if (pair.second == output_arg_num) {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
@@ -387,6 +387,7 @@ class PlannerImpl {
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
+      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists())
           UseCount(node_input->Name())++;
@@ -396,21 +397,26 @@ class PlannerImpl {
         if (node_input->Exists())
           UseCount(node_input->Name())++;
       }
-
       // Identify where each output of this node should be allocated.
       // This is determined by the opkernel bound to the node.
-      auto node = graph_viewer_.GetNode(step.node_index);
-      ORT_ENFORCE(nullptr != node);
-      auto p_kernelDef = utils::GetKernelDef(kernel_registry_, *node);
+      const KernelCreateInfo* kernel_create_info = nullptr;
+      ORT_RETURN_IF_ERROR(kernel_registry_.SearchKernelRegistry(*pnode, &kernel_create_info));
+      auto p_kernelDef = kernel_create_info->kernel_def.get();
       if (nullptr == p_kernelDef) {
         std::ostringstream errormsg;
-        errormsg << "No suitable kernel definition found for op " << pnode->OpType() << "(" << pnode->Op()->since_version() << ")";
+        errormsg << "No suitable kernel definition found for op " << pnode->OpType();
+        if (pnode->Op() != nullptr) {
+          errormsg << "(" << pnode->Op()->since_version() << ")";
+        }
         if (!pnode->Name().empty()) errormsg << " (node " << pnode->Name() << ")";
         return Status(ONNXRUNTIME, FAIL, errormsg.str());
       }
 
-      auto exec_provider = execution_providers_.Get(*node);
-      ORT_ENFORCE(exec_provider);
+      auto exec_provider = execution_providers_.Get(*pnode);
+      if (exec_provider == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ",
+                               pnode->GetExecutionProviderType());
+      }
 
       auto& default_allocator_info = exec_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
       auto& outputs = pnode->OutputDefs();
@@ -452,43 +458,48 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  void GeneratePlanForWeights() {
+  // TODO: Don't generate plan for CPU tensors, which may get its memory from 'mmap(2)'
+  Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
 
     for (auto& node : graph_viewer_.Nodes()) {
-      onnxruntime::Node::ForEachWithIndex(
-          node.InputDefs(),
-          [this, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
-            auto& def_name = def.Name();
-            if (!weights.count(def_name))
-              return Status::OK();
+      ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node.InputDefs(), [this, &node, &weights](
+                                                                                    const onnxruntime::NodeArg& def,
+                                                                                    size_t index) {
+        auto& def_name = def.Name();
+        if (!weights.count(def_name)) return Status::OK();
 
-            auto wt_index = Index(def_name);
-            SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(wt_index);
-            auto* p_provider = execution_providers_.Get(node);
-            ORT_ENFORCE(p_provider);
+        auto wt_index = Index(def_name);
+        AllocPlanPerValue& thisplan = AllocPlan(wt_index);
+        auto* p_provider = execution_providers_.Get(node);
+        ORT_ENFORCE(p_provider);
 
-            thisplan.alloc_kind = AllocKind::kAllocateStatically;
-            auto p_opkernelDef = utils::GetKernelDef(kernel_registry_, node);
-            if (MemTypeOnCpuExplicitly(p_opkernelDef->InputMemoryType(index)))
-              // weights are not output from any node, so it's OK to put its location on CPU provider
-              thisplan.location = execution_providers_.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
-            else
-              thisplan.location = p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+        thisplan.alloc_kind = AllocKind::kAllocateStatically;
+        const KernelCreateInfo* kernel_create_info;
+        ORT_RETURN_IF_ERROR(kernel_registry_.SearchKernelRegistry(node, &kernel_create_info));
+        if (kernel_create_info == nullptr || kernel_create_info->kernel_def == nullptr)
+          return Status(ONNXRUNTIME, FAIL, "search kernel failed");  // shouldn't reach here
+        if (MemTypeOnCpuExplicitly(kernel_create_info->kernel_def->InputMemoryType(index)))
+          // weights are not output from any node, so it's OK to put its location on CPU provider
+          thisplan.location =
+              execution_providers_.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
+        else
+          thisplan.location = p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
 
-            return Status::OK();
-          });
+        return Status::OK();
+      }));
     }
+    return Status::OK();
   }
 
-  void ComputeReusePlan() {
+  Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan{plan_.execution_plan};
 
     // Identify allocation/deallocation plan for every ml-value
 
     auto setup_preexisting = [this](const NodeArg* node_arg) {
       auto input_index = Index(node_arg->Name());
-      SequentialExecutionPlan::AllocPlanPerValue& thisplan = AllocPlan(input_index);
+      AllocPlanPerValue& thisplan = AllocPlan(input_index);
       thisplan.alloc_kind = AllocKind::kPreExisting;
       thisplan.value_type = utils::GetMLDataType(*node_arg);
     };
@@ -505,7 +516,7 @@ class PlannerImpl {
       setup_preexisting(outer_scope_node_arg);
     }
 
-    GeneratePlanForWeights();
+    ORT_RETURN_IF_ERROR(GeneratePlanForWeights());
 
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
@@ -567,6 +578,7 @@ class PlannerImpl {
         }
       }
     }
+    return Status::OK();
   }
 
   // Convert information in a freelist (about which ml-value becomes free when) into
@@ -624,7 +636,7 @@ Status PlannerImpl::CreatePlan() {
   ORT_RETURN_IF_ERROR(ComputeUseCounts());
 
   // determine sharing/reuse among ml-values
-  ComputeReusePlan();
+  ORT_RETURN_IF_ERROR(ComputeReusePlan());
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();

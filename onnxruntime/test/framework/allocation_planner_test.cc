@@ -232,15 +232,14 @@ class PlannerTest : public ::testing::Test {
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     KernelRegistryManager kernel_registry_manager;
-    kernel_registry_manager.RegisterKernelRegistry(cpu_execution_provider->GetKernelRegistry(), KernelRegistryPriority::LowPriority);
-
     ExecutionProviders execution_providers;
     execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::move(cpu_execution_provider));
+    auto status = kernel_registry_manager.RegisterKernels(execution_providers);
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
     SequentialPlannerTestContext test_context(&shape_map_);
-    auto status = SequentialPlanner::CreatePlan(
-        nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers, kernel_registry_manager,
-        mlvalue_name_idx_map, test_context, plan_);
+    status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers,
+                                           kernel_registry_manager, mlvalue_name_idx_map, test_context, plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
