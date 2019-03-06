@@ -556,7 +556,7 @@ struct OrtCustomOp {
   void(ORT_API_CALL* KernelCompute)(void* op_kernel, OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count);
   void(ORT_API_CALL* KernelDestroy)(void* op_kernel);
 };
-typedef struct OrtCustomOp;
+typedef struct OrtCustomOp OrtCustomOp;
 
 /*
 * Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
