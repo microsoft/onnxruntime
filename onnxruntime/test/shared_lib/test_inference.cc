@@ -191,6 +191,11 @@ struct OrtTensorDimensions : std::vector<int64_t> {
   }
 };
 
+template <typename T, size_t N>
+constexpr size_t countof(T (&arr)[N]) {
+  return std::extent<T[N]>::value;
+}
+
 struct MyCustomKernel {
   MyCustomKernel(OrtKernelInfo& /*info*/) {
   }
@@ -223,11 +228,11 @@ struct MyCustomOp : OrtCustomOp {
     OrtCustomOp::GetName = [](OrtCustomOp* /*this_*/) { return "Foo"; };
 
     static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-    OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* /*this_*/) { return _countof(c_inputTypes); };
+    OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* /*this_*/) { return countof(c_inputTypes); };
     OrtCustomOp::GetInputType = [](OrtCustomOp* /*this_*/, size_t index) { return c_inputTypes[index]; };
 
     static const ONNXTensorElementDataType c_outputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-    OrtCustomOp::GetOutputTypeCount = [](OrtCustomOp* /*this_*/) { return _countof(c_outputTypes); };
+    OrtCustomOp::GetOutputTypeCount = [](OrtCustomOp* /*this_*/) { return countof(c_outputTypes); };
     OrtCustomOp::GetOutputType = [](OrtCustomOp* /*this_*/, size_t index) { return c_outputTypes[index]; };
 
     OrtCustomOp::KernelGetOutputShape = [](void* op_kernel, OrtValue** inputs, size_t input_count, size_t output_index, OrtTensorTypeAndShapeInfo* output) { static_cast<MyCustomKernel*>(op_kernel)->GetOutputShape(inputs, input_count, output_index, output); };
