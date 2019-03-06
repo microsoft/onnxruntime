@@ -196,22 +196,18 @@ inline long long TimeDiffMicroSeconds(TimePoint start_time, TimePoint end_time) 
   return std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 }
 
-inline std::string GetCurrentTimeString() {
-  auto now = std::chrono::system_clock::now();
-  auto in_time_t = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm;  //NOLINT
-
-#ifdef _WIN32
-  localtime_s(&local_tm, &in_time_t);
-#else
-  localtime_r(&in_time_t, &local_tm);
-#endif
-
-  char time_str[32];
-  strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H-%M-%S", &local_tm);
-  return std::string(time_str);
-}
-
 struct null_type {};
+inline std::string ToMBString(const std::string& s) { return s; }
+#ifdef _WIN32
+/**
+ * Convert a wide character string into a narrow one, with local ANSI code page(like CP936)
+ * DO NOT assume the result string is encoded in UTF-8
+ */
+std::string ToMBString(const std::wstring& s);
 
+std::wstring ToWideString(const std::string& s);
+inline std::wstring ToWideString(const std::wstring& s) { return s; }
+#else
+inline std::string ToWideString(const std::string& s) { return s; }
+#endif
 }  // namespace onnxruntime

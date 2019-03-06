@@ -19,7 +19,7 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
   EXPECT_TRUE(data);
-  Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), nullptr, offset);
+  Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset);
   auto tensor_shape = t.Shape();
   EXPECT_EQ(shape, tensor_shape);
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
@@ -33,10 +33,7 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   EXPECT_EQ(*(T*)((char*)data + offset), (T)0);
   alloc->Free(data);
 
-  // owned buffer
-  data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
-  EXPECT_TRUE(data);
-  Tensor new_t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), alloc, offset);
+  Tensor new_t(DataTypeImpl::GetType<T>(), shape, alloc, offset);
 
   tensor_shape = new_t.Shape();
   EXPECT_EQ(shape, tensor_shape);
@@ -150,8 +147,7 @@ TEST(TensorTest, StringTensorTest) {
   {
     TensorShape shape({2, 3});
     auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    auto buffer = alloc->Alloc(sizeof(std::string) * (shape.Size()));
-    Tensor t(DataTypeImpl::GetType<std::string>(), shape, buffer, alloc->Info(), alloc);
+    Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
     EXPECT_EQ(shape, tensor_shape);

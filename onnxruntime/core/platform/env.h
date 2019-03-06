@@ -93,9 +93,15 @@ class Env {
   ///
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const std::string& name,
+  virtual Thread* StartThread(const ThreadOptions& thread_options, const std::string& name,
                               std::function<void()> fn) const = 0;
+
+  /// file_path must point to a regular file, which can't be a pipe/socket/...
+#ifndef _WIN32
+  virtual common::Status ReadFileAsString(const char* file_path, std::string* out) const = 0;
+#else
+  virtual common::Status ReadFileAsString(const wchar_t* file_path, std::string* out) const = 0;
+#endif
 
 #ifdef _WIN32
   //Mainly for use with protobuf library
