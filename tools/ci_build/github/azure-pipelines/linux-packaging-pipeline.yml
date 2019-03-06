@@ -37,7 +37,7 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x86'
+          artifactName: 'onnxruntime-linux-x64-gpu'
           libraryName: 'libonnxruntime.so'
     - template: templates/clean-agent-build-directory-step.yml
 
