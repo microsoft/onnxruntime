@@ -264,12 +264,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     string string_buf;
     model_proto.SerializeToString(&string_buf);
-/*
-    //!!!!!!!!!!!test: save ModelProto to file
-    int fd;
-    Env::Default().FileOpenWr("trt_model_proto_compile.onnx", fd);
-    model_proto.SerializeToFileDescriptor(fd);
-*/
+
     TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
