@@ -13,13 +13,13 @@ steps:
           mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
           mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
           echo "Directories created"            
-          copy $(Build.BinariesDirectory)/${{parameters.buildConfig}}/{{parameters.libraryName}} $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
-          copy $(Build.SourcesDirectory)/include/onnxruntime/core/session/onnxruntime_c_api.h  $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
+          cp $(Build.BinariesDirectory)/${{parameters.buildConfig}}/{{parameters.libraryName}} $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
+          cp $(Build.SourcesDirectory)/include/onnxruntime/core/session/onnxruntime_c_api.h  $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
           # copy the README, licence and TPN
-          copy $(Build.SourcesDirectory)/README.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/README.md
-          copy $(Build.SourcesDirectory)/docs/C_API.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/C_API.md
-          copy $(Build.SourcesDirectory)/LICENSE $(Build.BinariesDirectory)/${{parameters.artifactName}}/LICENSE
-          copy $(Build.SourcesDirectory)/ThirdPartyNotices.txt $(Build.BinariesDirectory)/${{parameters.artifactName}}/ThirdPartyNotices.txt
+          cp $(Build.SourcesDirectory)/README.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/README.md
+          cp $(Build.SourcesDirectory)/docs/C_API.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/C_API.md
+          cp $(Build.SourcesDirectory)/LICENSE $(Build.BinariesDirectory)/${{parameters.artifactName}}/LICENSE
+          cp $(Build.SourcesDirectory)/ThirdPartyNotices.txt $(Build.BinariesDirectory)/${{parameters.artifactName}}/ThirdPartyNotices.txt
 
         workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
