@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"2896c77cfc628f18b6ca6b28e3a380807fa00f53",
+               "commitHash":"873ddbbc33c6e54d90c5628387edd391fb651dfc",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -78,15 +78,6 @@
             "git":{
                "commitHash":"6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
                "repositoryUrl":"https://github.com/wjakob/clang-cindex-python3.git"
-            }
-         }
-      },
-      {
-         "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
-               "repositoryUrl":"https://github.com/google/protobuf.git"
             }
          }
       },
@@ -193,11 +184,81 @@
          "component":{
             "type":"git",
             "git":{
+               "commitHash":"217f52fb121ef92491e5d5f71394b07ce4ead1d0",
+               "repositoryUrl":"https://github.com/KjellKod/g3log.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"50893291621658f355bc5b4d450a8d06a563053d",
+               "repositoryUrl":"https://github.com/madler/zlib.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"d264a2603493fecda607c1d1cda87fedba77d36b",
+               "repositoryUrl":"https://github.com/Microsoft/CNTK.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"971e2e89d08deeae0139d3011d15646fdac13c92",
+               "repositoryUrl":"https://github.com/numpy/numpy.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"90537289a04ef5d572496240e2ac3a881be518d2",
+               "repositoryUrl":"https://github.com/pytorch/pytorch.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
+               "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
+            }
+         }    
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
                "commitHash":"30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
                "repositoryUrl":"https://github.com/google/re2.git"
             }
          }
       },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "repositoryUrl":"https://github.com/protocolbuffers/protobuf.git"
+              }
+         },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
+               "repositoryUrl":"https://github.com/BVLC/caffe.git"
+              }
+         },
       {
          "component":{
             "Type":"other",

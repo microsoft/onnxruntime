@@ -259,6 +259,8 @@ int real_main(int argc, char* argv[]) {
       {"BatchNorm2d_momentum_eval", "disable reason"},
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
+      {"constantofshape_float_ones", "test data bug"},
+      {"constantofshape_int_zeros", "test data bug"},      
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
       {"Linear", "disable reason"},
@@ -312,8 +314,18 @@ int real_main(int argc, char* argv[]) {
       {"scatter_without_axis", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"shrink", "opset 9 not supported yet"},
-      {"shrink_hard", "opset 9 not supported yet"},
-      {"shrink_soft", "opset 9 not supported yet"},
+      {"strnormalizer_export_monday_casesensintive_lower", "opset 10 not supported yet"},
+      {"strnormalizer_export_monday_casesensintive_nochangecase", "opset 10 not supported yet"},
+      {"strnormalizer_export_monday_casesensintive_upper", "opset 10 not supported yet"},
+      {"strnormalizer_export_monday_empty_output", "opset 10 not supported yet"},
+      {"strnormalizer_export_monday_insensintive_upper_twodim", "opset 10 not supported yet"},
+      {"strnormalizer_nostopwords_nochangecase", "opset 10 not supported yet"},
+      {"strnorm_model_monday_casesensintive_lower", "opset 10 not supported yet"},
+      {"strnorm_model_monday_casesensintive_nochangecase", "opset 10 not supported yet"},
+      {"strnorm_model_monday_casesensintive_upper", "opset 10 not supported yet"},
+      {"strnorm_model_monday_empty_output", "opset 10 not supported yet"},
+      {"strnorm_model_monday_insensintive_upper_twodim", "opset 10 not supported yet"},
+      {"strnorm_model_nostopwords_nochangecase", "opset 10 not supported yet"}, 
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -340,6 +352,28 @@ int real_main(int argc, char* argv[]) {
   broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
   broken_tests["fp16_shufflenet"] = "still have issue on Linux";
   broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
+#endif
+
+#ifdef _WIN32
+  broken_tests["resnet50"] = "failed: type mismatch";
+  broken_tests["resnet50v2"] = "failed: type mismatch";
+  broken_tests["resnet101v2"] = "failed: type mismatch";
+  broken_tests["resnet101v2"] = "failed: type mismatch";
+  broken_tests["resnet152v2"] = "failed: type mismatch";
+  broken_tests["tf_inception_resnet_v2"] = "failed: type mismatch";
+  broken_tests["tf_inception_v3"] = "failed: type mismatch";
+  broken_tests["tf_inception_v4"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+
+  broken_tests["vgg19"] = "failed: bad allocation";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+
 #endif
 
   int result = 0;

@@ -119,7 +119,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   }
 
   for (auto input : meta_def->inputs) {
-    const onnx::TensorProto* initializer = nullptr;
+    const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
     if (graph.GetInitializedTensor(input, initializer)) {
       sub_graph.AddInitializedTensor(*initializer);
     }
@@ -135,7 +135,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     : parent_graph_(&graph) {
   onnx_func_proto_ = onnx_func_proto;
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
-  op_schema_ = std::make_unique<onnx::OpSchema>();
+  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_->name());
   op_schema_->SetDomain(onnx_func_proto_->node().Get(0).domain());
   op_schema_->SetDoc(onnx_func_proto_->doc_string());

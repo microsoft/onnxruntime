@@ -89,6 +89,11 @@ file(GLOB onnxruntime_test_ir_src
   "${TEST_SRC_DIR}/ir/*.h"
   )
 
+file(GLOB onnxruntime_test_optimizer_src
+  "${TEST_SRC_DIR}/optimizer/*.cc"
+  "${TEST_SRC_DIR}/optimizer/*.h"  
+  )
+
 set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/framework/*.cc"
   "${TEST_SRC_DIR}/framework/*.h"
@@ -134,9 +139,16 @@ set(onnxruntime_test_ir_libs
   onnxruntime_common
 )
 
+set(onnxruntime_test_optimizer_libs
+  onnxruntime_test_utils
+  onnxruntime_framework
+  onnxruntime_util
+  onnxruntime_graph
+  onnxruntime_common
+)
+
 set(onnxruntime_test_framework_libs
   onnxruntime_test_utils_for_framework
-  onnxruntime_optimizer
   onnxruntime_framework
   onnxruntime_util
   onnxruntime_graph
@@ -221,7 +233,7 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
 
 
 if (SingleUnitTestProject)
-  set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
+  set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
   set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   if (onnxruntime_USE_TVM)
@@ -264,6 +276,13 @@ else()
     TARGET onnxruntime_test_ir
     SOURCES ${onnxruntime_test_ir_src}
     LIBS ${onnxruntime_test_ir_libs}
+    DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
+  )
+
+  AddTest(
+    TARGET onnxruntime_test_optimizer
+    SOURCES ${onnxruntime_test_optimizer_src}
+    LIBS ${onnxruntime_test_optimizer_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 
@@ -494,7 +513,9 @@ if (onnxruntime_BUILD_SHARED_LIB)
   )
 
   #demo
-  if(PNG_FOUND)
+  message("PNG Lib Dir = ${PNG_LIBRARIES}")
+  message("PNG Include Dir = ${PNG_INCLUDE_DIRS}")
+  if(PNG_FOUND AND NOT WIN32) # for some reason some symbols are not found in Win32 PNG module
     add_executable(fns_candy_style_transfer "${ONNXRUNTIME_ROOT}/test/shared_lib/fns_candy_style_transfer.c")
     target_include_directories(fns_candy_style_transfer PRIVATE "${TEST_SRC_DIR}/util/include" ${PNG_INCLUDE_DIRS})
     target_link_libraries(fns_candy_style_transfer PRIVATE onnxruntime ${PNG_LIBRARIES})
