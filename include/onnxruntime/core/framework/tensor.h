@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "gsl/span"
-
+#include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
@@ -58,14 +58,20 @@ using BufferNakedPtr = void*;
 class Tensor final {
  public:
   /**
-     Create tensor with given type, shape, pre-allocate memory and allocator info.
-  */
-  Tensor(MLDataType p_type,
-         const TensorShape& shape,
-         BufferNakedPtr p_data,
-         const OrtAllocatorInfo& alloc,
-         AllocatorPtr deleter = nullptr,
+   * Create tensor with given type, shape, pre-allocate memory and allocator info.
+   * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
+   * \param data A preallocated buffer. Can be NULL if the shape is empty.
+   *              Tensor does not own the data and will not delete it
+   * \param alloc Where the buffer('data') was allocated from
+   */
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
          int64_t offset = 0);
+
+  /**
+   * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
+   * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
+   */
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
 
   ~Tensor();
 
@@ -181,7 +187,6 @@ class Tensor final {
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
-            const OrtAllocatorInfo& alloc,
             AllocatorPtr deleter,
             int64_t offset = 0);
 

@@ -282,12 +282,8 @@ class OpTester {
                   " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto size_in_bytes = values_count * sizeof(T);
-      void* buffer = allocator->Alloc(size_in_bytes);
       auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                                shape,
-                                               buffer,
-                                               allocator->Info(),
                                                allocator);
 
       auto* data_ptr = p_tensor->template MutableData<T>();
@@ -296,7 +292,8 @@ class OpTester {
       }
 
       std::vector<int64_t> dims_for_proto{dims};
-      if (add_symbolic_dim_to_tensor_data_ >= 0 && dims.size() > add_symbolic_dim_to_tensor_data_) {
+      if (add_symbolic_dim_to_tensor_data_ >= 0 &&
+          dims.size() > static_cast<size_t>(add_symbolic_dim_to_tensor_data_)) {
         dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;
       }
 

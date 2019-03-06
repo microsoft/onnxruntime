@@ -229,11 +229,6 @@ void addObjectMethods(py::module& m) {
   py::add_ostream_redirect(m, "onnxruntime_ostream_redirect");
   py::class_<SessionOptions>(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc")
       .def(py::init())
-      .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
-                     R"pbdoc(Enables the memory pattern optimization.
-The idea is if the input shapes are the same, we could trace the internal memory allocation
-and generate a memory pattern for future request. So next time we could just do one allocation
-with a big chunk for all the internal memory allocation. Default is true.)pbdoc")
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don't want it. Default is True.)pbdoc")

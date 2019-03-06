@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         public IntPtr _nativePtr;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
-        private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
+        private static string[] cudaDelayLoadedLibs = { "cublas64_91.dll", "cudnn64_7.dll" };
 
         /// <summary>
         /// Constructs an empty SessionOptions
@@ -97,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
                     GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
                     throw new OnnxRuntimeException(
                         ErrorCode.NoSuchFile, 
-                        $"kernel32.LoadLibrary():'{dll}' not found. CUDA 10.0 is required for GPU execution. " +
+                        $"kernel32.LoadLibrary():'{dll}' not found. CUDA is required for GPU execution. " +
                         $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
                         );               
                 }

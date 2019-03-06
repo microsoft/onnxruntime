@@ -29,7 +29,7 @@ class IExecutionFrame {
                   const std::vector<MLValue>& feeds,
                   const std::unordered_map<int, MLValue>& initializers,
                   const std::vector<int>& fetch_mlvalue_idxs,
-                  std::vector<MLValue>& fetches,
+                  const std::vector<MLValue>& fetches,
                   const MLValueNameIdxMap& mlvalue_idx_map,
                   const NodeIndexInfo& node_index_info);
 
@@ -51,7 +51,10 @@ class IExecutionFrame {
   // Shape is required for tensors but not traditional ML values.
   Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, MLValue*& p_mlvalue);
 
-  // write the output values to the 'fetches' vector
+  /**
+   * write the output values to the 'fetches' vector
+   * Don't access the values after SessionState is destroyed 
+   */
   Status GetOutputs(std::vector<MLValue>& fetches);
 
   AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const;
@@ -103,7 +106,7 @@ class ExecutionFrame final : public IExecutionFrame {
   ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
                  const std::vector<MLValue>& feeds,
                  const std::vector<int>& fetch_mlvalue_idxs,
-                 std::vector<MLValue>& fetches,
+                 const std::vector<MLValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);

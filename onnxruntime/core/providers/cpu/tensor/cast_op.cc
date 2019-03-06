@@ -57,7 +57,7 @@ inline void CastFloat16Data(const Tensor* in, Tensor* out, const TensorShape& sh
   ORT_ENFORCE(len > 0);
   void* buffer = allocator->AllocArray(sizeof(float), len);
   ORT_ENFORCE(buffer);
-  Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, buffer, allocator->Info(), nullptr);
+  Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, buffer, allocator->Info());
   if (std::is_same<SrcType, MLFloat16>::value) {
     CastData<MLFloat16, float>(in, &tmp_tensor, shape);  // first cast to float
     CastData<float, DstType>(&tmp_tensor, out, shape);   // then cast to the destination type.

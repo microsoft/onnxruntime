@@ -18,9 +18,7 @@ void SessionState::SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> grap
   graph_viewer_ = std::move(graph_viewer);
 }
 
-const GraphViewer* SessionState::GetGraphViewer() const {
-  return graph_viewer_.get();
-}
+const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
 
 const OpKernel* SessionState::GetKernel(NodeIndex node_id) const {
   if (session_kernels_.count(node_id) == 0) {
@@ -39,18 +37,19 @@ void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_s
   p_seq_exec_plan_ = std::move(p_seq_exec_plan);
 }
 
-const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
-  return p_seq_exec_plan_.get();
-}
+const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
-void SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue) {
+Status SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d) {
   ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index <= mlvalue_name_idx_map_.MaxIdx());
-  initialized_tensors_.insert({mlvalue_index, mlvalue});
+  auto p = initialized_tensors_.insert({mlvalue_index, mlvalue});
+  if (!p.second)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated mlvalue index:", mlvalue_index,
+                           ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
+  if (d != nullptr && d->f != nullptr) deleter_for_initialized_tensors_[mlvalue_index] = *d;
+  return Status::OK();
 }
 
-const std::unordered_map<int, MLValue>& SessionState::GetInitializedTensors() const {
-  return initialized_tensors_;
-}
+const std::unordered_map<int, MLValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;
@@ -63,19 +62,14 @@ const logging::Logger& SessionState::Logger() const {
   return *logger;
 }
 
-void SessionState::SetProfiler(profiling::Profiler& profiler) {
-  profiler_ = &profiler;
-}
+void SessionState::SetProfiler(profiling::Profiler& profiler) { profiler_ = &profiler; }
 
-::onnxruntime::profiling::Profiler& SessionState::Profiler() const {
-  return *profiler_;
-}
+::onnxruntime::profiling::Profiler& SessionState::Profiler() const { return *profiler_; }
 
 static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes) {
   int64_t key = 0;
   for (auto& shape : shapes) {
-    for (auto dim : shape.GetDims())
-      key ^= dim;
+    for (auto dim : shape.GetDims()) key ^= dim;
   }
   return key;
 }
@@ -84,8 +78,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
   auto it = mem_patterns_.find(key);
-  if (it == mem_patterns_.end())
-    return nullptr;
+  if (it == mem_patterns_.end()) return nullptr;
 
   return it->second.get();
 }
@@ -103,17 +96,8 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape
   return Status::OK();
 }
 
-void SessionState::SetEnableMemoryPattern(bool flag) {
-  enable_mem_pattern_ = flag;
-}
-
-bool SessionState::GetEnableMemoryPattern() const {
-  return enable_mem_pattern_;
-}
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
-  auto status = Status::OK();
-
   // in the future we could support multiple nodes on difference devices using an input, however right now
   // the logic in utils::CopyOneInputAcrossDevices only checks the first entry.
   // Instead of failing silently and adding extra entries that will be ignored, check if the required provider
@@ -144,18 +128,19 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       if (current_provider == new_provider) {
         entries.push_back(node_info);
       } else {
-        ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                        "Using an input in multiple nodes on different devices is not supported currently. Input:",
-                        input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
-                        ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "Using an input in multiple nodes on different devices is not supported currently. Input:",
+                               input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
+                               ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
       }
     }
   }
 
-  return status;
+  return Status::OK();
 }
 
-common::Status SessionState::GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const {
+common::Status SessionState::GetInputNodeInfo(const std::string& input_name,
+                                              std::vector<NodeInfo>& node_info_vec) const {
   if (!input_names_to_nodeinfo_mapping_.count(input_name)) {
     return Status(ONNXRUNTIME, FAIL, "Failed to find input name in the mapping: " + input_name);
   }
@@ -175,16 +160,15 @@ const SessionState::NameNodeInfoMapType& SessionState::GetOutputNodeInfoMap() co
   return output_names_to_nodeinfo_mapping_;
 }
 
-void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
-                                           const std::string& attribute_name,
+void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                            std::unique_ptr<SessionState> session_state) {
   auto entry = subgraph_session_states_.find(index);
 
   // make sure this is new. internal logic error if it is not so using ORT_ENFORCE.
   if (entry != subgraph_session_states_.cend()) {
     const auto& existing_entries = entry->second;
-    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(),
-                "Entry exists in node ", index, " for attribute ", attribute_name);
+    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
+                " for attribute ", attribute_name);
   }
 
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
@@ -227,67 +211,4 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_, "CalculateNodeIndexInfo must be called prior to GetExecutionInfo.");
   return *node_index_info_;
 }
-
-// use a cheap way of matching first. if we have multiple entries with this key, we will do the more expensive
-// check of the individual feed/output names
-static int MakeFeedsFetchesManagerCacheKey(const std::vector<std::string>& feed_names,
-                                           const std::vector<std::string>& output_names) {
-  return static_cast<int>(feed_names.size()) << 16 | static_cast<int>(output_names.size());
-};
-
-const FeedsFetchesManager* SessionState::GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                                                const std::vector<std::string>& output_names) const {
-  int key = MakeFeedsFetchesManagerCacheKey(feed_names, output_names);
-  auto num_matches = cached_feeds_fetches_managers_.count(key);
-
-  const FeedsFetchesManager* manager = nullptr;
-
-  if (num_matches > 0) {
-    auto begin_end_pair = cached_feeds_fetches_managers_.equal_range(key);
-    auto iter = begin_end_pair.first;
-    auto end = begin_end_pair.second;
-
-    while (iter != end) {
-      auto& ffi = iter->second->GetFeedsFetchesInfo();
-      auto check = [](const std::vector<std::string>& input, const std::vector<std::string>& existing) {
-        for (size_t i = 0, end = input.size(); i < end; ++i) {
-          if (input[i] != existing[i]) {
-            return false;
-          }
-        }
-
-        return true;
-      };
-
-      if (check(feed_names, ffi.feed_names) && check(output_names, ffi.output_names)) {
-        manager = iter->second.get();
-        break;
-      }
-
-      ++iter;
-    }
-  }
-
-  return manager;
-}
-
-Status SessionState::CacheFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                              const std::vector<std::string>& output_names,
-                                              std::unique_ptr<FeedsFetchesManager> manager) {
-  int key = MakeFeedsFetchesManagerCacheKey(feed_names, output_names);
-
-  auto num_matches = cached_feeds_fetches_managers_.count(key);
-
-  if (num_matches) {
-    // be paranoid and make sure we're not attempting to insert a duplicate entry.
-    // if so it would imply that there is probably a concurrency issue in InferenceSession::Run.
-    ORT_ENFORCE(GetFeedsFetchesManager(feed_names, output_names) == nullptr,
-                "Existing FeedsFetchesManager found.");
-  }
-
-  cached_feeds_fetches_managers_.emplace(key, std::move(manager));
-
-  return Status::OK();
-}
-
 }  // namespace onnxruntime

@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
-
+#include "onnx_protobuf.h"
 using namespace onnxruntime;
 
 void RunSession(OrtAllocator* env, OrtSession* session_object,
@@ -184,7 +184,8 @@ TEST_F(CApiTest, create_tensor) {
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   {
     std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
-        OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), OrtReleaseValue);
+        OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING),
+        OrtReleaseValue);
     ORT_THROW_ON_ERROR(OrtFillStringTensor(tensor.get(), s, expected_len));
     std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
     {
@@ -200,7 +201,8 @@ TEST_F(CApiTest, create_tensor) {
     ORT_THROW_ON_ERROR(OrtGetStringTensorDataLength(tensor.get(), &data_len));
     std::string result(data_len, '\0');
     std::vector<size_t> offsets(len);
-    ORT_THROW_ON_ERROR(OrtGetStringTensorContent(tensor.get(), (void*)result.data(), data_len, offsets.data(), offsets.size()));
+    ORT_THROW_ON_ERROR(OrtGetStringTensorContent(tensor.get(), (void*)result.data(), data_len, offsets.data(),
+                                                 offsets.size()));
   }
 }
 
@@ -226,5 +228,10 @@ TEST_F(CApiTest, create_tensor_with_data) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  int ret = RUN_ALL_TESTS();
+  //TODO: Linker on Mac OS X is kind of strange. The next line of code will trigger a crash
+#ifndef __APPLE__
+  ::google::protobuf::ShutdownProtobufLibrary();
+#endif
+  return ret;
 }

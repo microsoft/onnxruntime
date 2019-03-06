@@ -196,7 +196,7 @@ jobs:
         cleanEnvironment: true
 
     - script: |
-        sudo python -m pip install numpy
+        sudo python -m pip install numpy==1.15.0
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel
       displayName: 'Command Line Script'

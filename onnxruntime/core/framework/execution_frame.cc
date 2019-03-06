@@ -20,7 +20,7 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
                                  const std::vector<MLValue>& feeds,
                                  const std::unordered_map<int, MLValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs,
-                                 std::vector<MLValue>& fetches,
+                                 const std::vector<MLValue>& fetches,
                                  const MLValueNameIdxMap& mlvalue_idx_map,
                                  const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
@@ -123,7 +123,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs,
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
   for (const auto& entry : initializers) {
-    auto mlvalue_index = entry.first;
+    int mlvalue_index = entry.first;
     all_values_[mlvalue_index] = entry.second;
   }
 
@@ -163,7 +163,7 @@ bool IExecutionFrame::IsOutput(int mlvalue_idx) const {
 ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
                                const std::vector<MLValue>& feeds,
                                const std::vector<int>& fetch_mlvalue_idxs,
-                               std::vector<MLValue>& fetches,
+                               const std::vector<MLValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
@@ -186,7 +186,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
-  if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
+  if (session_state.GetExecutionPlan()) {
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
@@ -291,8 +291,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue
     }
   }
   //no memory pattern, or the pattern is not correct.
-  void* buffer = size == 0 ? nullptr : alloc->Alloc(size);
-  auto p_tensor = std::make_unique<Tensor>(element_type, shape, buffer, location, alloc);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
 
   mlvalue.Init(p_tensor.release(),
                DataTypeImpl::GetType<Tensor>(),
@@ -417,7 +416,7 @@ Status ExecutionFrame::CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue
 }
 
 Status ExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
-  IExecutionFrame::ReleaseMLValueImpl(mlvalue_idx);
+  ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(mlvalue_idx));
   TraceFree(mlvalue_idx);
   return Status::OK();
 }
