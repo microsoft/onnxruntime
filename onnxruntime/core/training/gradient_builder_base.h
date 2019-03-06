@@ -31,50 +31,50 @@ class GradientBuilderBase {
   }
 
   // TODO: make this protected? Currently, compiler failure prevents it
-  virtual GradientDef GetGradientDefs() = 0;
+  virtual GradientDef GetGradientDefs() const = 0;
 
  protected:
-  ArgDef I(const int i) {
+  ArgDef I(const int i) const {
     ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
-  ArgDef GI(const int i) {
+  ArgDef GI(const int i) const {
     ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
   }
 
-  ArgDef GO(const int i) {
+  ArgDef GO(const int i) const {
     ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
     return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->OutputDefs()[i]->TypeAsProto());
   }
 
-  ArgDef IA(const std::string& argSuffix) {
+  ArgDef IA(const std::string& argSuffix) const {
     return ArgDef(Name(argSuffix), nullptr);
   }
 
-  int GetSrcNodeOutputSize() {
+  int GetSrcNodeOutputSize() const {
     ORT_ENFORCE(node_ != nullptr);
     return (int)node_->OutputDefs().size();
   }
 
   // returns true if the input at index i of the node_ requires gradient
-  bool IsGradientRequiredForSrcNodeInput(const int i) {
+  bool IsGradientRequiredForSrcNodeInput(const int i) const {
     ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
     return gradient_outputs_.find(node_->InputDefs()[i]->Name()) != gradient_outputs_.end();
   }
 
   // returns true if the output at index i of the node_ has a gradient
-  bool IsGradientAvailableForSrcNodeOutput(const int i) {
+  bool IsGradientAvailableForSrcNodeOutput(const int i) const {
     ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
     return gradient_inputs_.find(node_->OutputDefs()[i]->Name()) != gradient_inputs_.end();
   }
 
-  std::string Name(const std::string& name) {
+  std::string Name(const std::string& name) const {
     return unique_node_prefix_ + name;
   }
 
-  const NodeAttributes& SrcNodeAttributes() {
+  const NodeAttributes& SrcNodeAttributes() const {
     return node_->GetAttributes();
   }
 
@@ -112,14 +112,14 @@ class GradientBuilderBase {
 
 class EmptyGradientBuilder : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
-  virtual GradientDef GetGradientDefs() {
+  GradientDef GetGradientDefs() const override {
     return GradientDef();
   }
 };
 
 class UnSupportedGradientBuilder : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
-  virtual GradientDef GetGradientDefs() {
+  GradientDef GetGradientDefs() const override {
     ORT_ENFORCE(false, "Gradient should not be requested for this operator");
   }
 };

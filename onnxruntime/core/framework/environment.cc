@@ -8,8 +8,11 @@
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
-#include "core/training/gradient_builder.h"
+
+#ifdef ENABLE_TRAINING
+#include "core/training/gradient_builder_registry.h"
 #include "core/training/gradient_schema_defs.h"
+#endif
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;

@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gradient_registry.h"
+#include "core/training/gradient_builder.h"
+#include "core/training/gradient_builder_registry.h"
 
 namespace onnxruntime {
 namespace training {
@@ -20,6 +21,17 @@ GradientDef GetGradientForOp(const Node* node,
   }
 
   return gradient_def;
+}
+
+void RegisterGradientBuilders() {
+  REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
+  REGISTER_GRADIENT_BUILDER("MatMul", GetMatmulGradient);
+  REGISTER_GRADIENT_BUILDER("Split", GetSplitGradient);
+  REGISTER_GRADIENT_BUILDER("Relu", GetReluGradient);
+  REGISTER_GRADIENT_BUILDER("Pow", GetPowGradient);
+  REGISTER_GRADIENT_BUILDER("ReduceMean", GetReduceMeanGradient);
+  REGISTER_GRADIENT_BUILDER("Add", GetAddGradient);
+  REGISTER_GRADIENT_BUILDER("Sub", GetSubGradient);
 }
 
 }  // namespace training

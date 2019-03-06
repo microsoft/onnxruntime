@@ -63,5 +63,7 @@ class GradientBuilderRegistry {
 GradientDef GetGradientForOp(const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad);
+
+void RegisterGradientBuilders();
 }  // namespace training
 }  // namespace onnxruntime

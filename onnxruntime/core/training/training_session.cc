@@ -1,9 +1,9 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "training_session.h"
-#include "core/training/gradients.h"
+#include "core/training/gradient_graph_builder.h"
 #include "core/training/loss_function_builder.h"
+#include "core/training/training_session.h"
 
 using namespace std;
 
