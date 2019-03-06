@@ -383,7 +383,11 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     ONNXTensorElementDataType real_type = OrtGetTensorElementType(info.get());
     ONNXTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
     if (real_type != expected_type) {
-      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+      std::ostringstream oss;
+      oss << "expect " << ElementTypeToString((MLDataType)expected_type)
+          << " got " << ElementTypeToString((MLDataType)real_type);
+
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
     std::vector<int64_t> shape = GetTensorShape(info.get());
     if (!AreShapesEqual(shape, t.shape())) {

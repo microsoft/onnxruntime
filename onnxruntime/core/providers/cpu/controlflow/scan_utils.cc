@@ -242,8 +242,6 @@ Status IterateSequence(OpKernelContextInternal& context,
 MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
   auto new_tensor = std::make_unique<Tensor>(data_type,
                                              shape,
-                                             allocator->Alloc(shape.Size() * data_type->Size()),
-                                             allocator->Info(),
                                              allocator);
 
   return MLValue{new_tensor.release(),

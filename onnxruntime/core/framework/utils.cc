@@ -34,20 +34,8 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
 
-  void* buffer = nullptr;
-  const size_t len = fetched_tensor.Size();
-  if (len != 0) {
-    buffer = allocator->Alloc(len);
-    if (!buffer) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer. Execution provider type=",
-                             execution_provider.Type());
-    }
-  }
-
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
                                                               fetched_tensor.Shape(),
-                                                              buffer,
-                                                              allocator->Info(),
                                                               allocator);
   output_mlvalue.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
