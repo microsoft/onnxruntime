@@ -94,7 +94,7 @@ void TestInference(OrtEnv* env, T model_uri,
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
   if (custom_op_domain_ptr) {
-    OrtAddCustomOpDomain(sf, custom_op_domain_ptr);
+    ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(sf, custom_op_domain_ptr));
   }
 
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
@@ -176,7 +176,7 @@ TEST_F(CApiTest, DISABLED_custom_op) {
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info;
-    OrtGetTensorShapeAndType(value, &info);
+    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &info));
     auto dimensionCount = OrtGetNumOfDimensions(info);
     resize(dimensionCount);
     OrtGetDimensions(info, data(), dimensionCount);
@@ -200,17 +200,17 @@ struct MyCustomKernel {
 
   void GetOutputShape(OrtValue** inputs, size_t /*input_count*/, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
     OrtTensorDimensions dimensions(inputs[0]);
-    OrtSetDims(info, dimensions.data(), dimensions.size());
+    ORT_THROW_ON_ERROR(OrtSetDims(info, dimensions.data(), dimensions.size()));
   }
 
   void Compute(OrtValue** inputs, size_t /*input_count*/, OrtValue** outputs, size_t /*output_count*/) {
     const float* X;
     const float* Y;
-    OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X)));
-    OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&Y)));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&Y))));
 
     float* out;
-    OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
 
     int64_t size = OrtTensorDimensions(inputs[0]).ElementCount();
     for (int64_t i = 0; i < size; i++) {
@@ -250,7 +250,7 @@ TEST_F(CApiTest, custom_op_handler) {
 
   MyCustomOp custom_op;
   OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 5, 7);
-  OrtCustomOpDomain_Add(custom_op_domain, &custom_op);
+  ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
 
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
 }
