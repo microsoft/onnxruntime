@@ -41,3 +41,20 @@ jobs:
           libraryName: 'libonnxruntime.so'
     - template: templates/clean-agent-build-directory-step.yml
 
+- job: MacOS_C_API_Packaging_CPU_x64
+  pool: 'Hosted macOS'
+    vmImage: 'macOS-10.13'
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+    - script: |
+        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
+      displayName: 'Build and Test MacOS'
+
+    - template: templates/c-api-artifacts-package-and-publish-steps.yml
+      parameters:
+          buildConfig: 'RelWithDebInfo'
+          artifactName: 'onnxruntime-osx-x64'
+          libraryName: 'libonnxruntime.dylib'
+
+    - template: templates/clean-agent-build-directory-step.yml
