@@ -545,6 +545,9 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
                 "--target", "protoc"]
     run_subprocess(cmd_args)
 
+    if not os.path.exists(os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')):
+        raise BuildError("Couldn't build protoc.exe for host. Failing build.")
+
 def main():
     args = parse_arguments()
 
