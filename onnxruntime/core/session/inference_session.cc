@@ -36,6 +36,7 @@
 #include "core/framework/session_state_initializer.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensorutils.h"
+#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
@@ -109,17 +110,6 @@ const char* ElementTypeToString(MLDataType type) {
 }
 }  // namespace onnxruntime
 
-// TODO: Move this into a shared header file
-struct OrtTensorTypeAndShapeInfo {
- public:
-  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  onnxruntime::TensorShape shape;
-
-  OrtTensorTypeAndShapeInfo() = default;
-  OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = delete;
-  OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
-};
-
 ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
   if (status.IsOK())
@@ -136,12 +126,12 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _
 
 namespace onnxruntime {
 
-struct FooKernel : OpKernel {
-  FooKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
+struct CustomOpKernel : OpKernel {
+  CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     op_.CreateKernel(&op_, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
   }
 
-  ~FooKernel() {
+  ~CustomOpKernel() {
     op_.KernelDestroy(op_kernel_);
   }
 
@@ -242,11 +232,11 @@ class InferenceSession::Impl {
     auto custom_registry = std::make_shared<CustomRegistry>();
 
     for (auto& domain : op_domains) {
-      auto schemas_container = std::make_unique<SchemasContainer>();
+      SchemasContainer schemas_container;
 
-      schemas_container->domain = domain->domain_;
-      schemas_container->baseline_opset_version = domain->op_version_start_;
-      schemas_container->opset_version = domain->op_version_end_;
+      schemas_container.domain = domain->domain_;
+      schemas_container.baseline_opset_version = domain->op_version_start_;
+      schemas_container.opset_version = domain->op_version_end_;
 
       for (auto& op : domain->custom_ops_) {
         ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
@@ -265,31 +255,26 @@ class InferenceSession::Impl {
           schema.Output(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
         }
 
-        schema.TypeConstraint(
-            "T",
-            OpSchema::numeric_types_for_math_reduction(),
-            "Constrain input and output types to high-precision numeric tensors.");
         schema.SinceVersion(domain->op_version_start_);
         schema.AllowUncheckedAttributes();
 
-        schemas_container->schemas_list.push_back(schema);
+        schemas_container.schemas_list.push_back(schema);
 
         KernelDefBuilder def_builder;
         def_builder.SetName(op->GetName(op))
             .SetDomain(onnxruntime::kOnnxDomain)
             .SinceVersion(domain->op_version_start_)
-            .Provider(onnxruntime::kCpuExecutionProvider)
-            .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
-        KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new FooKernel(info, *op); };
+            .Provider(onnxruntime::kCpuExecutionProvider);
+        KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
         KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
 
         custom_registry->RegisterCustomKernel(create_info);
       }
 
-      ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container->schemas_list,
-                                                         schemas_container->domain,
-                                                         schemas_container->baseline_opset_version,
-                                                         schemas_container->opset_version));
+      ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container.schemas_list,
+                                                         schemas_container.domain,
+                                                         schemas_container.baseline_opset_version,
+                                                         schemas_container.opset_version));
     }
     RegisterCustomRegistry(custom_registry);
     return Status::OK();

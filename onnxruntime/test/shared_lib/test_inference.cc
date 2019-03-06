@@ -134,7 +134,7 @@ void TestInference(OrtEnv* env, T model_uri,
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.pb");
-static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("C:/code/github/onnxrt/build/windows/debug/debug/testdata/foo_1.pb");
+static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.pb");
 
 class CApiTestWithProvider : public CApiTest,
                              public ::testing::WithParamInterface<int> {
@@ -250,69 +250,6 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtCustomOpDomain_Add(custom_op_domain, &custom_op);
 
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
-}
-
-struct OCRCustomKernel {
-  OCRCustomKernel(OrtKernelInfo& info) {
-  }
-
-  void GetOutputShape(OrtValue** inputs, size_t input_count, size_t output_index, OrtTensorTypeAndShapeInfo* info) {
-    OrtTensorDimensions dimensions(inputs[0]);
-    OrtSetDims(info, dimensions.data(), dimensions.size());
-  }
-
-  void Compute(OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count) {
-    const float* X;
-    const float* Y;
-    OrtGetTensorMutableData(inputs[0], &reinterpret_cast<void*>(const_cast<float*>(X)));
-    OrtGetTensorMutableData(inputs[0], &reinterpret_cast<void*>(const_cast<float*>(Y)));
-
-    float* out;
-    OrtGetTensorMutableData(outputs[0], &reinterpret_cast<void*>(out));
-
-    int64_t size = OrtTensorDimensions(inputs[0]).ElementCount();
-    for (int64_t i = 0; i < size; i++) {
-      out[i] = X[i] + Y[i];
-    }
-  }
-};
-
-struct OCRCustomOp : OrtCustomOp {
-  OCRCustomOp() {
-    OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, OrtKernelInfo* info, void** output) { *output = new OCRCustomKernel(*info); };
-    OrtCustomOp::GetName = [](OrtCustomOp* this_) { return "GenerateMsDenseboxSeglinksProposals"; };
-
-    static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-    OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* this_) { return _countof(c_inputTypes); };
-    OrtCustomOp::GetInputType = [](OrtCustomOp* this_, size_t index) { return c_inputTypes[index]; };
-
-    static const ONNXTensorElementDataType c_outputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-    OrtCustomOp::GetOutputTypeCount = [](OrtCustomOp* this_) { return _countof(c_outputTypes); };
-    OrtCustomOp::GetOutputType = [](OrtCustomOp* this_, size_t index) { return c_outputTypes[index]; };
-
-    OrtCustomOp::KernelGetOutputShape = [](void* op_kernel, OrtValue** inputs, size_t input_count, size_t output_index, OrtTensorTypeAndShapeInfo* output) { static_cast<OCRCustomKernel*>(op_kernel)->GetOutputShape(inputs, input_count, output_index, output); };
-    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count) { static_cast<OCRCustomKernel*>(op_kernel)->Compute(inputs, input_count, outputs, output_count); };
-    OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<OCRCustomKernel*>(op_kernel); };
-  }
-};
-
-TEST_F(CApiTest, custom_op_handler_ocr) {
-  std::cout << "Running custom op inference" << std::endl;
-  std::vector<size_t> dims_x = {3, 2};
-  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-
-  // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_y = {3, 2};
-  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
-
-  OCRCustomOp custom_op;
-  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 9, 10);
-  OrtCustomOpDomain_Add(custom_op_domain, &custom_op);
-
-  //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
-  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
-  //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x_opset7.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS

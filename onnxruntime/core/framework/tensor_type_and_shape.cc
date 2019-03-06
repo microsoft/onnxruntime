@@ -5,6 +5,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/tensor_type_and_shape.h"
 
 #include <assert.h>
 #include <stdexcept>
@@ -14,16 +15,6 @@ using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
-
-struct OrtTensorTypeAndShapeInfo {
- public:
-  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  onnxruntime::TensorShape shape;
-
-  OrtTensorTypeAndShapeInfo() = default;
-  OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = delete;
-  OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
-};
 
 #define API_IMPL_BEGIN try {
 #define API_IMPL_END                                          \
