@@ -77,7 +77,7 @@ std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
 
 class FuseExecutionProvider : public IExecutionProvider {
  public:
-  explicit FuseExecutionProvider() {
+  explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
                                                  [](int) { return std::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
@@ -120,11 +120,8 @@ class FuseExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
-  std::string Type() const override {
-    return "FuseExecutionProvider";
-  }
 };
+
 namespace test {
 static void VerifyOutputs(const std::vector<MLValue>& fetches,
                           const std::vector<int64_t>& expected_dims,
@@ -288,12 +285,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-    ORT_ENFORCE(buffer);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
-                                                                  buffer,
-                                                                  cpu_allocator->Info(),
                                                                   cpu_allocator);
     st = TestCudaExecutionProvider()->CopyTensor(rtensor, *cpu_tensor.get());
     ASSERT_TRUE(st.IsOK());
@@ -470,7 +463,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   so.session_logid = "CheckRunProfiler";
   so.enable_profiling = true;
-  so.profile_file_prefix = "onnxprofile_profile_test";
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
 
   InferenceSession session_object(so);
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
@@ -838,7 +831,7 @@ static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
   auto& graph = model.MainGraph();
 
   // create an initializer, which is an optional input that can be overridden
-  onnx::TensorProto tensor_proto;
+  ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.add_dims(1);
   tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
   tensor_proto.add_float_data(1.f);
@@ -949,12 +942,12 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names: unknown_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names"));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required inputs: required_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {

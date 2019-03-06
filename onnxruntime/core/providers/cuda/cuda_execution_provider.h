@@ -32,10 +32,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
 
-  std::string Type() const override {
-    return onnxruntime::kCudaExecutionProvider;
-  }
-
   Status Sync() const override;
 
   Status OnRunStart() override;

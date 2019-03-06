@@ -122,7 +122,6 @@ if (MSVC)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GL")
   endif()
-
 else()
   if(onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     string(APPEND CMAKE_CXX_FLAGS_RELEASE " -march=native -mtune=native")
@@ -141,6 +140,7 @@ endif()
 find_package(PNG)
 set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
+set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 if(CMAKE_CROSSCOMPILING)
   message("Doing crosscompiling")
@@ -238,7 +238,10 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
+add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
+set_target_properties(re2 PROPERTIES FOLDER "External/re2")
 add_library(date ALIAS tz)
+set_target_properties(tz PROPERTIES FOLDER "External/tz")
 add_library(gsl ALIAS GSL)
 
 # bounds checking behavior.
@@ -252,7 +255,7 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
 # mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz re2)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -261,7 +264,7 @@ function(onnxruntime_add_include_to_target dst_target)
     endforeach()
 endfunction()
 
-set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto)
+set(onnxruntime_EXTERNAL_DEPENDENCIES gsl onnx_proto re2)
 
 # TVM
 if (onnxruntime_USE_TVM)
@@ -302,7 +305,7 @@ if (MSVC)
 endif()
 
 if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DONNXRUNTIME_RUN_EXTERNAL_ONNX_TESTS)
+  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
 if (onnxruntime_USE_MLAS)
@@ -520,6 +523,7 @@ include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
 if(WIN32)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
 else()
   if(onnxruntime_USE_NSYNC)

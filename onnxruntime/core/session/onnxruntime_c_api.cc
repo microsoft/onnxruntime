@@ -17,6 +17,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/environment.h"
+#include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
@@ -165,25 +166,12 @@ ORT_API_STATUS_IMPL(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* 
 template <typename T>
 OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
-  size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
-    elem_count *= shape[i];
     shapes[i] = shape[i];
   }
-
-  size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArray(sizeof(T), elem_count, &size_to_allocate)) {
-    return OrtCreateStatus(ORT_FAIL, "not enough memory");
-  }
-  void* p_data = allocator->Alloc(allocator, size_to_allocate);
-  if (p_data == nullptr)
-    return OrtCreateStatus(ORT_FAIL, "size overflow");
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                  onnxruntime::TensorShape(shapes),
-                                  static_cast<void*>(p_data),
-                                  *allocator->Info(allocator),
-                                  std::make_shared<onnxruntime::AllocatorWrapper>(allocator));
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
 
@@ -210,11 +198,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllo
     oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                  onnxruntime::TensorShape(shapes),
-                                  p_data,
-                                  *info,
-                                  nullptr);
+  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), p_data, *info);
   return nullptr;
 }
 
@@ -222,7 +206,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllo
  * this function will create a copy of the allocator info
  */
 ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-                    _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+                    _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
@@ -404,18 +388,23 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
                     _In_ const char* const* output_names1, size_t output_names_len, _Out_ OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  ::onnxruntime::NameMLValMap in;
   const int queue_id = 0;
+
+  std::vector<std::string> feed_names(input_len);
+  std::vector<MLValue> feeds(input_len);
+
   for (size_t i = 0; i != input_len; ++i) {
-    auto kvp = in.insert(std::make_pair(std::string(input_names[i]),
-                                        *reinterpret_cast<const ::onnxruntime::MLValue*>(input[i])));
-    if (!kvp.second) {
-      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "duplicated input name");
+    if (input_names[i] == nullptr || input_names[i][0] == '\0') {
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
     }
-    ::onnxruntime::MLValue& value = kvp.first->second;
-    if (value.Fence())
-      value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
+
+    feed_names[i] = input_names[i];
+    auto& mlvalue = feeds[i] = *reinterpret_cast<const ::onnxruntime::MLValue*>(input[i]);
+
+    if (mlvalue.Fence())
+      mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
   }
+
   // Create output feed
   std::vector<std::string> output_names(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
@@ -437,9 +426,9 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
-    status = session->Run(op, in, output_names, &fetches);
+    status = session->Run(op, feed_names, feeds, output_names, &fetches);
   } else {
-    status = session->Run(*run_options, in, output_names, &fetches);
+    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches);
   }
 
   if (!status.IsOK())
@@ -493,32 +482,66 @@ ORT_API_STATUS_IMPL(OrtGetStringTensorContent, _In_ const OrtValue* value,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
-                    const void* input, int input_len, _Out_ OrtValue** out) {
+#define ORT_C_API_RETURN_IF_ERROR(expr)                 \
+  do {                                                  \
+    auto _status = (expr);                              \
+    if ((!_status.IsOK())) return ToOrtStatus(_status); \
+  } while (0)
+
+ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
+                    _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
+                    _Out_ OrtValue** out, _Out_ OrtCallback** deleter) {
   API_IMPL_BEGIN
-  std::shared_ptr<onnxruntime::IAllocator> allocator_ = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  OrtAllocatorInfo* cpuAllocatorInfo;
+  auto st = OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo);
+  if (st != nullptr) return st;
   ::ONNX_NAMESPACE::TensorProto proto;
   if (!proto.ParseFromArray(input, input_len)) {
     return OrtCreateStatus(ORT_FAIL, "parse input tensor proto failed");
   }
   std::unique_ptr<MLValue> value = std::make_unique<MLValue>();
-  Status st = onnxruntime::utils::TensorProtoToMLValue(proto, allocator_, nullptr, 0, *value);
-  if (!st.IsOK())
-    return ToOrtStatus(st);
+  std::unique_ptr<OrtCallback> del = std::make_unique<OrtCallback>();
+  auto status =
+      utils::TensorProtoToMLValue(Env::Default(), input_file_path, proto,
+                                  MemBuffer(preallocated, preallocated_size, *cpuAllocatorInfo), *value, *del);
+  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
+  }
   *out = reinterpret_cast<OrtValue*>(value.release());
+  if (del->f != nullptr) {
+    *deleter = del.release();
+  } else
+    *deleter = nullptr;
   return nullptr;
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
+                    size_t* out) {
+  API_IMPL_BEGIN
+  ::ONNX_NAMESPACE::TensorProto proto;
+  if (!proto.ParseFromArray(input, input_len)) {
+    return OrtCreateStatus(ORT_FAIL, "parse input tensor proto failed");
+  }
+  switch (alignment) {
+    case 0:
+      ORT_C_API_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(proto, out));
+      break;
+    case 256:
+      ORT_C_API_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<256>(proto, out));
+      break;
+    default:
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Invalid alignment, which can only be 0 or 256");
+  }
+  return nullptr;
+  API_IMPL_END
+}
 #define DEFINE_RELEASE_ORT_OBJECT_FUNCTION(INPUT_TYPE, REAL_TYPE) \
   ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) { \
     delete reinterpret_cast<REAL_TYPE*>(value);                   \
   }
 
-#define DEFINE_RELEASE_ORT_OBJECT_FUNCTION_FOR_ARRAY(INPUT_TYPE, REAL_TYPE) \
-  ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) {           \
-    delete[] reinterpret_cast<REAL_TYPE*>(value);                           \
-  }
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN
@@ -1061,4 +1084,3 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, MLValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION_FOR_ARRAY(Status, char)

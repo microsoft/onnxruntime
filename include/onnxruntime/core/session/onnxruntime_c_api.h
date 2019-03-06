@@ -46,6 +46,14 @@ extern "C" {
 #define ORTCHAR_T char
 #endif
 
+#ifndef ORT_TSTR
+#ifdef _WIN32
+#define ORT_TSTR(X) L##X
+#else
+#define ORT_TSTR(X) (X)
+#endif
+#endif
+
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
 
 #ifdef __cplusplus
@@ -57,6 +65,7 @@ extern "C" {
 #else
 #define NO_EXCEPTION
 #endif
+
 
 // Copied from TensorProto::DataType
 // Currently, Ort doesn't support complex64, complex128, bfloat16 types
@@ -142,6 +151,7 @@ ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
+ORT_RUNTIME_CLASS(Callback);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -195,14 +205,12 @@ ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
 
 // Enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix);
+ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
 
-// Enable the memory pattern optimization.
-// The idea is if the input shapes are the same, we could trace the internal memory allocation
-// and generate a memory pattern for future request. So next time we could just do one allocation
-// with a big chunk for all the internal memory allocation.
+// deprecated
 ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
+// deprecated
 ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 
 // Enable the memory arena on CPU
@@ -261,9 +269,11 @@ ORT_API(OrtRunOptions*, OrtCreateRunOptions);
 
 ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions*, unsigned int);
 ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
+ORT_API(void, OrtRunOptionsSetCacheFeedsFetchesInfoEnabled, _In_ OrtRunOptions* options, int bool_value);
 
 ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*);
 ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions*);
+ORT_API(int, OrtRunOptionsGetCacheFeedsFetchesInfoEnabled, _In_ OrtRunOptions*);
 
 // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
 // will exit as soon as possible if the flag is true.
@@ -284,7 +294,7 @@ ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
  * \param out Should be freed by calling OrtReleaseValue
  */
 ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-               _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+               _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
                ONNXTensorElementDataType type, _Out_ OrtValue** out);
 
 // This function doesn't work with string tensor
@@ -316,8 +326,34 @@ ORT_API_STATUS(OrtGetStringTensorDataLength, _In_ const OrtValue* value, _Out_ s
 ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
                _Out_ size_t* offsets, size_t offsets_len);
 
-ORT_API_STATUS(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
-               _In_ const void* input, int input_len, _Out_ OrtValue** out);
+/**
+ * Create an OrtValue in CPU memory from a serialized TensorProto
+ * @param input           serialized TensorProto object
+ * @param input_len       length of 'input'.
+ * @param input_file_path A local file path of where the input was loaded from. Can be NULL if the tensor proto doesn't
+ *                        have any external data or it was loaded from current working dir. This path could be either a
+ *                        relative path or an absolute path.
+ * @param preallocated A preallocated buffer for the tensor. It should be allocated from CPU memory
+ * @param preallocated_size Length of the preallocated buffer in bytes, can be computed from
+ *          the OrtGetTensorMemSizeInBytesFromTensorProto function. This function will return an error if the
+ *          preallocated_size is not enough.
+ * @param out
+ * @return
+ */
+ORT_API_STATUS(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
+               _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
+               _Out_ OrtValue** out, _Out_ OrtCallback** deleter);
+
+/**
+ *  f will be freed in this call
+ */
+ORT_API(void, OrtRunCallback, _Frees_ptr_opt_ OrtCallback* f);
+
+/**
+ * calculate the memory requirement for the OrtTensorProtoToOrtValue function
+ */
+ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
+               _Out_ size_t* out);
 
 /**
  * Don't free the returned value
@@ -384,6 +420,12 @@ typedef enum OrtMemType {
 } OrtMemType;
 
 ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out);
+
+/**
+ * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ */
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out)
+ORT_ALL_ARGS_NONNULL;
 
 /**
  * Test if two allocation info are equal
