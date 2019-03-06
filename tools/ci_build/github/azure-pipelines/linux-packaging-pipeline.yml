@@ -42,7 +42,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: MacOS_C_API_Packaging_CPU_x64
-  pool: 'Hosted macOS'
+  pool: 
     vmImage: 'macOS-10.13'
   steps:
     - template: templates/set-test-data-variables-step.yml
