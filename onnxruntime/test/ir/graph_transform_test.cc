@@ -51,8 +51,9 @@ TEST(GraphTransformationTests, IdentityElimination) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
   
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 1};  
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PrePartition).IsOK());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 1};
+  std::vector<TransformerLevel> levels{TransformerLevel::Optional_L2, TransformerLevel::Optional_L1};
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, levels).IsOK());  
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -67,7 +68,8 @@ TEST(GraphTransformationTests, SliceElimination) {
   ASSERT_TRUE(op_to_count["Slice"] == 5);
   
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 1};  
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PrePartition).IsOK());
+  std::vector<TransformerLevel> levels{TransformerLevel::Optional_L2, TransformerLevel::Optional_L1};
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, levels).IsOK());  
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 3);
@@ -87,28 +89,10 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze1) {
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
-TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PostPartition).IsOK());
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("Unsqueeze") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("BatchNormalization") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("Mul") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("Add") == op_to_count.end());
-}
-/*
 TEST(GraphTransformationTests, FuseConvActivation) {
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.max_graph_optimization_level = 2;
   std::string activations[] = {"relu", "sigmoid", "softsign", "tanh", "leakyrelu"};
 
   for (std::string act : activations) {
@@ -118,53 +102,50 @@ TEST(GraphTransformationTests, FuseConvActivation) {
 
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-    std::unique_ptr<ConvActivationFusion> ConvActivationFusion_transformer = std::make_unique<ConvActivationFusion>();
-    session_object.RegisterGraphTransformer(std::move(ConvActivationFusion_transformer));
-
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
 }
-*/
+
 TEST(GraphTransformationTests, FuseConvBNNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
 
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.max_graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PostPartition).IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("BatchNormalization") == op_to_count.end());
+  ASSERT_TRUE(session_object.Initialize().IsOK());  
 }
 
 TEST(GraphTransformationTests, FuseConvMulNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-mul-no-bias.onnx";
   
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.max_graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PostPartition).IsOK());
-  
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("Mul") == op_to_count.end());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx";
 
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.max_graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PostPartition).IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("Mul") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("BatchNormalization") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("Add") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("Unsqueeze") == op_to_count.end());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
@@ -173,19 +154,14 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
   so.max_graph_optimization_level = 2;
-  
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PostPartition).IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("Mul") == op_to_count.end());
-  ASSERT_TRUE(op_to_count.find("Add") == op_to_count.end());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
 }
-/*
+
 TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
 
@@ -203,29 +179,29 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
 TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/model.onnx";
 
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.max_graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, GraphTransformerLevel::Optional_L2).IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("Add") == op_to_count.end());
-}*/
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
 
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
 
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.max_graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5, 2};
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformations(graph, TransformationStage::PostPartition).IsOK());
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count.find("Add") == op_to_count.end());  
+  ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {

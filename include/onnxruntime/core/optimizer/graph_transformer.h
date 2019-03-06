@@ -9,6 +9,16 @@
 
 namespace onnxruntime {
 
+/**
+* Default_Global refers to all the transformations which are required for 
+  corrcetness and are execution provider independent
+* Default_ProvderSpecific refers to transformations which are also required 
+  for correctness but are execution provider specific
+* Optional_L1 refers to all basic optmizations. These are run both before and 
+  after graph partitioning
+* Optional_L2 refers to all fusion optmizations. These are run after graph 
+  partitioning
+*/
 enum TransformerLevel {
   Default_Global = 0,
   Default_ProviderSpecific = 1,
@@ -119,7 +129,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   To avoid this, we may use OpSignature ID as the key, which should be name_domain_version.
   We will use the string type instead of the OpSchema for now. We should probably add a version as well.
   */
-  Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule);
+  Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule); 
 
   /** Check if the given op_type has any rules registered for it 
   @returns true if there are rules registered for this op_type.*/

@@ -31,6 +31,14 @@ class LoggingManager;
 }
 
 /**
+  * Defines stages in which graph transformations can be applied
+  */
+enum class TransformationStage {
+  PrePartition,
+  PostPartition
+};
+
+/**
   * Configuration information for a session.
   */
 struct SessionOptions {
@@ -137,7 +145,7 @@ class InferenceSession {
     * Default is 2
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, unsigned int level = 2);
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer);
 
   /**
   * Load custom ops implemented in a dynamically linked shared library.
