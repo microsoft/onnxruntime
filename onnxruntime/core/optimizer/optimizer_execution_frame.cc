@@ -8,6 +8,7 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/callback.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {
@@ -29,9 +30,21 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     // Only create MLValue instances for initializers used by an array of nodes.
     InitializedTensorSet::const_iterator it = initialized_tensor_set.find(arg.Name());
     if (it != initialized_tensor_set.cend()) {
+      const auto& tensor_proto = *(it->second);
+      size_t cpu_tensor_length;
+      ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       MLValue mlvalue;
-      utils::TensorProtoToMLValue(*(it->second), allocator_ptr_, nullptr, 0, mlvalue);
+      OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+      std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
+      std::unique_ptr<Tensor> p_tensor;
+      OrtCallback d;
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
+          Env::Default(), nullptr, tensor_proto, MemBuffer(data.get(), cpu_tensor_length, info), mlvalue, d));
+
       initializers_[idx] = mlvalue;
+      buffer_for_initialized_tensors_[idx] = std::move(data);
+      if (d.f != nullptr)
+        deleter_for_initialized_tensors_[idx] = d;
     }
 
     return Status::OK();
@@ -78,10 +91,8 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
                       std::vector<MLValue>(),
                       info.GetMLValueNameIdxMap(),
                       info.GetNodeIndexInfo()),
-                      info_(info) {
+      info_(info) {
 }
-
-OptimizerExecutionFrame::~OptimizerExecutionFrame() = default;
 
 AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) const {
   return info_.GetAllocator(info);
@@ -106,22 +117,8 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(MLValue& mlvalue, in
   // tensors
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
-  OrtAllocatorInfo allocator_info = allocator_ptr->Info();
-
-  int64_t len = shape->Size();
-  if (len < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape cannot contain any negative value. Shape was:", *shape);
-  }
-  size_t size;
-  if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, element_type->Size(), &size)) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "size overflow");
-  }
-  
-  void* buffer = size == 0 ? nullptr : allocator_ptr->Alloc(size);
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                               *shape,
-                                                              buffer,
-                                                              allocator_info,
                                                               allocator_ptr);
 
   mlvalue.Init(p_tensor.release(),
@@ -131,4 +128,4 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(MLValue& mlvalue, in
   return Status::OK();
 }
 
-}
+}  // namespace onnxruntime
