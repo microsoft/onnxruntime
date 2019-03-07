@@ -72,7 +72,7 @@ Return Value:
         .globl  C_UNDERSCORE(MlasLogisticKernelFma3)
 C_UNDERSCORE(MlasLogisticKernelFma3):
 
-        lea     rax,C_UNDERSCORE(MlasLogisticConstants)[rip]
+        mov     rax,C_UNDERSCORE(MlasLogisticConstants)@GOTPCREL[rip]
         vbroadcastss ymm4,LogisticConstants_LowerRange[rax]
         vbroadcastss ymm5,LogisticConstants_UpperRange[rax]
         vbroadcastss ymm6,LogisticConstants_alpha_9[rax]

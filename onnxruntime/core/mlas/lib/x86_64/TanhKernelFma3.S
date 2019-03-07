@@ -72,7 +72,7 @@ Return Value:
         .globl  C_UNDERSCORE(MlasTanhKernelFma3)
 C_UNDERSCORE(MlasTanhKernelFma3):
 
-        lea     rax,C_UNDERSCORE(MlasTanhConstants)[rip]
+        mov     rax,C_UNDERSCORE(MlasTanhConstants)@GOTPCREL[rip]
         vbroadcastss ymm4,TanhConstants_LowerRange[rax]
         vbroadcastss ymm5,TanhConstants_UpperRange[rax]
         vbroadcastss ymm6,TanhConstants_alpha_13[rax]
