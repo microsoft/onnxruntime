@@ -23,7 +23,7 @@ ONNX Runtime continuously strives to provide top performance for a broad and gro
 ### Alignment with ONNX Releases
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See ONNX version release details [here](https://github.com/onnx/onnx/releases).
 
-As of January 2019, ONNX Runtime supports ONNX 1.3. We will soon add support for the recently released ONNX 1.4.
+As of March 2019, ONNX Runtime supports ONNX 1.4.
 
 ### Traditional ML support
 ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios. 
@@ -31,7 +31,7 @@ ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional
 ## High Performance 
 You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
 
-Currently ONNX Runtime supports CUDA and MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
+Currently ONNX Runtime supports CUDA, MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
 
 We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. We have ongoing collaborations to integrate the following with ONNX Runtime:
 	* Intel MKL-DNN and nGraph
@@ -44,9 +44,7 @@ ONNX Runtime offers:
 
 See API documentation and package installation instructions [below](#Installation). 
 
-Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. These include but are not limited to:
-* C# for Mac
-* [ARM](BUILD.md##arm-builds)
+Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. If you have specific scenarios that are not currently supported, please suggest by filing a [Github Issue](https://github.com/microsoft/onnxruntime/issues).
 
 # Getting Started 
 If you need a model:  
