@@ -47,3 +47,4 @@ jobs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --arm'
         workingDirectory: "$(Build.BinariesDirectory)"
+    - template: templates/clean-agent-build-directory-step.yml
