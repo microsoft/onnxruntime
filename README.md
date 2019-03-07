@@ -55,12 +55,15 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 
 # Installation
 ## APIs and Official Builds
-| API Documentation | CPU package | GPU package |
+| API Documentation | CPU package | GPU package* |
 |-----|-------------|-------------|
-| [Python](https://aka.ms/onnxruntime-python) | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> *Compatibility: <br/><ul><li>Python 3.5-3.7</li></ul>* | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/> *Compatibility: <br/><ul><li>Python 3.5-3.7</li><li>CUDA 9.1</li><li>cuDNN 7.3</li></ul>* |
-| [C#](docs/CSharp_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/> *Compatibility: <br/><ul><li>CUDA 9.1</li><li>cuDNN 7.3</li></ul>*|
-| [C](docs/C_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul> [Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul> [Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> *Compatibility: <br/><ul><li>CUDA 9.1</li><li>cuDNN 7.3</li></ul>* |
+| [Python](https://aka.ms/onnxruntime-python)** | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/> |
+| [C#](docs/CSharp_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
+| [C](docs/C_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul> [Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul> [Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/>|
 | [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
+
+&#42;Requires CUDA 9.1 and cuDNN 7.3<br/>
+&#42;&#42;Compatible with Python 3.5-3.7
 
 ## System Requirements
 * The OnnxRuntime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the system. For Windows, OpenMP support comes as part of VC runtime. For Linux, the system must have the libgomp.so.1 installed. 
