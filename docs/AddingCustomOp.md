@@ -2,9 +2,12 @@ Adding a new op
 ===============
 
 ## A new op can be written and registered with ONNXRuntime in the following 3 ways
-### 1. Using the experimental custom op API in the C API
-* Use the OrtAddCustomOpDomain function in the onnxruntime_c_api.h file (first creating the custom op domain and filling it with your custom ops).
-See [this](../onnxruntime/test/custom_op_shared_lib/test_custom_op.cc) 
+### 1. Using the experimental custom op API in the C API (onnxruntime_c_api.h)
+* Note: These APIs are experimental and will change in the next release. They're released now for feedback and experimentation.
+* Create an OrtCustomOpDomain with the domain name used by the custom ops
+* Create an OrtCustomOp structure for each op and add them to the domain
+* Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
+See [this](../onnxruntime/test/custom_op_shared_lib/test_custom_op.cc) for an example.
 
 ### 2. Using RegisterCustomRegistry API
 * Implement your kernel and schema (if required) using the OpKernel and OpSchema APIs (headers are in the include folder).
