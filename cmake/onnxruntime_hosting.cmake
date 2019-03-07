@@ -3,7 +3,7 @@
 
 project(onnxruntime_hosting)
 
-find_package(Boost 1.68 COMPONENTS system coroutine context thread program_options REQUIRED)
+find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED)
 
 file(GLOB_RECURSE onnxruntime_hosting_srcs
     "${ONNXRUNTIME_ROOT}/hosting/*.h"
@@ -18,8 +18,8 @@ onnxruntime_add_include_to_target(${PROJECT_NAME} onnxruntime_session gsl)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${ONNXRUNTIME_ROOT}
-        ${Boost_INCLUDE_DIR}
         PUBLIC
+        ${Boost_INCLUDE_DIR}
         ${ONNXRUNTIME_ROOT}/hosting/include)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
