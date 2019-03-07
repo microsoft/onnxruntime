@@ -5,7 +5,7 @@
 #define BEAST_SERVER_ROUTES_H
 
 #include <regex>
-#include <unordered_map>
+#include <vector>
 #include <boost/beast/http.hpp>
 #include "http_context.h"
 
@@ -15,15 +15,23 @@ namespace onnxruntime {
 
 using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
 
+// This class maintains two lists of regex -> function lists. One for POST requests and one for GET requests
+// If the incoming URL could match more than one regex, the first one will win.
 class Routes {
  public:
   Routes() = default;
   bool register_controller(http::verb method, const std::regex& url_pattern, const handler_fn& controller) {
-    if (this->fn_table.find(method) == this->fn_table.end()) {
-      this->fn_table[method] = std::vector<std::pair<std::regex, handler_fn>>{};
+    switch(method)
+    {
+      case http::verb::get:
+        this->get_fn_table.push_back(make_pair(url_pattern, controller));
+        return true;
+      case http::verb::post:
+        this->post_fn_table.push_back(make_pair(url_pattern, controller));
+        return true;
+      default:
+        return false;
     }
-    (this->fn_table[method]).push_back(make_pair(url_pattern, controller));
-    return true;
   }
 
   http::status parse_url(http::verb method,
@@ -32,14 +40,28 @@ class Routes {
                          /* out */ std::string& model_version,
                          /* out */ std::string& action,
                          /* out */ handler_fn& func) {
-    if (this->fn_table.find(method) == this->fn_table.end()) {
+    std::vector<std::pair<std::regex, handler_fn>> func_table;       
+    switch(method)
+    {
+      case http::verb::get:
+        func_table = this->get_fn_table;
+        break;
+      case http::verb::post:
+        func_table = this->post_fn_table;
+        break;
+      default:
+        std::cout << "Unsupported method: [" << method << "]" << std::endl;
+        return http::status::method_not_allowed;
+    }
+
+    if (func_table.empty()) {
       std::cout << "Unsupported method: [" << method << "]" << std::endl;
       return http::status::method_not_allowed;
     }
 
     std::smatch m{};
     bool found_match = false;
-    for (const auto& pattern : this->fn_table[method]) {
+    for (const auto& pattern : func_table) {
       // TODO: use re2 for matching
       if (std::regex_match(url, m, pattern.first)) {
         model_name = m[1];
@@ -61,7 +83,8 @@ class Routes {
   }
 
  private:
-  std::unordered_map<http::verb, std::vector<std::pair<std::regex, handler_fn>>> fn_table;
+  std::vector<std::pair<std::regex, handler_fn>> post_fn_table;
+  std::vector<std::pair<std::regex, handler_fn>> get_fn_table;
 };
 
 } // namespace onnxruntime
