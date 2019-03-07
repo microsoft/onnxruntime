@@ -146,6 +146,11 @@ jobs:
       inputs:
         script: |
           set PATH=C:\local\cuda-9.1.85-windows10-x64-0\bin;%PATH%
+          echo "checking the content of the CUDA msbuild path"
+          pushd c:\local
+          dir /s
+          dir *.targets /s
+          dir *.props /s
         modifyEnvironment: true
         workingDirectory: '$(Build.BinariesDirectory)'
 
