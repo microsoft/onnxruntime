@@ -32,6 +32,7 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
 #include "core/framework/path_lib.h"
 #include "core/framework/session_state.h"
@@ -170,17 +171,18 @@ struct CustomOpKernel : OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
+    auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
     std::vector<OrtValue*> input_tensors;
-    auto input_count = ctx->InputCount();
+    auto input_count = ictx->InputCount();
     for (int i = 0; i < input_count; i++)
-      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(i))));
+      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ictx->GetInputMLValue(i))));
 
     std::vector<OrtValue*> output_tensors;
-    auto output_count = ctx->OutputCount();
+    auto output_count = ictx->OutputCount();
     for (int i = 0; i < output_count; i++) {
       OrtTensorTypeAndShapeInfo info;
       op_.KernelGetOutputShape(op_kernel_, input_tensors.data(), input_tensors.size(), i, &info);
-      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ctx->OutputMLValue(0, info.shape)));
+      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ictx->OutputMLValue(0, info.shape)));
     }
 
     op_.KernelCompute(op_kernel_, input_tensors.data(), input_tensors.size(), output_tensors.data(), output_tensors.size());
@@ -188,6 +190,8 @@ struct CustomOpKernel : OpKernel {
   }
 
  private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
+
   OrtCustomOp& op_;
   void* op_kernel_;
 };

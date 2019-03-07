@@ -533,41 +533,41 @@ ORT_API_STATUS(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ c
 ORT_API_STATUS(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
 
 /*
- * The OrtCustomOp structure defines a custom op's schema and it's kernel callbacks. The callbacks are filled in by
+ * The OrtCustomOp structure defines a custom op's schema and its kernel callbacks. The callbacks are filled in by
  * the implementor of the custom op.
 */
 struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void(ORT_API_CALL* CreateKernel)(struct OrtCustomOp* op, OrtKernelInfo* info, void** op_kernel);
+  void(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ OrtKernelInfo* info, _Out_ void** op_kernel);
 
   // Returns the name of the op
-  const char*(ORT_API_CALL* GetName)(struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
 
-  // Returns the number and types of the input & output tensors
-  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(struct OrtCustomOp* op, size_t index);
-  size_t(ORT_API_CALL* GetInputTypeCount)(struct OrtCustomOp* op);
-  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(struct OrtCustomOp* op, size_t index);
-  size_t(ORT_API_CALL* GetOutputTypeCount)(struct OrtCustomOp* op);
+  // Returns the count and types of the input & output tensors
+  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
 
   // Op kernel callbacks
-  void(ORT_API_CALL* KernelGetOutputShape)(void* op_kernel, OrtValue** inputs, size_t input_count, size_t output_index, OrtTensorTypeAndShapeInfo* output);
-  void(ORT_API_CALL* KernelCompute)(void* op_kernel, OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count);
-  void(ORT_API_CALL* KernelDestroy)(void* op_kernel);
+  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
+  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ OrtValue** outputs, _In_ size_t output_count);
+  void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 };
 typedef struct OrtCustomOp OrtCustomOp;
 
 /*
 * Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
 */
-ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain, int op_version_start, int op_version_end);
+ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain, _In_ int op_version_start, _In_ int op_version_end);
 
 /*
  * Add custom ops to the OrtCustomOpDomain
  *  Note: The OrtCustomOp* pointer must remain valid until the OrtCustomOpDomain using it is released
 */
-ORT_API_STATUS(OrtCustomOpDomain_Add, _In_ OrtCustomOpDomain* custom_op_domain, OrtCustomOp* op);
+ORT_API_STATUS(OrtCustomOpDomain_Add, _In_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
 
 /*
  * Add a custom op domain to the OrtSessionOptions

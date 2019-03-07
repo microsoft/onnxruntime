@@ -98,7 +98,6 @@ class OpKernelContext {
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
-  MLValue* OutputMLValue(int index, const TensorShape& shape);
 
   const logging::Logger& Logger() const {
     return *logger_;
@@ -146,13 +145,13 @@ class OpKernelContext {
   */
   Fence_t OutputFence(int index) const;
 
-  const MLValue* GetInputMLValue(int index) const;
-  MLValue* GetOutputMLValue(int index);
-
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
+  const MLValue* GetInputMLValue(int index) const;
   const MLValue* GetImplicitInputMLValue(int index) const;
+  MLValue* GetOutputMLValue(int index);
+  MLValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the MLValue* based on the shape, if it does not exist
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);

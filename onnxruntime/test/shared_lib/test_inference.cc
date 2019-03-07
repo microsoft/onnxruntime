@@ -207,7 +207,7 @@ struct MyCustomKernel {
     const float* X;
     const float* Y;
     ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
-    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&Y))));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[1], reinterpret_cast<void**>(const_cast<float**>(&Y))));
 
     float* out;
     ORT_THROW_ON_ERROR(OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
