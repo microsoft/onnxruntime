@@ -79,6 +79,9 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
+    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
+                        "before building the python binding.")
+    parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
@@ -195,8 +198,9 @@ def install_ubuntu_deps(args):
         except Exception as e:
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
-def install_python_deps():
-    dep_packages = ['setuptools', 'wheel', 'numpy']
+def install_python_deps(numpy_version=""):
+    dep_packages = ['setuptools', 'wheel']
+    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -480,17 +484,18 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
                 if config != 'Debug':
                     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
-            try:
-                import onnxmltools
-                import keras
-                onnxml_test = True
-            except ImportError:
-                warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
-                onnxml_test = False
-            if onnxml_test:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
+            if not args.skip_keras_test:
+                try:
+                    import onnxmltools
+                    import keras
+                    onnxml_test = True
+                except ImportError:
+                    warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
+                    onnxml_test = False
+                if onnxml_test:
+                    run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -502,19 +507,24 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         cmd = []
         if provider:
           cmd += ["-e", provider]
-          if provider == 'cuda':
-            cmd += ["-j", "2"]
+
+        if num_parallel_models > 0:
+          cmd += ["-j", str(num_parallel_models)]
+
         if config != 'Debug' and os.path.exists(model_dir):
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
-        run_subprocess([exe] + cmd, cwd=cwd)
+        
         if enable_parallel_executor_test:
+          run_subprocess([exe] + cmd, cwd=cwd)  
           if provider == 'mkldnn':
             #limit concurrency to 1
-            run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
+            run_subprocess([exe,'-x', '-c', '1'] + cmd, cwd=cwd)
           else:
             run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+        else:
+          run_subprocess([exe] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -572,7 +582,7 @@ def main():
         cmake_extra_args = []
         if(is_windows()):
           if (args.x86):
-            cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
+            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', 'Visual Studio 15 2017']
           else:
             toolset = 'host=x64'
             if (args.msvc_toolset):
@@ -586,13 +596,13 @@ def main():
             if not is_docker():
                 install_python_deps()
         if (args.enable_pybind and is_windows()):
-            install_python_deps()
+            install_python_deps(args.numpy_version)
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
             if not args.test_data_url or not args.test_data_checksum:
-                raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, args.pb_home, configs, cmake_extra_defines,
@@ -613,11 +623,15 @@ def main():
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
             if args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
+            elif args.x86 or platform.system() == 'Darwin':
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 1)
+              # TODO: parallel executor test fails on MacOS
             else:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
+
               if args.use_mkldnn:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
     if args.build:
         if args.build_wheel:

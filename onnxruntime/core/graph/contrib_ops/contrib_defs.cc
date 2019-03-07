@@ -340,7 +340,7 @@ activation.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(
-The FusedGemm operator schema is the same as Gemm besides it includes attributes 
+The FusedGemm operator schema is the same as Gemm besides it includes attributes
 activation and leaky_relu_alpha.)DOC")
       .Input(
           0,
@@ -477,32 +477,32 @@ activation and leaky_relu_alpha.)DOC")
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
   Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
   The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
-  the second mode will be used. The first mode breaks each input string into tokens by removing separators. 
+  the second mode will be used. The first mode breaks each input string into tokens by removing separators.
 
-  Let's assume "separators" is [" "] and consider an example. 
-  If input is 
+  Let's assume "separators" is [" "] and consider an example.
+  If input is
 
-  ["Hello World", "I love computer science !"] whose shape is [2], 
+  ["Hello World", "I love computer science !"] whose shape is [2],
 
-  then the output would be 
+  then the output would be
 
- [["Hello", "World", padvalue, padvalue, padvalue], 
- ["I", "love", "computer", "science", "!"]] 
+ [["Hello", "World", padvalue, padvalue, padvalue],
+ ["I", "love", "computer", "science", "!"]]
 
- whose shape is [2, 5] because you can find at most 5 tokens per input string. 
+ whose shape is [2, 5] because you can find at most 5 tokens per input string.
  Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
 
  For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
  The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
- This operator searches for the first match starting from the beginning of the considered string, 
+ This operator searches for the first match starting from the beginning of the considered string,
  and then launches another search starting from the first remained character after the first matched token.
  If no match found, this operator will remove the first character from the remained string and do another search.
  This procedure will be repeated until reaching the end of the considered string.
 
-  Let's consider another example to illustrate the effect of setting "mark" to true. 
-  If input is ["Hello", "World"], 
+  Let's consider another example to illustrate the effect of setting "mark" to true.
+  If input is ["Hello", "World"],
   then the corresponding output would be [0x02, "Hello", "World", 0x03].
-  This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2]. 
+  This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2].
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
@@ -1027,7 +1027,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
-        selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+        selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
 
         // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
         auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
@@ -1043,7 +1043,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto num_outputs = ctx.getNumOutputs();
         if (num_outputs > 1) {
           auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
-          valid_outputs_shape->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          valid_outputs_shape->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
           valid_outputs_shape
               ->mutable_shape()
               ->add_dim()
@@ -1058,13 +1058,29 @@ The bounding box coordinates corresponding to the selected indices can then be o
       .Input(0, "X", "An input tensor to hash.", "T1")
       .Output(0, "Y", "32-bit hash value.", "T2")
       .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
-      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned or signed 32-bit integer tensor.")
+      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned and signed 32-bit integer tensor.")
       .Attr(
           "seed",
           "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0.",
           AttributeProto::INT,
           (int64_t)0LL)
+      .Attr(
+          "positive",
+          "If value is 1, output type is uint32_t, else int32_t. Default value is 1.",
+          AttributeProto::INT,
+          (int64_t)1LL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // type inference
+        auto positive_attr = ctx.getAttribute("positive");
+        bool is_positive =
+            positive_attr ? (static_cast<int>(positive_attr->i()) == 1 ? true : false) : true /* default value if attribute not present */;
+        auto output_data_type = ctx.getOutputType(0)->mutable_tensor_type();
+        if (is_positive) {
+          output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32);
+        } else {
+          output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+        }
+
         // Shape inference
         if (!hasInputShape(ctx, 0))
           return;

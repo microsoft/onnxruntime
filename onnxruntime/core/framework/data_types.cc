@@ -736,6 +736,24 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
   return all_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
+  static std::vector<MLDataType> all_numeric_size_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<int64_t>(),
+       DataTypeImpl::GetTensorType<uint64_t>(),
+       DataTypeImpl::GetTensorType<int32_t>(),
+       DataTypeImpl::GetTensorType<uint32_t>(),
+       DataTypeImpl::GetTensorType<int16_t>(),
+       DataTypeImpl::GetTensorType<uint16_t>(),
+       DataTypeImpl::GetTensorType<int8_t>(),
+       DataTypeImpl::GetTensorType<uint8_t>(),
+       DataTypeImpl::GetTensorType<MLFloat16>(),
+       DataTypeImpl::GetTensorType<BFloat16>()};
+
+  return all_numeric_size_tensor_types;
+}
+
 // helper to stream. expected to only be used for error output, so any typeid lookup
 // cost should be fine. alternative would be to add a static string field to DataTypeImpl
 // that we set in the register macro to the type name, and output that instead.

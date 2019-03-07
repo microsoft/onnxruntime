@@ -13,6 +13,7 @@ class MurmurHash3 final : public OpKernel {
  public:
   MurmurHash3(const OpKernelInfo& info) : OpKernel(info) {
     seed_ = static_cast<uint32_t>(info.GetAttrOrDefault<int64_t>("seed", 0));
+    is_positive_ = static_cast<int64_t>(info.GetAttrOrDefault<int64_t>("positive", 1));
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -22,6 +23,7 @@ private:
 
 private :
   uint32_t seed_;
+  int64_t is_positive_{1};
 };
 }  // namespace contrib
 }  // namespace onnxruntime

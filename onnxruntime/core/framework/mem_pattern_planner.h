@@ -69,7 +69,7 @@ class MemPatternPlanner {
     }
   }
 
-  MemoryPattern GenerateMemPattern() {
+  MemoryPattern GenerateMemPattern() const {
     MemoryPattern pattern;
     pattern.peak_size_ = buffer_size;
     for (auto& alloc : allocs_) {

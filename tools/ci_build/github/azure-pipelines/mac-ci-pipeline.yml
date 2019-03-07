@@ -3,9 +3,10 @@ jobs:
   pool:
     vmImage: 'macOS-10.13'
   steps:
+    - template: templates/set-test-data-variables-step.yml
     - script: |
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --skip_submodule_sync --parallel --build_shared_lib
-      displayName: 'Command Line Script'
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
+      displayName: 'Build and Test OnnxRuntime lib for MacOS'
 
     - template: templates/clean-agent-build-directory-step.yml

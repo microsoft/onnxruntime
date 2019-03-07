@@ -11,13 +11,19 @@
 * Setting the thread pool size for each session.
 * Dynamically loading custom ops.
 
-## Very simplified outline of how to use it
+## Usage Overview
 
 1. Include [onnxruntime_c_api.h](/include/onnxruntime/core/session/onnxruntime_c_api.h).
 2. Call OrtCreateEnv
 3. Create Session: OrtCreateSession(env, model_uri, nullptr,...)
 4. Create Tensor
    1) OrtCreateAllocatorInfo
-   2) OrtCreateTensorWithDataAsONNXValue
+   2) OrtCreateTensorWithDataAsOrtValue
 5. OrtRun
+
+## Sample code
+
+The example below shows a sample run using the SqueezeNet model from ONNX model zoo, including dynamically reading model inputs, outputs, shape and type information, as well as running a sample vector and fetching the resulting class probabilities for inspection. 
+
+* [../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 

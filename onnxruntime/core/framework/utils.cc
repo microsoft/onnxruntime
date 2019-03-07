@@ -34,20 +34,8 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider,
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
 
-  void* buffer = nullptr;
-  const size_t len = fetched_tensor.Size();
-  if (len != 0) {
-    buffer = allocator->Alloc(len);
-    if (!buffer) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer. Execution provider type=",
-                             execution_provider.Type());
-    }
-  }
-
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
                                                               fetched_tensor.Shape(),
-                                                              buffer,
-                                                              allocator->Info(),
                                                               allocator);
   output_mlvalue.Init(p_tensor.release(),
                       DataTypeImpl::GetType<Tensor>(),
@@ -154,8 +142,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
 
     // If a node requires input on cpu and input tensor is allocated with pinned memory allocator, don't do copy
     if (required_provider_type == onnxruntime::kCpuExecutionProvider &&
-        (input_tensor_loc.mem_type == OrtMemTypeCPU ||
-         input_tensor_loc.mem_type == OrtMemTypeCPUOutput)) {
+        input_tensor_loc.mem_type == OrtMemTypeCPU) {
       new_mlvalue = orig_mlvalue;
       break;
     }
@@ -258,20 +245,6 @@ static common::Status SetupFetchesForExecute(const SessionState& session_state,
 
   new_fetches.resize(num_outputs);
 
-  if (copy_to_new_fetches_cached_values && !copy_to_new_fetches_cached_values->empty()) {
-    // use the cached values
-    ORT_ENFORCE(copy_to_new_fetches_cached_values->size() == num_outputs);
-
-    auto& copy = *copy_to_new_fetches_cached_values;
-    for (size_t i = 0; i < num_outputs; ++i) {
-      if (copy[i]) {
-        new_fetches[i] = fetches[i];
-      }
-    }
-
-    return Status::OK();
-  }
-
   // track which fetches can be copied to new_fetches and used directly in the execution.
   std::vector<bool> local_can_copy_flags(num_outputs, false);
 
@@ -366,15 +339,6 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
                                                std::vector<FeedsFetchesManager::MLValueCopyInfo>* copiers) {
   needed_copy = false;
   auto num_outputs = fetches.size();
-
-  // used the cached copy logic if available
-  if (copiers && !copiers->empty()) {
-    for (size_t idx = 0; idx < num_outputs; ++idx) {
-      ORT_RETURN_IF_ERROR(CopyMLValue((*copiers)[idx], fetches[idx], user_fetches[idx]));
-    }
-
-    return Status::OK();
-  }
 
   if (copiers) {
     // resize so we have default values and only need to update an entry if there's a device copy required.

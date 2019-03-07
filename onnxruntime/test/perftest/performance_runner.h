@@ -13,12 +13,14 @@
 #include <core/common/logging/sinks/clog_sink.h>
 #include <core/common/logging/logging.h>
 #include <core/common/status.h>
+#include <core/graph/onnx_protobuf.h>
 #include <core/framework/environment.h>
 #include <core/session/inference_session.h>
 #include <core/platform/env.h>
 #include <core/session/IOBinding.h>
-
+#include <core/session/onnxruntime_cxx_api.h>
 #include "test_configuration.h"
+#include "heap_buffer.h"
 
 namespace onnxruntime {
 namespace perftest {
@@ -30,7 +32,7 @@ struct PerformanceResult {
   std::vector<double> time_costs;
   std::string model_name;
 
-  void DumpToFile(const std::string& path, bool f_include_statistics = false) const {
+  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const {
     std::ofstream outfile;
     outfile.open(path, std::ofstream::out | std::ofstream::app);
     if (!outfile.good()) {
@@ -68,7 +70,8 @@ struct PerformanceResult {
 
 class PerformanceRunner {
  public:
-  PerformanceRunner(const PerformanceTestConfig& test_config) : performance_test_config_(test_config) {}
+  PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config)
+      : env_(env), performance_test_config_(test_config) {}
 
   Status Run();
 
@@ -78,29 +81,14 @@ class PerformanceRunner {
     performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path,
                                    performance_test_config_.run_config.f_dump_statistics);
   }
+  ~PerformanceRunner() {
+    if (session_object_ != nullptr) OrtReleaseSession(session_object_);
+  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerformanceRunner);
 
  private:
   bool Initialize();
-
-  inline Status RunOneIteration(bool isWarmup = false) {
-    auto start = std::chrono::high_resolution_clock::now();
-    OrtRunOptions run_options;
-    run_options.cache_feeds_fetches_info = true;
-
-    ORT_RETURN_IF_ERROR(session_object_->Run(run_options, *io_binding_));
-    auto end = std::chrono::high_resolution_clock::now();
-
-    if (!isWarmup) {
-      std::chrono::duration<double> duration_seconds = end - start;
-      performance_result_.time_costs.emplace_back(duration_seconds.count());
-      performance_result_.total_time_cost += duration_seconds.count();
-      if (performance_test_config_.run_config.f_verbose) {
-        std::cout << "iteration:" << performance_result_.time_costs.size() << ","
-                  << "time_cost:" << performance_result_.time_costs.back() << std::endl;
-      }
-    }
-    return Status::OK();
-  }
+  Status RunOneIteration(bool isWarmup = false);
 
   inline Status RunFixDuration() {
     while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
@@ -117,11 +105,20 @@ class PerformanceRunner {
   }
 
  private:
+  OrtEnv* env_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
-
-  std::shared_ptr<::onnxruntime::InferenceSession> session_object_;
-  std::unique_ptr<IOBinding> io_binding_;
+  // not owned
+  OrtSession* session_object_ = nullptr;
+  std::vector<const char*> input_names_;
+  std::unordered_map<std::string, OrtValue*> feeds_;
+  std::vector<OrtValue*> input_values_;
+  HeapBuffer b_;
+  std::vector<std::string> output_names_;
+  // The same size with output_names_.
+  // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
+  std::vector<const char*> output_names_raw_ptr;
+  std::vector<OrtValue*> output_values_;
 };
 }  // namespace perftest
 }  // namespace onnxruntime

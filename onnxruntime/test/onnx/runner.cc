@@ -11,7 +11,7 @@
 #include <core/platform/env.h>
 #include <core/framework/tensorprotoutils.h>
 #include "test_allocator.h"
-#include "path_lib.h"
+#include <core/framework/path_lib.h>
 #ifdef _WIN32
 #include <Windows.h>
 #else
@@ -20,6 +20,7 @@
 #endif
 #include <test/compare_mlvalue.h>
 #include "TestCase.h"
+#include "heap_buffer.h"
 #include "FixedCountFinishCallback.h"
 
 using namespace onnxruntime;
@@ -243,17 +244,16 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
 }
 
 std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  OrtAllocator* env) {
+                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases) {
   std::vector<ITestCase*> tests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
     std::basic_string<PATH_CHAR_TYPE> node_data_root_path = paths.back();
     paths.pop_back();
     std::basic_string<PATH_CHAR_TYPE> my_dir_name = GetLastComponent(node_data_root_path);
-    LoopDir(node_data_root_path, [&](const PATH_CHAR_TYPE* filename, FileType f_type) -> bool {
+    LoopDir(node_data_root_path, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
       if (filename[0] == '.') return true;
-      if (f_type == FileType::TYPE_DIR) {
+      if (f_type == OrtFileType::TYPE_DIR) {
         std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename);
         paths.push_back(p);
         return true;
@@ -268,7 +268,7 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
       }
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
 
-      ITestCase* l = CreateOnnxTestCase(env, ToMBString(test_case_name));
+      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name));
       auto status = l->SetModelPath(p.c_str());
       if (!status.IsOK()) {
         LOGF_DEFAULT(ERROR, "load data from %s failed:%s\n", p.c_str(), status.ErrorMessage().c_str());
@@ -317,8 +317,9 @@ std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const OrtValue* o, co
   return onnxruntime::CompareMLValue(*(MLValue*)o, *(MLValue*)expected_mlvalue, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
 EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
+  HeapBuffer holder;
   std::unordered_map<std::string, OrtValue*> feeds;
-  common::Status status = c_->LoadTestData(session, task_id, feeds, true);
+  common::Status status = c_->LoadTestData(session, task_id, holder, feeds, true);
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << status.ErrorMessage();
     return StatusCodeToExecuteResult(status.Code());
@@ -390,18 +391,18 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   //TODO: if there are no output value files, just skip the validation
   std::unordered_map<std::string, OrtValue*> expected_output_values;
-  status = c_->LoadTestData(session, task_id, expected_output_values, false);
+  status = c_->LoadTestData(session, task_id, holder, expected_output_values, false);
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
   }
   std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
-  std::unordered_map<std::string, const onnx::ValueInfoProto*> name_output_value_info_proto;
+  std::unordered_map<std::string, const ONNX_NAMESPACE::ValueInfoProto*> name_output_value_info_proto;
   int i = 0;
   for (auto& output_name : output_names) {
     // p_fetches is filled in the order of output_names.
     name_fetch_output_map[output_name] = output_values[i];
-    const onnx::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
+    const ONNX_NAMESPACE::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
     name_output_value_info_proto.insert(std::make_pair(infoProto.name(), &infoProto));
     i++;
   }
@@ -420,7 +421,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     std::pair<COMPARE_RESULT, std::string> ret = CompareGenericValue(actual_output_value, expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
-      const onnx::ValueInfoProto& v = *name_output_value_info_proto[output_name];
+      const ONNX_NAMESPACE::ValueInfoProto& v = *name_output_value_info_proto[output_name];
       ret = VerifyValueInfo(v, actual_output_value);
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {

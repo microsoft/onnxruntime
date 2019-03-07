@@ -3,6 +3,7 @@
 
 #include <benchmark/benchmark.h>
 #include <core/graph/model.h>
+#include <core/framework/path_lib.h>
 #include <core/session/onnxruntime_c_api.h>
 #include "providers.h"
 
@@ -21,13 +22,13 @@ BENCHMARK(BM_LoadModel);
 
 extern OrtEnv* env;
 
-#define ORT_BREAK_ON_ERROR(expr)                         \
-  do {                                                   \
-    OrtStatus* onnx_status = (expr);                     \
-    if (onnx_status != NULL) {                           \
+#define ORT_BREAK_ON_ERROR(expr)                            \
+  do {                                                      \
+    OrtStatus* onnx_status = (expr);                        \
+    if (onnx_status != NULL) {                              \
       state.SkipWithError(OrtGetErrorMessage(onnx_status)); \
-      OrtReleaseStatus(onnx_status);                     \
-    }                                                    \
+      OrtReleaseStatus(onnx_status);                        \
+    }                                                       \
   } while (0);
 
 #ifdef USE_CUDA
@@ -48,7 +49,7 @@ BENCHMARK(BM_CreateSession_WithGPU);
 #endif
 
 static void BM_CreateSession(benchmark::State& state) {
-  const char* model_path = "../models/opset8/test_bvlc_alexnet/model.onnx";
+  const ORTCHAR_T* model_path = ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx");
   OrtSessionOptions* session_option = OrtCreateSessionOptions();
   for (auto _ : state) {
     OrtSession* session;
