@@ -30,11 +30,11 @@ jobs:
 
 
 - job: Linux_C_API_Packaging_GPU_x64
-  pool: Linux-GPU-CUDA10
+  pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -126,7 +126,7 @@ jobs:
 
 
 - job: Windows_Packaging_GPU_x64
-  pool: 'Win-GPU-CUDA10'
+  pool: 'Win-GPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
@@ -143,7 +143,7 @@ jobs:
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" '
+        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" '
         buildArch: $(buildArch)
         buildConfig: $(buildConfig)
 
