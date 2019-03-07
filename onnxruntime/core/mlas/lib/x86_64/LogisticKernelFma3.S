@@ -72,7 +72,7 @@ Return Value:
         .globl  C_UNDERSCORE(MlasLogisticKernelFma3)
 C_UNDERSCORE(MlasLogisticKernelFma3):
 
-        lea     rax,C_UNDERSCORE(MlasLogisticConstants)[rip]
+        lea     rax,C_UNDERSCORE(MlasLogisticConstants)@GOTPCREL[rip]
         vbroadcastss ymm4,LogisticConstants_LowerRange[rax]
         vbroadcastss ymm5,LogisticConstants_UpperRange[rax]
         vbroadcastss ymm6,LogisticConstants_alpha_9[rax]
@@ -121,7 +121,7 @@ C_UNDERSCORE(MlasLogisticKernelFma3):
         jz      .LExitKernel
         mov     DWORD PTR LogisticKernelFrame_CountN[rsp],edx
         vbroadcastss ymm2,DWORD PTR LogisticKernelFrame_CountN[rsp]
-        vpcmpgtd ymm2,ymm2,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd ymm2,ymm2,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vmaskmovps ymm0,ymm2,YMMWORD PTR [rdi]
         vmaxps  ymm0,ymm4,ymm0                  # clamp lower bound
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound

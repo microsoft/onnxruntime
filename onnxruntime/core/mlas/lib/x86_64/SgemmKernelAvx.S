@@ -375,8 +375,8 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
 .L\Mode\().OutputMasked8x4Block:
         vmovd   xmm0,r9d
         vshufps xmm0,xmm0,xmm0,0
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip+16]
+        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vinsertf128 ymm0,ymm0,xmm1,1
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm8,ymm0,YMMWORD PTR [rdx]
@@ -473,8 +473,8 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
 .L\Mode\().OutputMasked8x2Block:
         vmovd   xmm0,r9d
         vshufps xmm0,xmm0,xmm0,0
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip+16]
+        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vinsertf128 ymm0,ymm0,xmm1,1
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm8,ymm0,YMMWORD PTR [rdx]
@@ -539,8 +539,8 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
 .L\Mode\().OutputMasked8x1Block:
         vmovd   xmm0,r9d
         vshufps xmm0,xmm0,xmm0,0
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd xmm1,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip+16]
+        vpcmpgtd xmm0,xmm0,XMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vinsertf128 ymm0,ymm0,xmm1,1
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm8,ymm0,YMMWORD PTR [rdx]

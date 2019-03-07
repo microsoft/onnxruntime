@@ -436,7 +436,7 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Fma3):
 .L\Mode\().OutputMasked8x6Block:
         mov     DWORD PTR [rsp+SgemmKernelFrame_mask],r9d
         vbroadcastss ymm0,DWORD PTR [rsp+SgemmKernelFrame_mask]
-        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm4,ymm0,YMMWORD PTR [rdx]
         vmaskmovps ymm6,ymm0,YMMWORD PTR [rdx+rax]
@@ -550,7 +550,7 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Fma3):
 .L\Mode\().OutputMasked8x3Block:
         mov     DWORD PTR [rsp+SgemmKernelFrame_mask],r9d
         vbroadcastss ymm0,DWORD PTR [rsp+SgemmKernelFrame_mask]
-        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm4,ymm0,YMMWORD PTR [rdx]
         vmaskmovps ymm6,ymm0,YMMWORD PTR [rdx+rax]
@@ -652,7 +652,7 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Fma3):
 .L\Mode\().OutputMasked8x1Block:
         mov     DWORD PTR [rsp+SgemmKernelFrame_mask],r9d
         vbroadcastss ymm0,DWORD PTR [rsp+SgemmKernelFrame_mask]
-        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd ymm0,ymm0,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm4,ymm0,YMMWORD PTR [rdx]
         vfmadd213ps ymm5,ymm2,ymm4
