@@ -93,6 +93,35 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/sgemma.s
     )
 
+  elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+
+    enable_language(ASM)
+
+    set(mlas_platform_srcs_sse2
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
+    )
+
+    set(mlas_platform_srcs_avx
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
+    )
+
+    set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-msse2 -mavx")
+
+    if (dumpmachine_output MATCHES "^x86_64.*")
+      set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-m32 -msse2")
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-m32 -mavx")
+
+    else()
+      set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
+      set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
+
+    endif()
+
+    set(mlas_platform_srcs
+      ${mlas_platform_srcs_sse2}
+      ${mlas_platform_srcs_avx}
+    )
+
   elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
 
     enable_language(ASM)
@@ -106,7 +135,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelSse2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmTransposePackB16x4Sse2.S
     )
-    set_source_files_properties(${mlas_platform_srcs_sse} PROPERTIES COMPILE_FLAGS "-msse2")
+    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
 
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx.S

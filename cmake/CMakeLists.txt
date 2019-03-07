@@ -75,6 +75,12 @@ set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" VERSION_NUMBER)
 
+if (onnxruntime_GCC32)
+  set (CMAKE_SYSTEM_PROCESSOR "x86")
+  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32 -Wno-narrowing")
+  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32 -Wno-narrowing")
+endif()
+
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)

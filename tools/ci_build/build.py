@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import platform
 import warnings
 import hashlib
 from os.path import expanduser
@@ -132,6 +133,12 @@ def resolve_executable_path(command_or_path):
 
 def is_windows():
     return sys.platform.startswith("win")
+
+def is_linux():
+    return sys.platform.startswith("linux")
+
+def is_x64():
+    return platform.processor() == "x86_64"
 
 def is_ubuntu_1604():
     return platform.linux_distribution()[0] == 'Ubuntu' and platform.linux_distribution()[1] == '16.04'
@@ -330,6 +337,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_windows():
         cmake_args += cmake_extra_args
+
+    if is_linux() and is_x64() and args.x86:
+        cmake_args += ["-Donnxruntime_GCC32=ON"]
 
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
@@ -565,6 +575,7 @@ def main():
                 toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
+
         if is_ubuntu_1604():
             install_ubuntu_deps(args)
             if not is_docker():
