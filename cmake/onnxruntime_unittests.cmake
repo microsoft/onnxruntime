@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
-set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include ${Boost_INCLUDE_DIR})
+set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
 if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
@@ -525,6 +525,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 if (onnxruntime_BUILD_HOSTING)
+  find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED) 
   add_library(onnxruntime_test_utils_for_hosting ${onnxruntime_test_hosting_src})
   onnxruntime_add_include_to_target(onnxruntime_test_utils_for_hosting onnxruntime_test_utils gtest gsl onnx onnx_proto )
   add_dependencies(onnxruntime_test_utils_for_hosting ${onnxruntime_EXTERNAL_DEPENDENCIES})
