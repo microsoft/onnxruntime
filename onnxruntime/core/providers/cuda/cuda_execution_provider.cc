@@ -864,7 +864,6 @@ bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node)
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputeCapability>> result = IExecutionProvider::GetCapability(graph, kernel_registries);
 
   for (auto& node : graph.Nodes()) {
     bool fallback_to_cpu_provider = false;
@@ -888,6 +887,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       update_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
     }
   }
+  std::vector<std::unique_ptr<ComputeCapability>> result = IExecutionProvider::GetCapability(graph, kernel_registries);
 
   return result;
 }
