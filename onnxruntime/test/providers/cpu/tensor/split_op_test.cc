@@ -22,7 +22,7 @@ template<typename T> void RunTest(int64_t axis, const std::vector<int64_t> split
   if (!split_sizes.empty())
     test.AddAttribute("split", split_sizes);
 
-  test.AddInput<float>("input", input.first, input.second);
+  test.AddInput<T>("input", input.first, input.second);
 
   int i = 0;
   for (auto& output : outputs) {
@@ -30,7 +30,7 @@ template<typename T> void RunTest(int64_t axis, const std::vector<int64_t> split
     auto& data = output.second;
     std::ostringstream oss;
     oss << "output" << i++;
-    test.AddOutput<float>(oss.str().c_str(), shape, data);
+    test.AddOutput<T>(oss.str().c_str(), shape, data);
   }
 
   test.Run(expect_failure ? ExpectResult::kExpectFailure : ExpectResult::kExpectSuccess, err_msg);
