@@ -123,7 +123,7 @@ bool PerformanceRunner::Initialize() {
     return false;
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
-#ifdef USE_TRT
+#ifdef USE_TENSORRT
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
 #else
     fprintf(stderr, "TensorRT is not supported in this build");

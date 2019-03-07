@@ -132,7 +132,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
-            enable_trt = true;
+            enable_tensorrt = true;
           } else {
             usage();
             return -1;
