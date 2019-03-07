@@ -158,7 +158,7 @@ jobs:
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" '
+        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_version 9.1 --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" '
         buildArch: $(buildArch)
         buildConfig: $(buildConfig)
 
