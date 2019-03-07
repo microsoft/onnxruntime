@@ -3,7 +3,7 @@
 //
 
 #include <assert.h>
-#include <core/session/onnxruntime_c_api.h>
+#include <onnxruntime_c_api.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <vector>
