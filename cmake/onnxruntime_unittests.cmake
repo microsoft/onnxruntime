@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
-set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include ${Boost_INCLUDE_DIR})
+set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
 if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
@@ -94,6 +94,11 @@ file(GLOB onnxruntime_test_optimizer_src
   "${TEST_SRC_DIR}/optimizer/*.h"  
   )
 
+file(GLOB onnxruntime_test_hosting_src
+  "${TEST_SRC_DIR}/hosting/*.cc"
+  "${TEST_SRC_DIR}/hosting/*.h"
+  )
+
 set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/framework/*.cc"
   "${TEST_SRC_DIR}/framework/*.h"
@@ -155,6 +160,11 @@ set(onnxruntime_test_framework_libs
   onnxruntime_common
   onnxruntime_mlas
   )
+
+set(onnxruntime_test_hosting_libs
+  onnxruntime_test_utils
+  onnxruntime_test_utils_for_hosting
+)
 
 
 if(WIN32)
@@ -516,10 +526,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 if (onnxruntime_BUILD_HOSTING)
+  add_library(onnxruntime_test_utils_for_hosting ${onnxruntime_test_hosting_src})
+  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_hosting onnxruntime_test_utils gtest gsl onnx onnx_proto)
+  add_dependencies(onnxruntime_test_utils_for_hosting ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_test_utils_for_hosting PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 PRIVATE ${ONNXRUNTIME_ROOT} )
+  target_link_libraries(onnxruntime_test_utils_for_hosting ${Boost_LIBRARIES} ${onnx_test_libs})
+
   AddTest(
     TARGET onnxruntime_hosting_tests
-    SOURCES "${TEST_SRC_DIR}/hosting/test_main.cc" "${TEST_SRC_DIR}/hosting/http_routes_tests.cc"
-    LIBS ${Boost_LIBRARIES} onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
+    SOURCES ${onnxruntime_test_hosting_src}
+    LIBS ${onnxruntime_test_hosting_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 endif()
