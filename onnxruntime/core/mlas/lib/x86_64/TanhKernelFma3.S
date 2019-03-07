@@ -116,8 +116,9 @@ C_UNDERSCORE(MlasTanhKernelFma3):
         add     rdx,8                           # correct for over-subtract above
         jz      .LExitKernel
         mov     DWORD PTR TanhKernelFrame_CountN[rsp],edx
+        mov     rcx,QWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOTPCREL[rip]
         vbroadcastss ymm2,DWORD PTR TanhKernelFrame_CountN[rsp]
-        vpcmpgtd ymm2,ymm2,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        vpcmpgtd ymm2,ymm2,YMMWORD PTR [rcx]
         vmaskmovps ymm0,ymm2,YMMWORD PTR [rdi]
         vmaxps  ymm0,ymm4,ymm0                  # clamp lower bound
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound
