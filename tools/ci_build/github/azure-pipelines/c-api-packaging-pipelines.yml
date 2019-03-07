@@ -150,7 +150,7 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: PowerShell@2
-      displayName: 'Set CUDA path - for 9.1'
+      displayName: 'Set CUDA 9.1 MSBuild properties'
       inputs:
         targetType: 'filePath'
         filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/set_cuda_path.ps1'
