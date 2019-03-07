@@ -144,9 +144,9 @@ jobs:
     - task: PowerShell@2
       displayName: 'Set CUDA path - for 9.1'
       inputs:
-      targetType: 'filePath'
-      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/set_cuda_path.ps1'
-      arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion 9.1'
+        targetType: 'filePath'
+        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion 9.1'
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
