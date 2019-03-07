@@ -4,6 +4,7 @@
 #include "core/training/gradient_builder.h"
 #include "core/training/gradient_builder_registry.h"
 #include "core/training/graph_augmenter.h"
+#include "core/training/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -21,35 +22,135 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
               {GI(0)})};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetMatmulGradient) {
-  std::vector<NodeDef> result = {};
+IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
+  std::vector<NodeDef> result;
+
+  NodeDef zero_contant_node = ZeroConstantNode();
+  ArgDef ZERO = zero_contant_node.output_args[0];
+
+  result.push_back(zero_contant_node);
 
   // is GI(0) required
   if (IsGradientRequiredForSrcNodeInput(0)) {
-    // dx = dz * transpose(y)
-
-    //TODO: default perm attrbiute is used here. Explict specify here?
+    // dA = dY * B'
     result.push_back(
-        NodeDef("Transpose",
-                {I(1)},
-                {IA("I1_t")}));
-    result.push_back(
-        NodeDef("MatMul",
-                {GO(0), IA("I1_t")},
-                {GI(0)}));
+        NodeDef("Gemm",
+                {GO(0), I(1), ZERO},
+                {GI(0)},
+                {MakeAttribute("transB", int64_t(1))}));
   }
 
   // is GI(1) required
   if (IsGradientRequiredForSrcNodeInput(1)) {
-    // dy = transpose(x) * y
+    // dB = A' * dY
     result.push_back(
-        NodeDef("Transpose",
-                {I(0)},
-                {IA("I0_t")}));
-    result.push_back(
-        NodeDef("MatMul",
-                {IA("I0_t"), GO(0)},
-                {GI(1)}));
+        NodeDef("Gemm",
+                {I(0), GO(0), ZERO},
+                {GI(1)},
+                {MakeAttribute("transA", int64_t(1))}));
+  }
+
+  return result;
+};
+
+IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
+  auto attributes = SrcNodeAttributes();
+
+  bool has_alpha = attributes.at("alpha").has_f();
+  float alpha = attributes.at("alpha").f();
+  bool transA = static_cast<bool>(attributes.at("transA").i());
+  bool transB = static_cast<bool>(attributes.at("transB").i());
+
+  ArgDef A = I(0), B = I(1), C = I(2), dY = GO(0),
+         dA = GI(0), dB = GI(1), dC = GI(2);
+  AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
+  AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
+
+  NodeDef zero_contant_node = ZeroConstantNode();
+  ArgDef ZERO = zero_contant_node.output_args[0];
+
+  std::vector<NodeDef> result;
+  result.push_back(zero_contant_node);
+
+  std::vector<AttributeProto> shared_attributes;
+  if (has_alpha && alpha != 1.0f) {
+    ORT_ENFORCE(alpha != 0.0f);
+    AttributeProto alpha_attr = MakeAttribute("alpha", 1 / alpha);
+    shared_attributes.push_back(alpha_attr);
+  }
+
+  if (transA) {
+    if (transB) {
+      // Y = alpha * A' * B'
+      // dA = (1 / alpha) * B' * dY', dB = (1 / alpha) *  dY' * A'
+      if (IsGradientRequiredForSrcNodeInput(0)) {
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_first_input);
+        attrs.push_back(transpose_second_input);
+        result.push_back(NodeDef("Gemm", {B, dY, ZERO}, {dA}, attrs));
+      }
+
+      if (IsGradientRequiredForSrcNodeInput(1)) {
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_first_input);
+        attrs.push_back(transpose_second_input);
+        result.push_back(NodeDef("Gemm", {dY, A, ZERO}, {dB}, attrs));
+      }
+    } else {
+      // Y = alpha * A' * B
+      // dA = (1 / alpha) * B * dY, dB = (1 / alpha) * A * dY
+      if (IsGradientRequiredForSrcNodeInput(0)) {
+        result.push_back(NodeDef("Gemm", {B, dY, ZERO}, {dA}, shared_attributes));
+      }
+
+      if (IsGradientRequiredForSrcNodeInput(1)) {
+        result.push_back(NodeDef("Gemm", {A, dY, ZERO}, {dB}, shared_attributes));
+      }
+    }
+  } else {
+    if (transB) {
+      // Y = alpha * A * B'
+      // dA = (1 / alpha) * dY * B, dB = (1 / alpha) * dY' * A
+      if (IsGradientRequiredForSrcNodeInput(0)) {
+        result.push_back(NodeDef("Gemm", {dY, B, ZERO}, {dA}, shared_attributes));
+      }
+
+      if (IsGradientRequiredForSrcNodeInput(1)) {
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_first_input);
+        result.push_back(NodeDef("Gemm", {dY, A, ZERO}, {dB}, attrs));
+      }
+    } else {
+      // Y = alpha * A * B
+      // dA = (1 / alpha) * dY * B', dB = (1 / alpha) * A' * dY
+      if (IsGradientRequiredForSrcNodeInput(0)) {
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_second_input);
+        result.push_back(NodeDef("Gemm", {dY, B, ZERO}, {dA}, attrs));
+      }
+
+      if (IsGradientRequiredForSrcNodeInput(1)) {
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_first_input);
+        result.push_back(NodeDef("Gemm", {A, dY, ZERO}, {dB}, attrs));
+      }
+    }
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(2)) {
+    // Y = beta * C
+    //dC = 1 / beta * dY
+    bool has_beta = attributes.at("beta").has_f();
+    float beta = attributes.at("beta").f();
+
+    //TODO : handle boradcast!!!
+    if (has_beta && beta != 1.0f) {
+      ORT_ENFORCE(beta != 0.0f);
+      AttributeProto scale_attr = MakeAttribute("scale", 1 / beta);
+      result.push_back(NodeDef("Scale", {dY}, {dC}, {scale_attr}));
+    } else {
+      result.push_back(NodeDef("Squeeze", {dY}, {dC}, {MakeAttribute("axes", std::vector<int64_t>{0})}));
+    }
   }
 
   return result;
@@ -71,8 +172,84 @@ IMPLEMENT_GRADIENT_BUILDER(GetSplitGradient) {
                 input_args,
                 {GI(0)}));
   }
-
   return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
+  //TODO: split attribute should be used!!!
+  //AttributeProto split = MakeAttribute("split", std::vector<int64_t>());
+
+  std::vector<ArgDef> outputs;
+  for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
+    outputs.push_back(GI(i));
+  }
+  return std::vector<NodeDef>{
+      NodeDef("Split",
+              {GO(0)},
+              outputs)};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("x_shape")}),
+      NodeDef("Reshape",
+              {GO(0), IA("x_shape")},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(SrcNodeOpType() + "Grad",
+              {GO(0), I(0), O(0)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetLRNGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("LRNGrad",
+              {GO(0), I(0), O(0)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
+  // TODO: Add is_test to Dropout Op Schema
+  bool is_test = false;
+  if (is_test) {
+    return std::vector<NodeDef>{
+        NodeDef("DropoutGrad",
+                {GO(0)},
+                {GI(0)})};
+  } else {
+    return std::vector<NodeDef>{
+        NodeDef("DropoutGrad",
+                {GO(0), O(1)},
+                {GI(0)})};
+  }
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
+  std::vector<ArgDef> outputs;
+  for (int i = 0; i < 3; i++) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      outputs.push_back(GI(i));
+    } else {
+      outputs.push_back(ArgDef("", nullptr));
+    }
+  }
+
+  return std::vector<NodeDef>{
+      NodeDef("ConvGrad",
+              {GO(0), I(0), I(1)},
+              outputs)};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("SoftmaxGrad",
+              {GO(0), O(0)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {

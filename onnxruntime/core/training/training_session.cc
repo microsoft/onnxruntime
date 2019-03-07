@@ -104,6 +104,17 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return model_output_names_;
   }
 
+  std::unordered_set<std::string> GetModelInitializers() const {
+    const auto& initialized_tensors = model_->MainGraph().GetAllInitializedTensors();
+    std::unordered_set<std::string> model_initializers_;
+    std::transform(initialized_tensors.begin(),
+                   initialized_tensors.end(),
+                   std::inserter(model_initializers_, model_initializers_.end()),
+                   [](const auto& pair) { return pair.first; });
+
+    return model_initializers_;
+  }
+
  private:
   static Status AddLossFuncion(Graph& graph,
                                const LossFunctionInfo& loss_func_info) {
@@ -183,6 +194,10 @@ std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {
 
 std::unordered_set<std::string> TrainingSession::GetModelOutputNames() const {
   return impl_->GetModelOutputNames();
+}
+
+std::unordered_set<std::string> TrainingSession::GetModelInitializers() const {
+  return impl_->GetModelInitializers();
 }
 
 }  // namespace training

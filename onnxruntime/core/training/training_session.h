@@ -86,6 +86,7 @@ class TrainingSession {
   common::Status UpdateWeights(const NameMLValMap& new_weights);
   std::unordered_set<std::string> GetModelInputNames() const;
   std::unordered_set<std::string> GetModelOutputNames() const;
+  std::unordered_set<std::string> GetModelInitializers() const;
 
  private:
   std::unique_ptr<TrainingSessionImpl> impl_;

@@ -6,20 +6,37 @@
 namespace onnxruntime {
 namespace training {
 // TODO: maybe group the gradient builders and split them into different files.
-#define DECLEAR_GRADIENT_BUILDER(name)                     \
+#define DECLARE_GRADIENT_BUILDER(name)                     \
   class name : public GradientBuilderBase {                \
     using GradientBuilderBase::GradientBuilderBase;        \
     std::vector<NodeDef> GetGradientDefs() const override; \
   };
 
-DECLEAR_GRADIENT_BUILDER(GetSinGradient)
-DECLEAR_GRADIENT_BUILDER(GetMatmulGradient)
-DECLEAR_GRADIENT_BUILDER(GetSplitGradient)
-DECLEAR_GRADIENT_BUILDER(GetReluGradient)
-DECLEAR_GRADIENT_BUILDER(GetAddGradient)
-DECLEAR_GRADIENT_BUILDER(GetSubGradient)
-DECLEAR_GRADIENT_BUILDER(GetReduceMeanGradient)
-DECLEAR_GRADIENT_BUILDER(GetPowGradient)
+#define DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(name) \
+  class name : public GradientBuilderBase {                    \
+    using GradientBuilderBase::GradientBuilderBase;            \
+    std::vector<NodeDef> GetGradientDefs() const override;     \
+    bool CopyAttributes() const override {                     \
+      return false;                                            \
+    }                                                          \
+  };
+
+DECLARE_GRADIENT_BUILDER(GetSinGradient)
+DECLARE_GRADIENT_BUILDER(GetMatMulGradient)
+DECLARE_GRADIENT_BUILDER(GetSplitGradient)
+DECLARE_GRADIENT_BUILDER(GetReluGradient)
+DECLARE_GRADIENT_BUILDER(GetAddGradient)
+DECLARE_GRADIENT_BUILDER(GetSubGradient)
+DECLARE_GRADIENT_BUILDER(GetReduceMeanGradient)
+DECLARE_GRADIENT_BUILDER(GetPowGradient)
+DECLARE_GRADIENT_BUILDER(GetConcatGradient)
+DECLARE_GRADIENT_BUILDER(GetReshapeGradient)
+DECLARE_GRADIENT_BUILDER(GetPoolGradient)
+DECLARE_GRADIENT_BUILDER(GetLRNGradient)
+DECLARE_GRADIENT_BUILDER(GetDropoutGradient)
+DECLARE_GRADIENT_BUILDER(GetConvGradient)
+DECLARE_GRADIENT_BUILDER(GetSoftmaxGradient)
+DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGemmGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

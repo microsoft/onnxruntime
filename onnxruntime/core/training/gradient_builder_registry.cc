@@ -15,9 +15,12 @@ GradientDef GetGradientForOp(const Node* node,
 
   auto gradient_def = gradient_builder->GetGradientDefs();
 
-  if (gradient_builder->CopyAttributes()) {
-    // TODO: Figure out the correct default copy behavior
-    // modify the GradientDef returned by GetGradiendDefs()
+  // TODO: Figure out the correct default copy behavior
+  // modify the GradientDef returned by GetGradiendDefs()
+  if (gradient_builder->CopyAttributes() && node->GetAttributes().size() > 0) {
+    for (NodeDef& node_def : gradient_def) {
+      node_def.attributes = node->GetAttributes();
+    }
   }
 
   return gradient_def;
@@ -25,14 +28,23 @@ GradientDef GetGradientForOp(const Node* node,
 
 void RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
-  REGISTER_GRADIENT_BUILDER("MatMul", GetMatmulGradient);
+  REGISTER_GRADIENT_BUILDER("MatMul", GetMatMulGradient);
   REGISTER_GRADIENT_BUILDER("Split", GetSplitGradient);
   REGISTER_GRADIENT_BUILDER("Relu", GetReluGradient);
   REGISTER_GRADIENT_BUILDER("Pow", GetPowGradient);
   REGISTER_GRADIENT_BUILDER("ReduceMean", GetReduceMeanGradient);
   REGISTER_GRADIENT_BUILDER("Add", GetAddGradient);
   REGISTER_GRADIENT_BUILDER("Sub", GetSubGradient);
-}
+  REGISTER_GRADIENT_BUILDER("Concat", GetConcatGradient);
+  REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);
+  REGISTER_GRADIENT_BUILDER("Gemm", GetGemmGradient);
+  REGISTER_GRADIENT_BUILDER("AveragePool", GetPoolGradient);
+  REGISTER_GRADIENT_BUILDER("MaxPool", GetPoolGradient);
+  REGISTER_GRADIENT_BUILDER("LRN", GetLRNGradient);
+  REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient);
+  REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
+  REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
+};
 
 }  // namespace training
 }  // namespace onnxruntime

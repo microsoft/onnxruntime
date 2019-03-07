@@ -66,6 +66,31 @@ void RegisterGradientSchemas() {
       .NumInputs(2)
       .NumOutputs(1)
       .Reference("Softmax", 9);
+
+  ONNX_GRADIENT_OPERATOR_SCHEMA(AveragePoolGrad)
+      .NumInputs(3)
+      .NumOutputs(1)
+      .Reference("AveragePool", 9);
+
+  ONNX_GRADIENT_OPERATOR_SCHEMA(MaxPoolGrad)
+      .NumInputs(3)
+      .NumOutputs(1)
+      .Reference("MaxPool", 9);
+
+  ONNX_GRADIENT_OPERATOR_SCHEMA(ConvGrad)
+      .NumInputs(2, 3)
+      .NumOutputs(1, 3)
+      .Reference("Conv", 9);
+
+  ONNX_GRADIENT_OPERATOR_SCHEMA(LRNGrad)
+      .NumInputs(3)
+      .NumOutputs(1)
+      .Reference("LRN", 9);
+
+  ONNX_GRADIENT_OPERATOR_SCHEMA(DropoutGrad)
+      .NumInputs(1, 2)
+      .NumOutputs(1)
+      .Reference("Dropout", 9);
 }
 }  // namespace training
 }  // namespace onnxruntime

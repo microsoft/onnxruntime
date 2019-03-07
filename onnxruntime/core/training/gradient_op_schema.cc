@@ -77,7 +77,6 @@ std::function<void(ONNX_NAMESPACE::OpSchema&)> GradOpSchema::GenGradientSchema(c
       // Figure out a good way to derive matching versions for schema and kernel
       grad_op_schema.SinceVersion(8);
       grad_op_schema.SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL);
-      grad_op_schema.TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types");
 
       if (base_op != nullptr && base_op->typeConstraintParams().size() == 1) {
         auto type_constraint = base_op->typeConstraintParams()[0];

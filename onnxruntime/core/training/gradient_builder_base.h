@@ -8,6 +8,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/training/graph_augmenter.h"
+#include "core/training/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -39,6 +40,11 @@ class GradientBuilderBase {
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
+  ArgDef O(const int i) const {
+    ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
+    return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
+  }
+
   ArgDef GI(const int i) const {
     ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
@@ -51,6 +57,11 @@ class GradientBuilderBase {
 
   ArgDef IA(const std::string& argSuffix) const {
     return ArgDef(Name(argSuffix), nullptr);
+  }
+
+  int GetSrcNodeInputSize() const {
+    ORT_ENFORCE(node_ != nullptr);
+    return (int)node_->InputDefs().size();
   }
 
   int GetSrcNodeOutputSize() const {
@@ -76,6 +87,22 @@ class GradientBuilderBase {
 
   const NodeAttributes& SrcNodeAttributes() const {
     return node_->GetAttributes();
+  }
+
+  const std::string& SrcNodeOpType() const {
+    return node_->OpType();
+  }
+
+  static NodeDef ZeroConstantNode() {
+    ONNX_NAMESPACE::TensorProto t_proto;
+    t_proto.add_dims(1);
+    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    t_proto.add_float_data(0.0f);
+
+    return NodeDef("Constant",
+                   {},
+                   {ArgDef("ZeroContant", nullptr)},
+                   {MakeAttribute("value", t_proto)});
   }
 
  private:

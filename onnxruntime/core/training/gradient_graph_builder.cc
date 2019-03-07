@@ -185,7 +185,7 @@ Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_def
         input_args.push_back({node_arg_name, graph_->GetNodeArg(node_arg_name)->TypeAsProto()});
       }
 
-      gradient_graph_defs.AddNodeDefs({NodeDef("AddN", input_args, output_args)});
+      gradient_graph_defs.AddNodeDefs({NodeDef("Sum", input_args, output_args)});
     }
   }
 
