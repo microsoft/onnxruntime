@@ -31,7 +31,7 @@ ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional
 ## High Performance
 You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
 
-Currently ONNX Runtime supports CUDA, MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
+Currently ONNX Runtime supports CUDA, MLAS, MKL-DNN, and MKL-ML for computation acceleration. See more details on available build options [here](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) or refer to [this page](docs/AddingExecutionProvider.md) to add a new execution provider.
 
 We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. We have ongoing collaborations to integrate the following with ONNX Runtime:
 * Intel MKL-DNN and nGraph
