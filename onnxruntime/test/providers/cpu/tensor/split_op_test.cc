@@ -12,7 +12,7 @@ using ShapeAndFloatData = ShapeAndData<float>;
 using ShapeAndInt32Data = ShapeAndData<int32_t>;
 using ExpectResult = OpTester::ExpectResult;
 
-template<typename T> void RunTest<T>(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
+template<typename T> void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
   const std::vector<ShapeAndData<T>>& outputs,
   bool expect_failure = false, const std::string& err_msg = {}) {
   OpTester test("Split");
