@@ -51,7 +51,10 @@ class IExecutionFrame {
   // Shape is required for tensors but not traditional ML values.
   Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, MLValue*& p_mlvalue);
 
-  // write the output values to the 'fetches' vector
+  /**
+   * write the output values to the 'fetches' vector
+   * Don't access the values after SessionState is destroyed 
+   */
   Status GetOutputs(std::vector<MLValue>& fetches);
 
   AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const;

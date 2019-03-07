@@ -1,0 +1,38 @@
+# sets up common build tools for the windows build machines before build
+
+parameters:
+  buildConfig: 'RelWithDebInfo'
+  artifactName: 'onnxruntime-win-x64'
+steps:
+    - task: CmdLine@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        script: |
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+          echo "Directories created"            
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_c_api.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+          # copy the README, licence and TPN
+          copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md
+          copy $(Build.SourcesDirectory)\docs\C_API.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\C_API.md
+          copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
+          copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
+
+        workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}' 
+        includeRootFolder: true
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        replaceExistingArchive: true 
+      
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
+        artifactName: 'drop-${{parameters.artifactName}}' 

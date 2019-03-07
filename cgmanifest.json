@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"2896c77cfc628f18b6ca6b28e3a380807fa00f53",
+               "commitHash":"873ddbbc33c6e54d90c5628387edd391fb651dfc",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -78,15 +78,6 @@
             "git":{
                "commitHash":"6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
                "repositoryUrl":"https://github.com/wjakob/clang-cindex-python3.git"
-            }
-         }
-      },
-      {
-         "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
-               "repositoryUrl":"https://github.com/google/protobuf.git"
             }
          }
       },
@@ -240,8 +231,9 @@
             "git":{
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
-              }
-         }
+            }
+         }    
+      },
       {
          "component":{
             "type":"git",
@@ -249,6 +241,24 @@
                "commitHash":"30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
                "repositoryUrl":"https://github.com/google/re2.git"
             }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "repositoryUrl":"https://github.com/protocolbuffers/protobuf.git"
+              }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
+               "repositoryUrl":"https://github.com/BVLC/caffe.git"
+              }
          }
       },
       {

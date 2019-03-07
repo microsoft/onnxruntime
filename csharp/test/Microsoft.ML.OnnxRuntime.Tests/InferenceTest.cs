@@ -110,7 +110,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
+            Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
             session.Dispose();
         }
 
@@ -161,7 +161,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Names: extra. Valid input names are: ", ex.Message);
+            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Names", ex.Message);
             session.Dispose();
         }
 
@@ -232,7 +232,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     validModelFound = true;
                                 }
                             }
-                            
+
                             if (!validModelFound)
                             {
                                 var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
@@ -351,7 +351,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.True(tensorOut.SequenceEqual(tensorIn));
                 }
             }
-            
+
         }
 
         [Fact(Skip = "String tensor not supported yet")]
@@ -524,6 +524,101 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestModelSequenceOfMapIntFloat()
+        {
+            // test model trained using lightgbm classifier
+            // produces 2 named outputs
+            //   "label" is a tensor,
+            //   "probabilities" is a sequence<map<int64, float>>
+            // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_sequence_map_int_float.pb");
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 5.8f, 2.8f }, new int[] { 1, 2 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+
+                using (var outputs = session.Run(container))
+                {
+                    // first output is a tensor containing label
+                    var outNode1 = outputs.ElementAtOrDefault(0);
+                    Assert.Equal("label", outNode1.Name);
+
+                    // try-cast as a tensor
+                    var outLabelTensor = outNode1.AsTensor<Int64>();
+
+                    // Label 1 should have highest probaility
+                    Assert.Equal(1, outLabelTensor[0]);
+
+                    // second output is a sequence<map<int64, float>>
+                    // try-cast to an sequence of NOV
+                    var outNode2 = outputs.ElementAtOrDefault(1);
+                    Assert.Equal("probabilities", outNode2.Name);
+
+                    // try-cast to an sequence of NOV
+                    var seq = outNode2.AsEnumerable<NamedOnnxValue>();
+
+                    // try-cast first element in sequence to map/dictionary type
+                    var map = seq.First().AsDictionary<Int64, float>();
+                    //verify values are valid
+                    Assert.Equal(0.25938290, map[0], 6);
+                    Assert.Equal(0.40904793, map[1], 6);
+                    Assert.Equal(0.33156919, map[2], 6);
+                }
+            }
+        }
+
+        [Fact]
+        private void TestModelSequenceOfMapStringFloat()
+        {
+            // test model trained using lightgbm classifier
+            // produces 2 named outputs
+            //   "label" is a tensor,
+            //   "probabilities" is a sequence<map<int64, float>>
+            // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_sequence_map_string_float.pb");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var container = new List<NamedOnnxValue>();
+                var tensorIn = new DenseTensor<float>(new float[] { 5.8f, 2.8f }, new int[] { 1, 2 });
+                var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
+                container.Add(nov);
+
+                using (var outputs = session.Run(container))
+                {
+                    // first output is a tensor containing label
+                    var outNode1 = outputs.ElementAtOrDefault(0);
+                    Assert.Equal("label", outNode1.Name);
+
+                    // try-cast as a tensor
+                    var outLabelTensor = outNode1.AsTensor<string>();
+
+                    // Label 1 should have highest probaility
+                    Assert.Equal("1", outLabelTensor[0]);
+
+                    // second output is a sequence<map<int64, float>>
+                    // try-cast to an sequence of NOV
+                    var outNode2 = outputs.ElementAtOrDefault(1);
+                    Assert.Equal("probabilities", outNode2.Name);
+
+                    // try-cast to an sequence of NOV
+                    var seq = outNode2.AsEnumerable<NamedOnnxValue>();
+
+                    // try-cast first element in sequence to map/dictionary type
+                    var map = seq.First().AsDictionary<string, float>();
+                    //verify values are valid
+                    Assert.Equal(0.25938290, map["0"], 6);
+                    Assert.Equal(0.40904793, map["1"], 6);
+                    Assert.Equal(0.33156919, map["2"], 6);
+                }
+            }
+        }
+
         [GpuFact]
         private void TestGpu()
         {
@@ -537,7 +632,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var container = new List<NamedOnnxValue>();
                 container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-                Assert.Equal("[ErrorCode:InvalidArgument] Missing required inputs: data_0", ex.Message);
+                Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
             }
         }
 
@@ -619,7 +714,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             var session = (cudaDeviceId.HasValue)
-                ? new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value)) 
+                ? new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value))
                 : new InferenceSession(modelPath);
             float[] inputData = LoadTensorFromFile(@"bench.in");
             float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
