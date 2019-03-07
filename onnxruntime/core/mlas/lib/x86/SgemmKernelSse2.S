@@ -21,6 +21,10 @@ Abstract:
 
         .intel_syntax noprefix
 
+//
+// Stack frame layout for the SGEMM kernel.
+//
+
 #define SgemmKernelFrame 0
 #define SgemmKernelFrame_SavedEsi 4
 #define SgemmKernelFrame_SavedEbx 8
@@ -118,6 +122,7 @@ Implicit Arguments:
         addps   xmm7,xmm0
 
         .endm
+
 
 /*++
 

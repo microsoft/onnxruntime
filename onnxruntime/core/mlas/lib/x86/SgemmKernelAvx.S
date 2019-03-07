@@ -21,6 +21,10 @@ Abstract:
 
         .intel_syntax noprefix
 
+//
+// Stack frame layout for the SGEMM kernel.
+//
+
 #define SgemmKernelFrame 0
 #define SgemmKernelFrame_SavedEsi 4
 #define SgemmKernelFrame_SavedEbx 8
@@ -332,10 +336,13 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
         add     ebp,8                       # correct for over-subtract above
 
 .L\Mode\().OutputMasked8x2Block:
+        call    __x86.get_pc_thunk.bx
+        add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
+        mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOT[ebx]
         mov     SgemmKernelFrame_CountN[esp],ebp
         vbroadcastss xmm0,SgemmKernelFrame_CountN[esp]
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR [C_UNDERSCORE(MlasMaskMoveAvx)+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR [C_UNDERSCORE(MlasMaskMoveAvx)]
+        vpcmpgtd xmm1,xmm0,XMMWORD PTR [ebx+16]
+        vpcmpgtd xmm0,xmm0,XMMWORD PTR [ebx]
         vinsertf128 ymm0,ymm0,xmm1,1
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]
@@ -403,10 +410,13 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Avx):
         add     ebp,8                       # correct for over-subtract above
 
 .L\Mode\().OutputMasked8x1Block:
+        call    __x86.get_pc_thunk.bx
+        add     ebx,OFFSET _GLOBAL_OFFSET_TABLE_
+        mov     ebx,DWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)@GOT[ebx]
         mov     SgemmKernelFrame_CountN[esp],ebp
         vbroadcastss xmm0,SgemmKernelFrame_CountN[esp]
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR [C_UNDERSCORE(MlasMaskMoveAvx)+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR [C_UNDERSCORE(MlasMaskMoveAvx)]
+        vpcmpgtd xmm1,xmm0,XMMWORD PTR [ebx+16]
+        vpcmpgtd xmm0,xmm0,XMMWORD PTR [ebx]
         vinsertf128 ymm0,ymm0,xmm1,1
 .ifeqs "\Mode\()","Add"
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]
