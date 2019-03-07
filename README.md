@@ -34,8 +34,8 @@ You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in ad
 Currently ONNX Runtime supports CUDA, MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
 
 We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. We have ongoing collaborations to integrate the following with ONNX Runtime:
-	* Intel MKL-DNN and nGraph
-	* NVIDIA TensorRT
+* Intel MKL-DNN and nGraph
+* NVIDIA TensorRT
 
 ## Cross Platform 
 ONNX Runtime offers:
@@ -44,14 +44,14 @@ ONNX Runtime offers:
 
 See API documentation and package installation instructions [below](#Installation). 
 
-Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. If you have specific scenarios that are not currently supported, please suggest by filing a [Github Issue](https://github.com/microsoft/onnxruntime/issues).
+Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. If you have specific scenarios that are not currently supported, please share your suggestions via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 
 # Getting Started 
 If you need a model:  
 * Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models. 
 * To get an ONNX model by exporting from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials).
 
-If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See detailed instructions [here](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx). 
+If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx). 
 
 # Installation
 ## APIs and Official Builds
