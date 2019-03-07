@@ -137,9 +137,16 @@ jobs:
 
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
-        EnvSetupScript: 'setup_env_cuda.bat'
+        EnvSetupScript: 'setup_env.bat'
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch
         setVcvars: true 
+
+    - task: PowerShell@2
+      displayName: 'Set CUDA path - for 9.1'
+      inputs:
+      targetType: 'filePath'
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/set_cuda_path.ps1'
+      arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion 9.1'
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
@@ -151,5 +158,12 @@ jobs:
       parameters:
         buildConfig: $(buildConfig)
         artifactName: 'onnxruntime-win-gpu-$(buildArch)'
+
+    - task: PowerShell@2
+      displayName: 'Clean up Cuda Path 9.1'
+      inputs:
+        targetType: 'filePath'
+        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion 9.1'
 
     - template: templates/clean-agent-build-directory-step.yml
