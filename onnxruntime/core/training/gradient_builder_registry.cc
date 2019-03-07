@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/training/gradient_builder.h"
 #include "core/training/gradient_builder_registry.h"
+#include "core/training/gradient_builder.h"
 
 namespace onnxruntime {
 namespace training {
@@ -10,8 +10,13 @@ namespace training {
 GradientDef GetGradientForOp(const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
-  auto gradient_builder_func = GradientBuilderRegistry::GetGradientBuilderRegistry().GetGradientBuilderFunc(node->OpType());
-  auto gradient_builder = gradient_builder_func(node, output_args_need_grad, input_args_need_grad);
+  auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
+                                                                            node,
+                                                                            output_args_need_grad,
+                                                                            input_args_need_grad);
+
+  ORT_ENFORCE(gradient_builder != nullptr,
+              "The gradient builder has not been registered:", node->OpType());
 
   auto gradient_def = gradient_builder->GetGradientDefs();
 
@@ -26,7 +31,17 @@ GradientDef GetGradientForOp(const Node* node,
   return gradient_def;
 }
 
-void RegisterGradientBuilders() {
+#define REGISTER_GRADIENT_BUILDER(op, gradientbuilder) \
+  GradientBuilderRegistry::GetInstance().Register<gradientbuilder>(op);
+
+#define NO_GRADIENT(op) REGISTER_GRADIENT_BUILDER(op, EmptyGradientBuilder)
+
+// There are some operators which are not really computation operators and one shouldn't attempt to
+// request one for such operators.
+#define SHOULD_NOT_DO_GRADIENT(op) REGISTER_GRADIENT_BUILDER(op, UnSupportedGradientBuilder)
+
+void GradientBuilderRegistry::RegisterGradientBuilders() {
+  // Register gradient builders here.
   REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
   REGISTER_GRADIENT_BUILDER("MatMul", GetMatMulGradient);
   REGISTER_GRADIENT_BUILDER("Split", GetSplitGradient);

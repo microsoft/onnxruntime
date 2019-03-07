@@ -13,7 +13,7 @@ namespace training {
 
 class LossFunctionBuilder {
  public:
-  GraphAugmenter::GraphDefs Build(const Graph& graph, const LossFunctionInfo& loss_func_info);
+  GraphAugmenter::GraphDefs Build(const Graph& graph, const LossFunctionInfo& loss_func_info) const;
 };
 }  // namespace training
 }  // namespace onnxruntime

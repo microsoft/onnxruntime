@@ -12,6 +12,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/training/gradient_builder_registry.h"
 #include "core/training/gradient_schema_defs.h"
+#include "core/training/loss_function_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -45,7 +46,8 @@ Status Environment::Initialize() {
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.
       training::RegisterGradientSchemas();
-      training::RegisterGradientBuilders();
+      training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
+      training::LossFunctionRegistry::GetInstance().RegisterStandardLossFunctions();
 #endif
     });
     //TODO:put all of the following things into call_once

@@ -1,35 +1,33 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
-
 #include <string>
 #include <vector>
 #include <functional>
 #include <unordered_map>
 #include "core/training/graph_augmenter.h"
+#include "core/training/generic_registry.h"
 #include "core/training/loss_func/loss_func_common.h"
 
 namespace onnxruntime {
 namespace training {
 
-typedef std::function<GraphAugmenter::GraphDefs(const LossFunctionInfo&)> LossFunction;
-
-class LossFunctionRegistry {
+class LossFunctionRegistry : public GenericRegistry<ILossFunction> {
  public:
+  // Register a list of standard loss functions stacitally.
+  void RegisterStandardLossFunctions();
+
+  // Register a custom loss function.
   void RegisterCustomLossFunction(const std::string& loss_func_name);
 
-  const LossFunction* GetLossFunction(const std::string& loss_func_name) const;
-
-  static LossFunctionRegistry& GetInstance();
+  static LossFunctionRegistry& GetInstance() {
+    static LossFunctionRegistry instance;
+    return instance;
+  }
 
  private:
+  LossFunctionRegistry() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LossFunctionRegistry);
-
-  LossFunctionRegistry();
-
-  void RegisterStandardLossFunction(const std::string& loss_func_name, const LossFunction& loss_func);
-
-  std::unordered_map<std::string, LossFunction> loss_function_map_;
 };
 }  // namespace training
 }  // namespace onnxruntime

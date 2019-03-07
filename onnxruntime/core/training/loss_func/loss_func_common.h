@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+#include "core/training/graph_augmenter.h"
 
 namespace onnxruntime {
 namespace training {
@@ -21,7 +22,11 @@ struct LossFunctionInfo {
   std::string loss_name_;
 };
 
-//TODO: there will be an interface class for all loss funcs.
+class ILossFunction {
+ public:
+  virtual GraphAugmenter::GraphDefs GetDefs(const LossFunctionInfo& loss_func_info) const = 0;
+  virtual ~ILossFunction() {}
+};
 
 }  // namespace training
 }  // namespace onnxruntime

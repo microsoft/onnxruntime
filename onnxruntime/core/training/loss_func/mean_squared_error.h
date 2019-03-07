@@ -4,12 +4,14 @@
 
 #include <string>
 #include "core/training/loss_func/loss_func_common.h"
-#include "core/training/graph_augmenter.h"
 
 namespace onnxruntime {
 namespace training {
 
-GraphAugmenter::GraphDefs MeanSquaredError(const LossFunctionInfo& loss_func_info);
+class MeanSquaredError : public ILossFunction {
+ public:
+  GraphAugmenter::GraphDefs GetDefs(const LossFunctionInfo& loss_func_info) const override;
+};
 
 }  // namespace training
 }  // namespace onnxruntime

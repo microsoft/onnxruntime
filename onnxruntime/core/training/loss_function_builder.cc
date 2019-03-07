@@ -6,12 +6,14 @@
 namespace onnxruntime {
 namespace training {
 
-GraphAugmenter::GraphDefs LossFunctionBuilder::Build(const Graph& graph, const LossFunctionInfo& loss_func_info) {
-  const auto* loss_func = LossFunctionRegistry::GetInstance().GetLossFunction(loss_func_info.loss_func_name_);
-  ORT_ENFORCE(loss_func != nullptr, "The loss function has not been registered:", loss_func_info.loss_func_name_);
+GraphAugmenter::GraphDefs LossFunctionBuilder::Build(const Graph& graph,
+                                                     const LossFunctionInfo& loss_func_info) const {
+  auto loss_func = LossFunctionRegistry::GetInstance().MakeUnique(loss_func_info.loss_func_name_);
+  ORT_ENFORCE(loss_func != nullptr,
+              "The loss function has not been registered:", loss_func_info.loss_func_name_);
 
-  // Invoke the creator to generate GraphDefs, without worrying about label's TypeProto.
-  auto graph_defs = (*loss_func)(loss_func_info);
+  // Generate GraphDefs, without worrying about label's TypeProto.
+  auto graph_defs = loss_func->GetDefs(loss_func_info);
 
   // Now let's set label's TypeProto from pridiction's.
   // TODO: see if we want to relax this.

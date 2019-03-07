@@ -1,20 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/training/loss_func/mean_squared_error.h"
-#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace training {
 
-using namespace std;
-using namespace onnxruntime::common;
-
-GraphAugmenter::GraphDefs MeanSquaredError(const LossFunctionInfo& loss_func_info) {
+GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss_func_info) const {
   GraphAugmenter::GraphDefs graph_defs;
 
   graph_defs.AddGraphOutputs({loss_func_info.loss_name_});
 
-  vector<NodeDef> new_nodes;
+  std::vector<NodeDef> new_nodes;
   // Sub
   {
     new_nodes.emplace_back(NodeDef("Sub",                    // Op

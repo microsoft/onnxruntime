@@ -24,9 +24,8 @@ class TrainingSessionImpl : public InferenceSession::Impl {
   }
 
   Status RegisterCustomLossFunction(const std::string& loss_func_name) {
-    auto& loss_func_reg = LossFunctionRegistry::GetInstance();
     try {
-      loss_func_reg.RegisterCustomLossFunction(loss_func_name);
+      LossFunctionRegistry::GetInstance().RegisterCustomLossFunction(loss_func_name);
       return Status::OK();
     } catch (const OnnxRuntimeException& exp) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register custom loss function.", exp.what());
