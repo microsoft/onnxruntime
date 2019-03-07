@@ -35,11 +35,11 @@ void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upp
 
 // DoTranspose: copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-template <typename T>
 static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
-                            const T* source, T* target) {
-  size_t blocksize = num_elts_in_block * sizeof(float);
+                            const void* source, void* target, size_t element_size) {
+  char* byte_target = reinterpret_cast<char*>(target);
+  size_t blocksize = num_elts_in_block * element_size;
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
   for (size_t i = 0; i < num_blocks; ++i) {
@@ -47,11 +47,11 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
     size_t source_offset = ComputeOffset(target_index, stride, num_axes);
 
     // copy
-    memcpy(target, source + source_offset, blocksize);
+    memcpy(byte_target, reinterpret_cast<const char*>(source) + source_offset * element_size, blocksize);
 
     // increment target_index:
     IncrementIndex(target_index, target_dims, num_axes);
-    target += num_elts_in_block;
+    byte_target += blocksize;
   }
 }
 
@@ -78,9 +78,9 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
 
 // DoTransposeSingleBlock: specialization of DoTranspose for the num_blocks=1 case.
 // copies source tensor to target, transposing elements.
-template <typename T>
-static void DoTransposeSingleBlock(size_t num_elts_in_block, const T* source, T* target) {
-  size_t blocksize = num_elts_in_block * sizeof(T);
+static void DoTransposeSingleBlock(size_t num_elts_in_block, const void* source, void* target,
+                                   size_t element_size) {
+  size_t blocksize = num_elts_in_block * element_size;
   // copy
   memcpy(target, source, blocksize);
 }
@@ -122,13 +122,13 @@ static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const T
   T* output_data = output.MutableData<T>();
 
   if (1 == prefix_blocksize)
-    DoTransposeSingleBlock<T>(suffix_blocksize, input_data, output_data);
+    DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, sizeof(T));
   else if (1 == suffix_blocksize)
     DoTransposeEltWise<T>(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
                           input_data, output_data);
   else
-    DoTransposeImpl<T>(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
-                       input_data, output_data);
+    DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
+                    input_data, output_data, sizeof(T));
 
   return Status::OK();
 }
@@ -172,10 +172,41 @@ Status Transpose<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
+template <>
+Status Transpose<int64_t>::Compute(OpKernelContext* ctx) const {
+  // Get input and output:
+  const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
+  const Tensor& X = *input_tensor_ptr;
+  const TensorShape& input_shape = X.Shape();
+  const std::vector<int64_t>& input_dims = input_shape.GetDims();
+  size_t rank = input_dims.size();
+
+  std::vector<int64_t> output_dims(rank);
+  const std::vector<int64_t>* p_perm;
+  std::vector<int64_t> default_perm(rank);
+  ComputeOutputShape(X, output_dims, default_perm, p_perm);
+
+  TensorShape output_shape{output_dims};
+  Tensor& Y = *ctx->Output(0, output_shape);
+
+  DoTypedTranspose<int64_t>(*p_perm, X, Y);
+
+  return Status::OK();
+}
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Transpose,
     1,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Transpose<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Transpose,
+    1,
+    int64_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
+    Transpose<int64_t>);
 
 }  // namespace onnxruntime
