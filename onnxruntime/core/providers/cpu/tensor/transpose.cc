@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 // ComputeOffset: compute offset into a tensor. This is essentially the dot-product of
 // index and stride, restricted to the specified number of axes.
-size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector<size_t>& stride, int64_t num_axes) {
+inline size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector<size_t>& stride, int64_t num_axes) {
   size_t offset = 0;
   for (int64_t j = 0; j < num_axes; ++j) {
     offset += index[j] * stride[j];
@@ -25,7 +25,7 @@ size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector<size_t
 
 // IncrementIndex: Increment an index into a tensor (in lexicographic ordering), wrapping
 // around the specified upper_bound.
-void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound, int64_t num_axes) {
+inline void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound, int64_t num_axes) {
   for (int64_t k = num_axes - 1; k >= 0; --k) {
     index[k]++;
     if (index[k] < upper_bound[k]) break;
@@ -33,12 +33,25 @@ void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upp
   }
 }
 
+// DoTransposeSingleBlock: specialization of DoTranspose for the num_blocks=1 case.
+// copies source tensor to target, transposing elements.
+static inline void DoTransposeSingleBlock(size_t num_elts_in_block, const void* source, void* target,
+                                          size_t element_size) {
+  size_t blocksize = num_elts_in_block * element_size;
+  // copy
+  memcpy(target, source, blocksize);
+}
+
+static inline void DoTransposeSingleBlock(size_t num_elts_in_block, const std::string* source, std::string* target) {
+  const std::string* end = source + num_elts_in_block;
+  std::copy(source, end, target);
+}
+
 // DoTranspose: copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
 static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
-                            const void* source, void* target, size_t element_size) {
-  char* byte_target = reinterpret_cast<char*>(target);
+                            const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
@@ -47,20 +60,82 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
     size_t source_offset = ComputeOffset(target_index, stride, num_axes);
 
     // copy
-    memcpy(byte_target, reinterpret_cast<const char*>(source) + source_offset * element_size, blocksize);
+    memcpy(target, source + source_offset * element_size, blocksize);
 
     // increment target_index:
     IncrementIndex(target_index, target_dims, num_axes);
-    byte_target += blocksize;
+    target += blocksize;
+  }
+}
+
+static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
+                            size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
+                            const std::string* source, std::string* target) {
+  // index used to iterate over target iteration-space
+  std::vector<int64_t> target_index(num_axes, 0);
+  for (size_t i = 0; i < num_blocks; ++i) {
+    // convert target_index into an offset in source data
+    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
+
+    // copy
+    DoTransposeSingleBlock(num_elts_in_block, source + source_offset, target);
+
+    // increment target_index:
+    IncrementIndex(target_index, target_dims, num_axes);
+    target += num_elts_in_block;
+  }
+}
+
+template <class T>
+inline void CopyPrim(const uint8_t* source, uint8_t* target) {
+  *reinterpret_cast<T*>(target) = *reinterpret_cast<const T*>(source);
+}
+
+static inline void CopyPrimitiveElement(const uint8_t* source, uint8_t* target, size_t element_size) {
+  // Make sure some assumptions hold
+  static_assert(sizeof(MLFloat16) == sizeof(uint16_t), "MLFloat16 not covered");
+  static_assert(sizeof(BFloat16) == sizeof(uint16_t), "BFloat16 not covered");
+  switch (element_size) {
+    case sizeof(uint64_t):
+      CopyPrim<uint64_t>(source, target);
+      break;
+    case sizeof(uint32_t):
+      CopyPrim<uint32_t>(source, target);
+      break;
+    case sizeof(uint16_t):
+      CopyPrim<uint16_t>(source, target);
+      break;
+    case sizeof(uint8_t):
+      *target = *source;
+      break;
+    default:
+      assert(false);
   }
 }
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-template <typename T>
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                               const std::vector<size_t>& stride, const T* source, T* target) {
+                               const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                               size_t element_size) {
+  // index used to iterate over target iteration-space
+  std::vector<int64_t> target_index(num_axes, 0);
+  for (size_t i = 0; i < num_blocks; ++i) {
+    // convert target_index into an offset in source data
+    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
+
+    // copy
+    CopyPrimitiveElement(source + (source_offset * element_size), target, element_size);
+
+    // increment target_index:
+    IncrementIndex(target_index, target_dims, num_axes);
+    target += element_size;
+  }
+}
+
+static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                               const std::vector<size_t>& stride, const std::string* source, std::string* target) {
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
   for (size_t i = 0; i < num_blocks; ++i) {
@@ -76,20 +151,13 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
   }
 }
 
-// DoTransposeSingleBlock: specialization of DoTranspose for the num_blocks=1 case.
-// copies source tensor to target, transposing elements.
-static void DoTransposeSingleBlock(size_t num_elts_in_block, const void* source, void* target,
-                                   size_t element_size) {
-  size_t blocksize = num_elts_in_block * element_size;
-  // copy
-  memcpy(target, source, blocksize);
-}
-
-template <typename T>
-static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
+
+  const auto element_size = input.DataType()->Size();
+  const bool is_string_type = input.DataType() == DataTypeImpl::GetType<std::string>();
 
   std::vector<size_t> stride(rank);
   for (int i = 0; i < rank; i++) {
@@ -118,17 +186,31 @@ static Status DoTypedTranspose(const std::vector<int64_t>& permutations, const T
     }
   }
 
-  const T* input_data = input.Data<T>();
-  T* output_data = output.MutableData<T>();
-
-  if (1 == prefix_blocksize)
-    DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, sizeof(T));
-  else if (1 == suffix_blocksize)
-    DoTransposeEltWise<T>(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
-                          input_data, output_data);
-  else
-    DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
-                    input_data, output_data, sizeof(T));
+  if (is_string_type) {
+    const std::string* input_data = input.template Data<std::string>();
+    std::string* output_data = output.template MutableData<std::string>();
+    if (1 == prefix_blocksize) {
+      DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
+    } else if (1 == suffix_blocksize) {
+      DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                         input_data, output_data);
+    } else {
+      DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
+                      input_data, output_data);
+    }
+  } else {
+    const uint8_t* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
+    uint8_t* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
+    if (1 == prefix_blocksize) {
+      DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, element_size);
+    } else if (1 == suffix_blocksize) {
+      DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                         input_data, output_data, element_size);
+    } else {
+      DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
+                      input_data, output_data, element_size);
+    }
+  }
 
   return Status::OK();
 }
@@ -143,14 +225,13 @@ Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, cons
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
                              input_type, " != ", output_type);
   } else {
-    DispatchOnTensorTypeWithReturn(input_type, status, DoTypedTranspose, permutations, input, output);
+    status = DoUntypedTranspose(permutations, input, output);
   }
 
   return status;
 }
 
-template <>
-Status Transpose<float>::Compute(OpKernelContext* ctx) const {
+Status Transpose::Compute(OpKernelContext* ctx) const {
   // Get input and output:
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
@@ -167,46 +248,15 @@ Status Transpose<float>::Compute(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor& Y = *ctx->Output(0, output_shape);
 
-  DoTypedTranspose<float>(*p_perm, X, Y);
+  DoUntypedTranspose(*p_perm, X, Y);
 
   return Status::OK();
 }
 
-template <>
-Status Transpose<int64_t>::Compute(OpKernelContext* ctx) const {
-  // Get input and output:
-  const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
-  ORT_ENFORCE(input_tensor_ptr != nullptr);
-  const Tensor& X = *input_tensor_ptr;
-  const TensorShape& input_shape = X.Shape();
-  const std::vector<int64_t>& input_dims = input_shape.GetDims();
-  size_t rank = input_dims.size();
-
-  std::vector<int64_t> output_dims(rank);
-  const std::vector<int64_t>* p_perm;
-  std::vector<int64_t> default_perm(rank);
-  ComputeOutputShape(X, output_dims, default_perm, p_perm);
-
-  TensorShape output_shape{output_dims};
-  Tensor& Y = *ctx->Output(0, output_shape);
-
-  DoTypedTranspose<int64_t>(*p_perm, X, Y);
-
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     1,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Transpose<float>);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    Transpose,
-    1,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
-    Transpose<int64_t>);
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Transpose);
 
 }  // namespace onnxruntime

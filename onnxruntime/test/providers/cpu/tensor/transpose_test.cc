@@ -37,17 +37,17 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
   TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals);
 }
 
-TEST(TransposeOpTest, TwoDimNoAttrInt64) {
+TEST(TransposeOpTest, TwoDimNoAttrStr) {
   std::vector<int64_t> input_shape({2, 3});
-  std::vector<int64_t> input_vals = {
-      1, 2, 3,
-      4, 5, 6};
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6"};
 
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<int64_t> expected_vals = {
-      1, 4,
-      2, 5,
-      3, 6};
+  std::initializer_list<std::string> expected_vals = {
+      "1", "4",
+      "2", "5",
+      "3", "6"};
 
   TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals);
 }
@@ -69,18 +69,18 @@ TEST(TransposeOpTest, TwoDim) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
 
-TEST(TransposeOpTest, TwoDimInt64) {
+TEST(TransposeOpTest, TwoDimStr) {
   std::vector<int64_t> input_shape({2, 3});
-  std::vector<int64_t> input_vals = {
-      1, 2, 3,
-      4, 5, 6};
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6"};
 
   std::vector<int64_t> perm = {1, 0};
   std::vector<int64_t> expected_shape({3, 2});
-  std::initializer_list<int64_t> expected_vals = {
-      1, 4,
-      2, 5,
-      3, 6};
+  std::initializer_list<std::string> expected_vals = {
+      "1", "4",
+      "2", "5",
+      "3", "6"};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
@@ -137,51 +137,51 @@ TEST(TransposeOpTest, ThreeDim) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
 
-TEST(TransposeOpTest, ThreeDimInt64) {
+TEST(TransposeOpTest, ThreeDimStr) {
   std::vector<int64_t> input_shape({4, 2, 3});
-  std::vector<int64_t> input_vals = {
-      1, 2, 3,
-      4, 5, 6,
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6",
 
-      1, 2, 3,
-      4, 5, 6,
+      "1", "2", "3",
+      "4", "5", "6",
 
-      1, 2, 3,
-      4, 5, 6,
+      "1", "2", "3",
+      "4", "5", "6",
 
-      1, 2, 3,
-      4, 5, 6};
+      "1", "2", "3",
+      "4", "5", "6"};
 
   std::vector<int64_t> perm = {0, 2, 1};
   std::vector<int64_t> expected_shape({4, 3, 2});
-  std::initializer_list<int64_t> expected_vals = {
-      1,
-      4,
-      2,
-      5,
-      3,
-      6,
+  std::initializer_list<std::string> expected_vals = {
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6",
 
-      1,
-      4,
-      2,
-      5,
-      3,
-      6,
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6",
 
-      1,
-      4,
-      2,
-      5,
-      3,
-      6,
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6",
 
-      1,
-      4,
-      2,
-      5,
-      3,
-      6
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6"
 
   };
 
