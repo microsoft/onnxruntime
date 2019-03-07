@@ -8,6 +8,7 @@ namespace onnxruntime {
 namespace test {
 
 using ShapeAndData = std::pair<const std::vector<int64_t>, const std::vector<float>>;
+using ShapeAndInt32Data = std::pair<const std::vector<int64_t>, const std::vector<int32_t>>;
 using ExpectResult = OpTester::ExpectResult;
 
 void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData& input,
@@ -52,6 +53,28 @@ TEST(SplitOperatorTest, Axis0EqualSplit) {
   outputs.push_back({{2, 2},
                      {5.f, 6.f,
                       7.f, 8.f}});
+
+  RunTest(axis, {}, input, outputs);
+}
+
+TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
+  const int64_t axis = 0;
+  std::vector<ShapeAndInt32Data> outputs;
+
+  // input shape and data
+  ShapeAndInt32Data input = {{4, 2},  // shape
+                             {1, 2,
+                              3, 4,
+                              5, 6,
+                              7, 8}};
+
+  outputs.push_back({{2, 2},
+                     {1, 2,
+                      3, 4}});
+
+  outputs.push_back({{2, 2},
+                     {5, 6,
+                      7, 8}});
 
   RunTest(axis, {}, input, outputs);
 }
