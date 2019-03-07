@@ -8,6 +8,7 @@ namespace onnxruntime {
 namespace test {
 
 template<class T> using ShapeAndData = std::pair<const std::vector<int64_t>, const std::vector<T>>;
+
 using ShapeAndFloatData = ShapeAndData<float>;
 using ShapeAndInt32Data = ShapeAndData<int32_t>;
 using ExpectResult = OpTester::ExpectResult;
