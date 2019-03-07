@@ -141,6 +141,14 @@ jobs:
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch
         setVcvars: true 
 
+    - task: CmdLine@2
+      displayName: 'Set CUDA 9.1 path'
+      inputs:
+        script: |
+          set PATH=C:\local\cuda-9.1.85-windows10-x64-0\bin;%PATH%
+        modifyEnvironment: true
+        workingDirectory: '$(Build.BinariesDirectory)'
+
     - task: PowerShell@2
       displayName: 'Set CUDA path - for 9.1'
       inputs:
