@@ -4,12 +4,6 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:
     - template: templates/set-test-data-variables-step.yml
-      displayName: 'NuGet restore'
-      inputs:
-        restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        feedsToUse: config
-        nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
-        restoreDirectory: '$(Build.SourcesDirectory)\csharp'
     - task: UniversalPackages@0
       displayName: 'Download python'
       inputs:
