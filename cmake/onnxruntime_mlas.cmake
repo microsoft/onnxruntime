@@ -105,8 +105,6 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
     )
 
-    set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-msse2 -mavx")
-
     if (dumpmachine_output MATCHES "^x86_64.*")
       set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-m32 -msse2")
       set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-m32 -mavx")

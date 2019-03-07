@@ -137,8 +137,9 @@ def is_windows():
 def is_linux():
     return sys.platform.startswith("linux")
 
-def is_x64():
-    return platform.processor() == "x86_64"
+def is_64_machine():
+    machine = platform.machine().lower()
+    return machine == "x86_64" or machine == "amd64"
 
 def is_ubuntu_1604():
     return platform.linux_distribution()[0] == 'Ubuntu' and platform.linux_distribution()[1] == '16.04'
@@ -338,8 +339,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if is_windows():
         cmake_args += cmake_extra_args
 
-    if is_linux() and is_x64() and args.x86:
-        cmake_args += ["-Donnxruntime_GCC32=ON"]
+    if is_linux() and is_64_machine() and args.x86:
+        cmake_args += ["-Donnxruntime_BIT32=ON"]
 
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
