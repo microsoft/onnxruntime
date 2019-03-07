@@ -187,8 +187,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #3. both onnxruntime_USE_PREBUILT_PB and ONNX_CUSTOM_PROTOC_EXECUTABLE are not set
 #   Compile everything from source code. Slowest option.
 
-# mode 1
-if(onnxruntime_USE_PREBUILT_PB AND NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
+if(onnxruntime_USE_PREBUILT_PB)
   get_filename_component(
      _PROTOBUF_INSTALL_PREFIX
      ${ONNX_CUSTOM_PROTOC_EXECUTABLE}
@@ -203,20 +202,6 @@ if(onnxruntime_USE_PREBUILT_PB AND NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQU
     include(${_PROTOBUF_INSTALL_PREFIX}/lib64/cmake/protobuf/protobuf-config.cmake)
   endif()
   include(protobuf_function.cmake)
-
-# mode 2
-elseif(NOT "${ONNX_CUSTOM_PROTOC_EXECUTABLE}" STREQUAL "")
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
-  set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-  add_library(protobuf::libprotobuf ALIAS libprotobuf)
-  get_filename_component(
-  _PROTOBUF_INSTALL_PREFIX
-  ${ONNX_CUSTOM_PROTOC_EXECUTABLE}
-  DIRECTORY)
-  include(protobuf_function.cmake)
- 
-# mode 3  
 else()
   # use protobuf as a submodule
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)

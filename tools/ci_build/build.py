@@ -95,6 +95,8 @@ Use the individual flags to only run the specified stages.
                              "These are just CMake -D options without the leading -D.")
     parser.add_argument("--x86", action='store_true',
                         help="Create x86 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument("--arm", action='store_true',
+                        help="Create ARM makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--arm64", action='store_true',
                         help="Create ARM64 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
@@ -304,8 +306,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
-                  # By default - we currently support only cross compiling for ARM64 (no native compilation supported through this script)
-                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 else "OFF"),
+                  # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
+                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -529,7 +531,7 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda):
 
 def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     if not is_windows():
-        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM64 arch')
+        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
 
     log.info("Building protoc for host to be used in cross-compiled build process")
     protoc_build_dir = os.path.join(build_dir, 'host_protoc')
@@ -563,7 +565,7 @@ def main():
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        if args.arm64:
+        if args.arm or args.arm64:
             args.test = False
         else:
             args.test = True
@@ -595,13 +597,18 @@ def main():
         if(is_windows()):
           if (args.x86):
             cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
-          elif (args.arm64):
-            # Cross-compiling for ARM64 architecture
-            # First build protobuf for host
+          elif (args.arm or args.arm64):
+            # Cross-compiling for ARM(64) architecture
+            # First build protoc for host to use during cross-compilation
             build_protoc_for_windows_host(cmake_path, source_dir, build_dir)
-            cmake_extra_args = ['-A','ARM64', '-G', 'Visual Studio 15 2017']
+            if args.arm:
+                cmake_extra_args = ['-A', 'ARM']
+            else:
+                cmake_extra_args = ['-A', 'ARM64']
+            cmake_extra_args += ['-G', 'Visual Studio 15 2017']
             # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
             if args.test:
+                log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
                 args.test = False
           else:
             toolset = 'host=x64'
@@ -612,8 +619,8 @@ def main():
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
-            if (args.arm64):
-                raise BuildError("Only Windows ARM64 builds supported currently")
+            if (args.arm or args.arm64):
+                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             install_ubuntu_deps(args)
             if not is_docker():
                 install_python_deps()
@@ -631,7 +638,7 @@ def main():
         if args.path_to_protoc_exe:
             path_to_protoc_exe = args.path_to_protoc_exe
         # Need to provide path to protoc.exe built for host to be used in the cross-compiled build process
-        elif args.arm64:
+        elif args.arm or args.arm64:
             path_to_protoc_exe = os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')
 
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, path_to_protoc_exe, configs, cmake_extra_defines,
