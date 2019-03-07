@@ -5,6 +5,8 @@ project(onnxruntime_hosting)
 
 find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED)
 
+set(re2_src ${REPO_ROOT}/cmake/external/re2)
+
 file(GLOB_RECURSE onnxruntime_hosting_srcs
     "${ONNXRUNTIME_ROOT}/hosting/*.h"
     "${ONNXRUNTIME_ROOT}/hosting/*.cc"
@@ -20,7 +22,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         ${ONNXRUNTIME_ROOT}
         PUBLIC
         ${Boost_INCLUDE_DIR}
-        ${ONNXRUNTIME_ROOT}/hosting/include)
+        ${re2_src}
+        ${ONNXRUNTIME_ROOT}/hosting/include
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         ${Boost_LIBRARIES}

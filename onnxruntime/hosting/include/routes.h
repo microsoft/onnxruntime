@@ -62,6 +62,7 @@ class Routes {
     std::smatch m{};
     bool found_match = false;
     for (const auto& pattern : func_table) {
+      // TODO: use re2 for matching
       if (std::regex_match(url, m, pattern.first)) {
         model_name = m[1];
         model_version = m[2];
