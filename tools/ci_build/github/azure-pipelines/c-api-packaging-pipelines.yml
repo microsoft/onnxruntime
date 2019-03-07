@@ -159,6 +159,7 @@ jobs:
           dir *.props /s
 
           type "c:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0\V141\BuildCustomizations\CUDA 9.1.targets"
+          type "c:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0\V141\BuildCustomizations\CUDA 9.1.props"
           pushd "C:\Program Files (x86)\Microsoft Visual Studio\2017"
           dir /s
           popd
