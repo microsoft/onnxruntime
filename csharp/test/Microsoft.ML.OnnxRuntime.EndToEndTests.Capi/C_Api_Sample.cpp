@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 //
 
-#include "pch.h"
 #include <assert.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <stdlib.h>
