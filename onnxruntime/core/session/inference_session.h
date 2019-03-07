@@ -20,6 +20,13 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
+struct OrtCustomOpDomain {
+  std::string domain_;
+  int op_version_start_{};
+  int op_version_end_{};
+  std::vector<OrtCustomOp*> custom_ops_;
+};
+
 namespace onnxruntime {
 class IExecutionProvider;  // forward decl
 class IOBinding;
@@ -131,6 +138,8 @@ class InferenceSession {
   * @return OK if success
   */
   common::Status LoadCustomOps(const std::vector<std::string>& dso_list);
+
+  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 
   /**
     * Register a custom registry for operator schema and kernels.  If you've one to register, 
