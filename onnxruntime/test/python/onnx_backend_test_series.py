@@ -6,7 +6,7 @@ import os
 import unittest
 import onnx.backend.test
 
-import numpy as np  # type: ignore
+import numpy as np
 import onnxruntime.backend as c2
 
 pytest_plugins = 'onnx.backend.test.report',
@@ -35,7 +35,6 @@ backend_test = OnnxruntimeBackendTest(c2, __name__)
 
 # Type not supported
 backend_test.exclude(r'(FLOAT16)')
-backend_test.exclude(r'^test_gru_seq_length_cpu.*')
 
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
