@@ -151,7 +151,11 @@ jobs:
       displayName: 'Set CUDA 9.1 path'
       inputs:
         script: |
-          set PATH=C:\local\cuda-9.1.85-windows10-x64-0\bin;%PATH%
+          set PATH=C:\local\cuda-9.1.85-windows10-x64-0\bin;C:\local\cudnn-9.1-windows10-x64-v7.1\cuda\bin;%PATH%
+          set CUDA_PATH_V9_1=C:\local\cuda-9.1.85-windows10-x64-0
+          set CUDA_TOOLKIT_ROOT_DIR=%CUDA_PATH_V9_1%
+          set CUDA_PATH=%CUDA_PATH_V9_1%
+          set
           echo "checking the content of the CUDA msbuild path"
           pushd c:\local
           
