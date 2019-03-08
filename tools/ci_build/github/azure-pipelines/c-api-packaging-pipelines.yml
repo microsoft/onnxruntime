@@ -141,11 +141,6 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
 
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch
-        setVcvars: false
 
     - task: CmdLine@2
       displayName: 'Set CUDA 9.1 path'
@@ -178,6 +173,12 @@ jobs:
         targetType: 'filePath'
         filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/set_cuda_path.ps1'
         arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion 9.1'
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'amd64'  # amd64 is needed for vcvars target arch
+        setVcvars: true
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
