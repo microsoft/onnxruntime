@@ -3,7 +3,7 @@
 
 project(onnxruntime_hosting)
 
-find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED)
+find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRED)
 
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
@@ -28,12 +28,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         ${Boost_LIBRARIES}
-        ${PROVIDERS_MKLDNN}
-        ${MKLML_SHARED_LIB}
-        ${PROVIDERS_CUDA}
-        ${onnxruntime_tvm_libs}
-        ${onnxruntime_libs}
-        ${onnxruntime_EXTERNAL_LIBRARIES}
         onnxruntime_session
         onnxruntime_optimizer
         onnxruntime_providers
@@ -43,9 +37,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         onnxruntime_graph
         onnxruntime_common
         onnxruntime_mlas
-        onnx
-        onnx_proto
-        protobuf::libprotobuf
-        re2
+        ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 

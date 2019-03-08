@@ -172,8 +172,6 @@ elseif(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
     list(APPEND onnxruntime_test_framework_libs stdc++fs)
 endif()
 
-
-
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(onnxruntime_USE_CUDA)
@@ -525,10 +523,10 @@ if (onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 if (onnxruntime_BUILD_HOSTING)
-  find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED) 
+  find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRED)
   add_library(onnxruntime_test_utils_for_hosting ${onnxruntime_test_hosting_src})
   onnxruntime_add_include_to_target(onnxruntime_test_utils_for_hosting onnxruntime_test_utils gtest gsl onnx onnx_proto )
-  add_dependencies(onnxruntime_test_utils_for_hosting ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_test_utils_for_hosting onnxruntime_hosting ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_test_utils_for_hosting PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 PRIVATE ${ONNXRUNTIME_ROOT} )
   target_link_libraries(onnxruntime_test_utils_for_hosting ${Boost_LIBRARIES} ${onnx_test_libs})
 

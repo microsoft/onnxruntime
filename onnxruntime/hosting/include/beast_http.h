@@ -43,7 +43,7 @@ class App {
     return *this;
   }
 
-  App& post(const std::regex& route, handler_fn fn) {
+  App& post(const std::string& route, handler_fn fn) {
     //    routes->http_posts[route] = std::move(fn);
     routes->register_controller(http::verb::post, route, fn);
     return *this;

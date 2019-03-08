@@ -4,9 +4,9 @@
 #ifndef BEAST_SERVER_ROUTES_H
 #define BEAST_SERVER_ROUTES_H
 
-#include <regex>
 #include <vector>
 #include <boost/beast/http.hpp>
+#include "re2/re2.h"
 #include "http_context.h"
 
 namespace http = boost::beast::http;  // from <boost/beast/http.hpp>
@@ -20,14 +20,14 @@ using handler_fn = std::function<void(std::string, std::string, std::string, Htt
 class Routes {
  public:
   Routes() = default;
-  bool register_controller(http::verb method, const std::regex& url_pattern, const handler_fn& controller) {
+  bool register_controller(http::verb method, const std::string& url_pattern, const handler_fn& controller) {
     switch(method)
     {
       case http::verb::get:
-        this->get_fn_table.push_back(make_pair(url_pattern, controller));
+        this->get_fn_table.emplace_back(url_pattern, controller);
         return true;
       case http::verb::post:
-        this->post_fn_table.push_back(make_pair(url_pattern, controller));
+        this->post_fn_table.emplace_back(url_pattern, controller);
         return true;
       default:
         return false;
@@ -40,7 +40,7 @@ class Routes {
                          /* out */ std::string& model_version,
                          /* out */ std::string& action,
                          /* out */ handler_fn& func) {
-    std::vector<std::pair<std::regex, handler_fn>> func_table;       
+    std::vector<std::pair<std::string, handler_fn>> func_table;
     switch(method)
     {
       case http::verb::get:
@@ -59,14 +59,9 @@ class Routes {
       return http::status::method_not_allowed;
     }
 
-    std::smatch m{};
     bool found_match = false;
     for (const auto& pattern : func_table) {
-      // TODO: use re2 for matching
-      if (std::regex_match(url, m, pattern.first)) {
-        model_name = m[1];
-        model_version = m[2];
-        action = m[3];
+      if (re2::RE2::FullMatch(url, pattern.first, &model_name, &model_version, &action)) {
         func = pattern.second;
 
         found_match = true;
@@ -83,8 +78,8 @@ class Routes {
   }
 
  private:
-  std::vector<std::pair<std::regex, handler_fn>> post_fn_table;
-  std::vector<std::pair<std::regex, handler_fn>> get_fn_table;
+  std::vector<std::pair<std::string, handler_fn>> post_fn_table;
+  std::vector<std::pair<std::string, handler_fn>> get_fn_table;
 };
 
 } // namespace onnxruntime
