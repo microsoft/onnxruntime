@@ -20,13 +20,13 @@ apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         wget \
         zlib1g \
+        zlib1g-dev \
         libssl-dev \
         curl \
         autoconf \
         sudo \
         gfortran \
         python3-dev \
-        python3-dev:i386 \
         language-pack-en \
         libopenblas-dev \
         liblttng-ust0 \
@@ -38,10 +38,8 @@ apt-get update && apt-get install -y --no-install-recommends \
         bzip2 \
         unzip \
         zip \
-        rsync libunwind8 \
-        python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
-        gcc-multilib \
-        g++-multilib
+        rsync libunwind8 libpng16-dev \
+        python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
