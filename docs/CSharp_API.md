@@ -4,6 +4,12 @@ The ONNX runtime provides a C# .Net binding for running inference on ONNX models
 ## NuGet Package
 The Microsoft.ML.OnnxRuntime Nuget package includes the precompiled binaries for ONNX runtime, and includes libraries for Windows and Linux platforms with X64 CPUs. The APIs conform to .Net Standard 1.1.
 
+## Sample Code
+
+The unit tests contain several examples of loading models, inspecting input/output node shapes and types, as well as constructing tensors for scoring. 
+
+* [../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L54](../csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L54)
+
 ## Getting Started
 Here is simple tutorial for getting started with running inference on an existing ONNX model for a given input data. The model is typically trained using any of the well-known training frameworks and exported into the ONNX format. To start scoring using the model, open a session using the `InferenceSession` class, passing in the file path to the model as a parameter.
     

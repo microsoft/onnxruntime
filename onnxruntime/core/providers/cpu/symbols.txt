@@ -1,3 +1,4 @@
+OrtAddCustomOpDomain
 OrtAllocatorAlloc
 OrtAllocatorFree
 OrtAllocatorGetInfo
@@ -11,6 +12,7 @@ OrtCloneSessionOptions
 OrtCompareAllocatorInfo
 OrtCreateAllocatorInfo
 OrtCreateCpuAllocatorInfo
+OrtCreateCustomOpDomain
 OrtCreateDefaultAllocator
 OrtCreateEnv
 OrtCreateEnvWithCustomLogger
@@ -20,6 +22,8 @@ OrtCreateSessionOptions
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
 OrtCreateTensorWithDataAsOrtValue
+OrtCreateValue
+OrtCustomOpDomain_Add
 OrtDisableCpuMemArena
 OrtDisableMemPattern
 OrtDisableProfiling
@@ -36,14 +40,18 @@ OrtGetNumOfDimensions
 OrtGetStringTensorContent
 OrtGetStringTensorDataLength
 OrtGetTensorElementType
+OrtGetTensorMemSizeInBytesFromTensorProto
 OrtGetTensorMutableData
 OrtGetTensorShapeAndType
 OrtGetTensorShapeElementCount
 OrtGetTypeInfo
+OrtGetValue
+OrtGetValueCount
 OrtGetValueType
 OrtIsTensor
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
+OrtReleaseCustomOpDomain
 OrtReleaseEnv
 OrtReleaseRunOptions
 OrtReleaseSession
@@ -55,10 +63,8 @@ OrtReleaseValue
 OrtRun
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
-OrtRunOptionsGetCacheFeedsFetchesInfoEnabled
 OrtRunOptionsSetRunLogVerbosityLevel
 OrtRunOptionsSetRunTag
-OrtRunOptionsSetCacheFeedsFetchesInfoEnabled
 OrtRunOptionsSetTerminate
 OrtSessionGetInputCount
 OrtSessionGetInputName
@@ -73,6 +79,3 @@ OrtSetSessionLogVerbosityLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue
-OrtGetValue
-OrtGetValueCount
-OrtCreateValue

@@ -39,6 +39,10 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
+  MLValue* OutputMLValue(int index, const TensorShape& shape) {
+    return OpKernelContext::OutputMLValue(index, shape);
+  }
+
   std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const {
     // we need to convert implicit_inputs_ to a name to MLValue map so it can be used in the ExecutionFrame
     // for a subgraph (the index numbers will be different there).

@@ -19,6 +19,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
+#include "core/framework/callback.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
@@ -41,12 +42,21 @@ struct MemoryPatternGroup;
 class TaskThreadPool;
 #endif
 
-// SessionState should be modified by the inference session class only.
-// It is supposed to be passed by const-ref only to all the executors.
+/**
+ * SessionState should be modified by the inference session class only.
+ * It is supposed to be passed by const-ref only to all the executors.
+ * This class owns all the initializers.
+ */
 class SessionState {
  public:
   SessionState(const ExecutionProviders& execution_providers)
       : execution_providers_{execution_providers} {
+  }
+
+  ~SessionState() {
+    for (auto& kvp : deleter_for_initialized_tensors_) {
+      kvp.second.f(kvp.second.param);
+    }
   }
 
   // Graph viewer.
@@ -69,12 +79,14 @@ class SessionState {
   /**
   * Adds an initialized tensor (weight) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
+  * This function will take a shallow copy of d if d is not NULL
   */
-  void AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue);
+  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d);
 
   /**
   * Gets the list of all initialized tensors (weights) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
+  * The lifetime of returned MLValues are limited by this SessionState object.
   */
   const std::unordered_map<int, MLValue>& GetInitializedTensors() const;
 
@@ -115,16 +127,6 @@ class SessionState {
   */
   Status UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
-
-  /**
-  Set enable memory pattern flag
-  */
-  void SetEnableMemoryPattern(bool flag);
-
-  /**
-  Get enable memory pattern flag
-  */
-  bool GetEnableMemoryPattern() const;
 
   struct NodeInfo {
     /**
@@ -185,13 +187,6 @@ class SessionState {
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
-  const FeedsFetchesManager* GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                                    const std::vector<std::string>& output_names) const;
-
-  Status CacheFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                  const std::vector<std::string>& output_names,
-                                  std::unique_ptr<FeedsFetchesManager> manager);
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -205,14 +200,15 @@ class SessionState {
 
   // initialized tensorset
   std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
+  // This data structure is for unintializing string tensors and
+  // munmap memory region and close file descriptor
+  std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_;
 
-  // switch for enable memory pattern optimization or not.
-  bool enable_mem_pattern_ = true;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.

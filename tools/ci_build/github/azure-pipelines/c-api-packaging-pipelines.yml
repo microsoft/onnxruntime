@@ -1,0 +1,155 @@
+jobs:
+- job: Linux_C_API_Packaging_CPU_x64
+  pool: Linux-CPU
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+      displayName: 'Build and Test Linux on Docker'
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x64'
+          libraryName: 'libonnxruntime.so'
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: Linux_C_API_Packaging_CPU_x86
+  pool: Linux-CPU
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --x86 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+      displayName: 'Build and Test Linux on Docker'
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x86'
+          libraryName: 'libonnxruntime.so'
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: Linux_C_API_Packaging_GPU_x64
+  pool: Linux-GPU-CUDA10
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+      displayName: 'Build and Test Linux on Docker'
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-x64-gpu'
+          libraryName: 'libonnxruntime.so'
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: MacOS_C_API_Packaging_CPU_x64
+  pool: 
+    vmImage: 'macOS-10.13'
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+    - script: |
+        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
+      displayName: 'Build and Test MacOS'
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          buildConfig: 'RelWithDebInfo'
+          artifactName: 'onnxruntime-osx-x64'
+          libraryName: 'libonnxruntime.dylib'
+
+    - template: templates/clean-agent-build-directory-step.yml
+  
+
+- job: Windows_Packaging_CPU_x64
+  pool: 'Win-CPU'
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
+    buildArch: 'x64'
+
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
+        setVcvars: false
+
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp '
+        buildArch: $(buildArch)
+        msbuildPlatform: $(buildArch)
+        buildConfig: $(buildConfig)
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
+      parameters:
+        buildConfig: $(buildConfig)
+        artifactName: 'onnxruntime-win-$(buildArch)'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: Windows_Packaging_CPU_x86
+  pool: 'Win-CPU'
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
+    buildArch: 'x86'
+
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: $(buildArch)
+        setVcVars: false
+
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp --x86 '
+        buildArch: $(buildArch)
+        msbuildPlatform: 'Win32'
+        buildConfig: $(buildConfig)
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
+      parameters:
+        buildConfig: $(buildConfig)
+        artifactName: 'onnxruntime-win-$(buildArch)'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: Windows_Packaging_GPU_x64
+  pool: 'Win-GPU-CUDA10'
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    buildConfig: 'RelWithDebInfo'
+    buildArch: 'x64'
+
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env_cuda.bat'
+        buildArch: 'amd64'  # amd64 is needed for vcvars target arch
+        setVcvars: true 
+
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" '
+        buildArch: $(buildArch)
+        buildConfig: $(buildConfig)
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
+      parameters:
+        buildConfig: $(buildConfig)
+        artifactName: 'onnxruntime-win-gpu-$(buildArch)'
+
+    - template: templates/clean-agent-build-directory-step.yml
