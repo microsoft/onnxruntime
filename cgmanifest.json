@@ -85,15 +85,6 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
-               "repositoryUrl":"https://github.com/google/protobuf.git"
-            }
-         }
-      },
-      {
-         "component":{
-            "type":"git",
-            "git":{
                "commitHash":"5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
                "repositoryUrl":"https://github.com/google/benchmark.git"
             }
@@ -240,8 +231,9 @@
             "git":{
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
-              }
-         }
+            }
+         }    
+      },
       {
          "component":{
             "type":"git",
@@ -249,6 +241,24 @@
                "commitHash":"30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
                "repositoryUrl":"https://github.com/google/re2.git"
             }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "repositoryUrl":"https://github.com/protocolbuffers/protobuf.git"
+              }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
+               "repositoryUrl":"https://github.com/BVLC/caffe.git"
+              }
          }
       },
       {

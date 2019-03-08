@@ -6,15 +6,15 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is an open-source scoring engine for Open Neural Network Exchange (ONNX) models. 
+**ONNX Runtime** is an open-source scoring engine for Open Neural Network Exchange (ONNX) models.
 
-ONNX is an open format for machine learning (ML) models that is supported by various ML and DNN frameworks and tools. This format makes it easier to interoperate between frameworks and to maximize the reach of your hardware optimization investments. Learn more about ONNX on [https://onnx.ai](https://onnx.ai) or view the [Github Repo](https://github.com/onnx/onnx). 
- 
-# Why use ONNX Runtime 
+ONNX is an open format for machine learning (ML) models that is supported by various ML and DNN frameworks and tools. This format makes it easier to interoperate between frameworks and to maximize the reach of your hardware optimization investments. Learn more about ONNX on [https://onnx.ai](https://onnx.ai) or view the [Github Repo](https://github.com/onnx/onnx).
+
+# Why use ONNX Runtime
 ONNX Runtime is an open architecture that is continually evolving to adapt to and address the newest developments and challenges in AI and Deep Learning. We will keep ONNX Runtime up to date with the ONNX standard, supporting all ONNX releases with future compatibliity while maintaining backwards compatibility with prior releases.
 
 ONNX Runtime continuously strives to provide top performance for a broad and growing number of usage scenarios in Machine Learning. Our investments focus on these 3 core areas:
-1. Run any ONNX model 
+1. Run any ONNX model
 2. High performance
 3. Cross platform
 
@@ -23,50 +23,56 @@ ONNX Runtime continuously strives to provide top performance for a broad and gro
 ### Alignment with ONNX Releases
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See ONNX version release details [here](https://github.com/onnx/onnx/releases).
 
-As of January 2019, ONNX Runtime supports ONNX 1.3. We will soon add support for the recently released ONNX 1.4.
+As of March 2019, ONNX Runtime supports ONNX 1.4.
 
 ### Traditional ML support
-ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios. 
+ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios.
 
-## High Performance 
+## High Performance
 You can use ONNX Runtime with both CPU and GPU hardware. You can also plug in additional execution providers to ONNX Runtime. With many graph optimizations and various accelerators, ONNX Runtime can often provide lower latency and higher efficiency compared to other runtimes. This provides smoother end-to-end customer experiences and lower costs from improved machine utilization.
 
-Currently ONNX Runtime supports CUDA and MKL-DNN (with option to build with MKL) for computation acceleration. To add an execution provider, please refer to [this page](docs/AddingExecutionProvider.md).
+Currently ONNX Runtime supports CUDA, MLAS (Microsoft Linear Algebra Subprograms), MKL-DNN, and MKL-ML for computation acceleration. See more details on available build options [here](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) or refer to [this page](docs/AddingExecutionProvider.md) to add a new execution provider.
 
 We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. We have ongoing collaborations to integrate the following with ONNX Runtime:
-	* Intel MKL-DNN and nGraph
-	* NVIDIA TensorRT
+* Intel MKL-DNN and nGraph
+* NVIDIA TensorRT
 
-## Cross Platform 
+## Cross Platform
 ONNX Runtime offers:
 * APIs for Python, C#, and C
 * Available for Linux, Windows, and Mac 
 
-See API documentation and package installation instructions [below](#Installation). 
+See API documentation and package installation instructions [below](#Installation).
 
-Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. These include but are not limited to:
-* C# for Mac
-* [ARM](BUILD.md##arm-builds)
+Looking ahead: To broaden the reach of the runtime, we will continue investments to make ONNX Runtime available and compatible with more platforms. If you have specific scenarios that are not currently supported, please share your suggestions via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 
-# Getting Started 
-If you need a model:  
-* Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models. 
+# Getting Started
+If you need a model:
+* Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models.
 * To get an ONNX model by exporting from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials).
 
-If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See detailed instructions [here](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx). 
+If you already have an ONNX model, just [install the runtime](#Installation) for your machine to try it out. One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx). 
+
 
 # Installation
 ## APIs and Official Builds
-| API Documentation | CPU package | GPU package |
+| API Documentation | CPU package | GPU package* |
 |-----|-------------|-------------|
-| [Python](https://aka.ms/onnxruntime-python) | [Windows/Linux/Mac](https://pypi.org/project/onnxruntime/)| [Windows/Linux](https://pypi.org/project/onnxruntime-gpu/)<br>(Compatible with CUDA9.1 and cuDNN 7.3) |
-| [C#](docs/CSharp_API.md) | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Mac - Coming Soon| [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Mac - Coming Soon|
-| [C](docs/C_API.md) | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br>Mac - Coming Soon | [Windows/Linux](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br>Mac - Coming Soon |
-| [C++](onnxruntime/core/session/inference_session.h) | TBD | TBD |
+| [Python](https://aka.ms/onnxruntime-python)** | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/><br/> |
+| [C#](docs/CSharp_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
+| [C](docs/C_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
+| [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
+
+&#42;Requires CUDA 9.1 and cuDNN 7.3<br/>
+&#42;&#42;Compatible with Python 3.5-3.7
 
 ## System Requirements
-* The OnnxRuntime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the system. For Windows, OpenMP support comes as part of VC runtime. For Linux, the system must have the libgomp.so.1 installed. 
-* The GPU builds require the CUDA9.1 and cuDNN 7.3 runtime libraries being installed in the system. 
+* ONNX Runtime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the
+system.
+  * For Windows, OpenMP support comes as part of VC runtime. It is also available as redist packages:
+    [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
+  * For Linux, the system must have the libgomp.so.1 which can be installed using ```apt-get install libgomp1```.
+* The GPU builds require the CUDA9.1 and cuDNN 7.3 runtime libraries being installed in the system.
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).

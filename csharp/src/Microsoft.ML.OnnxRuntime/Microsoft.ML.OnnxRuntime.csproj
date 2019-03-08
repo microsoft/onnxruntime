@@ -32,7 +32,7 @@
   <!--TODO: Find a way to bundle the native symbol files properly -->
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_c_api.h"
-          PackagePath="\build\native\include\core\session"
+          PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
           Visible="false"

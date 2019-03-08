@@ -169,7 +169,7 @@ namespace Microsoft.ML.OnnxRuntime
                 var result = new DisposableList<DisposableNamedOnnxValue>();
                 for (uint i = 0; i < outputValueArray.Length; i++)
                 {
-                    result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValueArray[i]));  
+                    result.Add(DisposableNamedOnnxValue.CreateFromOnnxValue(outputNamesArray[i], outputValueArray[i]));
                 }
 
                 return result;
@@ -297,10 +297,13 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
+        internal static NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
         {
             IntPtr tensorInfo = NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo);
-                    // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo* 
+            // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo*
+
+            if (tensorInfo == IntPtr.Zero)
+                return null;
 
             TensorElementType type = NativeMethods.OrtGetTensorElementType(tensorInfo);
             Type dotnetType = null;
