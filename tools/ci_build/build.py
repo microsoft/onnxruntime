@@ -79,9 +79,6 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
-    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
-                        "before building the python binding.")
-    parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
@@ -198,9 +195,8 @@ def install_ubuntu_deps(args):
         except Exception as e:
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
-def install_python_deps(numpy_version=""):
-    dep_packages = ['setuptools', 'wheel']
-    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
+def install_python_deps():
+    dep_packages = ['setuptools', 'wheel', 'numpy==1.15.0']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -410,7 +406,7 @@ def setup_cuda_vars(args):
 
             cuda_bin_path = os.path.join(cuda_home, 'bin')
             os.environ["CUDA_BIN_PATH"] = cuda_bin_path
-            os.environ["PATH"] = cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin') + os.pathsep + os.environ["PATH"]
+            os.environ["PATH"] += os.pathsep + cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin')
             # Add version specific CUDA_PATH_Vx_y value as the Visual Studio build files require that
             version_file = os.path.join(cuda_home, 'version.txt')
             if not os.path.exists(version_file):
@@ -428,7 +424,6 @@ def setup_cuda_vars(args):
                 cuda_major_version = m.group(1)
                 minor = m.group(2)
                 os.environ["CUDA_PATH_V{}_{}".format(cuda_major_version, minor)] = cuda_home
-                log.info("environment variable set for CUDA_PATH_V9_1 = "+os.environ['CUDA_PATH_V9_1'])
 
             vc_ver_str = os.getenv("VCToolsVersion") or ""
             vc_ver = vc_ver_str.split(".")
@@ -470,16 +465,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
                 if config != 'Debug':
                     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
-            if not args.skip_keras_test:
-                try:
-                    import onnxmltools
-                    import keras
-                    onnxml_test = True
-                except ImportError:
-                    warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
-                    onnxml_test = False
-                if onnxml_test:
-                    run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
+            try:
+                import onnxmltools
+                import keras
+                onnxml_test = True
+            except ImportError:
+                warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
+                onnxml_test = False
+            if onnxml_test:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
@@ -576,7 +570,7 @@ def main():
             if not is_docker():
                 install_python_deps()
         if (args.enable_pybind and is_windows()):
-            install_python_deps(args.numpy_version)
+            install_python_deps()
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
 

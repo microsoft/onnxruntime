@@ -1,6 +1,5 @@
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
-  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -16,7 +15,6 @@ jobs:
 
 
 - job: Linux_C_API_Packaging_CPU_x86
-  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -32,7 +30,6 @@ jobs:
 
 
 - job: Linux_C_API_Packaging_GPU_x64
-  condition: false
   pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -48,7 +45,6 @@ jobs:
 
 
 - job: MacOS_C_API_Packaging_CPU_x64
-  condition: false
   pool: 
     vmImage: 'macOS-10.13'
   steps:
@@ -68,7 +64,6 @@ jobs:
   
 
 - job: Windows_Packaging_CPU_x64
-  condition: false
   pool: 'Win-CPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -100,7 +95,6 @@ jobs:
 
 
 - job: Windows_Packaging_CPU_x86
-  condition: false
   pool: 'Win-CPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -141,29 +135,11 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
 
-
     - task: CmdLine@2
       displayName: 'Set CUDA 9.1 path'
       inputs:
         script: |
           set PATH=C:\local\cuda-9.1.85-windows10-x64-0\bin;C:\local\cudnn-9.1-windows10-x64-v7.1\cuda\bin;%PATH%
-          set CUDA_PATH_V9_1=C:\local\cuda-9.1.85-windows10-x64-0
-          set CUDA_TOOLKIT_ROOT_DIR=%CUDA_PATH_V9_1%
-          set CUDA_PATH=%CUDA_PATH_V9_1%
-          set
-          echo "checking the content of the CUDA msbuild path"
-          pushd c:\local
-          
-          dir *.targets /s
-          dir *.props /s
-
-          type "c:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0\V141\BuildCustomizations\CUDA 9.1.targets"
-          type "c:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0\V141\BuildCustomizations\CUDA 9.1.props"
-          pushd "C:\Program Files (x86)\Microsoft Visual Studio\2017"
-          dir /s
-          popd
-          popd
-
         modifyEnvironment: true
         workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -180,12 +156,6 @@ jobs:
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch
         setVcvars: true
 
-    # - template: templates/windows-build-and-test-steps.yml
-    #   parameters:
-    #     buildAdditionalParams: ' --use_openmp --msvc_toolset=14.11 --use_cuda --cuda_version 9.1 --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" '
-    #     buildArch: $(buildArch)
-    #     buildConfig: $(buildConfig)
-
     - task: CmdLine@2
       displayName: 'Build and Test OnnxRuntime'
       inputs:
@@ -193,7 +163,6 @@ jobs:
           $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --use_openmp --msvc_toolset=14.11 --use_cuda --cuda_version 9.1 --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" 
 
         workingDirectory: '$(Build.BinariesDirectory)'
-
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
