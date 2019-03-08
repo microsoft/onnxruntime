@@ -26,6 +26,7 @@ apt-get update && apt-get install -y --no-install-recommends \
         sudo \
         gfortran \
         python3-dev \
+        python3-dev:i386 \
         language-pack-en \
         libopenblas-dev \
         liblttng-ust0 \
