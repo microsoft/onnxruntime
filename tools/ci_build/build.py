@@ -539,6 +539,8 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     # Generate step
     cmd_args = [cmake_path,
                 os.path.join(source_dir, 'cmake\external\protobuf\cmake'),
+                '-T',
+                'host=x64',
                 '-G',
                 'Visual Studio 15 2017',
                 '-Dprotobuf_BUILD_TESTS=OFF',
