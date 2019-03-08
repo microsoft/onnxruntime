@@ -10,6 +10,8 @@
 namespace onnxruntime {
 namespace training {
 
+#define GRADIENT_OP_VERSION 9
+
 /**
  * @brief An adapter for OpSchema in onnx.
  *
@@ -74,7 +76,7 @@ class GradOpSchema {
   GradOpSchema& VariadicOutput();
 
   // Fills the gradient schema op using the parameter schema name provided
-  GradOpSchema& Reference(const std::string& fw_op_schema_name, const int sinceVersion);
+  GradOpSchema& Reference(const std::string& fw_op_schema_name, const int sinceVersion = GRADIENT_OP_VERSION);
 
   ONNX_NAMESPACE::OpSchema& GetOpSchema() { return *op_schema_; }
 

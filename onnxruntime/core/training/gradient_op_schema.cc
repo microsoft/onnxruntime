@@ -75,7 +75,7 @@ std::function<void(ONNX_NAMESPACE::OpSchema&)> GradOpSchema::GenGradientSchema(c
     return [=](OpSchema& grad_op_schema) {
       // TODO: The version here has to match the kernel version and cannot just depend on fw_op version
       // Figure out a good way to derive matching versions for schema and kernel
-      grad_op_schema.SinceVersion(8);
+      grad_op_schema.SinceVersion(GRADIENT_OP_VERSION);
       grad_op_schema.SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL);
 
       if (base_op != nullptr && base_op->typeConstraintParams().size() == 1) {

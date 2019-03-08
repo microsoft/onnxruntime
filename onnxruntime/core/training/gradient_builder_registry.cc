@@ -3,6 +3,7 @@
 
 #include "core/training/gradient_builder_registry.h"
 #include "core/training/gradient_builder.h"
+#include "core/training/gradient_op_schema.h"
 
 namespace onnxruntime {
 namespace training {
@@ -10,6 +11,11 @@ namespace training {
 GradientDef GetGradientForOp(const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
+  ORT_ENFORCE(
+      node->Op()->SinceVersion() <= GRADIENT_OP_VERSION,
+      "Gradients are supported for opset version" + std::to_string(node->Op()->SinceVersion()) +
+          "Upgrade your model to use opset" + std::to_string(GRADIENT_OP_VERSION));
+
   auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
                                                                             node,
                                                                             output_args_need_grad,

@@ -40,7 +40,7 @@ auto MakeEigenArrayMap(const Tensor* t) { return ConstEigenVectorArrayMap<T>(t->
 
 ONNX_CPU_OPERATOR_KERNEL(
     SinGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SinGrad<float>);
 
@@ -55,7 +55,7 @@ Status SinGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     MulGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     MulGrad<float>);
 
@@ -76,7 +76,7 @@ Status MulGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     ConvGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvGrad<float>);
 
@@ -101,7 +101,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     FlattenGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FlattenGrad<float>);
 
@@ -117,7 +117,7 @@ Status FlattenGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     UnsqueezeGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     UnsqueezeGrad<float>);
 
@@ -133,7 +133,7 @@ Status UnsqueezeGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     ReluGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ReluGrad<float>);
 
@@ -152,7 +152,7 @@ Status ReluGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     AddGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AddGrad<float>);
 
@@ -185,7 +185,7 @@ Status AddGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     MatMulGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     MatMulGrad<float>);
 
@@ -243,7 +243,7 @@ Status MatMulGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     SubGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SubGrad<float>);
 
@@ -266,7 +266,7 @@ Status SubGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     PowGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PowGrad<float>);
 
@@ -291,7 +291,7 @@ Status PowGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     ReduceMeanGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ReduceMeanGrad<float>);
 
@@ -314,7 +314,7 @@ Status ReduceMeanGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     SigmoidGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SigmoidGrad<float>);
 
@@ -332,7 +332,7 @@ Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_CPU_OPERATOR_KERNEL(
     SoftmaxGrad,
-    8,
+    9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SoftmaxGrad<float>);
 
