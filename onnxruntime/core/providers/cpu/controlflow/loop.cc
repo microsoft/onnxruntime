@@ -328,8 +328,9 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   CreateInitialFeeds(feeds);
 
   auto& iter_num_value = *iter_num_mlvalue_.GetMutable<Tensor>()->MutableData<int64_t>();
+  auto current_condition_mlvalue = condition_mlvalue_;
 
-  while (iter_num_value < max_trip_count_ && *condition_mlvalue_.GetMutable<Tensor>()->MutableData<bool>()) {
+  while (iter_num_value < max_trip_count_ && *current_condition_mlvalue.GetMutable<Tensor>()->MutableData<bool>()) {
     if (iter_num_value != 0) {
       UpdateFeeds(fetches, feeds);
       fetches.clear();
@@ -353,7 +354,7 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
 
     ORT_RETURN_IF_ERROR(status);
 
-    condition_mlvalue_ = fetches[0];
+    current_condition_mlvalue = fetches[0];
 
     ++iter_num_value;
   }

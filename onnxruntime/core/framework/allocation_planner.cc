@@ -196,8 +196,7 @@ class PlannerImpl {
   }
 
   // Find if there exists some input tensor that we can use in-place for output_arg
-  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, MLValueIndex* reusable_input) {
-    auto p_output_arg = node.OutputDefs()[output_arg_num];
+  bool FindAliasInput(const onnxruntime::Node& node, int output_arg_num, MLValueIndex* alias_input) {
     const KernelCreateInfo* ci;
     Status st = kernel_registry_.SearchKernelRegistry(node, &ci);
     if (!st.IsOK() || ci == nullptr || ci->kernel_def == nullptr) {
@@ -212,14 +211,26 @@ class PlannerImpl {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
           auto p_input_arg = input_args[pair.first];
           if (p_input_arg->Exists()) {
-            *reusable_input = Index(p_input_arg->Name());
+            *alias_input = Index(p_input_arg->Name());
             return true;
           }
         }
       }
     }
 
+    return false;
+  }
+
+  bool FindInplaceInput(const onnxruntime::Node& node, int output_arg_num, MLValueIndex* inplace_input) {
+    auto p_output_arg = node.OutputDefs()[output_arg_num];
+    const KernelCreateInfo* ci;
+    Status st = kernel_registry_.SearchKernelRegistry(node, &ci);
+    if (!st.IsOK() || ci == nullptr || ci->kernel_def == nullptr) {
+      return false;
+    }
+
     const std::vector<std::pair<int, int>>& inplace_map = ci->kernel_def->MayInplace();
+    auto& input_args = node.InputDefs();
     for (auto pair : inplace_map) {
       if (pair.second == output_arg_num) {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
@@ -230,7 +241,7 @@ class PlannerImpl {
             if (1 == UseCount(original)) {
               if (SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
-                *reusable_input = input_arg_index;  // or original; both should be okay
+                *inplace_input = input_arg_index;  // or original; both should be okay
                 return true;
               }
             }
@@ -238,6 +249,7 @@ class PlannerImpl {
         }
       }
     }
+
     return false;
   }
 
@@ -248,7 +260,7 @@ class PlannerImpl {
       auto& graph_inputs = graph_viewer_.GetInputs();
       auto& graph_outputs = graph_viewer_.GetOutputs();
 
-      if (FindReusableInput(node, output_arg_num, reusable_input)) {
+      if (FindAliasInput(node, output_arg_num, reusable_input)) {
         auto& arg = ml_value_info_.at(Buffer(*reusable_input)).p_def_site;
         auto it = std::find(graph_inputs.cbegin(), graph_inputs.cend(), arg);
         if (it != graph_inputs.end()) {
@@ -260,7 +272,7 @@ class PlannerImpl {
 
           if (parent_node_->OpType() == "Loop") {
             // the matching carried parameters
-            return graph_input_index >= 2 && graph_input_index == graph_output_index + 1;
+            return graph_input_index >= 2;
           } else {
             // TODO: other operators like Scan
           }
@@ -537,7 +549,8 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-        } else if (FindReusableInput(*pnode, output_arg_num, &reused)) {
+        } else if (FindAliasInput(*pnode, output_arg_num, &reused) ||
+                   FindInplaceInput(*pnode, output_arg_num, &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current);
         } else if (!context_.EnableParallelExecution() && FindReusableTensor(*node_output, &reused)) {
