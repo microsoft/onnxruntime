@@ -145,7 +145,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch
-        setVcvars: true 
+        setVcvars: false
 
     - task: CmdLine@2
       displayName: 'Set CUDA 9.1 path'
