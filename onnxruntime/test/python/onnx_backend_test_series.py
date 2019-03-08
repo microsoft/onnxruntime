@@ -38,6 +38,7 @@ backend_test.exclude(r'(FLOAT16)')
 
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
+'|^test_gru_seq_length_cpu.*'
 '|^test_cast_FLOAT_to_DOUBLE_cpu.*'
 '|^test_cast_FLOAT_to_STRING_cpu.*'
 '|^test_cast_STRING_to_FLOAT_cpu.*'
