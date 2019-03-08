@@ -6,6 +6,7 @@
 
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/framework/path_lib.h"
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -23,9 +24,12 @@ class Logger;
 // Don't use this class before graph partition is done
 class SessionStateInitializer {
  public:
-  SessionStateInitializer(onnxruntime::Graph& graph,
-                          SessionState& session_state,
-                          const ExecutionProviders& providers,
+  /**
+   *
+   * \param graph_loc The file path of where the graph was loaded. e.g. /tmp/test_squeezenet/model.onnx
+   */
+  SessionStateInitializer(const std::basic_string<PATH_CHAR_TYPE>& graph_loc, onnxruntime::Graph& graph,
+                          SessionState& session_state, const ExecutionProviders& providers,
                           KernelRegistryManager& kernel_registry_manager);
 
   // First perform any transformations and create the execution plan
@@ -33,11 +37,11 @@ class SessionStateInitializer {
                             bool enable_sequential_execution);
 
   // initialize tensors, and save. save kernels and input/output node mappings
-  // @param enable_memory_pattern
-  common::Status InitializeAndSave(bool enable_memory_pattern,
-                                   const std::vector<NodeArg*>* implicit_inputs = nullptr);
+  // \param implicit_inputs could be NULL
+  common::Status InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs);
 
  private:
+  const std::basic_string<PATH_CHAR_TYPE>& graph_loc_;
   onnxruntime::Graph& graph_;
   SessionState& session_state_;
 

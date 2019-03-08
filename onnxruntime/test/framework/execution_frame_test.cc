@@ -78,7 +78,8 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   EXPECT_EQ(start_index, 0);
 
   TensorShape shape(std::vector<int64_t>{2, 3});
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(start_index, DataTypeImpl::GetType<float>(),
+  MLValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
+  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
                                                     execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -90,7 +91,8 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   //test share memory from tensor
   TensorShape shape2(std::vector<int64_t>{3, 2});
-  status = frame.AllocateMLValueTensorPreAllocateBuffer(start_index + 1,
+  MLValue& mlvalue1 = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
+  status = frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
                                                         start_index,
                                                         DataTypeImpl::GetType<float>(),
                                                         p_tensor->Location(),
@@ -116,12 +118,9 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({3, 2});
-  void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
   //create fake ml value with owned buffer.
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                               shape,
-                                                              buffer,
-                                                              cpu_allocator->Info(),
                                                               cpu_allocator);
   MLValue value;
   value.Init(p_tensor.release(),
@@ -153,7 +152,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   EXPECT_TRUE(p_tensor_arg_0);
   EXPECT_EQ(p_tensor_arg_0->Shape(), shape);
   EXPECT_EQ(p_tensor_arg_0->DataType(), DataTypeImpl::GetType<float>());
-  EXPECT_EQ(p_tensor_arg_0->template MutableData<float>(), buffer);
+  EXPECT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
 
 TEST(ExecutionFrameTest, MemPatternTest) {
@@ -226,19 +225,23 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   vector<MLValue> outputs;
   ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
 
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(3,
+  MLValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
+  MLValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
+  MLValue& mlvalue5 = *frame.GetMutableNodeInputOrOutputMLValue(5);
+
+  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
                                                     DataTypeImpl::GetType<float>(),
                                                     cpu_allocator->Info(),
                                                     TensorShape(std::vector<int64_t>{2, 2}));
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(4,
+  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue4, 4,
                                                     DataTypeImpl::GetType<float>(),
                                                     cpu_allocator->Info(),
                                                     TensorShape(std::vector<int64_t>{2, 3}));
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  status = frame.AllocateMLValueTensorSelfOwnBuffer(5,
+  status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue5, 5,
                                                     DataTypeImpl::GetType<float>(),
                                                     cpu_allocator->Info(),
                                                     TensorShape(std::vector<int64_t>{2, 3}));

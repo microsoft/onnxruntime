@@ -170,8 +170,6 @@ static MLValue MakeScalarMLValue(AllocatorPtr& allocator, T value) {
   auto* data_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
                                                               TensorShape({1}),
-                                                              allocator->Alloc(data_type->Size()),
-                                                              allocator->Info(),
                                                               allocator);
 
   *p_tensor->MutableData<T>() = value;
