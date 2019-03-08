@@ -10,12 +10,22 @@ import onnxruntime.backend as c2
 
 pytest_plugins = 'onnx.backend.test.report',
 
-backend_test = onnx.backend.test.BackendTest(c2, __name__)
+class OrtBackendTest(onnx.backend.test.BackendTest):
 
+  def __init__(self, backend, parent_module=None):
+      super(OrtBackendTest, self).__init__(backend, parent_module)
+
+  @classmethod
+  def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
+    # type: (Sequence[Any], Sequence[Any], float, float) -> None
+
+    # override the rtol and atol values to match onnx_test_runner tolerances
+    super(OrtBackendTest, cls).assert_similar_outputs(ref_outputs, outputs, 1e-3, 1e-5)
+
+backend_test = OrtBackendTest(c2, __name__)
 
 # Type not supported
 backend_test.exclude(r'(FLOAT16)')
-backend_test.exclude(r'^test_gru_seq_length_cpu.*')
 
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
