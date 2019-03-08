@@ -18,6 +18,10 @@ struct ArgDef {
   ArgDef(std::string name, const TypeProto* type = nullptr) : name(name), type_proto(type) {}
   std::string name;
   const TypeProto* type_proto;
+
+  bool operator==(const ArgDef& other) const {
+    return name == other.name;
+  }
 };
 
 struct NodeDef {

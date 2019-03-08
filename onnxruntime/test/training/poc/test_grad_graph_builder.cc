@@ -35,9 +35,10 @@ const std::string MODEL_NAME = "zfnet512";
 const std::string PREDICTION_NAME = "gpu_0/softmax_1";
 const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
-const std::string ORIGINAL_MODEL_PATH = MODEL_NAME + "/model.onnx";
-const std::string GENERATED_MODEL_WITH_COST_PATH = MODEL_NAME + "/model_with_cost.onnx";
-const std::string BACKWARD_MODEL_PATH = MODEL_NAME + "/model_bw.onnx";
+const std::string SHARED_PATH = "test_models/";
+const std::string ORIGINAL_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model.onnx";
+const std::string GENERATED_MODEL_WITH_COST_PATH = SHARED_PATH + MODEL_NAME + "/model_with_cost.onnx";
+const std::string BACKWARD_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_bw.onnx";
 
 #define TERMINATE_IF_FAILED(status)                                    \
   {                                                                    \

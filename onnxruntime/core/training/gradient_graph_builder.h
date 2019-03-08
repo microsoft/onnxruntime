@@ -54,8 +54,14 @@ class GradientGraphBuilder {
 
   std::string loss_node_arg_name_;
 
-  // key: name of the gradient, value: names of gardients to accumulate
-  std::unordered_map<std::string, std::vector<std::string>> gradients_to_accumulate_;
+  // key: ArgDef for the gradient after accumulation
+  // value: ArgDef for the gradients to be accumulated
+  struct ArgDefHasher {
+    std::size_t operator()(const ArgDef& arg) const {
+      return std::hash<std::string>()(arg.name);
+    }
+  };
+  std::unordered_map<ArgDef, std::vector<ArgDef>, ArgDefHasher> gradients_to_accumulate_;
 
   // key: name of the gradient, value: num of gradients pending
   std::unordered_map<std::string, int> pending_;

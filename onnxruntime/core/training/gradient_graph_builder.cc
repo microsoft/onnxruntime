@@ -126,9 +126,10 @@ Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_def
 
       if (reachable_nodes.find(&next_node) == reachable_nodes.end()) continue;
 
-      const NodeArg* node_arg = next_node.OutputDefs()[edge_it->GetSrcArgIndex()];
-      std::string gard_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
-      pending_[gard_node_arg_name] += 1;
+      const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
+      std::string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
+      pending_[grad_node_arg_name] += 1;
+
       visited_node_args.insert(node_arg);
 
       if (visited.find(&next_node) == visited.end()) {
@@ -160,14 +161,13 @@ Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_def
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {
       for (auto& arg : op_def.output_args) {
-        std::string& arg_name = arg.name;
-        auto found = pending_.find(arg_name);
+        auto found = pending_.find(arg.name);
         if (found != pending_.end() && found->second > 1) {
-          if (gradients_to_accumulate_.find(arg_name) == gradients_to_accumulate_.end()) {
-            gradients_to_accumulate_.insert({arg_name, {}});
-          }
-          auto idx = gradients_to_accumulate_[arg_name].size();
-          gradients_to_accumulate_[arg_name].push_back(arg_name + "_" + std::to_string(idx));
+          auto idx = gradients_to_accumulate_[arg].size();
+          std::string indexed_arg_name = arg.name + "_" + std::to_string(idx);
+          gradients_to_accumulate_[arg].push_back(ArgDef(indexed_arg_name, arg.type_proto));
+
+          arg.name = indexed_arg_name;
         }
       }
     }
@@ -175,18 +175,8 @@ Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_def
   }
 
   // Accumulate Gradients
-  for (auto pair : pending_) {
-    if (pair.second > 1) {
-      std::string arg_name = pair.first;
-      std::vector<ArgDef> input_args, output_args;
-      output_args.push_back({arg_name, graph_->GetNodeArg(arg_name)->TypeAsProto()});
-
-      for (auto node_arg_name : gradients_to_accumulate_[arg_name]) {
-        input_args.push_back({node_arg_name, graph_->GetNodeArg(node_arg_name)->TypeAsProto()});
-      }
-
-      gradient_graph_defs.AddNodeDefs({NodeDef("Sum", input_args, output_args)});
-    }
+  for (auto gradient_pair : gradients_to_accumulate_) {
+    gradient_graph_defs.AddNodeDefs({NodeDef("Sum", gradient_pair.second, {gradient_pair.first})});
   }
 
   // Set the gradients as graph outputs.
