@@ -410,7 +410,7 @@ def setup_cuda_vars(args):
 
             cuda_bin_path = os.path.join(cuda_home, 'bin')
             os.environ["CUDA_BIN_PATH"] = cuda_bin_path
-            os.environ["PATH"] += os.pathsep + cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin')
+            os.environ["PATH"] = cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin') + os.pathsep + os.environ["PATH"]
             # Add version specific CUDA_PATH_Vx_y value as the Visual Studio build files require that
             version_file = os.path.join(cuda_home, 'version.txt')
             if not os.path.exists(version_file):
@@ -428,6 +428,7 @@ def setup_cuda_vars(args):
                 cuda_major_version = m.group(1)
                 minor = m.group(2)
                 os.environ["CUDA_PATH_V{}_{}".format(cuda_major_version, minor)] = cuda_home
+                log.info("environment variable set for CUDA_PATH_V9_1 = "+os.environ['CUDA_PATH_V9.1'])
 
             vc_ver_str = os.getenv("VCToolsVersion") or ""
             vc_ver = vc_ver_str.split(".")
