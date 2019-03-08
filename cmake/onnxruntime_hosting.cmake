@@ -9,6 +9,11 @@ target_include_directories(hosting_proto PUBLIC $<TARGET_PROPERTY:protobuf::libp
 target_compile_definitions(hosting_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/hosting/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf TARGET hosting_proto)
 add_dependencies(hosting_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+if(NOT WIN32)
+  if(HAS_UNUSED_PARAMETER)
+    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/predict.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
+endif()
 
 # Setup dependencies
 find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED)
