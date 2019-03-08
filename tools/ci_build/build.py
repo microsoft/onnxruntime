@@ -428,7 +428,7 @@ def setup_cuda_vars(args):
                 cuda_major_version = m.group(1)
                 minor = m.group(2)
                 os.environ["CUDA_PATH_V{}_{}".format(cuda_major_version, minor)] = cuda_home
-                log.info("environment variable set for CUDA_PATH_V9_1 = "+os.environ['CUDA_PATH_V9.1'])
+                log.info("environment variable set for CUDA_PATH_V9_1 = "+os.environ['CUDA_PATH_V9_1'])
 
             vc_ver_str = os.getenv("VCToolsVersion") or ""
             vc_ver = vc_ver_str.split(".")
