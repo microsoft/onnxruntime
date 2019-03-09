@@ -4,7 +4,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/kernel_registry.h"
 #include "contrib_ops/contrib_kernels.h"
 #include "core/framework/compute_capability.h"
 
