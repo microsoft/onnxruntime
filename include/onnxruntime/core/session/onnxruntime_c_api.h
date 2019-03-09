@@ -361,7 +361,7 @@ ORT_API(const OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ OrtT
 /**
  * Return OnnxType from OrtTypeInfo
  */
-ORT_API(const ONNXType, OrtOnnxTypeFromTypeInfo, _In_ OrtTypeInfo*);
+ORT_API(enum ONNXType, OrtOnnxTypeFromTypeInfo, _In_ OrtTypeInfo*);
 
 /**
  * The retured value should be released by calling OrtReleaseTensorTypeAndShapeInfo
