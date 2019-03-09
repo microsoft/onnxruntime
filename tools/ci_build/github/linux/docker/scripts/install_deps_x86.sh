@@ -2,7 +2,7 @@
 set -e
 #install ninja
 mkdir -p /tmp/src
-aria2c -q -d /tmp https://github.com/ninja-build/ninja/archive/v1.9.0.tar.gz
+aria2c -q -d /tmp/src https://github.com/ninja-build/ninja/archive/v1.9.0.tar.gz
 tar -xf /tmp/src/ninja-1.9.0.tar.gz -C /tmp/src
 cd /tmp/src/ninja-1.9.0
 ./configure
