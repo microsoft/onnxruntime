@@ -60,7 +60,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
   auto axis_parsed = HandleNegativeAxis(axis, in_dims.size());
-  // Check to ensure k_parsed is within the bounds of what is available in that specific axis
+  // Check to ensure k is within the bounds of what is available in that specific axis
   if (in_dims.at(axis_parsed) < k) {
     ostringstream err_msg;
     err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
@@ -75,8 +75,8 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
       cols);
 
   // Resize output tensors to be the same shape as the input except
-  // for the specified dimension ((i.e.) axis_parsed), which will be of size k_parsed. E.x. for an input tensor
-  // of shape [3, 4, 5] and k_parsed=2 with axis_parsed=1, both of these will be shape [3, 2, 5]
+  // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
+  // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of these will be shape [3, 2, 5]
   vector<int64_t> output_linear_shape = in_dims;
   output_linear_shape[axis_parsed] = k;
   auto* Values = p_op_kernel_context->Output(0, output_linear_shape);
@@ -89,7 +89,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
   auto Indices_map = EigenMatrixMapRowMajor<int64_t>(
       Indices->template MutableData<int64_t>(), rows, reduced_cols);
 
-  // This is basically the number of elements within each of the "k_parsed" rows
+  // This is basically the number of elements within each of the "k" rows
   const int64_t block_slice = reduced_cols / k;
   // Sort preserving Indices
   for (int64_t i = 0; i < rows; ++i) {
@@ -102,7 +102,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
           ValueCmp<float>>
           min_heap;
       // Maintain the size of heap to be less or equal to k_, so the
-      // heap will hold the k_parsed largest Values
+      // heap will hold the k largest Values
       for (int64_t l = 0; l < in_dims[axis_parsed]; ++l) {
         const auto value = input_map(i, l * block_slice + j);
         if (min_heap.size() < k || value > min_heap.top().first) {
@@ -112,7 +112,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
           min_heap.pop();
         }
       }
-      // Extract these k_parsed elements and place them in the results placeholder
+      // Extract these k elements and place them in the results placeholder
       for (int64_t l = 0; l < k; ++l) {
         auto& pqElem = min_heap.top();
         auto col_index = (k - l - 1) * block_slice + j;
