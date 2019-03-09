@@ -30,4 +30,5 @@ else
         --enable_pybind \
         --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
 #    /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
+    find /home -iname "libonnxruntime*.so"
 fi
