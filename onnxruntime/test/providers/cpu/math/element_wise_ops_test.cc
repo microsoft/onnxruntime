@@ -759,7 +759,8 @@ TEST(MathOpTest, Mean_8) {
   test.Run();
 }
 
-TEST(MathOpTest, AffineDefaultAttributes) {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
+TEST(MathOpTest, DISABLED_AffineDefaultAttributes) {
   OpTester test("Affine");
   std::vector<int64_t> dims{2, 2};
   test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
@@ -767,7 +768,8 @@ TEST(MathOpTest, AffineDefaultAttributes) {
   test.Run();
 }
 
-TEST(MathOpTest, Affine) {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
+TEST(MathOpTest, DISABLED_Affine) {
   OpTester test("Affine");
   std::vector<int64_t> dims{2, 2};
   test.AddAttribute("alpha", 2.0f);

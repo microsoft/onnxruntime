@@ -302,7 +302,8 @@ TEST(TensorOpTest, CastToString) {
   TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING);
 }
 
-TEST(TensorOpTest, CropBorderOnly) {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
+TEST(TensorOpTest, DISABLED_CropBorderOnly) {
   const int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
                           2.0f, 3.0f, 4.0f, 5.0f,
@@ -325,7 +326,8 @@ TEST(TensorOpTest, CropBorderOnly) {
   test.Run();
 }
 
-TEST(TensorOpTest, CropBorderAndScale) {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
+TEST(TensorOpTest, DISABLED_CropBorderAndScale) {
   const int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
                           2.0f, 3.0f, 4.0f, 5.0f,
@@ -579,7 +581,8 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
   MeanVarianceNormalizationFunctionDefaultPerChannel();
 }
 
-TEST(TensorOpTest, ImageScalerTest) {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
+TEST(TensorOpTest, DISABLED_ImageScalerTest) {
   const int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {
       1.0f, 3.0f,

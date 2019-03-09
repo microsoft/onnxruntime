@@ -183,7 +183,8 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
   test.Run();
 }
 
-TEST(ActivationOpTest, ParametricSoftplus) {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
+TEST(ActivationOpTest, DISABLED_ParametricSoftplus) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
 
