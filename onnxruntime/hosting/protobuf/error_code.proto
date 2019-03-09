@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package onnx.hosting;
+
+enum Code {
+    OK = 0;
+    FAIL = 1;
+    INVALID_ARGUMENT = 2;
+    NO_SUCHFILE = 3;
+    NO_MODEL = 4;
+    ENGINE_ERROR = 5;
+    RUNTIME_EXCEPTION = 6;
+    INVALID_PROTOBUF = 7;
+    MODEL_LOADED = 8;
+    NOT_IMPLEMENTED = 9;
+    INVALID_GRAPH = 10;
+    SHAPE_INFERENCE_NOT_REGISTERED = 11;
+    REQUIREMENT_NOT_REGISTERED = 12;
+}
