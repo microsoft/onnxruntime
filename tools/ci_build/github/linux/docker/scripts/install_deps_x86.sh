@@ -6,10 +6,10 @@ unzip -oq /tmp/ninja-linux.zip -d /usr/bin
 rm -f /tmp/ninja-linux.zip
 #install protobuf
 mkdir -p /tmp/src
-mkdir -p /opt/cmake
 aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.12.4/cmake-3.12.4.tar.gz
 tar -xf /tmp/src/cmake-3.12.4.tar.gz -C /tmp/src
 cd /tmp/src/cmake-3.12.4
+./configure
 make
 make install
 aria2c -q -d /tmp/src https://github.com/protocolbuffers/protobuf/archive/v3.6.1.tar.gz
