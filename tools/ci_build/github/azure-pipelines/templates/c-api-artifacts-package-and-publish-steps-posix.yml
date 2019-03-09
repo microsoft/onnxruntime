@@ -13,7 +13,7 @@ steps:
           mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
           mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
           echo "Directories created"            
-          cp $(Build.BinariesDirectory)/${{parameters.buildConfig}}/{{parameters.libraryName}} $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
+          cp $(Build.BinariesDirectory)/${{parameters.buildConfig}}/${{parameters.libraryName}} $(Build.BinariesDirectory)/${{parameters.artifactName}}/lib
           cp $(Build.SourcesDirectory)/include/onnxruntime/core/session/onnxruntime_c_api.h  $(Build.BinariesDirectory)/${{parameters.artifactName}}/include
           # copy the README, licence and TPN
           cp $(Build.SourcesDirectory)/README.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/README.md
