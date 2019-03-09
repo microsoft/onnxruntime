@@ -29,5 +29,5 @@ else
         --skip_submodule_sync --enable_onnx_tests \
         --enable_pybind \
         --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
-    /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
+#    /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
 fi
