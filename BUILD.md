@@ -52,7 +52,7 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
     ```
 5. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows)
 
-The build script runs all unit tests by default.
+The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
@@ -197,4 +197,11 @@ Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build runs 
 By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours) 
 
 ### Cross compiling on Windows
+#### Using Visual C++ compilers
+1. Download and install Visual C++ compilers and libraries for ARM(64). 
+   If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
+   
+2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable. 
+
+### Using other compilers
 (TODO)
