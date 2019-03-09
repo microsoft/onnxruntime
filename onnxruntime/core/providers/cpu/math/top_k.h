@@ -3,11 +3,7 @@
 
 #pragma once
 
-//#include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
-//#include "core/framework/tensor.h"
-//#include "core/util/math_cpuonly.h"
-//#include "gsl/gsl_util"
 
 namespace onnxruntime {
 template <int OpSet, typename T>
