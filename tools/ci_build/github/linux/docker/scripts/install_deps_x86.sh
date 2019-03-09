@@ -1,13 +1,5 @@
 #!/bin/bash
 set -e
-#install ninja
-mkdir -p /tmp/src
-aria2c -q -d /tmp/src https://github.com/ninja-build/ninja/archive/v1.9.0.tar.gz
-tar -xf /tmp/src/ninja-1.9.0.tar.gz -C /tmp/src
-cd /tmp/src/ninja-1.9.0
-./configure
-make
-make install
 aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.12.4/cmake-3.12.4.tar.gz
 tar -xf /tmp/src/cmake-3.12.4.tar.gz -C /tmp/src
 cd /tmp/src/cmake-3.12.4
