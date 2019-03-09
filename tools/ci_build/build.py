@@ -530,6 +530,9 @@ def main():
         args.build = True
         args.test = True
 
+    if args.x86:
+        args.test = False
+
     if args.build_wheel:
         args.enable_pybind = True
     
@@ -588,7 +591,7 @@ def main():
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
-    if (args.test and not args.x86):
+    if (args.test):
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm)
         # run the onnx model tests if requested explicitly.
         if (args.enable_onnx_tests):
