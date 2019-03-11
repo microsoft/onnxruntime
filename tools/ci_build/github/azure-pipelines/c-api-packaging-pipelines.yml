@@ -83,7 +83,7 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCOmmitHash)"
+    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)"
       displayName: 'Print Version Number'
 
     - template: templates/windows-build-tools-setup-steps.yml
