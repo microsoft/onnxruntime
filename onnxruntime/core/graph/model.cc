@@ -348,10 +348,27 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
   if (!model_proto->ParseFromFileDescriptor(fd)) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+      return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
+#else
+  auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
+  auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
+
+  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB. 
+  coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
+
+  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+  const bool result = model_proto->ParseFromCodedStream(coded_input.get());
+  coded_input.reset();
+  raw_input.reset();
+
+  if (!result) {
+      return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+#endif
   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
