@@ -536,7 +536,7 @@ else()
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES Threads::Threads)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
 
