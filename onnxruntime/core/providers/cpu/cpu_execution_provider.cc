@@ -644,20 +644,4 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
   static std::shared_ptr<KernelRegistry> kernel_registry = GetCpuKernelRegistry();
   return kernel_registry;
 }
-
-std::vector<std::unique_ptr<ComputeCapability>>
-CPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                    const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<std::unique_ptr<ComputeCapability>>
-      result = IExecutionProvider::GetCapability(graph, kernel_registries);
-
-  for (auto& rule : fuse_rules_) {
-    rule(graph, result);
-  }
-  return result;
-}
-
-void CPUExecutionProvider::InsertFusedRules(FuseRuleFn rule) {
-  fuse_rules_.push_back(rule);
-}
 }  // namespace onnxruntime
