@@ -530,9 +530,6 @@ def main():
         args.build = True
         args.test = True
 
-    if args.x86:
-        args.test = False
-
     if args.build_wheel:
         args.enable_pybind = True
     

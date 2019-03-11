@@ -4,6 +4,7 @@ set -e -o -x
 id
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
+MACHINE=`uname -m`
 
 while getopts c:d:x: parameter_Option
 do case "${parameter_Option}"
@@ -29,6 +30,7 @@ else
         --skip_submodule_sync --enable_onnx_tests \
         --enable_pybind \
         --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
-#    /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
-    find /home -iname "libonnxruntime*.so"
+    if [ MACHINE = "x86_64" ]; then
+        /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
+    fi
 fi
