@@ -9,8 +9,8 @@ namespace onnxruntime {
 namespace test {
 
 namespace str_normalizer_test {
-constexpr const char* domain = onnxruntime::kMSDomain;
-const int opset_ver = 1;
+constexpr const char* domain = kOnnxDomain;
+const int opset_ver = 10;
 
 #ifdef _MSC_VER
 const std::string test_locale("en-US");
@@ -18,12 +18,14 @@ const std::string test_locale("en-US");
 const std::string test_locale("en_US.UTF-8");
 #endif
 
-void InitTestAttr(OpTester& test, const std::string& casechangeaction,
-                  bool iscasesensitive,
+void InitTestAttr(OpTester& test, const std::string& case_change_action,
+                  bool is_case_sensitive,
                   const std::vector<std::string>& stopwords,
                   const std::string& locale) {
-  test.AddAttribute("casechangeaction", casechangeaction);
-  test.AddAttribute("is_case_sensitive", int64_t{iscasesensitive});
+  if (!case_change_action.empty()) {
+    test.AddAttribute("case_change_action", case_change_action);
+  }
+  test.AddAttribute("is_case_sensitive", int64_t{is_case_sensitive});
   if (!stopwords.empty()) {
     test.AddAttribute("stopwords", stopwords);
   }
@@ -36,27 +38,12 @@ void InitTestAttr(OpTester& test, const std::string& casechangeaction,
 using namespace str_normalizer_test;
 
 TEST(ContribOpTest, StringNormalizerTest) {
-  // Test wrong 2 dimensions
   // - casesensitive approach
   // - no stopwords.
-  // - No change case action
+  // - No change case action, expecting default to take over
   {
     OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "NONE", true, {}, test_locale);
-    std::vector<int64_t> dims{2, 2};
-    std::vector<std::string> input = {std::string("monday"), std::string("tuesday"), std::string("wednesday"), std::string("thursday")};
-    test.AddInput<std::string>("T", dims, input);
-    std::vector<std::string> output(input);  // do the same for now
-    test.AddOutput<std::string>("Y", dims, output);
-
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Input dimensions are either[C > 0] or [1][C > 0] allowed");
-  }
-  // - casesensitive approach
-  // - no stopwords.
-  // - No change case action
-  {
-    OpTester test("StringNormalizer", opset_ver, domain);
-    InitTestAttr(test, "NONE", true, {}, test_locale);
+    InitTestAttr(test, "", true, {}, test_locale);
     std::vector<int64_t> dims{4};
     std::vector<std::string> input = {std::string("monday"), std::string("tuesday"),
                                       std::string("wednesday"), std::string("thursday")};

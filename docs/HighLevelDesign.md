@@ -81,5 +81,5 @@ their subgraph.
 * [Add a custom operator/kernel](AddingCustomOp.md)
 * [Add an execution provider](AddingExecutionProvider.md)
 * [Add a new graph
-transform](../include/onnxruntime/core/graph/graph_transformer.h)
-* [Add a new rewrite rule](../include/onnxruntime/core/graph/rewrite_rule.h)
+transform](../include/onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a new rewrite rule](../include/onnxruntime/core/optimizer/rewrite_rule.h)

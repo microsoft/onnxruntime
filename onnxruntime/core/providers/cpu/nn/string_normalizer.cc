@@ -16,15 +16,13 @@
 #include <unordered_set>
 
 namespace onnxruntime {
-namespace contrib {
 
-ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     StringNormalizer,
-    1,
-    string,
+    10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>()),
-    contrib::StringNormalizer);
+    StringNormalizer);
 
 namespace string_normalizer {
 const std::string conv_error("Conversion Error");
@@ -157,29 +155,29 @@ using namespace string_normalizer;
 
 StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info),
                                                                is_case_sensitive_(true),
-                                                               casechangeaction_(NONE),
+                                                               case_change_action_(NONE),
                                                                compare_caseaction_(NONE) {
   int64_t iscasesensitive = 0;
   Status status = info.GetAttr("is_case_sensitive", &iscasesensitive);
   ORT_ENFORCE(status.IsOK(), "attribute is_case_sensitive is not set");
   is_case_sensitive_ = iscasesensitive != 0;
 
-  std::string casechangeaction;
-  status = info.GetAttr("casechangeaction", &casechangeaction);
-  ORT_ENFORCE(status.IsOK(), "attribute caseaction is not set");
-  if (casechangeaction == "LOWER") {
-    casechangeaction_ = LOWER;
-  } else if (casechangeaction == "UPPER") {
-    casechangeaction_ = UPPER;
-  } else if (casechangeaction == "NONE") {
-    casechangeaction_ = NONE;
+  std::string case_change_action;
+  status = info.GetAttr("case_change_action", &case_change_action);
+  ORT_ENFORCE(status.IsOK(), "attribute case_change_action is not set");
+  if (case_change_action == "LOWER") {
+    case_change_action_ = LOWER;
+  } else if (case_change_action == "UPPER") {
+    case_change_action_ = UPPER;
+  } else if (case_change_action == "NONE") {
+    case_change_action_ = NONE;
   } else {
-    ORT_ENFORCE(false, "attribute casechangeaction has invalid value");
+    ORT_ENFORCE(false, "attribute case_change_action has invalid value");
   }
 
   if (!is_case_sensitive_) {
     // Convert stop words to a case which can help us preserve the case of filtered strings
-    compare_caseaction_ = (casechangeaction_ == UPPER) ? UPPER : LOWER;
+    compare_caseaction_ = (case_change_action_ == UPPER) ? UPPER : LOWER;
   }
 
   locale_name_ = info.GetAttrOrDefault("locale", default_locale);
@@ -248,10 +246,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         ++first;
       }
       status = CopyCaseAction(filtered_strings.cbegin(), filtered_strings.cend(), ctx, locale, converter,
-                              N, filtered_strings.size(), casechangeaction_);
+                              N, filtered_strings.size(), case_change_action_);
     } else {
       // Nothing to filter. Copy input to output and change case if needed
-      status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, casechangeaction_);
+      status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, case_change_action_);
     }
   } else {
     if (!wstopwords_.empty()) {
@@ -273,7 +271,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
         locale.ChangeCase(compare_caseaction_, wstr);
         if (0 == wstopwords_.count(wstr)) {
-          if (casechangeaction_ == NONE) {
+          if (case_change_action_ == NONE) {
             filtered_orignal_strings.push_back(std::cref(s));
           } else {
             filtered_cased_strings.push_back(converter.to_bytes(wstr));
@@ -281,7 +279,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
         ++first;
       }
-      if (casechangeaction_ == NONE) {
+      if (case_change_action_ == NONE) {
         status = CopyCaseAction(filtered_orignal_strings.cbegin(), filtered_orignal_strings.cend(), ctx, locale, converter,
                                 N, filtered_orignal_strings.size(), NONE);
       } else {
@@ -290,10 +288,9 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       }
     } else {
       // Nothing to filter. Copy input to output and change case if needed
-      status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, casechangeaction_);
+      status = CopyCaseAction(input_data, input_data + C, ctx, locale, converter, N, C, case_change_action_);
     }
   }
   return status;
 }
-}  // namespace contrib
 }  // namespace onnxruntime
