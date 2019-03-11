@@ -37,6 +37,7 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
 // This function doesn't support string tensors
 ONNX_NAMESPACE::TensorProto::DataType GetTensorProtoType(const Tensor& tensor);
 
+ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 // How much memory it will need for putting the content of this tensor into a plain array

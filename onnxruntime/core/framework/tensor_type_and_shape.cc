@@ -100,42 +100,8 @@ ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   return type;
 }
 
-const onnxruntime::DataTypeImpl* TensorElementDataTypeToMLDataType(ONNXTensorElementDataType type) {
-  switch (type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      return onnxruntime::DataTypeImpl::GetType<float>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      return onnxruntime::DataTypeImpl::GetType<uint8_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      return onnxruntime::DataTypeImpl::GetType<int8_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      return onnxruntime::DataTypeImpl::GetType<uint16_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      return onnxruntime::DataTypeImpl::GetType<int16_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      return onnxruntime::DataTypeImpl::GetType<int32_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      return onnxruntime::DataTypeImpl::GetType<int64_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      return onnxruntime::DataTypeImpl::GetType<std::string>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      return onnxruntime::DataTypeImpl::GetType<bool>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      return onnxruntime::DataTypeImpl::GetType<MLFloat16>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-      return onnxruntime::DataTypeImpl::GetType<BFloat16>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      return onnxruntime::DataTypeImpl::GetType<double>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      return onnxruntime::DataTypeImpl::GetType<uint32_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      return onnxruntime::DataTypeImpl::GetType<uint64_t>();
-    default:
-      return nullptr;
-  }
-}
-
-OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
+OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
+                                 const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
   ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);
   if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
     return OrtCreateStatus(ORT_FAIL, "Not implemented");
