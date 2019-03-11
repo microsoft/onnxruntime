@@ -188,6 +188,15 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
+    if (enable_tensorrt) {
+#ifdef USE_TENSORRT
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+#else
+      fprintf(stderr, "TensorRT is not supported in this build");
+      return -1;
+#endif
+    }
     if (enable_cuda) {
 #ifdef USE_CUDA
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
@@ -209,14 +218,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
-      return -1;
-#endif
-    }
-    if (enable_tensorrt) {
-#ifdef USE_TENSORRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
-#else
-      fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
 #endif
     }
@@ -249,7 +250,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
       {"constantofshape_float_ones", "test data bug"},
-      {"constantofshape_int_zeros", "test data bug"},      
+      {"constantofshape_int_zeros", "test data bug"},
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
       {"Linear", "disable reason"},
@@ -312,7 +313,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"strnorm_model_monday_casesensintive_upper", "opset 10 not supported yet"},
       {"strnorm_model_monday_empty_output", "opset 10 not supported yet"},
       {"strnorm_model_monday_insensintive_upper_twodim", "opset 10 not supported yet"},
-      {"strnorm_model_nostopwords_nochangecase", "opset 10 not supported yet"}, 
+      {"strnorm_model_nostopwords_nochangecase", "opset 10 not supported yet"},
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},

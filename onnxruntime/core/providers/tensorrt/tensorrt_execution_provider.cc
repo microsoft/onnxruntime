@@ -67,6 +67,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::set<int> supported_nodes_set;
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     std::set<size_t> node_set(group.begin(), group.end());
@@ -80,6 +81,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       int output_order = 0;
 
       for (const auto& index : group) {
+        supported_nodes_set.insert(index);
         sub_graph->nodes.push_back(index);
         const auto& node = graph.GetNode(index);
 
@@ -165,6 +167,17 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
 
     result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  }
+
+  // Fallback to CUDA if the nodes are not supported by TensorRT
+  for (int i = 0, end = graph.NumberOfNodes(); i < end; ++i) {
+    if (supported_nodes_set.find(i) == supported_nodes_set.end()) {
+      const auto& node = graph.GetNode(i);
+      //LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node->OpType() << " node name: " << node->Name();
+      auto update_node = const_cast<Node*>(node);
+      //update_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+      update_node->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+    }
   }
 
   return result;
