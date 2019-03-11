@@ -3,7 +3,9 @@ jobs:
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
-
+    - template: templates/set-version-number-variables-step.yml
+    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCOmmitHash)"
+      displayName: 'Print Version Number'
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
@@ -15,6 +17,7 @@ jobs:
 
 
 - job: Linux_C_API_Packaging_CPU_x86
+  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -30,6 +33,7 @@ jobs:
 
 
 - job: Linux_C_API_Packaging_GPU_x64
+  condition: false
   pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -48,7 +52,13 @@ jobs:
   pool: 
     vmImage: 'macOS-10.13'
   steps:
+  
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
+    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCOmmitHash)"
+      displayName: 'Print Version Number'
+
+
     - script: |
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
@@ -72,6 +82,9 @@ jobs:
 
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
+    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCOmmitHash)"
+      displayName: 'Print Version Number'
 
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
@@ -95,6 +108,7 @@ jobs:
 
 
 - job: Windows_Packaging_CPU_x86
+  condition: false
   pool: 'Win-CPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -126,6 +140,7 @@ jobs:
 
 
 - job: Windows_Packaging_GPU_x64
+  condition: false
   pool: 'Win-GPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
