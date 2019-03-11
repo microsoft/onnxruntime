@@ -79,7 +79,6 @@ backend_test.exclude(r'('
 '|^test_operator_params_cpu.*'
 '|^test_operator_pow_cpu.*'
 '|^test_shrink_cpu.*'
-#'|^test_top_k_cpu.*'
 ')')
 
 # import all test cases at global scope to make
