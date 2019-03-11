@@ -61,10 +61,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         onnxruntime_graph
         onnxruntime_common
         onnxruntime_mlas
-        onnx
-        onnx_proto
-        protobuf::libprotobuf
-        re2
         ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 
