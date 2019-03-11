@@ -23,7 +23,7 @@ if(NOT WIN32)
 endif()
 
 # Setup dependencies
-find_package(Boost 1.69 COMPONENTS system coroutine context thread program_options REQUIRED)
+find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRED)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
 # Setup source code
@@ -52,10 +52,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
         hosting_proto
         ${Boost_LIBRARIES}
-        ${PROVIDERS_MKLDNN}
-        ${MKLML_SHARED_LIB}
-        ${PROVIDERS_CUDA}
-        ${onnxruntime_tvm_libs}
         onnxruntime_session
         onnxruntime_optimizer
         onnxruntime_providers

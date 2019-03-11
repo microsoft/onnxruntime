@@ -29,6 +29,7 @@ limitations under the License.
 namespace onnxruntime {
 
 namespace {
+constexpr int OneMillion = 1000000;
 
 class StdThread : public Thread {
  public:
@@ -71,12 +72,11 @@ class PosixEnv : public Env {
       sleep_time.tv_sec = 0;
       sleep_time.tv_nsec = 0;
 
-      if (micros >= 1e6) {
-        sleep_time.tv_sec =
-            std::min<int64_t>(micros / 1e6, std::numeric_limits<time_t>::max());
-        micros -= static_cast<int64_t>(sleep_time.tv_sec) * 1e6;
+      if (micros >= OneMillion) {
+        sleep_time.tv_sec = std::min<int64_t>(micros / OneMillion, std::numeric_limits<time_t>::max());
+        micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
       }
-      if (micros < 1e6) {
+      if (micros < OneMillion) {
         sleep_time.tv_nsec = 1000 * micros;
         micros = 0;
       }

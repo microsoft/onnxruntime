@@ -26,7 +26,8 @@
       <Visible>false</Visible>
     </None>
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mkldnn.dll"
-          Condition="'$(PlatformTarget)' == 'x64'">
+          Condition="'$(PlatformTarget)' == 'x64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mkldnn.dll')">
       <Link>mkldnn.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
