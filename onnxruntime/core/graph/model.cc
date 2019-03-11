@@ -348,12 +348,17 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
+
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
   if (!model_proto->ParseFromFileDescriptor(fd)) {
       return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #else
+  // CNTK uses ORT as a submodule in order to use its GraphIR code.
+  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
+  // This code block is needed to support CNTK and any other 
+  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
   auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
   auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
 
