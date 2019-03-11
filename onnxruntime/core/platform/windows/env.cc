@@ -40,6 +40,7 @@ class StdThread : public Thread {
  private:
   std::thread thread_;
 };
+static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class WindowsEnv : public Env {
  public:
@@ -93,11 +94,12 @@ class WindowsEnv : public Env {
   void ExecuteTask(const Task& t) const override {
     t.f();
   }
-  common::Status ReadFileAsString(const wchar_t* fname, std::string* out) const override {
-    if (!fname) return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "file name is nullptr");
-    if (!out) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'out' cannot be NULL");
+  common::Status ReadFileAsString(const wchar_t* fname, void*& p, size_t& len, OrtCallback& deleter) const override {
+    if (!fname) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
     }
+    deleter.f = nullptr;
+    deleter.param = nullptr;
     HANDLE hFile = CreateFileW(fname, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
       int err = GetLastError();
@@ -111,11 +113,12 @@ class WindowsEnv : public Env {
     }
     // check the file file for avoiding allocating a zero length buffer
     if (filesize.QuadPart == 0) {  // empty file
-      out->clear();
+      p = nullptr;
+      len = 0;
       return Status::OK();
     }
-    out->resize(filesize.QuadPart, '\0');
-    char* wptr = const_cast<char*>(out->data());
+    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(filesize.QuadPart)));
+    char* wptr = reinterpret_cast<char*>(buffer.get());
     auto length_remain = filesize.QuadPart;
     DWORD readed = 0;
     for (; length_remain > 0; wptr += readed, length_remain -= readed) {
@@ -128,14 +131,20 @@ class WindowsEnv : public Env {
       }
       if (ReadFile(hFile, wptr, bytes_to_read, &readed, nullptr) != TRUE) {
         int err = GetLastError();
-        out->clear();
+        p = nullptr;
+        len = 0;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail, errcode =", err);
       }
       if (readed != bytes_to_read) {
-        out->clear();
+        p = nullptr;
+        len = 0;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail: unexpected end");
       }
     }
+    p = buffer.release();
+    len = filesize.QuadPart;
+    deleter.f = DeleteBuffer;
+    deleter.param = p;
     return common::Status::OK();
   }
 
