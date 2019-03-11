@@ -343,35 +343,30 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
 
 using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
+using ::google::protobuf::io::ZeroCopyInputStream;
 
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
   if (!model_proto->ParseFromFileDescriptor(fd)) {
-      return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #else
   // CNTK uses ORT as a submodule in order to use its GraphIR code.
   // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
   // This code block is needed to support CNTK and any other 
   // GraphIR client that will be built with protobuf at a version older than 3.2.0.
-  auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
-  auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
+  FileInputStream fs(fd);
+  CodedInputStream cis(&fs);
 
   // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB. 
-  coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
-
-  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
-  const bool result = model_proto->ParseFromCodedStream(coded_input.get());
-  coded_input.reset();
-  raw_input.reset();
-
-  if (!result) {
-      return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
+  if (!model_proto->ParseFromCodedStream(&cis)) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #endif
   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
