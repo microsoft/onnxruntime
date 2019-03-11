@@ -65,7 +65,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, bool f, const char*, const char*, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
