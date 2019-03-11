@@ -18,6 +18,9 @@ class TensorrtPinnedAllocator : public CPUAllocator {
   }
 };
 
+/*! \brief The default allocator doesn't allocate anything. It's used here to let allocation
+           planner get allocator information.
+*/
 class TensorrtAllocator : public CPUAllocator {
  public:
   virtual const OrtAllocatorInfo& Info() const override {

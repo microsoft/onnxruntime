@@ -21,6 +21,14 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
   return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
 }
 
+std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
+#ifdef USE_TENSORRT
+  return CreateExecutionProviderFactory_Tensorrt()->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
   return CreateExecutionProviderFactory_CUDA(0)->CreateProvider();
@@ -49,14 +57,6 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #ifdef USE_BRAINSLICE
   return CreateExecutionProviderFactory_BrainSlice(0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin")->CreateProvider();
-#else
-  return nullptr;
-#endif
-}
-
-std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
-#ifdef USE_TENSORRT
-  return CreateExecutionProviderFactory_Tensorrt()->CreateProvider();
 #else
   return nullptr;
 #endif

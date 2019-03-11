@@ -197,15 +197,15 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
 
-#ifdef USE_CUDA
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
-  }
-#endif
-
 #ifdef USE_TENSORRT
   {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt());
+  }
+#endif
+
+#ifdef USE_CUDA
+  {
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
   }
 #endif
 

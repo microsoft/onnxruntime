@@ -21,6 +21,14 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
+#define CHECK_CUDA(call)                         \
+  do {                                           \
+    cudaError_t status = call;                   \
+    if(status != cudaSuccess) {                  \
+      return -1;                                 \
+    }                                            \
+  } while(0)
+
 TensorrtExecutionProvider::TensorrtExecutionProvider()
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider} {
   DeviceAllocatorRegistrationInfo trt_device_info({OrtMemTypeCPU, [](int) {
@@ -70,10 +78,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   std::set<int> supported_nodes_set;
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
-    std::set<size_t> node_set(group.begin(), group.end());
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-
     if (!group.empty()) {
+      std::set<size_t> node_set(group.begin(), group.end());
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
       std::set<const NodeArg*> erased;
@@ -164,19 +171,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
       meta_def->since_version = 1;
       sub_graph->SetMetaDef(meta_def);
-    }
 
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  }
-
-  // Fallback to CUDA if the nodes are not supported by TensorRT
-  for (int i = 0, end = graph.NumberOfNodes(); i < end; ++i) {
-    if (supported_nodes_set.find(i) == supported_nodes_set.end()) {
-      const auto& node = graph.GetNode(i);
-      //LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node->OpType() << " node name: " << node->Name();
-      auto update_node = const_cast<Node*>(node);
-      //update_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-      update_node->SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
@@ -386,9 +382,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         const auto& tensor_input = input_tensors[input_indexes[i]];
         const auto& tensor_shape = tensor_input.shape;
         const int input_batch_size = tensor_shape[0];
-        if (input_batch_size > batch_size) {
-          batch_size = input_batch_size;
+        if (i > 0 && batch_size != input_batch_size) {
+          ORT_THROW("Input batch size is inconsistent");
         }
+        batch_size = input_batch_size;
 
         const float* input = static_cast<float*>(tensor_input.data);
         CHECK_CUDA(cudaMalloc(&buffers[i], input_batch_size * input_dim_sizes[i] * sizeof(float)));

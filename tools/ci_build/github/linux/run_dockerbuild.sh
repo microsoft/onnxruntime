@@ -10,7 +10,7 @@ do case "${parameter_Option}"
 in
 #ubuntu16.04
 o) BUILD_OS=${OPTARG};;
-#cpu, gpu
+#cpu, gpu, tensorrt
 d) BUILD_DEVICE=${OPTARG};;
 r) BUILD_DIR=${OPTARG};;
 #python version: 3.6 3.7 (absence means default 3.5)
@@ -34,6 +34,10 @@ if [ $BUILD_DEVICE = "gpu" ]; then
     DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
     fi
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+else if [ $BUILD_DEVICE = "tensorrt" ]; then
+    IMAGE="ubuntu16.04-$CUDA_VER"
+    DOCKER_FILE=Dockerfile.ubuntu_tensorrt
+    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     IMAGE="ubuntu16.04"
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
@@ -52,6 +56,17 @@ if [ $BUILD_DEVICE = "cpu" ]; then
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
+else if [ $BUILD_DEVICE = "gpu" ]; then
+    docker rm -f "onnxruntime-$BUILD_DEVICE" || true
+    nvidia-docker run --rm -h $HOSTNAME \
+        --rm \
+        --name "onnxruntime-$BUILD_DEVICE" \
+        --volume "$SOURCE_ROOT:/onnxruntime_src" \
+        --volume "$BUILD_DIR:/home/onnxruntimedev" \
+        --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
+        "onnxruntime-$IMAGE" \
+        /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
+        -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
 else
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     nvidia-docker run --rm -h $HOSTNAME \

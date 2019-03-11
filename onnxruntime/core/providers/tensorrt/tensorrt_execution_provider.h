@@ -10,16 +10,8 @@
 
 namespace onnxruntime {
 
-static const int kMaxBatchSize = 16;
+static const int kMaxBatchSize = 1;
 static const int kMaxWorkSpaceSize = 16 << 20;
-
-#define CHECK_CUDA(call)                         \
-  do {                                           \
-    cudaError_t status = call;                   \
-    if(status != cudaSuccess) {                  \
-      return -1;                                 \
-    }                                            \
-  } while(0)
 
 struct InferDeleter {
   template <typename T>
