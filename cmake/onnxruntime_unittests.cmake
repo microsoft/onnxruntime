@@ -498,10 +498,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
   endif()
+  set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common
+          onnx_proto)
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+  endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC}
-          LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto protobuf::libprotobuf
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
   #demo

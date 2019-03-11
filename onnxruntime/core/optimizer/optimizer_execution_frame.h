@@ -10,7 +10,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/callback.h"
+#include "core/common/callback.h"
 
 namespace onnxruntime {
 

@@ -252,7 +252,8 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 5, 7);
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false,
+                           custom_op_domain);
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
