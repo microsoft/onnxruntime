@@ -28,7 +28,7 @@ jobs:
           libraryName: 'libonnxruntime.so'
     - template: templates/clean-agent-build-directory-step.yml
 
-    - job: Linux_C_API_Packaging_GPU_x64
+- job: Linux_C_API_Packaging_GPU_x64
   pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
