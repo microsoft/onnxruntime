@@ -110,47 +110,26 @@ bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
   return true;
 }
 
+bool HasGraphInput(const Graph& graph, const std::string& input_name) {
+  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
+  const NodeArg* input = graph.GetNodeArg(input_name);
+  return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
+}
+
 bool IsConstantInputsNode(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
-  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
-    if (!graph.GetInitializedTensor(input_def->Name(), initializer)) {
+    // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
+    // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should not
+    // appear in the graph's inputs (that is the only way to guarantee it will always be constant). Otherwise, this 
+	// check would have been sufficient: !graph.GetInitializedTensor(input_def->Name(), initializer).
+    if (HasGraphInput(graph, input_def->Name())) {
       return false;
     }
   }
   return true;
-}
-
-Status BuildSubgraph(const Graph& graph,
-                     const std::vector<NodeIndex>& subgraph_nodes,
-                     Graph& subgraph) {
-  // Add nodes and initializers to subgraph.
-  // TODO Can we directly copy the node instead of re-creating it?
-  for (auto& node_index : subgraph_nodes) {
-    auto node = graph.GetNode(node_index);
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
-    const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-    for (auto input : node->InputDefs()) {
-      auto& n_input = subgraph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
-      if (graph.GetInitializedTensor(input->Name(), initializer)) {
-        subgraph.AddInitializedTensor(*initializer);
-      }
-    }
-    for (auto output : node->OutputDefs()) {
-      auto& n_output = subgraph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    subgraph.AddNode(node->Name(), node->OpType(), node->Description(),
-                     inputs, outputs, &node->GetAttributes(), node->Domain());
-  }
-
-  //TODO Check if we don't need to resolve the graph.
-  ORT_RETURN_IF_ERROR(subgraph.Resolve());
-
-  return Status::OK();
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {

@@ -40,14 +40,11 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 /** Remove the given single-input-single-output Node from the Graph. */
 bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
 
+/** Returns true if the graph has an input with the given name.*/
+bool HasGraphInput(const Graph& graph, const std::string& input_name);
+
 /** Checks if the given node has only constant inputs (initializers). */
 bool IsConstantInputsNode(const Graph& graph, const Node& node);
-
-/** Build a subgraph given a Graph and the indices of the nodes of the Graph that will
-    be added to the subgraph. */
-Status BuildSubgraph(const Graph& graph,
-                     const std::vector<NodeIndex>& subgraph_nodes,
-                     Graph& subgraph);
 
 /** Remove all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
