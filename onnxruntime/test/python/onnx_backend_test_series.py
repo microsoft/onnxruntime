@@ -82,8 +82,8 @@ backend_test.exclude(r'('
 '|^test_shrink_cpu.*'
 ')')
 
-print ("YOUSYS", platform().system().lower())
-print ("YOUMAH", platform().machine().lower())
+print ("YOUSYS", platform.system().lower())
+print ("YOUMAH", platform.machine().lower())
 
 if platform.system().lower() == 'linux' and platform.machine().lower() == 'i386':
     backend_test.exclude(r'('
