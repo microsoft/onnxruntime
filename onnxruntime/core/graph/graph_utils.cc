@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 
-namespace graph_utils {
+namespace utils {
 // fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
@@ -120,12 +120,12 @@ bool IsConstantInputsNode(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
+  const onnx::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should not
-    // appear in the graph's inputs (that is the only way to guarantee it will always be constant). Otherwise, this 
-	// check would have been sufficient: !graph.GetInitializedTensor(input_def->Name(), initializer).
-    if (HasGraphInput(graph, input_def->Name())) {
+    // appear in the graph's inputs (that is the only way to guarantee it will always be constant).
+    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || HasGraphInput(graph, input_def->Name())) {
       return false;
     }
   }
@@ -149,6 +149,6 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return edges_to_remove.size();
 }
 
-}  // namespace graph_utils
+}  // namespace utils
 
 }  // namespace onnxruntime

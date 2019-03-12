@@ -49,7 +49,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   }
 
   // Remove the output edges of the constant node and then remove the node itself.
-  graph_utils::RemoveNodeOutputEdges(graph, node);
+  utils::RemoveNodeOutputEdges(graph, node);
   graph.RemoveNode(node.Index());
 
   // The output nodes already have the right input arg, since we used the same name in the initializer.
@@ -62,7 +62,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
   return (excluded_op_types_.find(node.OpType()) == excluded_op_types_.end()) &&
-         graph_utils::IsConstantInputsNode(graph, node);
+         utils::IsConstantInputsNode(graph, node);
 }
 
 void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,

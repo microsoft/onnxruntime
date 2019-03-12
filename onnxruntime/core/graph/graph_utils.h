@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 
-namespace graph_utils {
+namespace utils {
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
@@ -28,7 +28,7 @@ template <typename T>
 bool GetRepeatedNodeAttributeValues(const Node& node,
                                     const std::string& attr_name,
                                     std::vector<T>& values) {
-  const auto* attr = graph_utils::GetNodeAttribute(node, attr_name);
+  const auto* attr = utils::GetNodeAttribute(node, attr_name);
   if (attr) {
     values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
     return true;
@@ -50,6 +50,6 @@ bool IsConstantInputsNode(const Graph& graph, const Node& node);
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-}  // namespace graph_utils
+}  // namespace utils
 
 }  // namespace onnxruntime
