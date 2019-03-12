@@ -1,5 +1,5 @@
 jobs:
-- job: Linux_CI_GPU_Dev
+- job: Linux_CI_GPU_TENSORRT_Dev
   pool: Linux-GPU-CUDA10
   steps:
     - template: templates/set-test-data-variables-step.yml
