@@ -84,8 +84,9 @@ backend_test.exclude(r'('
 
 print ("YOUSYS", platform.system().lower())
 print ("YOUMAH", platform.machine().lower())
+print ("YOUPLT", platform.platform())
 
-if platform.system().lower() == 'linux' and platform.machine().lower() == 'i386':
+if platform.system().lower() == 'linux' and platform.platform().find('i386') != -1:
     backend_test.exclude(r'('
         '|^test_vgg19_cpu.*'
         '|^test_zfnet512_cpu.*'
