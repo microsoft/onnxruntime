@@ -14,11 +14,6 @@ steps:
         )
         @echo ##vso[task.setvariable variable=OnnxRuntimeGitCommitHash;]%_OnnxRuntimeGitCommitHash%
 
-        echo "Env(_OnnxRuntimeVersion) = %_OnnxRuntimeVersion%"
-        echo Var(OnnxRuntimeVersion) = variables['OnnxRuntimeVersion']
-        echo "Env(_OnnxRuntimeGitCommitHash) = %_OnnxRuntimeGitCommitHash%"
-        echo Var(OnnxRuntimeGitCommitHash) = variables['OnnxRuntimeGitCommitHash']
-
     workingDirectory: '$(Build.SourcesDirectory)'
   condition: eq(variables['Agent.OS'], 'Windows_NT') 
 
@@ -31,15 +26,6 @@ steps:
         
         _OnnxRuntimeGitCommitHash=$(git rev-parse --short=8 HEAD)
         echo "##vso[task.setvariable variable=OnnxRuntimeGitCommitHash;]$_OnnxRuntimeGitCommitHash"
-
-        echo "Env(_OnnxRuntimeVersion) = $_OnnxRuntimeVersion"
-        #echo Var(OnnxRuntimeVersion) = variables['OnnxRuntimeVersion']
-        echo "Var(OnnxRuntimeVersion) = $ONNXRUNTIMEVERSION"
-        echo 'Var(OnnxRuntimeVersion) = ${{variables.OnnxRuntimeVersion}}'
-        echo "Env(_OnnxRuntimeGitCommitHash) = $_OnnxRuntimeGitCommitHash"
-        #echo Var(OnnxRuntimeGitCommitHash) = variables['OnnxRuntimeGitCommitHash']
-        echo "Var(OnnxRuntimeGitCommitHash) = $ONNXRUNTIMEGITCOMMITHASH"
-        echo 'Var(OnnxRuntimeGitCommitHash) = ${{variables.OnnxRuntimeGitCommitHash}}'
 
     workingDirectory: '$(Build.SourcesDirectory)'
   condition: not(eq(variables['Agent.OS'], 'Windows_NT'))
