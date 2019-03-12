@@ -145,8 +145,7 @@ class InferenceSession::Impl {
  public:
   Impl(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
       : session_options_{session_options},
-        graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps,
-                                  session_options_.enable_default_transformers},
+        graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
         logging_manager_{logging_manager},
         session_state_{execution_providers_},
         insert_cast_transformer_{"CastFloat16Transformer"} {

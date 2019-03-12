@@ -35,10 +35,6 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   ORT_ENFORCE(fetches.size() == node.OutputDefs().size());
   for (int fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
     MLValue& mlvalue = fetches[fetch_idx];
-    // TODO Is this check needed?
-    if (mlvalue.Fence()) {
-      mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-    }
 
     // Build the TensorProto that corresponds to the computed MLValue and add it as initializer to the graph.
     ONNX_NAMESPACE::TensorProto out_tensorproto;

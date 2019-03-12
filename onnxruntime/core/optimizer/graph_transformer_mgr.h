@@ -11,15 +11,8 @@ namespace onnxruntime {
 // transformers. Each inference session can further register additional ones.
 class GraphTransformerManager {
  public:
-  explicit GraphTransformerManager(unsigned steps, bool enable_default_transformers) noexcept : steps_(steps) {
+  explicit GraphTransformerManager(unsigned steps) noexcept : steps_(steps) {
     // Register default transformers.
-    if (enable_default_transformers) {
-      std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
-          std::make_unique<TopDownRuleBasedTransformer>("DefaultRuleTransformer",
-                                                        "Default rule-based graph transformer");
-      rule_transformer->Register(std::make_unique<ConstantFolding>());
-      Register(std::move(rule_transformer));
-    }
   }
 
   // Register a graph transformer.

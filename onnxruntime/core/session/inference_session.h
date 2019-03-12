@@ -60,9 +60,6 @@ struct SessionOptions {
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
-  // If true, the default transformers get added to the graph transformer manager.
-  bool enable_default_transformers = true;
-
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
 };
