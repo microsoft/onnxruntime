@@ -1,7 +1,6 @@
 jobs:
 
 - job: Linux_C_API_Packaging_CPU_x64
-  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -18,7 +17,6 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Linux_C_API_Packaging_CPU_x86
-  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -35,7 +33,6 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Linux_C_API_Packaging_GPU_x64
-  condition: false
   pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -53,7 +50,6 @@ jobs:
  
 
 - job: MacOS_C_API_Packaging_CPU_x64
-  condition: false
   pool: 
     vmImage: 'macOS-10.13'
   steps:
@@ -108,7 +104,6 @@ jobs:
 
 
 - job: Windows_Packaging_CPU_x86
-  condition: false
   pool: 'Win-CPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -141,7 +136,6 @@ jobs:
 
 
 - job: Windows_Packaging_GPU_x64
-  condition: false
   pool: 'Win-GPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
