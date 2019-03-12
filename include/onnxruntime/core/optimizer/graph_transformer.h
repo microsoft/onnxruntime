@@ -69,11 +69,11 @@ class GraphTransformer {
 /**
 @class RuleBasedGraphTransformer
 
-Rule based graph transformer that provides an API to register rewrite rules, 
+Rule-based graph transformer that provides an API to register rewrite rules 
 and an API to apply all applicable rules to a Graph.
 
-Represents an IGraphTransformer determined by a set of rewrite-rules.
-The transformer will apply all the rewrite-rules iteratively as determined by the underlying rewriting-strategy.
+Represents an IGraphTransformer determined by a set of rewrite rules.
+The transformer will apply all the rewrite rules iteratively as determined by the underlying rewriting strategy.
 Several rewriting-strategies are possible when traversing the graph and applying rewrite rules, 
 each with different trade offs. At the moment, we define one that performs top-down traversal of nodes.
 
@@ -89,12 +89,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
       : GraphTransformer(name, desc) {}
 
   /**
-  Register a rewriting rule.
-
-  @TODO (revisit needed): Using OpSignature* here will ask that OpSignature should be stored globally. 
-  Otherwise, there will be multiple addresses/pointers for the same operator or function. 
-  To avoid this, we may use OpSignature ID as the key, which should be name_domain_version.
-  We will use the string type instead of the OpSchema for now. We should probably add a version as well.
+  Register a rewrite rule in this transformer.
   */
   Status Register(std::unique_ptr<RewriteRule> rule);
 
@@ -103,7 +98,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   @returns a reference to the vector containing all the registered rewrite rules.
   */
   const std::vector<std::unique_ptr<RewriteRule>>& GetRewriteRules() const {
-    return op_to_rules_;
+    return rules_;
   }
 
  protected:
@@ -119,7 +114,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
                                   bool& modified, bool& deleted) const;
 
  private:
-  std::vector<std::unique_ptr<RewriteRule>> op_to_rules_;
+  std::vector<std::unique_ptr<RewriteRule>> rules_;
 };
 
 /**

@@ -24,7 +24,7 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
 }
 
 Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
-  op_to_rules_.push_back(std::move(rule));
+  rules_.push_back(std::move(rule));
   return Status::OK();
 }
 
