@@ -1,6 +1,5 @@
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
-  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -11,13 +10,12 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+          artifactName: 'onnxruntime-linux-x64-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
     - template: templates/clean-agent-build-directory-step.yml
 
 
 - job: Linux_C_API_Packaging_CPU_x86
-  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -28,13 +26,12 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x86-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+          artifactName: 'onnxruntime-linux-x86-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
     - template: templates/clean-agent-build-directory-step.yml
 
 
 - job: Linux_C_API_Packaging_GPU_x64
-  condition: false
   pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -45,13 +42,12 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+          artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
     - template: templates/clean-agent-build-directory-step.yml
 
 
 - job: MacOS_C_API_Packaging_CPU_x64
-  condition: false
   pool: 
     vmImage: 'macOS-10.13'
   steps:
@@ -67,7 +63,7 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'RelWithDebInfo'
-          artifactName: 'onnxruntime-osx-x64-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+          artifactName: 'onnxruntime-osx-x64-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.dylib'
 
     - template: templates/clean-agent-build-directory-step.yml
@@ -100,13 +96,12 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
 
     - template: templates/clean-agent-build-directory-step.yml
 
 
 - job: Windows_Packaging_CPU_x86
-  condition: false
   pool: 'Win-CPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -133,13 +128,12 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
 
     - template: templates/clean-agent-build-directory-step.yml
 
 
 - job: Windows_Packaging_GPU_x64
-  condition: false
   pool: 'Win-GPU'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -182,7 +176,7 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion).$(OnnxRuntimeGitCommitHash)'
+        artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
 
     - task: PowerShell@2
       displayName: 'Clean up Cuda Path 9.1'

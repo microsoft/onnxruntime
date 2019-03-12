@@ -9,12 +9,10 @@ steps:
         set /p _OnnxRuntimeVersion=<$(Build.SourcesDirectory)\VERSION_NUMBER 
         @echo ##vso[task.setvariable variable=OnnxRuntimeVersion;]%_OnnxRuntimeVersion%
         
-        FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
+        FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse HEAD`) DO (
             @echo ##vso[task.setvariable variable=OnnxRuntimeGitCommitHash;]%%F
         )
         
-        @echo OnxRuntimeGitCommitHash = $(OnnxRuntimeGitCommitHash)
-
     workingDirectory: '$(Build.SourcesDirectory)'
   condition: eq(variables['Agent.OS'], 'Windows_NT') 
 
@@ -25,7 +23,7 @@ steps:
         _OnnxRuntimeVersion=$(head -1 $(Build.SourcesDirectory)/VERSION_NUMBER) 
         echo "##vso[task.setvariable variable=OnnxRuntimeVersion;]$_OnnxRuntimeVersion"
         
-        _OnnxRuntimeGitCommitHash=$(git rev-parse --short=8 HEAD)
+        _OnnxRuntimeGitCommitHash=$(git rev-parse HEAD)
         echo "##vso[task.setvariable variable=OnnxRuntimeGitCommitHash;]$_OnnxRuntimeGitCommitHash"
 
     workingDirectory: '$(Build.SourcesDirectory)'
