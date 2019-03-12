@@ -31,3 +31,7 @@
 #pragma warning(disable : 4554)
 #pragma warning(disable : 4324)
 #endif
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

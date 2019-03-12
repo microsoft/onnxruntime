@@ -16,11 +16,6 @@ limitations under the License.
 
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/util/eigen_common_wrapper.h"
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 #include "core/platform/env.h"
 
 #define EIGEN_USE_THREADS
