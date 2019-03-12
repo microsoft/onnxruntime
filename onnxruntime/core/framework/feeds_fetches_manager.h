@@ -27,8 +27,8 @@ struct DeviceCopyChecks {
 
 struct FeedsFetchesInfo {
   FeedsFetchesInfo() = default;
-  FeedsFetchesInfo(std::vector<std::string>& feed_names_in,
-                   std::vector<std::string>& output_names_in)
+  FeedsFetchesInfo(const std::vector<std::string>& feed_names_in,
+                   const std::vector<std::string>& output_names_in)
       : feed_names{feed_names_in}, output_names{output_names_in} {}
 
   static Status MapNamesToMLValueIdxs(const std::vector<std::string>& names,

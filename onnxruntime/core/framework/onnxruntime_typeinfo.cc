@@ -25,7 +25,7 @@ ORT_API(const struct OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _I
   return input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
 }
 
-ORT_API(void, OrtReleaseTypeInfo, OrtTypeInfo* ptr) {
+ORT_API(void, OrtReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   delete ptr;
 }
 

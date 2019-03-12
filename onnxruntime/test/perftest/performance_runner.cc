@@ -50,7 +50,7 @@ Status PerformanceRunner::Run() {
 Status PerformanceRunner::RunOneIteration(bool isWarmup) {
   auto start = std::chrono::high_resolution_clock::now();
   OrtRunOptions run_options;
-  run_options.cache_feeds_fetches_info = true;
+
   ORT_THROW_ON_ERROR(OrtRun(session_object_, nullptr, input_names_.data(), input_values_.data(), input_names_.size(),
                             output_names_raw_ptr.data(), output_names_raw_ptr.size(), output_values_.data()));
   auto end = std::chrono::high_resolution_clock::now();

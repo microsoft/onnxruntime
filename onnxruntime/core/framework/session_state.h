@@ -19,7 +19,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/callback.h"
+#include "core/common/callback.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
@@ -186,13 +186,6 @@ class SessionState {
 
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
-
-  const FeedsFetchesManager* GetFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                                    const std::vector<std::string>& output_names) const;
-
-  Status CacheFeedsFetchesManager(const std::vector<std::string>& feed_names,
-                                  const std::vector<std::string>& output_names,
-                                  std::unique_ptr<FeedsFetchesManager> manager);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);

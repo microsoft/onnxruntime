@@ -22,6 +22,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/environment.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
@@ -31,11 +32,13 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
 #include "core/framework/path_lib.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_state_initializer.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/graph_transformer.h"
@@ -51,6 +54,22 @@
 #endif
 
 using namespace ONNX_NAMESPACE;
+
+ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
+
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
 
 namespace onnxruntime {
 namespace {
@@ -87,6 +106,41 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 }  // namespace
+struct CustomOpKernel : OpKernel {
+  CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
+    op_.CreateKernel(&op_, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
+  }
+
+  ~CustomOpKernel() {
+    op_.KernelDestroy(op_kernel_);
+  }
+
+  Status Compute(OpKernelContext* ctx) const override {
+    auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
+    std::vector<OrtValue*> input_tensors;
+    auto input_count = ictx->InputCount();
+    for (int i = 0; i < input_count; i++)
+      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ictx->GetInputMLValue(i))));
+
+    std::vector<OrtValue*> output_tensors;
+    auto output_count = ictx->OutputCount();
+    for (int i = 0; i < output_count; i++) {
+      OrtTensorTypeAndShapeInfo info;
+      op_.KernelGetOutputShape(op_kernel_, input_tensors.data(), input_tensors.size(), i, &info);
+      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ictx->OutputMLValue(0, info.shape)));
+    }
+
+    op_.KernelCompute(op_kernel_, input_tensors.data(), input_tensors.size(), output_tensors.data(), output_tensors.size());
+    return Status::OK();
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
+
+  OrtCustomOp& op_;
+  void* op_kernel_;
+};
+
 class InferenceSession::Impl {
  public:
   Impl(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
@@ -156,6 +210,60 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
+  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
+    auto custom_registry = std::make_shared<CustomRegistry>();
+
+    for (auto& domain : op_domains) {
+      SchemasContainer schemas_container;
+
+      schemas_container.domain = domain->domain_;
+      schemas_container.baseline_opset_version = domain->op_version_start_;
+      schemas_container.opset_version = domain->op_version_end_;
+
+      for (auto& op : domain->custom_ops_) {
+        ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
+
+        auto input_count = op->GetInputTypeCount(op);
+        for (size_t i = 0; i < input_count; i++) {
+          auto type = op->GetInputType(op, i);
+
+          schema.Input(i, "A", "Description",
+                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
+
+        auto output_count = op->GetOutputTypeCount(op);
+        for (size_t i = 0; i < output_count; i++) {
+          auto type = op->GetOutputType(op, i);
+
+          schema.Output(i, "A", "Description",
+                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
+        }
+
+        schema.SinceVersion(domain->op_version_start_);
+        schema.AllowUncheckedAttributes();
+
+        schemas_container.schemas_list.push_back(schema);
+
+        KernelDefBuilder def_builder;
+        def_builder.SetName(op->GetName(op))
+            .SetDomain(onnxruntime::kOnnxDomain)
+            .SinceVersion(domain->op_version_start_)
+            .Provider(onnxruntime::kCpuExecutionProvider);
+        KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
+        KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
+
+        custom_registry->RegisterCustomKernel(create_info);
+      }
+
+      ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container.schemas_list,
+                                                         schemas_container.domain,
+                                                         schemas_container.baseline_opset_version,
+                                                         schemas_container.opset_version));
+    }
+    RegisterCustomRegistry(custom_registry);
+    return Status::OK();
+  }
+
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry>& custom_registry) {
     if (custom_registry == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
@@ -163,6 +271,8 @@ class InferenceSession::Impl {
 
     // Insert session-level customized kernel registry.
     kernel_registry_manager_.RegisterKernelRegistry(custom_registry);
+    //    if (custom_schema_registries_.empty())
+    //      custom_schema_registries_.push_back();
     custom_schema_registries_.push_back(custom_registry);
     return Status::OK();
   }
@@ -575,68 +685,22 @@ class InferenceSession::Impl {
     Status retval = Status::OK();
 
     try {
-      // use cached info if available, otherwise create a FeedsFetchesManager and update it in the call to ExecuteGraph
-      std::unique_ptr<FeedsFetchesManager> local_ffm;
-      FeedsFetchesManager* feeds_fetches_manager = nullptr;
-      const FeedsFetchesManager* cached_feeds_fetches_manager = nullptr;
-
-      // lambda to construct so that we can call it under the lock if we're caching this, or outside of the lock
-      // if we're not.
-      auto create_feeds_fetches_manager = [&]() {
-        ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
-
-        // if the output vector is non-empty, ensure that its the same size as the output_names
-        ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
-
-        auto status = FeedsFetchesManager::Create(feed_names, output_names, session_state_.GetMLValueNameIdxMap(),
-                                                  local_ffm);
-        ORT_RETURN_IF_ERROR(status);
-        feeds_fetches_manager = local_ffm.get();
-
-        if (run_options.cache_feeds_fetches_info) {
-          session_state_.CacheFeedsFetchesManager(feed_names, output_names, std::move(local_ffm));
-        }
-
-        return Status::OK();
-      };
-
       {
         std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
         if (!is_inited_) {
           LOGS(*session_logger_, ERROR) << "Session was not initialized";
           retval = Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
         }
-
-        if (run_options.cache_feeds_fetches_info) {
-          cached_feeds_fetches_manager = session_state_.GetFeedsFetchesManager(feed_names, output_names);
-          if (!cached_feeds_fetches_manager) {
-            // create the instance under the lock as we add it to SessionState and don't want concurrent calls to Run
-            // to clash with each other
-            ORT_RETURN_IF_ERROR(create_feeds_fetches_manager());
-          }
-        }
       }
 
-      if (!run_options.cache_feeds_fetches_info) {
-        // if we're not creating/using cached info, create an instance for this run
-        ORT_RETURN_IF_ERROR(create_feeds_fetches_manager());
-      } else if (cached_feeds_fetches_manager) {
-        // make sure that if we didn't create the FeedsFetchesManager it has been fully initialized by the
-        // successful completion of a call to Run. this is primarily to detect concurrent calls to Run
-        // prior to the initial call completing. we could do something more complicated to handle failure on the
-        // initial call if a real need to do so is proven.
-        if (cached_feeds_fetches_manager->GetDeviceCopyChecks().status == DeviceCopyCheck::Unknown) {
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, FAIL,
-              "Existing cached information was found but was not fully initialized. "
-              "If caching is enabled, the first call to Run must successfully complete to fully initialize the "
-              "cache information. Once it is fully initialized, Run calls can be made in parallel. "
-              "If the first call to Run failed and you wish to use cached information, you will need to create a new "
-              "InferenceSession.");
-        }
+      ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
 
-        LOGS(*session_logger_, INFO) << "Skipped validation of inputs and outputs as cached information was found";
-      }
+      // if the output vector is non-empty, ensure that its the same size as the output_names
+      ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
+
+      FeedsFetchesInfo info(feed_names, output_names);
+      ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetMLValueNameIdxMap()));
+      FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
       if (!run_options.run_tag.empty()) {
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
@@ -657,19 +721,12 @@ class InferenceSession::Impl {
         ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
       }
 
-      if (cached_feeds_fetches_manager) {
-        // used the const cached_feeds_fetches_manager to execute the graph
-        ORT_CHECK_AND_SET_RETVAL(
-            utils::ExecuteGraphWithCachedInfo(session_state_, *cached_feeds_fetches_manager, feeds, *p_fetches, {},
-                                              session_options_.enable_sequential_execution, run_options.terminate,
-                                              run_logger));
-      } else {
-        // execute the graph and update feeds_fetches_manager
-        ORT_CHECK_AND_SET_RETVAL(
-            utils::ExecuteGraph(session_state_, *feeds_fetches_manager, feeds, *p_fetches, {},
-                                session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                                run_options.cache_feeds_fetches_info));
-      }
+      // execute the graph
+      ORT_CHECK_AND_SET_RETVAL(
+          utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
+                              session_options_.enable_sequential_execution, run_options.terminate, run_logger,
+                              false));
+
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
     } catch (...) {
@@ -1093,5 +1150,9 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 common::Status InferenceSession::LoadCustomOps(const std::vector<std::string>& dso_list) {
   return impl_->LoadCustomOps(dso_list);
+}
+
+common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) {
+  return impl_->AddCustomOpDomains(ops);
 }
 }  // namespace onnxruntime
