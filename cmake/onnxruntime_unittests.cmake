@@ -73,7 +73,7 @@ check_include_files("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANG
 #can propagate correctly.
 
 file(GLOB onnxruntime_test_utils_src
-  "${TEST_SRC_DIR}/util/include/*.h"
+  "${TEST_SRC_DIR}/util/http/*.h"
   "${TEST_SRC_DIR}/util/*.cc"
 )
 

@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef ONNXRUNTIME_HOSTING_HTTP_BEAST_HTTP_H
+#define ONNXRUNTIME_HOSTING_HTTP_BEAST_HTTP_H
+
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -14,15 +17,17 @@
 #include "http_session.h"
 #include "listener.h"
 
+namespace onnxruntime {
+namespace hosting {
+
 namespace http = beast::http;      // from <boost/beast/http.hpp>
 namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
-namespace onnxruntime {
-
-using handler_fn = std::function<void(std::string, std::string, std::string, Http_Context&)>;
+using handler_fn = std::function<void(std::string, std::string, std::string, HttpContext&)>;
 
 // Accepts incoming connections and launches the sessions
+// Each method returns the app itself so methods can be chained
 class App {
  public:
   App() {
@@ -32,27 +37,26 @@ class App {
     threads_ = std::thread::hardware_concurrency();
   }
 
-  App& bind(net::ip::address address, unsigned short port) {
+  App& Bind(net::ip::address address, unsigned short port) {
     address_ = std::move(address);
     port_ = port;
     return *this;
   }
 
-  App& num_threads(int threads) {
+  App& NumThreads(int threads) {
     threads_ = threads;
     return *this;
   }
 
-  App& post(const std::string& route, handler_fn fn) {
-    //    routes->http_posts[route] = std::move(fn);
-    routes->register_controller(http::verb::post, route, fn);
+  App& Post(const std::string& route, const handler_fn& fn) {
+    routes->RegisterController(http::verb::post, route, fn);
     return *this;
   }
 
-  App& run() {
+  App& Run() {
     net::io_context ioc{threads_};
     // Create and launch a listening port
-    std::make_shared<listener>(routes, ioc, tcp::endpoint{address_, port_})->run();
+    std::make_shared<Listener>(routes, ioc, tcp::endpoint{address_, port_})->Run();
 
     // TODO: use logger
     std::cout << "Listening at: \n"
@@ -79,6 +83,7 @@ class App {
   int threads_;
 };
 
-} // namespace onnxruntime
+}  // namespace hosting
+}  // namespace onnxruntime
 
-
+#endif  // ONNXRUNTIME_HOSTING_HTTP_BEAST_HTTP_H
