@@ -1,5 +1,6 @@
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
+  condition: false
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -50,6 +51,7 @@ jobs:
 
 
 - job: MacOS_C_API_Packaging_CPU_x64
+  condition: false
   pool: 
     vmImage: 'macOS-10.13'
   steps:
