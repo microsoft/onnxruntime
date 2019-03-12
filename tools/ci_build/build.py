@@ -300,8 +300,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"), 
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
-                  # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
-                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                  ]
     if args.use_brainslice:
