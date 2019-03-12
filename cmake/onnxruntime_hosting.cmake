@@ -46,7 +46,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         PUBLIC
         ${Boost_INCLUDE_DIR}
         ${re2_src}
-        ${ONNXRUNTIME_ROOT}/hosting/include
+        ${ONNXRUNTIME_ROOT}/hosting/http
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

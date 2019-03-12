@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iostream>
-#include "beast_http.h"
 #include "boost/program_options.hpp"
+
+#include "beast_http.h"
 #include "core/session/inference_session.h"
 
 namespace po = boost::program_options;
+namespace beast = boost::beast;
+namespace http = beast::http;
 
 void test_request(const std::string& name, const std::string& version,
-                  const std::string& action, onnxruntime::Http_Context& context) {
+                  const std::string& action, onnxruntime::hosting::HttpContext& context) {
   std::stringstream ss;
 
   ss << "\tModel Name: " << name << std::endl;
@@ -69,11 +71,11 @@ int main(int argc, char* argv[]) {
 
   auto const boost_address = boost::asio::ip::make_address(vm["address"].as<std::string>());
 
-  onnxruntime::App app{};
-  app.post(R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))", test_request)
-      .bind(boost_address, vm["port"].as<int>())
-      .num_threads(vm["threads"].as<int>())
-      .run();
+  onnxruntime::hosting::App app {};
+  app.Post(R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))", test_request)
+     .Bind(boost_address, vm["port"].as<int>())
+     .NumThreads(vm["threads"].as<int>())
+     .Run();
 
   return EXIT_SUCCESS;
 }
