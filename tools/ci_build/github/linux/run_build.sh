@@ -4,7 +4,6 @@ set -e -o -x
 id
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
-MACHINE=`uname -m`
 
 while getopts c:d:x: parameter_Option
 do case "${parameter_Option}"
@@ -25,17 +24,10 @@ if [ $BUILD_DEVICE = "gpu" ]; then
         --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda --build_shared_lib $BUILD_EXTR_PAR
     /home/onnxruntimedev/Release/onnx_test_runner -e cuda /data/onnx
 else
-    if [ MACHINE = "x86_64" ]; then
-        python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
-            --config Debug Release --build_shared_lib \
-            --skip_submodule_sync --enable_onnx_tests \
-            --enable_pybind \
-            --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
-        /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
-    else
-        python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
-            --config Debug Release --build_shared_lib \
-            --skip_submodule_sync --enable_pybind \
-            --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
-    fi
+    python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
+        --config Debug Release --build_shared_lib \
+        --skip_submodule_sync --enable_onnx_tests \
+        --enable_pybind \
+        --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
+    /home/onnxruntimedev/Release/onnx_test_runner /data/onnx
 fi
