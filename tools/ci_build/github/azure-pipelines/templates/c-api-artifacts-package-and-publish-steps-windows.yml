@@ -3,6 +3,7 @@
 parameters:
   buildConfig: 'RelWithDebInfo'
   artifactName: 'onnxruntime-win-x64'
+  comitId: ''
 steps:
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'

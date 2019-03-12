@@ -12,6 +12,7 @@ jobs:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -28,6 +29,7 @@ jobs:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x86-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          commitId: $(OnnxRuntimeGitCommitHash)          
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -44,6 +46,7 @@ jobs:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -65,7 +68,8 @@ jobs:
           buildConfig: 'RelWithDebInfo'
           artifactName: 'onnxruntime-osx-x64-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.dylib'
-
+          commitId: $(OnnxRuntimeGitCommitHash)
+          
     - template: templates/clean-agent-build-directory-step.yml
   
 
@@ -97,7 +101,7 @@ jobs:
       parameters:
         buildConfig: $(buildConfig)
         artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
-
+        commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -129,7 +133,7 @@ jobs:
       parameters:
         buildConfig: $(buildConfig)
         artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
-
+        commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -177,7 +181,8 @@ jobs:
       parameters:
         buildConfig: $(buildConfig)
         artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
-
+        commitId: $(OnnxRuntimeGitCommitHash)
+        
     - task: PowerShell@2
       displayName: 'Clean up Cuda Path 9.1'
       inputs:
