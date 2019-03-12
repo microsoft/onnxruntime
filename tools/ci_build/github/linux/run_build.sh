@@ -32,7 +32,7 @@ elif [ $BUILD_DEVICE = "tensorrt" ]; then
         --use_cuda --use_openmp \
         --cuda_home /usr/local/cuda \
         --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda \ 
-        --use_tesorrt --tensorrt_home /workspace/tensorrt --build_shared_lib $BUILD_EXTR_PAR
+        --use_tensorrt --tensorrt_home /workspace/tensorrt --build_shared_lib $BUILD_EXTR_PAR
     /home/onnxruntimedev/Release/onnx_test_runner -e tensorrt /data/onnx
 else
     python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
