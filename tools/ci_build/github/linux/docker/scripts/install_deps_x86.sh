@@ -46,7 +46,7 @@ else
     cd /tmp/src/onnx-$onnx_version
     git clone https://github.com/pybind/pybind11.git third_party/pybind11
     python3 setup.py bdist_wheel
-    pip3 install -q dist/*i386*.whl
+    pip3 install onnx
     mkdir -p /data/onnx/$onnx_version
     backend-test-tools generate-data -o /data/onnx/$onnx_version
   done
