@@ -4,7 +4,7 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)"
+    - script: echo VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)
       displayName: 'Print Version Number'
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
@@ -55,7 +55,7 @@ jobs:
   
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)"
+    - script: echo VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)
       displayName: 'Print Version Number'
 
 
@@ -83,7 +83,7 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-    - script: echo "VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)"
+    - script: echo VERSION_NUMBER=$(OnnxRuntimeVersion), CommitHash=$(OnnxRuntimeGitCommitHash)
       displayName: 'Print Version Number'
 
     - template: templates/windows-build-tools-setup-steps.yml
