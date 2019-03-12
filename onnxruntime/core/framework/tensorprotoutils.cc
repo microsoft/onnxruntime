@@ -14,7 +14,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/allocator.h"
-#include "core/framework/callback.h"
+#include "core/common/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
 
@@ -22,35 +22,6 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace {
-
-
-//TODO: will move OrtBuffer into env.cc and let  ReadFileAsString return an OrtBuffer instead of string
-//So that, we can put fclose into the destructor of OrtBuffer.
-#if 0
-class OrtBuffer {
- public:
-  virtual const void* GetData() = 0;
-  virtual size_t GetLength() = 0;
-  virtual ~OrtBuffer() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtBuffer);
-};
-
-class OrtHeapBuffer {
- public:
-  const void * GetData() {
-
-  }
-  size_t GetLength() {
-
-  }
-  static OrtHeapBuffer* Create(){
-
-  }
- private:
-  void* data_;
-  size_t length_;
-};
-#endif
 
 #ifdef __GNUC__
 constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
@@ -314,39 +285,6 @@ std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::Te
   return tensor_shape_vec;
 }
 
-template <typename T>
-common::Status GetTensorByTypeFromTensorProto(const TensorProto& tensor_proto, const TensorShape& tensor_shape,
-                                              const OrtAllocatorInfo& alloc,
-                                              const void* raw_data, size_t raw_data_len, void* preallocated,
-                                              size_t preallocated_size, std::unique_ptr<Tensor>& out_tensor) {
-  int64_t tensor_size = tensor_shape.Size();
-  // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
-  if (tensor_size < 0 || static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid shape ", tensor_shape);
-  }
-  size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArrayWithAlignment<0>(static_cast<size_t>(tensor_size), sizeof(T),
-                                                       &size_to_allocate)) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
-  }
-
-  if (preallocated && preallocated_size < size_to_allocate)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The buffer planner is not consistent with tensor buffer size, expected ",
-                           size_to_allocate, ", got ", preallocated_size);
-
-  std::unique_ptr<Tensor> t;
-  t = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), tensor_shape, preallocated, alloc);
-  ORT_RETURN_IF_ERROR(
-      ::onnxruntime::utils::UnpackTensor(tensor_proto, raw_data, raw_data_len, t->MutableData<T>(), tensor_size));
-  out_tensor = std::move(t);
-  return common::Status::OK();
-}
-
-#define CASE_PROTO(X, Y)                                                                                             \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                               \
-    ORT_RETURN_IF_ERROR(GetTensorByTypeFromTensorProto<Y>(tensor_proto, tensor_shape, allocator, raw_data,           \
-                                                          raw_data_len, preallocated, preallocated_size, p_tensor)); \
-    break;
 
 struct UnInitializeParam {
   void* preallocated;
@@ -368,7 +306,7 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
-static void ORT_API_CALL DeleteHeapBuffer(void* param) noexcept {
+static void ORT_API_CALL UnInitTensor(void* param) noexcept {
   UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
   OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
   delete p;
@@ -399,35 +337,44 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
+#define CASE_PROTO(X, Y)                                                                                             \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                               \
+    ORT_RETURN_IF_ERROR(                                                                                             \
+        ::onnxruntime::utils::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size)); \
+    break;
+
+class AutoDelete {
+ public:
+  OrtCallback d{nullptr, nullptr};
+  AutoDelete() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AutoDelete);
+  ~AutoDelete() {
+    if (d.f != nullptr) {
+      d.f(d.param);
+    }
+  }
+};
+
+static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
+  to.f = from.f;
+  to.param = from.param;
+  from.f = nullptr;
+  from.param = nullptr;
+}
 
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, MLValue& value,
                             OrtCallback& deleter) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
-  void* preallocated = m.GetBuffer();
-  size_t preallocated_size = m.GetLen();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
-  if (preallocated != nullptr && ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-    OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
-    if (status != nullptr) {
-      OrtReleaseStatus(status);
-      return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
-    }
-    
-    deleter.f = DeleteHeapBuffer;
-    deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
-  } else {
-    deleter.f = nullptr;
-    deleter.param = nullptr;
-  }
-  std::unique_ptr<Tensor> p_tensor;
-  std::string raw_data_from_file;
+  deleter.f = nullptr;
+  deleter.param = nullptr;
   const void* raw_data = nullptr;
   size_t raw_data_len = 0;
+  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  AutoDelete deleter_for_file_data;
+  void* tensor_data;
   {
-    std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
-    // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-    TensorShape tensor_shape{tensor_shape_vec};
     if (tensor_proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::FAIL, "string tensor can not have raw data");
@@ -446,80 +393,118 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       }
 
       // load the file
-      ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), &raw_data_from_file));
-      raw_data = raw_data_from_file.data();
-      raw_data_len = raw_data_from_file.size();
+      {
+        void* file_data;
+        ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), file_data, raw_data_len, deleter_for_file_data.d));
+        raw_data = file_data;
+      }
     } else if (tensor_proto.has_raw_data()) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::FAIL, "string tensor can not have raw data");
       raw_data = tensor_proto.raw_data().data();
       raw_data_len = tensor_proto.raw_data().size();
     }
-    switch (tensor_proto.data_type()) {
-      CASE_PROTO(FLOAT, float);
-      CASE_PROTO(DOUBLE, double);
-      CASE_PROTO(BOOL, bool);
-      CASE_PROTO(INT8, int8_t);
-      CASE_PROTO(INT16, int16_t);
-      CASE_PROTO(INT32, int32_t);
-      CASE_PROTO(INT64, int64_t);
-      CASE_PROTO(UINT8, uint8_t);
-      CASE_PROTO(UINT16, uint16_t);
-      CASE_PROTO(UINT32, uint32_t);
-      CASE_PROTO(UINT64, uint64_t);
-      CASE_PROTO(STRING, std::string);
-      CASE_PROTO(FLOAT16, MLFloat16);
-      CASE_PROTO(BFLOAT16, BFloat16);
-      default: {
-        std::ostringstream ostr;
-        ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
-        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+    if (IsLittleEndianOrder() && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
+      tensor_data = const_cast<void*>(raw_data);
+      MoveOrtCallback(deleter_for_file_data.d, deleter);
+    } else {
+      void* preallocated = m.GetBuffer();
+      size_t preallocated_size = m.GetLen();
+      int64_t tensor_size = 1;
+      {
+        for (auto i : tensor_proto.dims()) {
+          if (i < 0) return Status(common::ONNXRUNTIME, common::FAIL, "tensor can't contain negative dims");
+          tensor_size *= i;
+        }
       }
+      // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
+      if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
+      }
+      size_t size_to_allocate;
+      if (!IAllocator::CalcMemSizeForArrayWithAlignment<0>(static_cast<size_t>(tensor_size), type->Size(),
+                                                           &size_to_allocate)) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
+      }
+
+      if (preallocated && preallocated_size < size_to_allocate)
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "The buffer planner is not consistent with tensor buffer size, expected ",
+                               size_to_allocate, ", got ", preallocated_size);
+      switch (tensor_proto.data_type()) {
+        CASE_PROTO(FLOAT, float);
+        CASE_PROTO(DOUBLE, double);
+        CASE_PROTO(BOOL, bool);
+        CASE_PROTO(INT8, int8_t);
+        CASE_PROTO(INT16, int16_t);
+        CASE_PROTO(INT32, int32_t);
+        CASE_PROTO(INT64, int64_t);
+        CASE_PROTO(UINT8, uint8_t);
+        CASE_PROTO(UINT16, uint16_t);
+        CASE_PROTO(UINT32, uint32_t);
+        CASE_PROTO(UINT64, uint64_t);
+        CASE_PROTO(FLOAT16, MLFloat16);
+        CASE_PROTO(BFLOAT16, BFloat16);
+        case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
+          if (preallocated != nullptr) {
+            OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
+            if (status != nullptr) {
+              OrtReleaseStatus(status);
+              return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
+            }
+
+            deleter.f = UnInitTensor;
+            deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
+          }
+          ORT_RETURN_IF_ERROR(::onnxruntime::utils::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
+                                                                              (std::string*)preallocated, tensor_size));
+          break;
+        default: {
+          std::ostringstream ostr;
+          ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
+          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+        }
+      }
+      tensor_data = preallocated;
     }
   }
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
+  std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
+  // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
+  TensorShape tensor_shape{tensor_shape_vec};
+  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   return Status::OK();
 }
 
-ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  switch (tensor_proto.data_type()) {
-    case TensorProto_DataType_FLOAT:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    case TensorProto_DataType_UINT8:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-    case TensorProto_DataType_INT8:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-    case TensorProto_DataType_UINT16:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
-    case TensorProto_DataType_INT16:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
-    case TensorProto_DataType_INT32:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    case TensorProto_DataType_INT64:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    case TensorProto_DataType_STRING:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    case TensorProto_DataType_BOOL:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    case TensorProto_DataType_FLOAT16:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-    case TensorProto_DataType_DOUBLE:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-    case TensorProto_DataType_UINT32:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
-    case TensorProto_DataType_UINT64:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
-    case TensorProto_DataType_COMPLEX64:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
-    case TensorProto_DataType_COMPLEX128:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
-    case TensorProto_DataType_BFLOAT16:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+#define CASE_TYPE(X)                             \
+  case ONNX_NAMESPACE::TensorProto_DataType_##X: \
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
+
+ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
+  switch (type) {
+    CASE_TYPE(FLOAT)
+    CASE_TYPE(UINT8)
+    CASE_TYPE(INT8)
+    CASE_TYPE(UINT16)
+    CASE_TYPE(INT16)
+    CASE_TYPE(INT32)
+    CASE_TYPE(INT64)
+    CASE_TYPE(STRING)
+    CASE_TYPE(BOOL)
+    CASE_TYPE(FLOAT16)
+    CASE_TYPE(DOUBLE)
+    CASE_TYPE(UINT32)
+    CASE_TYPE(UINT64)
+    CASE_TYPE(COMPLEX64)
+    CASE_TYPE(COMPLEX128)
+    CASE_TYPE(BFLOAT16)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
+}
+
+ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
 TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
