@@ -151,6 +151,7 @@ class OpKernelContext {
   const MLValue* GetInputMLValue(int index) const;
   const MLValue* GetImplicitInputMLValue(int index) const;
   MLValue* GetOutputMLValue(int index);
+  MLValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the MLValue* based on the shape, if it does not exist
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);

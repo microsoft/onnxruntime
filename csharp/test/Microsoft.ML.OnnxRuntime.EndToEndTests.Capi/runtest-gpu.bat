@@ -15,6 +15,7 @@ IF NOT DEFINED IsReleaseBuild (
 )
 
 set CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
+
 @echo %CurrentOnnxRuntimeVersion%
 
 pushd test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi
@@ -26,7 +27,7 @@ REM Generate packages.config with version
 echo off
 set "token=CurrentOnnxRuntimeVersion"
 set "replace=%CurrentOnnxRuntimeVersion%"
-set "templateFile=packages.conf"
+set "templateFile=packages-gpu.conf"
 for /f "delims=" %%i in ('type "%templateFile%" ^& break ^> "packages.config" ') do (
     set "line=%%i"
     setlocal enabledelayedexpansion
@@ -36,7 +37,7 @@ for /f "delims=" %%i in ('type "%templateFile%" ^& break ^> "packages.config" ')
 echo on
 
 REM Restore NuGet Packages
-nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.EndToEndTests.RunCapi.vcxproj
+nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.Gpu.EndToEndTests.RunCapi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (
     echo "Error:Nuget restore failed"
     popd
@@ -44,7 +45,7 @@ if NOT %ERRORLEVEL% EQU 0 (
 )
 
 REM Build Native project
-msbuild  Microsoft.ML.OnnxRuntime.EndToEndTests.RunCapi.vcxproj
+msbuild  Microsoft.ML.OnnxRuntime.Gpu.EndToEndTests.RunCapi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (
     echo "Error:MSBuild failed to compile project"
     popd
@@ -55,7 +56,7 @@ if NOT %ERRORLEVEL% EQU 0 (
 REM Run Unit Tests
 pushd x64\Debug
 REM vstest.console.exe /platform:x64 Microsoft.ML.OnnxRuntime.EndToEndTests.Capi.dll
-.\Microsoft.ML.OnnxRuntime.EndToEndTests.RunCapi.exe
+.\Microsoft.ML.OnnxRuntime.Gpu.EndToEndTests.RunCapi.exe
 if NOT %ERRORLEVEL% EQU 0 (
     echo "Unit test failure: %ERRORLEVEL%"
     popd
