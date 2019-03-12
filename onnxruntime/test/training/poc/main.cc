@@ -6,8 +6,9 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/environment.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/training/training_session.h"
 #include "core/training/training_optimizer.h"
+#include "core/training/training_session.h"
+#include "core/training/weight_updater.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
 
@@ -250,8 +251,8 @@ int main(int /*argc*/, char* /*args*/[]) {
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
   TERMINATE_IF_FAILED(training_session.Initialize());
 
-  Optimizer<GradientDescent> optimizer(training_session,
-                                       {LEARNING_RATE, GetAllocator()});
+  // Create a WeightUpdater powered by GradientDescent algorithm.
+  WeightUpdater<GradientDescent> weight_updater(training_session, {LEARNING_RATE, GetAllocator()});
 
   cout << "Before training" << endl;
   Evaluate(training_session, testing_set);
@@ -296,7 +297,7 @@ int main(int /*argc*/, char* /*args*/[]) {
          << endl;
 
     // After this call, training_session will have the updated weights ready for next Run().
-    optimizer.Optimize(grads_batch);
+    weight_updater.Update(grads_batch);
 
     Evaluate(training_session, testing_set);
 
