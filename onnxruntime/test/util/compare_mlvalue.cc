@@ -6,7 +6,7 @@
 #include <sstream>
 #include <google/protobuf/text_format.h>
 #include "core/graph/onnx_protobuf.h"
-
+#include "core/framework/tensorprotoutils.h"
 #include "Eigen/Core"
 #include "Eigen/src/Core/arch/CUDA/Half.h"
 
@@ -20,34 +20,7 @@ using __half_raw = ::Eigen::half_impl::__half;
 }  // namespace Eigen
 #endif
 
-#define CASE_TYPE(X)                             \
-  case ONNX_NAMESPACE::TensorProto_DataType_##X: \
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
-
 namespace {
-
-ONNXTensorElementDataType CApiElementTypeFromProto(int type) {
-  switch (type) {
-    CASE_TYPE(FLOAT)
-    CASE_TYPE(UINT8)
-    CASE_TYPE(INT8)
-    CASE_TYPE(UINT16)
-    CASE_TYPE(INT16)
-    CASE_TYPE(INT32)
-    CASE_TYPE(INT64)
-    CASE_TYPE(STRING)
-    CASE_TYPE(BOOL)
-    CASE_TYPE(FLOAT16)
-    CASE_TYPE(DOUBLE)
-    CASE_TYPE(UINT32)
-    CASE_TYPE(UINT64)
-    CASE_TYPE(COMPLEX64)
-    CASE_TYPE(COMPLEX128)
-    CASE_TYPE(BFLOAT16)
-    default:
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  }
-}
 
 template <typename T>
 bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
@@ -381,7 +354,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
       info.reset(t1);
     }
     ONNXTensorElementDataType real_type = OrtGetTensorElementType(info.get());
-    ONNXTensorElementDataType expected_type = CApiElementTypeFromProto(t.elem_type());
+    ONNXTensorElementDataType expected_type = onnxruntime::utils::CApiElementTypeFromProtoType(t.elem_type());
     if (real_type != expected_type) {
       std::ostringstream oss;
       oss << "expect " << ElementTypeToString((MLDataType)expected_type)

@@ -179,6 +179,8 @@ class DataTypeImpl {
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
+  static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
+  static const char* ToString(MLDataType type);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType

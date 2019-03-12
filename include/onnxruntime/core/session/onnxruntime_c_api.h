@@ -359,6 +359,11 @@ ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input
 ORT_API(const OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ OrtTypeInfo*);
 
 /**
+ * Return OnnxType from OrtTypeInfo
+ */
+ORT_API(enum ONNXType, OrtOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*);
+
+/**
  * The retured value should be released by calling OrtReleaseTensorTypeAndShapeInfo
  */
 ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo);
