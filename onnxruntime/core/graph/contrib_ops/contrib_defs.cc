@@ -271,7 +271,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -1088,39 +1088,6 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(StringNormalizer)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "Strings to normalize", "T")
-      .Output(0, "Y", "Normalized strings", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(string)"},
-          "Input/Output is a string tensor")
-      .Attr(
-          "casechangeaction",
-          "string enum that cases output to be lowercased/uppercases/unchanged. Valid values are \"LOWER\", \"UPPER\", \"NONE\"",
-          AttributeProto::STRING)
-      .Attr(
-          "is_case_sensitive",
-          "Boolean. Whether the identification of stop words in X is case-sensitive.",
-          AttributeProto::INT)
-      .Attr(
-          "stopwords",
-          "List of stop words",
-          AttributeProto::STRINGS,
-          OPTIONAL)
-      .Attr(
-          "locale",
-          "Environment dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
-          AttributeProto::STRING,
-          OPTIONAL)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
-      })
-      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kMSDomain)

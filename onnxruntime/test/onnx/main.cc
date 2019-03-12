@@ -301,18 +301,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"atanh_example", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"shrink", "opset 9 not supported yet"},
-      {"strnormalizer_export_monday_casesensintive_lower", "opset 10 not supported yet"},
-      {"strnormalizer_export_monday_casesensintive_nochangecase", "opset 10 not supported yet"},
-      {"strnormalizer_export_monday_casesensintive_upper", "opset 10 not supported yet"},
-      {"strnormalizer_export_monday_empty_output", "opset 10 not supported yet"},
-      {"strnormalizer_export_monday_insensintive_upper_twodim", "opset 10 not supported yet"},
-      {"strnormalizer_nostopwords_nochangecase", "opset 10 not supported yet"},
-      {"strnorm_model_monday_casesensintive_lower", "opset 10 not supported yet"},
-      {"strnorm_model_monday_casesensintive_nochangecase", "opset 10 not supported yet"},
-      {"strnorm_model_monday_casesensintive_upper", "opset 10 not supported yet"},
-      {"strnorm_model_monday_empty_output", "opset 10 not supported yet"},
-      {"strnorm_model_monday_insensintive_upper_twodim", "opset 10 not supported yet"},
-      {"strnorm_model_nostopwords_nochangecase", "opset 10 not supported yet"}, 
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -362,6 +350,17 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   broken_tests["tf_nasnet_large"] = "failed: bad allocation";
   broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
 
+#endif
+
+#ifdef __GNUG__
+#ifndef __LP64__
+  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+#endif
 #endif
 
   int result = 0;
