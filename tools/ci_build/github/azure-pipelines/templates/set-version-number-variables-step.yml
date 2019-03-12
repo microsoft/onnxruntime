@@ -10,7 +10,7 @@ steps:
         @echo ##vso[task.setvariable variable=OnnxRuntimeVersion;]%_OnnxRuntimeVersion%
         
         FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
-            @echo '##vso[task.setvariable variable=OnnxRuntimeGitCommitHash;]%%F'
+            @echo ##vso[task.setvariable variable=OnnxRuntimeGitCommitHash;]%%F
         )
         
         @echo OnxRuntimeGitCommitHash = $(OnnxRuntimeGitCommitHash)
