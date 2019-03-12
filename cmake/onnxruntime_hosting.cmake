@@ -31,7 +31,11 @@ file(GLOB_RECURSE onnxruntime_hosting_srcs
     "${ONNXRUNTIME_ROOT}/hosting/*.h"
     "${ONNXRUNTIME_ROOT}/hosting/*.cc"
 )
-
+if(NOT WIN32)
+  if(HAS_UNUSED_PARAMETER)
+    set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/util.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
+endif()
 # For IDE only
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_hosting_srcs})
 
