@@ -221,8 +221,8 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
-#pragma region ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
 
+  // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
   static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
 (Tensor<T>) where the affine function, y = alpha * x + beta,
@@ -332,7 +332,7 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
 
-#pragma endregion
+  // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
       .SetDomain(kMSDomain)
