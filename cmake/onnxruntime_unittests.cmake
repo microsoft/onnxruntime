@@ -9,7 +9,6 @@ endif()
 
 set(disabled_warnings)
 set(extra_includes)
-
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
   if(_UT_LIBS)
@@ -30,9 +29,10 @@ function(AddTest)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS} eigen)
   endif(_UT_DEPENDS)
   if(_UT_DYN)
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime Threads::Threads)
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime ${CMAKE_DL_LIBS} Threads::Threads)
   else()
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG}
+            optimized ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
   onnxruntime_add_include_to_target(${_UT_TARGET} gsl eigen)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
@@ -498,10 +498,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
   endif()
+  set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common
+          onnx_proto)
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+  endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC}
-          LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto protobuf::libprotobuf
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
   #demo

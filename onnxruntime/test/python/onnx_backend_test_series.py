@@ -6,16 +6,34 @@ import os
 import unittest
 import onnx.backend.test
 
+import numpy as np
 import onnxruntime.backend as c2
 
 pytest_plugins = 'onnx.backend.test.report',
 
-backend_test = onnx.backend.test.BackendTest(c2, __name__)
+class OrtBackendTest(onnx.backend.test.BackendTest):
 
+    def __init__(self, backend, parent_module=None):
+        super(OrtBackendTest, self).__init__(backend, parent_module)
+
+    @classmethod
+    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
+        np.testing.assert_equal(len(ref_outputs), len(outputs))
+        for i in range(len(outputs)):
+            np.testing.assert_equal(ref_outputs[i].dtype, outputs[i].dtype)
+            if ref_outputs[i].dtype == np.object:
+                np.testing.assert_array_equal(ref_outputs[i], outputs[i])
+            else:
+                np.testing.assert_allclose(
+                    ref_outputs[i],
+                    outputs[i],
+                    rtol=1e-3,
+                    atol=1e-5)
+
+backend_test = OrtBackendTest(c2, __name__)
 
 # Type not supported
 backend_test.exclude(r'(FLOAT16)')
-backend_test.exclude(r'^test_gru_seq_length_cpu.*')
 
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
@@ -48,8 +66,6 @@ backend_test.exclude(r'('
 '|^test_PReLU_3d_cpu.*'
 '|^test_PReLU_3d_multiparam_cpu.*'
 '|^test_PoissonNLLLLoss_no_reduce_cpu.*'
-'|^test_strnormalizer_*.*'
-'|^test_strnorm_*.*'
 '|^test_Softsign_cpu.*'
 '|^test_operator_add_broadcast_cpu.*'
 '|^test_operator_add_size1_broadcast_cpu.*'

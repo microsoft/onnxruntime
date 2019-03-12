@@ -65,6 +65,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TRT "Build with TensorRT support" OFF)
+option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -82,6 +83,10 @@ if(onnxruntime_USE_OPENMP)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     add_definitions(-DUSE_OPENMP)
   endif()
+endif()
+
+if(onnxruntime_CROSS_COMPILING)
+  set(CMAKE_CROSSCOMPILING ON)  
 endif()
 
 #must after OpenMP settings
@@ -340,8 +345,9 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    # treat warning as error only on x64 platform. For x86, there are too many warnings to fix.
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE)
+    # treat warning as error only on x64 platform. 
+    # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
       foreach(type EXE STATIC SHARED)
@@ -529,7 +535,7 @@ else()
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES Threads::Threads)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
 
