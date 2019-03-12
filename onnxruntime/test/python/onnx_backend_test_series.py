@@ -8,6 +8,7 @@ import onnx.backend.test
 
 import numpy as np
 import onnxruntime.backend as c2
+import platform
 
 pytest_plugins = 'onnx.backend.test.report',
 
@@ -79,10 +80,17 @@ backend_test.exclude(r'('
 '|^test_operator_params_cpu.*'
 '|^test_operator_pow_cpu.*'
 '|^test_shrink_cpu.*'
-'|^test_vgg19_cpu.*'
-'|^test_zfnet512_cpu.*'
-'|^test_gru_seq_length_cpu.*'
 ')')
+
+print ("YOUSYS", platform().system().lower())
+print ("YOUMAH", platform().machine().lower())
+
+if platform.system().lower() == 'linux' and platform.machine().lower() == 'i386':
+    backend_test.exclude(r'('
+        '|^test_vgg19_cpu.*'
+        '|^test_zfnet512_cpu.*'
+        '|^test_gru_seq_length_cpu.*'
+        ')')
 
 # import all test cases at global scope to make
 # them visible to python.unittest.
