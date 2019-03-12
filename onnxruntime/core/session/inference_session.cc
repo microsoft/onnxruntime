@@ -530,7 +530,7 @@ class InferenceSession::Impl {
       }
 
       // add predefined transformers
-      AddPredefinedTransformers(graph_transformation_mgr_, transformer_levels_enabled_);
+      AddPredefinedTransformers(graph_transformation_mgr_);
 
       onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -987,20 +987,16 @@ class InferenceSession::Impl {
   }
 
   // Registers all the predefined transformers with transformer manager
-  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager, const uint32_t& enabled_levels) {
-    if (enabled_levels & TransformerLevel::Optional_L1) {
-      transformer_manager.Register("Identity", std::make_unique<EliminateIdentity>(), TransformerLevel::Optional_L1);
-      transformer_manager.Register("Slice", std::make_unique<EliminateSlice>(), TransformerLevel::Optional_L1);
-    }
-
-    if (enabled_levels & TransformerLevel::Optional_L2) {
-      // TODO : Modify transformers to accept and process providers and then enable them here
-      // Without any change transformers will fuse nodes assigned to any providers
-      //transformer_manager.Register(std::make_unique<ConvAddFusion>(), TransformerLevel::Optional_L2, {onnxruntime::kCpuExecutionProvider});
-      //transformer_manager.Register(std::make_unique<ConvMulFusion>(), TransformerLevel::Optional_L2, {onnxruntime::kCpuExecutionProvider});
-      //transformer_manager.Register(std::make_unique<ConvBNFusion>(), TransformerLevel::Optional_L2, {onnxruntime::kCpuExecutionProvider});
-      transformer_manager.Register(std::make_unique<UnsqueezeElimination>(), TransformerLevel::Optional_L2, {"", onnxruntime::kCpuExecutionProvider});
-    }
+  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager) {
+    transformer_manager.Register("Identity", std::make_unique<EliminateIdentity>(), TransformerLevel::Optional_L1);
+    transformer_manager.Register("Slice", std::make_unique<EliminateSlice>(), TransformerLevel::Optional_L1);
+    
+    // TODO : Modify transformers to accept and process providers and then enable them here
+    // Without any change transformers will fuse nodes assigned to any providers
+    //transformer_manager.Register(std::make_unique<ConvAddFusion>(), TransformerLevel::Optional_L2, {onnxruntime::kCpuExecutionProvider});
+    //transformer_manager.Register(std::make_unique<ConvMulFusion>(), TransformerLevel::Optional_L2, {onnxruntime::kCpuExecutionProvider});
+    //transformer_manager.Register(std::make_unique<ConvBNFusion>(), TransformerLevel::Optional_L2, {onnxruntime::kCpuExecutionProvider});
+    transformer_manager.Register(std::make_unique<UnsqueezeElimination>(), TransformerLevel::Optional_L2, {"", onnxruntime::kCpuExecutionProvider});    
   }
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
