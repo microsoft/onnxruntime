@@ -238,7 +238,9 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     }
     
     RemoveDuplicateCastTransformer remover;
-    status = remover.Apply(graph, modified);
+    // RemoveDuplicateCastTransformer is a special transformer required for correctness.
+    // It is provider agnostic so simply send an empty vector.
+    status = remover.Apply(graph, modified, {});
   }
 
   return status;

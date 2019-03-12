@@ -60,6 +60,13 @@ struct SessionOptions {
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
+  // set graph optimization level
+  // allowed levels are 0, 1, 2
+  // 0 -> disable all optimizations
+  // 1 -> enable basic optimizations
+  // 2 -> enable all optimizations
+  unsigned graph_optimization_level = 1;
+
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
 };
@@ -128,7 +135,15 @@ class InferenceSession {
     * Calling this API is optional.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer);
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, std::vector<std::string>&& providers);
+
+  /**
+    * Enable a custom set of transformers. Call this before invoking Initialize().
+    * Calling this API is optional.
+    * When this list is provided ORT ignores the levels set in session options.
+    * @return OK if success.
+    */
+  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
 
   /**
   * Load custom ops implemented in a dynamically linked shared library.

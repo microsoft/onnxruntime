@@ -7,7 +7,7 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
+Status GraphTransformer::Apply(Graph& graph, bool& modified, const std::vector<std::string>& ) const {
   // the Graph should be in a good state prior this being called, so there should be no need to call Resolve here
   // ORT_RETURN_IF_ERROR(graph.Resolve());
 
@@ -22,46 +22,4 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
 
   return status;
 }
-
-Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule) {
-  if (HasRules(op_type)) {
-    op_to_rules_[op_type] = std::vector<std::unique_ptr<RewriteRule>>();
-  }
-
-  op_to_rules_[op_type].push_back(std::move(rule));
-  return Status::OK();
-}
-
-Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
-  GraphViewer graph_viewer(graph);
-  auto& order = graph_viewer.GetNodesInTopologicalOrder();
-
-  for (NodeIndex i : order) {
-    auto* node = graph.GetNode(i);
-    if (!node) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT);
-    }
-
-    // Get the rules that should be fired for this node.
-    const std::vector<std::unique_ptr<RewriteRule>>* rules = GetRewriteRules(node->OpType());
-
-    bool deleted = false;
-    if (rules) {
-      for (const auto& rule : *rules) {
-        ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, *node, modified, deleted));
-        if (deleted) {
-          modified = true;  // should be set by rewriter but in case it wasn't...
-          break;
-        }
-      }
-    }
-
-    if (!deleted) {
-      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
-    }
-  }
-
-  return Status::OK();
-}
-
 }  // namespace onnxruntime
