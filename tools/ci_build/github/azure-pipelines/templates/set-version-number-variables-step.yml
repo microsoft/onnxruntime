@@ -34,10 +34,10 @@ steps:
 
         echo "Env(_OnnxRuntimeVersion) = $_OnnxRuntimeVersion"
         #echo Var(OnnxRuntimeVersion) = variables['OnnxRuntimeVersion']
-        echo Var(OnnxRuntimeVersion) = $ONNXRUNTIMEVERSION
+        echo "Var(OnnxRuntimeVersion) = $ONNXRUNTIMEVERSION"
         echo "Env(_OnnxRuntimeGitCommitHash) = $_OnnxRuntimeGitCommitHash"
         #echo Var(OnnxRuntimeGitCommitHash) = variables['OnnxRuntimeGitCommitHash']
-        echo Var(OnnxRuntimeGitCommitHash) = $ONNXRUNTIMEGITCOMMITHASH
+        echo "Var(OnnxRuntimeGitCommitHash) = $ONNXRUNTIMEGITCOMMITHASH"
 
     workingDirectory: '$(Build.SourcesDirectory)'
   condition: not(eq(variables['Agent.OS'], 'Windows_NT'))
