@@ -23,8 +23,8 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
   return status;
 }
 
-Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule) {
-  op_to_rules_[op_type].push_back(std::move(rule));
+Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
+  op_to_rules_.push_back(std::move(rule));
   return Status::OK();
 }
 
@@ -45,28 +45,16 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  // Get the rules that will be fired for all nodes regardless of their type.
-  const std::vector<std::unique_ptr<RewriteRule>>* any_op_rules = GetAnyOpRewriteRules();
-
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
     if (!node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
 
-    // Apply any-op rewrite rules, then op-specific rewrite rules, and then recursively apply rules to subgraphs (if any).
+    // Apply rewrite rules on current node, then recursively apply rules to subgraphs (if any).
     // Stop further rule application for the current node, if the node gets removed by a rule.
     bool deleted = false;
-    if (any_op_rules) {
-      ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *any_op_rules, modified, deleted));
-    }
-
-    if (!deleted) {
-      const std::vector<std::unique_ptr<RewriteRule>>* rules = GetRewriteRules(node->OpType());
-      if (rules) {
-        ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, modified, deleted));
-      }
-    }
+    ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, GetRewriteRules(), modified, deleted));
 
     if (!deleted) {
       ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));

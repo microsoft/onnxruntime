@@ -17,6 +17,10 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 }
 
 bool EliminateSlice::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
+  if (!OpTypeCondition(node)) {
+    return false;
+  }
+
   // At the moment, we eliminate a slice operator only if it has a single input and a single output.
   if (!utils::IsSingleInSingleOutNode(node)) {
     return false;
@@ -48,6 +52,10 @@ bool EliminateSlice::SatisfyCondition(const Graph& /*graph*/, const Node& node) 
   }
 
   return true;
+}
+
+bool EliminateSlice::OpTypeCondition(const Node& node) {
+  return node.OpType() == included_op_type_;
 }
 
 }  // namespace onnxruntime

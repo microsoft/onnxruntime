@@ -53,7 +53,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
 
   std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
-  rule_transformer->Register("Identity", std::make_unique<EliminateIdentity>());
+  rule_transformer->Register(std::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer));
   ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
@@ -72,7 +72,7 @@ TEST(GraphTransformationTests, SliceElimination) {
 
   std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
-  rule_transformer->Register("Slice", std::make_unique<EliminateSlice>());
+  rule_transformer->Register(std::make_unique<EliminateSlice>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer));
   ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());

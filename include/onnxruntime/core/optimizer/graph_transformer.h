@@ -96,43 +96,14 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   To avoid this, we may use OpSignature ID as the key, which should be name_domain_version.
   We will use the string type instead of the OpSchema for now. We should probably add a version as well.
   */
-  Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule);
-
-  /** Register a rewrite rule that we will attempt to apply to all graph nodes, regardless of their op_type. */
-  Status Register(std::unique_ptr<RewriteRule> rule) {
-    return Register(kAnyOpRewriteRules, std::move(rule));
-  }
-
-  /** Check if the given op_type has any rules registered for it 
-  @returns true if there are rules registered for this op_type.*/
-  bool HasRules(const std::string& op_type) const {
-    return op_to_rules_.find(op_type) != op_to_rules_.cend();
-  }
-
-  /** Check if there are rules registered for all nodes, regardless of their op_type). */
-  bool HasAnyOpRules() const {
-    return HasRules(kAnyOpRewriteRules);
-  }
+  Status Register(std::unique_ptr<RewriteRule> rule);
 
   /**
-  Gets the rewrite rules for the given op_type.
-  @returns a pointer to the vector containing all the rewrite rules registered for op_type if found, nullptr
-  otherwise.
+  Gets the list of registered rewrite rules in this rule-based transformer.
+  @returns a reference to the vector containing all the registered rewrite rules.
   */
-  const std::vector<std::unique_ptr<RewriteRule>>* GetRewriteRules(const std::string& op_type) const {
-    auto entry = op_to_rules_.find(op_type);
-    if (entry != op_to_rules_.cend())
-      return &entry->second;
-
-    return nullptr;
-  }
-
-  /*
-  Get rewrite rules that get applied to a node regardless of its op_type ("any-op" rewrite rules).
-  @returns a pointer to the vector containing all any-op rewrite rules, nullptr otherwise.
-  */
-  const std::vector<std::unique_ptr<RewriteRule>>* GetAnyOpRewriteRules() const {
-    return GetRewriteRules(kAnyOpRewriteRules);
+  const std::vector<std::unique_ptr<RewriteRule>>& GetRewriteRules() const {
+    return op_to_rules_;
   }
 
  protected:
@@ -148,10 +119,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
                                   bool& modified, bool& deleted) const;
 
  private:
-  static constexpr const char* kAnyOpRewriteRules = "AnyOpRewriteRules";
-  using RewriteRuleSet = std::unordered_map<std::string, std::vector<std::unique_ptr<RewriteRule>>>;
-
-  RewriteRuleSet op_to_rules_;
+  std::vector<std::unique_ptr<RewriteRule>> op_to_rules_;
 };
 
 /**

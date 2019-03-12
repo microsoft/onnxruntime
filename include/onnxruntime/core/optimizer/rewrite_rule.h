@@ -59,6 +59,9 @@ class RewriteRule {
   node for which this rule was triggered) or some other properties of the nodes. */
   virtual bool SatisfyCondition(const Graph& graph, const Node& node) = 0;
 
+  /** Returns true if the op type of the node is compatible with this rewrite rule. */
+  virtual bool OpTypeCondition(const Node& node) = 0;
+
   /**
   Apply the rewrite rule to a specific node.
   The transformation happens in-place. The return-value of node may be different
