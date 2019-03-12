@@ -18,9 +18,12 @@ limitations under the License.
 
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
+// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/TensorStorage.h(65):
+// warning C4324: structure was padded due to alignment specifier
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4554)
+#pragma warning(disable : 4324)
 #endif
 #include "core/util/eigen_common_wrapper.h"
 #ifdef _MSC_VER
@@ -56,8 +59,8 @@ REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
 REG_ONE_HOT_OP(int64_t, string, int64_t);
 REG_ONE_HOT_OP(float, string, int64_t);
-REG_ONE_HOT_OP(float, float, float); // added this to satisfy onnx model tests
-REG_ONE_HOT_OP(int64_t, int32_t, float); // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
