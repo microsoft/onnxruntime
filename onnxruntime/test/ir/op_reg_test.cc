@@ -11,6 +11,7 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+// Disabled because this experimental op got removed from ONNX and causes test failure - (Commit a89a4a162f3d0c9b8269e97327c44297b04214a1 in ONNX)
 TEST(OpRegistrationTest, AffineOp) {
   auto op = OpSchemaRegistry::Schema("Affine");
   EXPECT_TRUE(nullptr != op);
