@@ -14,7 +14,7 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified, const std::vector<s
   auto status = ApplyImpl(graph, modified, 0);
   ORT_RETURN_IF_ERROR(status);
 
-  // at least currently, some transformers (InsertCastTransformer and MemcpyTransformer need this to be called
+  // At least currently, some transformers (InsertCastTransformer and MemcpyTransformer) need this to be called
   // after they complete to put the graph back into a valid state for the next transformer.
   if (modified) {
     status = graph.Resolve();
@@ -22,4 +22,5 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified, const std::vector<s
 
   return status;
 }
+
 }  // namespace onnxruntime

@@ -44,7 +44,6 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto node = graph.GetNode(index);
-
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
     if (!utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {

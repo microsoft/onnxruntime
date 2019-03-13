@@ -33,7 +33,7 @@ namespace test {
 
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
-// Return a map with the number of occurrences of each operator in the graph.
+// Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
 std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
   std::map<std::string, int> op_to_count;
@@ -80,8 +80,28 @@ TEST(GraphTransformationTests, SliceElimination) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 3);
 }
-// Enable the tests after fixing graph transformers
 /*
+TEST(GraphTransformationTests, ConstantFolding) {
+  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
+
+  std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
+      std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
+
+  rule_transformer->Register(std::make_unique<ConstantFolding>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+
+  graph_transformation_mgr.Register(std::move(rule_transformer));
+  ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 

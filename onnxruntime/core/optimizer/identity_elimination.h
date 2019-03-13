@@ -10,10 +10,15 @@ namespace onnxruntime {
 // Rewrite rule that eliminates the identity node.
 class EliminateIdentity : public RewriteRule {
  public:
-  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node", "Identity") {}
+  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node") {}
 
  private:
-  bool SatisfyCondition(const Node& node) override;
+  /** Apply rule when op type is one of the following. */
+  const std::string included_op_type_ = "Identity";
+
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
+
+  bool OpTypeCondition(const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 };

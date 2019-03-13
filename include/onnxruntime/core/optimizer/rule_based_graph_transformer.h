@@ -13,11 +13,11 @@ namespace onnxruntime {
 /**
 @class RuleBasedGraphTransformer
 
-Rule based graph transformer that provides an API to register rewrite rules, 
+Rule-based graph transformer that provides an API to register rewrite rules 
 and an API to apply all applicable rules to a Graph.
 
-Represents an IGraphTransformer determined by a set of rewrite-rules.
-The transformer will apply all the rewrite-rules iteratively as determined by the underlying rewriting-strategy.
+Represents an IGraphTransformer determined by a set of rewrite rules.
+The transformer will apply all the rewrite rules iteratively as determined by the underlying rewriting strategy.
 Several rewriting-strategies are possible when traversing the graph and applying rewrite rules, 
 each with different trade offs. At the moment, we define one that performs top-down traversal of nodes.
 
@@ -30,42 +30,35 @@ each with different trade offs. At the moment, we define one that performs top-d
 class RuleBasedGraphTransformer : public GraphTransformer {
  public:
   RuleBasedGraphTransformer(const std::string& name, const std::string& desc)
-      : GraphTransformer(name, desc) {    
-  }
+      : GraphTransformer(name, desc) {}
 
   /**
-  Register a rewriting rule.
-
-  @TODO (revisit needed): Using OpSignature* here will ask that OpSignature should be stored globally. 
-  Otherwise, there will be multiple addresses/pointers for the same operator or function. 
-  To avoid this, we may use OpSignature ID as the key, which should be name_domain_version.
-  We will use the string type instead of the OpSchema for now. We should probably add a version as well.
+  Register a rewrite rule in this transformer.
   */
   Status Register(std::unique_ptr<RewriteRule> rule);
 
-  /** Check if the given op_type has any rules registered for it 
-  @returns true if there are rules registered for this op_type.*/
-  bool HasRules(const std::string& op_type) const {
-    return op_to_rules_.find(op_type) != op_to_rules_.cend();
-  }
-
   /**
-  Gets the rewrite rules for the given op_type.
-  @returns a pointer to the vector containing all the rewrite rules registered for op_type if found. nullptr
-  otherwise.
+  Gets the list of registered rewrite rules in this rule-based transformer.
+  @returns a reference to the vector containing all the registered rewrite rules.
   */
-  const std::vector<std::unique_ptr<RewriteRule>>* GetRewriteRules(const std::string& op_type) const {
-    auto entry = op_to_rules_.find(op_type);
-    if (entry != op_to_rules_.cend())
-      return &entry->second;
-
-    return nullptr;
+  const std::vector<std::unique_ptr<RewriteRule>>& GetRewriteRules() const {
+    return rules_;
   }
+
+ protected:
+  /** Apply the given set of rewrite rules on the Node of this Graph.
+  @param[in] graph The Graph.
+  @param[in] node The Node to apply the rules to.
+  @param[in] rules The vector of RewriteRules that will be applied to the Node.
+  @param[out] modified Set to indicate whether the node was modified or not.
+  @param[out] deleted Set to indicate if the node was deleted.
+  @returns Status indicating success or providing error information */
+  common::Status ApplyRulesOnNode(Graph& graph, Node& node,
+                                  const std::vector<std::unique_ptr<RewriteRule>>& rules,
+                                  bool& modified, bool& deleted) const;
 
  private:
-  using RewriteRuleSet = std::unordered_map<std::string, std::vector<std::unique_ptr<RewriteRule>>>;
-
-  RewriteRuleSet op_to_rules_;
+  std::vector<std::unique_ptr<RewriteRule>> rules_;
 };
 
 /**
