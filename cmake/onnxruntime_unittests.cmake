@@ -538,7 +538,7 @@ if (onnxruntime_BUILD_HOSTING)
   AddTest(
     TARGET onnxruntime_hosting_tests
     SOURCES ${onnxruntime_test_hosting_src}
-    LIBS ${onnxruntime_test_hosting_libs} hosting_proto
+    LIBS ${onnxruntime_test_hosting_libs} hosting_proto onnxruntime_hosting_lib
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 endif()

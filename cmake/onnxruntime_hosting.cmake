@@ -27,9 +27,11 @@ find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRE
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
 # Setup source code
+file(GLOB_RECURSE onnxruntime_hosting_lib_srcs
+        "${ONNXRUNTIME_ROOT}/hosting/util.cc"
+        )
 file(GLOB_RECURSE onnxruntime_hosting_srcs
-    "${ONNXRUNTIME_ROOT}/hosting/*.h"
-    "${ONNXRUNTIME_ROOT}/hosting/*.cc"
+    "${ONNXRUNTIME_ROOT}/hosting/main.cc"
 )
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
@@ -37,7 +39,31 @@ if(NOT WIN32)
   endif()
 endif()
 # For IDE only
-source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_hosting_srcs})
+source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_hosting_srcs} ${onnxruntime_hosting_lib_srcs})
+
+add_library(onnxruntime_hosting_lib ${onnxruntime_hosting_lib_srcs})
+target_include_directories(hosting_proto PRIVATE
+        ${ONNXRUNTIME_ROOT}
+        ${CMAKE_CURRENT_BINARY_DIR}/onnx
+        PUBLIC
+        ${Boost_INCLUDE_DIR}
+        ${re2_src}
+        ${ONNXRUNTIME_ROOT}/hosting/http)
+
+target_link_libraries(onnxruntime_hosting_lib PRIVATE
+        hosting_proto
+        ${Boost_LIBRARIES}
+        onnxruntime_session
+        onnxruntime_optimizer
+        onnxruntime_providers
+        onnxruntime_util
+        onnxruntime_framework
+        onnxruntime_util
+        onnxruntime_graph
+        onnxruntime_common
+        onnxruntime_mlas
+        ${onnxruntime_EXTERNAL_LIBRARIES})
+
 
 add_executable(${PROJECT_NAME} ${onnxruntime_hosting_srcs})
 add_dependencies(${PROJECT_NAME} hosting_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -54,6 +80,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
+        onnxruntime_hosting_lib
         hosting_proto
         ${Boost_LIBRARIES}
         onnxruntime_session
