@@ -48,6 +48,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -349,7 +350,9 @@ class InferenceSession::Impl {
   common::Status Load(std::istream& model_istream) {
     auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
       ModelProto model_proto;
-      const bool result = model_proto.ParseFromIstream(&model_istream);
+
+      google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+      const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
       if (!result) {
         return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                       "Failed to load model because protobuf parsing failed.");
