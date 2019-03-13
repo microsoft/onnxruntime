@@ -123,7 +123,9 @@ class PosixEnv : public Env {
     auto length_remain = len;
     do {
       size_t bytes_to_read = length_remain;
-      ssize_t bytes_readed = offset > 0 ? pread(fd, wptr, bytes_to_read, offset) : read(fd, wptr, bytes_to_read);
+      ssize_t bytes_readed;
+      TEMP_FAILURE_RETRY(bytes_readed =
+                             offset > 0 ? pread(fd, wptr, bytes_to_read, offset) : read(fd, wptr, bytes_to_read));
       if (bytes_readed <= 0) {
         int err = errno;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read file '", fname, "' fail, error code = ", err);
