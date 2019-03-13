@@ -10,6 +10,8 @@ syntax = "proto2";
 
 package onnx;
 
+option optimize_for = LITE_RUNTIME;
+
 // Overview
 //
 // ONNX is an open specification that is comprised of the following components:

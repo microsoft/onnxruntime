@@ -95,7 +95,7 @@ class Model {
 #endif
   static common::Status Save(Model& model, const std::string& file_path);
 
-  static common::Status Save(Model& model, int fd);
+  // static common::Status Save(Model& model, int fd);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
@@ -103,8 +103,8 @@ class Model {
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
-  static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+  // static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
+  //                            const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,

@@ -273,9 +273,10 @@ void OpTester::ExecuteModel(Model& model,
                             std::unordered_map<std::string, MLValue> feeds,
                             std::vector<std::string> output_names,
                             const std::string& provider_type) {
-  std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
-  auto status = session_object.Load(s1);
+  std::string s1;
+  model.ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
