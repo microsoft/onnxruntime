@@ -7,7 +7,7 @@
 #include "gtest/gtest.h"
 
 #include "predict.pb.h"
-#include "hosting/util.h"
+#include "hosting/http/json_handling.h"
 
 namespace onnxruntime {
 namespace hosting {

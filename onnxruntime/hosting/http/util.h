@@ -12,10 +12,7 @@ namespace hosting {
 namespace beast = boost::beast;  // from <boost/beast.hpp>
 
 // Report a failure
-void ErrorHandling(beast::error_code ec, char const* what) {
-  std::cerr << what << ": " << ec.message() << "\n";
-}
-
+void ErrorHandling(beast::error_code ec, char const* what);
 }  // namespace hosting
 }  // namespace onnxruntime
 

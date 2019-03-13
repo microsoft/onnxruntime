@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_UTIL_H
-#define ONNXRUNTIME_HOSTING_UTIL_H
+#ifndef ONNXRUNTIME_HOSTING_HTTP_JSON_HANDLING_H
+#define ONNXRUNTIME_HOSTING_HTTP_JSON_HANDLING_H
 
 #include <istream>
 #include <string>
@@ -26,4 +26,4 @@ google::protobuf::util::Status GenerateResponseInJson(onnxruntime::hosting::Pred
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_UTIL_H
+#endif  // ONNXRUNTIME_HOSTING_HTTP_JSON_HANDLING_H

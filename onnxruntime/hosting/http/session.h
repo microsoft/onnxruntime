@@ -11,7 +11,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 
-#include "http_context.h"
+#include "context.h"
 #include "routes.h"
 #include "util.h"
 
@@ -61,7 +61,7 @@ class HttpSession : public std::enable_shared_from_this<HttpSession> {
 
     http::async_write(self_->socket_, *ptr,
                       net::bind_executor(strand_,
-                                         [self_, close = ptr->need_eof()](beast::error_code ec, std::size_t bytes) {
+                                         [ self_, close = ptr->need_eof() ](beast::error_code ec, std::size_t bytes) {
                                            self_->OnWrite(ec, bytes, close);
                                          }));
   }
@@ -97,68 +97,15 @@ class HttpSession : public std::enable_shared_from_this<HttpSession> {
   }
 
   // Asynchronously reads the request from the socket
-  void DoRead() {
-    // Make the request empty before reading,
-    // otherwise the operation behavior is undefined.
-    req_ = {};
-
-    http::async_read(socket_, buffer_, req_,
-                     net::bind_executor(
-                         strand_,
-                         std::bind(
-                             &HttpSession::OnRead,
-                             shared_from_this(),
-                             std::placeholders::_1,
-                             std::placeholders::_2)));
-  }
+  void DoRead();
 
   // Perform error checking before handing off to HandleRequest
-  void OnRead(beast::error_code ec, std::size_t bytes_transferred) {
-    boost::ignore_unused(bytes_transferred);
-
-    // This means they closed the connection
-    if (ec == http::error::end_of_stream) {
-      return DoClose();
-    }
-
-    if (ec) {
-      ErrorHandling(ec, "read");
-      return;
-    }
-
-    // Send the response
-    HandleRequest(std::move(req_));
-  }
+  void OnRead(beast::error_code ec, std::size_t bytes_transferred);
 
   // After writing, make the session read another request
-  void OnWrite(beast::error_code ec, std::size_t bytes_transferred, bool close) {
-    boost::ignore_unused(bytes_transferred);
+  void OnWrite(beast::error_code ec, std::size_t bytes_transferred, bool close);
 
-    if (ec) {
-      ErrorHandling(ec, "write");
-      return;
-    }
-
-    if (close) {
-      // This means we should close the connection, usually because
-      // the response indicated the "Connection: close" semantic.
-      return DoClose();
-    }
-
-    // We're done with the response so delete it
-    res_ = nullptr;
-
-    // Read another request
-    DoRead();
-  }
-
-  void DoClose() {
-    // Send a TCP shutdown
-    beast::error_code ec;
-    socket_.shutdown(tcp::socket::shutdown_send, ec);
-
-    // At this point the connection is closed gracefully
-  }
+  void DoClose();
 };
 
 }  // namespace hosting

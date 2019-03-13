@@ -3,7 +3,7 @@
 
 #include "boost/program_options.hpp"
 
-#include "beast_http.h"
+#include "http_server.h"
 #include "core/session/inference_session.h"
 
 namespace po = boost::program_options;
@@ -36,12 +36,7 @@ int main(int argc, char* argv[]) {
   int threads;
 
   po::options_description desc("Allowed options");
-  desc.add_options()
-  ("help,h", "Print a help message")
-  ("address,a", po::value(&address), "The base HTTP address")
-  ("port,p", po::value(&port), "HTTP port to listen to requests")
-  ("threads,t", po::value(&threads), "Number of http threads")
-  ("model_path,m", po::value(&model_path), "Path of the model file");
+  desc.add_options()("help,h", "Print a help message")("address,a", po::value(&address), "The base HTTP address")("port,p", po::value(&port), "HTTP port to listen to requests")("threads,t", po::value(&threads), "Number of http threads")("model_path,m", po::value(&model_path), "Path of the model file");
 
   po::variables_map vm;
   try {
@@ -66,16 +61,16 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  onnxruntime::SessionOptions options {};
+  onnxruntime::SessionOptions options{};
   onnxruntime::InferenceSession session(options);
 
   auto const boost_address = boost::asio::ip::make_address(vm["address"].as<std::string>());
 
-  onnxruntime::hosting::App app {};
+  onnxruntime::hosting::App app{};
   app.Post(R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))", test_request)
-     .Bind(boost_address, vm["port"].as<int>())
-     .NumThreads(vm["threads"].as<int>())
-     .Run();
+      .Bind(boost_address, vm["port"].as<int>())
+      .NumThreads(vm["threads"].as<int>())
+      .Run();
 
   return EXIT_SUCCESS;
 }

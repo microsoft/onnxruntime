@@ -1,8 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <istream>
+#include <string>
+#include <boost/beast/core.hpp>
 #include <google/protobuf/util/json_util.h>
-#include "util.h"
+#include <google/protobuf/util/json_util.h>
+
+#include "predict.pb.h"
+#include "json_handling.h"
 
 namespace protobufutil = google::protobuf::util;
 

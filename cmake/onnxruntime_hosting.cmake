@@ -28,14 +28,14 @@ set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
 # Setup source code
 file(GLOB_RECURSE onnxruntime_hosting_lib_srcs
-  "${ONNXRUNTIME_ROOT}/hosting/util.cc"
+  "${ONNXRUNTIME_ROOT}/hosting/http/*.cc"
 )
 file(GLOB_RECURSE onnxruntime_hosting_srcs
   "${ONNXRUNTIME_ROOT}/hosting/main.cc"
 )
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
-    set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/util.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/http/json_handling.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
 # For IDE only
@@ -75,10 +75,10 @@ onnxruntime_add_include_to_target(${PROJECT_NAME} onnxruntime_session gsl hostin
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${ONNXRUNTIME_ROOT}
     ${CMAKE_CURRENT_BINARY_DIR}/onnx
+    ${ONNXRUNTIME_ROOT}/hosting/http
     PUBLIC
     ${Boost_INCLUDE_DIR}
     ${re2_src}
-    ${ONNXRUNTIME_ROOT}/hosting/http
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
