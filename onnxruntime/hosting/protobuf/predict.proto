@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "onnx-ml.proto";
 
-package onnx.hosting;
+package onnxruntime.hosting;
 
 // PredictRequest specifies how inputs are mapped to tensors  
 // and how outputs are filtered before returning to user. 

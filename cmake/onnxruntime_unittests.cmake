@@ -94,11 +94,6 @@ file(GLOB onnxruntime_test_optimizer_src
   "${TEST_SRC_DIR}/optimizer/*.h"  
   )
 
-file(GLOB onnxruntime_test_hosting_src
-  "${TEST_SRC_DIR}/hosting/*.cc"
-  "${TEST_SRC_DIR}/hosting/*.h"
-  )
-
 set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/framework/*.cc"
   "${TEST_SRC_DIR}/framework/*.h"
@@ -523,17 +518,27 @@ if (onnxruntime_BUILD_SHARED_LIB)
 endif()
 
 if (onnxruntime_BUILD_HOSTING)
+  file(GLOB onnxruntime_test_hosting_src
+    "${TEST_SRC_DIR}/hosting/*.cc"
+    "${TEST_SRC_DIR}/hosting/*.h"
+  )
+  if(NOT WIN32)
+    if(HAS_UNUSED_PARAMETER)
+      set_source_files_properties("${TEST_SRC_DIR}/hosting/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    endif()
+  endif()
+
   find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRED)
   add_library(onnxruntime_test_utils_for_hosting ${onnxruntime_test_hosting_src})
-  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_hosting onnxruntime_test_utils gtest gsl onnx onnx_proto )
+  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_hosting onnxruntime_test_utils gtest gsl onnx onnx_proto hosting_proto)
   add_dependencies(onnxruntime_test_utils_for_hosting onnxruntime_hosting ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_hosting PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 PRIVATE ${ONNXRUNTIME_ROOT} )
+  target_include_directories(onnxruntime_test_utils_for_hosting PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx PRIVATE ${ONNXRUNTIME_ROOT} )
   target_link_libraries(onnxruntime_test_utils_for_hosting ${Boost_LIBRARIES} ${onnx_test_libs})
 
   AddTest(
     TARGET onnxruntime_hosting_tests
     SOURCES ${onnxruntime_test_hosting_src}
-    LIBS ${onnxruntime_test_hosting_libs}
+    LIBS ${onnxruntime_test_hosting_libs} hosting_proto onnxruntime_hosting_lib
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 endif()
