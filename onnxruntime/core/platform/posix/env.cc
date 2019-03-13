@@ -138,7 +138,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  static bool CalcFileSize(int fd, size_t& len){
+  static bool GetFileSizeIfUnknown(int fd, size_t& len) {
     if(len > 0) return true;
     struct stat stbuf;
     if ((fstat(fd, &stbuf) != 0) || (!S_ISREG(stbuf.st_mode))) {
@@ -148,15 +148,15 @@ class PosixEnv : public Env {
     return true;
   }
 
-  static bool CanDoMemoryMapping(off_t offset) {
-    long page_size = sysconf(_SC_PAGESIZE);
-    return offset % static_cast<off_t>(page_size) == 0;
-  }
-
   common::Status ReadFileAsString(const char* fname, off_t offset, void*& p, size_t& len,
       OrtCallback& deleter) const override {
     if (!fname) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+    }
+
+    if (offset < 0) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "ReadFileAsString: offset must be non-negative");
     }
     deleter.f = nullptr;
     deleter.param = nullptr;
@@ -165,31 +165,27 @@ class PosixEnv : public Env {
       int err = errno;
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", fname, " fail, errcode =", err);
     }
-    if(!CalcFileSize(fd,len)){
+    if (!GetFileSizeIfUnknown(fd, len)) {
       (void)close(fd);
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get file '", fname, "' size fail");
     }
     if (len == 0) {
       p = nullptr;
     } else {
-      if (!CanDoMemoryMapping(offset)) {
+      long page_size = sysconf(_SC_PAGESIZE);
+      off_t offset_to_page = offset % static_cast<off_t>(page_size);
+      p = mmap(nullptr, len + offset_to_page, PROT_READ, MAP_SHARED, fd, offset - offset_to_page);
+      if (p == MAP_FAILED) {
         auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
         (void)close(fd);
         if (!st.IsOK()) {
           return st;
         }
       } else {
-        p = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, offset);
-        if (p == MAP_FAILED) {
-          auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
-          (void)close(fd);
-          if (!st.IsOK()) {
-            return st;
-          }
-        } else {
-          deleter.f = UnmapFile;
-          deleter.param = new UnmapFileParam{p, len, fd};
-        }
+        // leave the file open
+        deleter.f = UnmapFile;
+        deleter.param = new UnmapFileParam{p, len + offset_to_page, fd};
+        p = reinterpret_cast<char*>(p) + offset_to_page;
       }
     }
 

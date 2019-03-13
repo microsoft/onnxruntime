@@ -95,8 +95,8 @@ class WindowsEnv : public Env {
     t.f();
   }
 
-  static common::Status CalcFileSize(const wchar_t* fname, HANDLE hFile, size_t& l) {
-    if (l > 0) return Status::OK();
+  static common::Status GetFileSizeIfUnknown(const wchar_t* fname, HANDLE hFile, size_t& length) {
+    if (length > 0) return Status::OK();
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(hFile, &filesize)) {
       int err = GetLastError();
@@ -105,7 +105,7 @@ class WindowsEnv : public Env {
     if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "ReadFileAsString: File is too large");
     }
-    l = static_cast<size_t>(filesize.QuadPart);
+    length = static_cast<size_t>(filesize.QuadPart);
     return Status::OK();
   }
 
@@ -126,7 +126,7 @@ class WindowsEnv : public Env {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(fname), " fail, errcode =", err);
     }
     std::unique_ptr<void, decltype(&CloseHandle)> handler_holder(hFile, CloseHandle);
-    ORT_RETURN_IF_ERROR(CalcFileSize(fname, hFile, len));
+    ORT_RETURN_IF_ERROR(GetFileSizeIfUnknown(fname, hFile, len));
     // check the file file for avoiding allocating a zero length buffer
     if (len == 0) {  // empty file
       p = nullptr;
