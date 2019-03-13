@@ -40,8 +40,8 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 /** Remove the given single-input-single-output Node from the Graph. */
 bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
 
-/** Returns true if the graph has an input with the given name.*/
-bool HasGraphInput(const Graph& graph, const std::string& input_name);
+/** Returns true if the graph has the given input.*/
+bool HasGraphInput(const Graph& graph, const NodeArg* input);
 
 /** Checks if the given node has only constant inputs (initializers). */
 bool IsConstantInputsNode(const Graph& graph, const Node& node);
