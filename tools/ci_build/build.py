@@ -682,7 +682,9 @@ def main():
             onnx_test_data_dir = '/data/onnx'
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
-            if args.use_cuda:
+            if args.use_tensorrt:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 0)            
+            elif args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 1)
