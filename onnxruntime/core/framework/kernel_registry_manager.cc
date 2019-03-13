@@ -76,7 +76,7 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
 bool KernelRegistryManager::HasImplementationOf(const Node& node, const std::string& provider_type) const {
   auto kernel_registries = GetKernelRegistriesByProviderType(provider_type);
   for (auto* kernel_registry : kernel_registries) {
-    if (kernel_registry && kernel_registry->TryFindKernel(node, provider_type) != nullptr) {
+    if (kernel_registry->TryFindKernel(node, provider_type) != nullptr) {
       return true;
     }
   }

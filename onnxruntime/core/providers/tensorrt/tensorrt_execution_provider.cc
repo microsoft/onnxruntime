@@ -79,7 +79,11 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
-      std::set<size_t> node_set(group.begin(), group.end());
+      std::set<size_t> node_set(group.begin(), group.end()); //slx
+      //std::set<size_t> node_set;
+      //for (const auto& index : group) {
+      //  node_set.insert(node_index[index]);
+      //}
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -91,6 +95,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         supported_nodes_set.insert(index);
         sub_graph->nodes.push_back(index);
         const auto& node = graph.GetNode(index);
+        //supported_nodes_set.insert(node_index[index]);
+        //sub_graph->nodes.push_back(node_index[index]);
+        //const auto& node = graph.GetNode(node_index[index]);
 
         for (const auto& input : node->InputDefs()) {
           const auto& it = fused_outputs.find(input);
@@ -180,7 +187,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 }
 
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  return nullptr;
+  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  return kernel_registry;
 }
 
 common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -344,6 +352,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     output_shapes_[fused_node->Name()] = output_shapes;
 
     // Create function state
+    // TODO: remove default capture
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
