@@ -21,8 +21,8 @@ root of an expression that is rewritten.
 */
 class RewriteRule {
  public:
-  RewriteRule(const std::string& name, const std::string& desc)
-      : name_(name), desc_(desc) {
+  RewriteRule(const std::string& name, const std::string& desc, const std::string& op_type)
+      : name_(name), desc_(desc), op_type_(op_type) {
   }
 
   virtual ~RewriteRule() = default;
@@ -35,6 +35,11 @@ class RewriteRule {
   /** Gets the description of this rewrite rule. */
   const std::string& Description() const noexcept {
     return desc_;
+  }
+
+  /** Gets the description of this rewrite rule. */
+  const std::string& OPType() const noexcept {
+    return op_type_;
   }
 
   /** Checks if the condition of the rule is satisfied, and if so applies the rule.
@@ -52,6 +57,7 @@ class RewriteRule {
 
   const std::string name_;
   const std::string desc_;
+  const std::string op_type_;
 
   /** Check if the Node satisfies a condition.
   The rewrite rule is applied if the condition function returns true. This can include

@@ -7,7 +7,8 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status RuleBasedGraphTransformer::Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule) {
+Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
+  const auto& op_type = rule->OPType();
   if (HasRules(op_type)) {
     op_to_rules_[op_type] = std::vector<std::unique_ptr<RewriteRule>>();
   }

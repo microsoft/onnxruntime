@@ -10,7 +10,7 @@ namespace onnxruntime {
 // Rewrite rule that eliminates a slice operator if it is redundant (does not lead to data reduction).
 class EliminateSlice : public RewriteRule {
  public:
-  EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node") {}
+  EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node", "Slice") {}
 
  private:
   bool SatisfyCondition(const Node& node) override;

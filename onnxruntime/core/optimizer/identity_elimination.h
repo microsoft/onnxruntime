@@ -10,7 +10,7 @@ namespace onnxruntime {
 // Rewrite rule that eliminates the identity node.
 class EliminateIdentity : public RewriteRule {
  public:
-  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node") {}
+  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node", "Identity") {}
 
  private:
   bool SatisfyCondition(const Node& node) override;

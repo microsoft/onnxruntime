@@ -43,7 +43,6 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
   }
   return op_to_count;
 }
-
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -51,10 +50,13 @@ TEST(GraphTransformationTests, IdentityElimination) {
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  graph_transformation_mgr.Register("Identity", std::make_unique<EliminateIdentity>(), TransformerLevel::Optional_L1);
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""} , TransformerLevel::Optional_L1).IsOK());
+  std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
+      std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register(std::make_unique<EliminateIdentity>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Optional_L1, {"", onnxruntime::kCpuExecutionProvider});  
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Optional_L1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -68,8 +70,11 @@ TEST(GraphTransformationTests, SliceElimination) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 5);
 
+  std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
+      std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register(std::make_unique<EliminateSlice>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register("Slice", std::make_unique<EliminateSlice>(), TransformerLevel::Optional_L1);
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Optional_L1, {"", onnxruntime::kCpuExecutionProvider});
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Optional_L1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);

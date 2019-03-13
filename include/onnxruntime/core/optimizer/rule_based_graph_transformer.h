@@ -30,7 +30,8 @@ each with different trade offs. At the moment, we define one that performs top-d
 class RuleBasedGraphTransformer : public GraphTransformer {
  public:
   RuleBasedGraphTransformer(const std::string& name, const std::string& desc)
-      : GraphTransformer(name, desc) {}
+      : GraphTransformer(name, desc) {    
+  }
 
   /**
   Register a rewriting rule.
@@ -40,7 +41,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   To avoid this, we may use OpSignature ID as the key, which should be name_domain_version.
   We will use the string type instead of the OpSchema for now. We should probably add a version as well.
   */
-  Status Register(const std::string& op_type, std::unique_ptr<RewriteRule> rule);
+  Status Register(std::unique_ptr<RewriteRule> rule);
 
   /** Check if the given op_type has any rules registered for it 
   @returns true if there are rules registered for this op_type.*/
