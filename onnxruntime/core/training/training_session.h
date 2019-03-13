@@ -65,7 +65,9 @@ class TrainingSession {
   common::Status Initialize();
 
   // Compute gradients.
-  common::Status Run(const NameMLValMap& feeds,
+  common::Status Run(const RunOptions& run_options,
+                     const std::vector<std::string>& feed_names,
+                     const std::vector<MLValue>& feeds,
                      const std::vector<std::string>& output_names,
                      std::vector<MLValue>* p_fetches);
 

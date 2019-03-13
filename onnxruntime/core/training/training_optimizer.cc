@@ -47,8 +47,7 @@ NameMLValMap GradientDescent::CalculateNewWeights(const NameMLValMap& original_w
         element_type,
         shape,
         buffer,
-        param_.allocator_ptr_->Info(),
-        param_.allocator_ptr_);
+        param_.allocator_ptr_->Info());
 
     auto outputAccumulatedGradArrayMap = MakeEigenArrayMap<float>(p_tensor);
 

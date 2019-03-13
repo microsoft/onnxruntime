@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -41,7 +42,12 @@ class RandomNormal final : public OpKernel {
  private:
   float mean_;
   float scale_;
-  std::default_random_engine generator_;
+  
+  // generator_ is updated with every call to Compute(). 
+  // use generator_mutex_ to ensure Compute() can be called concurrently.
+  // this is to ensure that a model with random generators is deterministic and still can be executed in parallel.
+  mutable std::default_random_engine generator_;
+  mutable onnxruntime::OrtMutex generator_mutex_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_;
   TensorShape shape_;
 };
@@ -73,7 +79,10 @@ class RandomNormalLike final : public OpKernel {
  private:
   float mean_;
   float scale_;
-  std::default_random_engine generator_;
+  
+  // see comments for generator_ and generator_mutex_ in RandomNormal class.
+  mutable std::default_random_engine generator_;
+  mutable onnxruntime::OrtMutex generator_mutex_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_ = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  //optional and may be inferred
 };
 
@@ -107,7 +116,10 @@ class RandomUniform final : public OpKernel {
  private:
   float high_;
   float low_;
-  std::default_random_engine generator_;
+
+  // see comments for generator_ and generator_mutex_ in RandomNormal class.
+  mutable std::default_random_engine generator_;
+  mutable onnxruntime::OrtMutex generator_mutex_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_;
   TensorShape shape_;
 };
@@ -138,7 +150,10 @@ class RandomUniformLike final : public OpKernel {
  private:
   float high_;
   float low_;
-  std::default_random_engine generator_;
+  
+  // see comments for generator_ and generator_mutex_ in RandomNormal class.
+  mutable std::default_random_engine generator_;
+  mutable onnxruntime::OrtMutex generator_mutex_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_ = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  //optional and may be inferred
 };
 
@@ -168,7 +183,10 @@ class Multinomial final : public OpKernel {
 
  private:
   int64_t num_samples_;
-  std::default_random_engine generator_;
+
+  // see comments for generator_ and generator_mutex_ in RandomNormal class.
+  mutable std::default_random_engine generator_;
+  mutable onnxruntime::OrtMutex generator_mutex_;
   ONNX_NAMESPACE::TensorProto::DataType output_dtype_;
 };
 }  // namespace onnxruntime

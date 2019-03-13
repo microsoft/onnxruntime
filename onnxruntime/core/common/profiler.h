@@ -36,7 +36,8 @@ class Profiler {
   /*
   Start profiler and record beginning time.
   */
-  void StartProfiling(const std::string& file_name);
+  template <typename T>
+  void StartProfiling(const std::basic_string<T>& file_name);
 
   /*
   Produce current time point for any profiling action.

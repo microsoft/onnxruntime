@@ -11,6 +11,7 @@
 #include "core/graph/graph.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
+#include "core/framework/allocator.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -94,21 +95,11 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
 
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-    void* buffer = alloc->Alloc(element_type->Size() * shape.Size());
-
-    if (npy_type != NPY_UNICODE && npy_type != NPY_OBJECT) {
-      memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), element_type->Size() * shape.Size());
-    }
-
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                shape,
-                                                                static_cast<void*>(buffer),
-                                                                alloc->Info(), alloc);
-
+    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     if (npy_type == NPY_UNICODE) {
       // Copy string data which needs to be done after Tensor is allocated.
       // Strings are Python strings or numpy.unicode string.
-      std::string* dst = static_cast<std::string*>(buffer);
+      std::string* dst = p_tensor->MutableData<std::string>();
       auto item_size = PyArray_ITEMSIZE(darray);
       auto num_chars = item_size / PyUnicode_4BYTE_KIND;
       char* src = static_cast<char*>(PyArray_DATA(darray));
@@ -133,7 +124,7 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
       // Strings are given as bytes (encoded strings).
       // NPY_VOID does not trim final 0.
       // NPY_STRING assumes bytes string ends with a final 0.
-      std::string* dst = static_cast<std::string*>(buffer);
+      std::string* dst = p_tensor->MutableData<std::string>();
       auto item_size = PyArray_ITEMSIZE(darray);
       char* src = static_cast<char*>(PyArray_DATA(darray));
       for (int i = 0; i < shape.Size(); i++, src += item_size) {
@@ -146,7 +137,7 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
       }
     } else if (npy_type == NPY_OBJECT) {
       // Converts object into string.
-      std::string* dst = static_cast<std::string*>(buffer);
+      std::string* dst = p_tensor->MutableData<std::string>();
       auto item_size = PyArray_ITEMSIZE(darray);
       char* src = static_cast<char*>(PyArray_DATA(darray));
       PyObject *item, *pStr;
@@ -157,6 +148,13 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
         dst[i] = py::reinterpret_borrow<py::str>(pStr);
         Py_XDECREF(pStr);
       }
+    } else {
+      void* buffer = p_tensor->MutableDataRaw();
+      size_t len;
+      if (!IAllocator::CalcMemSizeForArray(element_type->Size(), shape.Size(), &len)) {
+        throw std::runtime_error("length overflow");
+      }
+      memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), len);
     }
 
     p_mlvalue->Init(p_tensor.release(),

@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 #include "test_allocator.h"
 #include "test_fixture.h"
-
+#include "onnx_protobuf.h"
 using namespace onnxruntime;
 
 void RunSession(OrtAllocator* env, OrtSession* session_object,
@@ -63,7 +63,7 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, bool custom_op) {
+                   int provider_type, bool custom_op, OrtCustomOpDomain* custom_op_domain_ptr = nullptr) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
@@ -93,6 +93,10 @@ void TestInference(OrtEnv* env, T model_uri,
   if (custom_op) {
     sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
+  if (custom_op_domain_ptr) {
+    ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(sf, custom_op_domain_ptr));
+  }
+
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
       inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
@@ -169,6 +173,89 @@ TEST_F(CApiTest, DISABLED_custom_op) {
 }
 #endif
 
+struct OrtTensorDimensions : std::vector<int64_t> {
+  OrtTensorDimensions(OrtValue* value) {
+    OrtTensorTypeAndShapeInfo* info;
+    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &info));
+    auto dimensionCount = OrtGetNumOfDimensions(info);
+    resize(dimensionCount);
+    OrtGetDimensions(info, data(), dimensionCount);
+    OrtReleaseTensorTypeAndShapeInfo(info);
+  }
+
+  size_t ElementCount() const {
+    int64_t count = 1;
+    for (int i = 0; i < size(); i++)
+      count *= (*this)[i];
+    return count;
+  }
+};
+
+template <typename T, size_t N>
+constexpr size_t countof(T (&)[N]) { return N; }
+
+struct MyCustomKernel {
+  MyCustomKernel(OrtKernelInfo& /*info*/) {
+  }
+
+  void GetOutputShape(OrtValue** inputs, size_t /*input_count*/, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
+    OrtTensorDimensions dimensions(inputs[0]);
+    ORT_THROW_ON_ERROR(OrtSetDims(info, dimensions.data(), dimensions.size()));
+  }
+
+  void Compute(OrtValue** inputs, size_t /*input_count*/, OrtValue** outputs, size_t /*output_count*/) {
+    const float* X;
+    const float* Y;
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[1], reinterpret_cast<void**>(const_cast<float**>(&Y))));
+
+    float* out;
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
+
+    int64_t size = OrtTensorDimensions(inputs[0]).ElementCount();
+    for (int64_t i = 0; i < size; i++) {
+      out[i] = X[i] + Y[i];
+    }
+  }
+};
+
+struct MyCustomOp : OrtCustomOp {
+  MyCustomOp() {
+    OrtCustomOp::version = ORT_API_VERSION;
+    OrtCustomOp::CreateKernel = [](OrtCustomOp* /*this_*/, OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*info); };
+    OrtCustomOp::GetName = [](OrtCustomOp* /*this_*/) { return "Foo"; };
+
+    static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
+    OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* /*this_*/) { return countof(c_inputTypes); };
+    OrtCustomOp::GetInputType = [](OrtCustomOp* /*this_*/, size_t index) { return c_inputTypes[index]; };
+
+    static const ONNXTensorElementDataType c_outputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
+    OrtCustomOp::GetOutputTypeCount = [](OrtCustomOp* /*this_*/) { return countof(c_outputTypes); };
+    OrtCustomOp::GetOutputType = [](OrtCustomOp* /*this_*/, size_t index) { return c_outputTypes[index]; };
+
+    OrtCustomOp::KernelGetOutputShape = [](void* op_kernel, OrtValue** inputs, size_t input_count, size_t output_index, OrtTensorTypeAndShapeInfo* output) { static_cast<MyCustomKernel*>(op_kernel)->GetOutputShape(inputs, input_count, output_index, output); };
+    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtValue** inputs, size_t input_count, OrtValue** outputs, size_t output_count) { static_cast<MyCustomKernel*>(op_kernel)->Compute(inputs, input_count, outputs, output_count); };
+    OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<MyCustomKernel*>(op_kernel); };
+  }
+};
+
+TEST_F(CApiTest, custom_op_handler) {
+  std::cout << "Running custom op inference" << std::endl;
+  std::vector<size_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  MyCustomOp custom_op;
+  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 5, 7);
+  ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
+
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false,
+                           custom_op_domain);
+}
+
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
@@ -184,7 +271,8 @@ TEST_F(CApiTest, create_tensor) {
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   {
     std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
-        OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING), OrtReleaseValue);
+        OrtCreateTensorAsOrtValue(default_allocator.get(), {expected_len}, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING),
+        OrtReleaseValue);
     ORT_THROW_ON_ERROR(OrtFillStringTensor(tensor.get(), s, expected_len));
     std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
     {
@@ -200,7 +288,8 @@ TEST_F(CApiTest, create_tensor) {
     ORT_THROW_ON_ERROR(OrtGetStringTensorDataLength(tensor.get(), &data_len));
     std::string result(data_len, '\0');
     std::vector<size_t> offsets(len);
-    ORT_THROW_ON_ERROR(OrtGetStringTensorContent(tensor.get(), (void*)result.data(), data_len, offsets.data(), offsets.size()));
+    ORT_THROW_ON_ERROR(OrtGetStringTensorContent(tensor.get(), (void*)result.data(), data_len, offsets.data(),
+                                                 offsets.size()));
   }
 }
 
@@ -226,5 +315,10 @@ TEST_F(CApiTest, create_tensor_with_data) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  int ret = RUN_ALL_TESTS();
+  //TODO: Linker on Mac OS X is kind of strange. The next line of code will trigger a crash
+#ifndef __APPLE__
+  ::google::protobuf::ShutdownProtobufLibrary();
+#endif
+  return ret;
 }

@@ -11,25 +11,27 @@
 #include <fstream>
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
-#include "core/platform/env.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
+#include "core/framework/compute_capability.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/session/IOBinding.h"
+#include "dummy_provider.h"
+#include "test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
-#include "test_utils.h"
+
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -75,7 +77,7 @@ std::shared_ptr<KernelRegistry> GetFusedKernelRegistry() {
 
 class FuseExecutionProvider : public IExecutionProvider {
  public:
-  explicit FuseExecutionProvider() {
+  explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
                                                  [](int) { return std::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
@@ -118,11 +120,8 @@ class FuseExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
-  std::string Type() const override {
-    return "FuseExecutionProvider";
-  }
 };
+
 namespace test {
 static void VerifyOutputs(const std::vector<MLValue>& fetches,
                           const std::vector<int64_t>& expected_dims,
@@ -286,12 +285,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    void* buffer = cpu_allocator->Alloc(element_type->Size() * shape.Size());
-    ORT_ENFORCE(buffer);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
-                                                                  buffer,
-                                                                  cpu_allocator->Info(),
                                                                   cpu_allocator);
     st = TestCudaExecutionProvider()->CopyTensor(rtensor, *cpu_tensor.get());
     ASSERT_TRUE(st.IsOK());
@@ -468,7 +463,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   so.session_logid = "CheckRunProfiler";
   so.enable_profiling = true;
-  so.profile_file_prefix = "onnxprofile_profile_test";
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
 
   InferenceSession session_object(so);
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
@@ -836,7 +831,7 @@ static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
   auto& graph = model.MainGraph();
 
   // create an initializer, which is an optional input that can be overridden
-  onnx::TensorProto tensor_proto;
+  ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.add_dims(1);
   tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
   tensor_proto.add_float_data(1.f);
@@ -947,12 +942,12 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names: unknown_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names"));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required inputs: required_input"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
@@ -1289,6 +1284,63 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     fetches = truncated_fetches;
     seq_start += truncated_len;
   }
+}
+
+// create the feeds and fetches using the dummy allocator so that we have to copy to CPU to execute, and from
+// CPU to return in utils::ExecuteGraph. Call InferenceSession::Run twice to test the caching of the copy logic.
+TEST(InferenceSessionTests, TestCopyToFromDevices) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestCopyToFromDevices";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+
+  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
+  auto* p_dummy_provider = dummy_provider.get();
+  session_object.RegisterExecutionProvider(std::move(dummy_provider));
+
+  // prepare inputs
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  MLValue ml_value;
+  CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value);
+
+  std::vector<std::string> feed_names;
+  std::vector<MLValue> feeds;
+  feed_names.push_back("X");
+  feeds.push_back(ml_value);
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul_y = {3, 2};
+  std::vector<float> expected_values_mul_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+
+  auto run_test = [&](int run_num) {
+    // prepare outputs
+    std::vector<std::string> output_names;
+    std::vector<MLValue> fetches;
+    output_names.push_back("Y");
+
+    fetches.resize(output_names.size());
+    for (auto& elem : fetches) {
+      CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                           &elem);
+    }
+
+    // Now run
+    RunOptions run_options;
+    run_options.run_tag = "run:" + std::to_string(run_num);
+
+    common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches);
+    ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+    VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);
+  };
+
+  int run_number = 0;
+  run_test(run_number++);
+  run_test(run_number++);
 }
 
 }  // namespace test

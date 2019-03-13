@@ -56,7 +56,7 @@ class ScanOpTester : public OpTester {
         TensorProto value_tensor;
         value_tensor.add_dims(1);
         value_tensor.add_float_data(kOuterNodeAddValue);
-        value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+        value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         constant.AddAttribute("value", value_tensor);
 
@@ -122,7 +122,7 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
       if (!options.scalar_loop_state_value)
         value_tensor.add_dims(1);
       value_tensor.add_float_data(1.f);
-      value_tensor.set_data_type(onnx::TensorProto_DataType_FLOAT);
+      value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       constant.AddAttribute("value", value_tensor);
     }
@@ -604,39 +604,45 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
 }
 
 TEST(Scan8, MixedSequenceLens) {
-  const int64_t batch_size = 2;
+  const int64_t batch_size = 3;
   const int64_t max_sequence_len = 2;
   const int64_t input_size = 2;
 
-  std::vector<int64_t> sequence_lens{1, 2};
+  std::vector<int64_t> sequence_lens{1, 2, 2};
 
-  std::vector<float> iteration_count_in{0.f, 10.f};  // start at 0 for first item in batch, and 10 for second
+  std::vector<float> iteration_count_in{0.f, 10.f, 1.f};  // start at 0 for first item in batch, and 10 for second
 
   // batch_size, max_sequence_len, input_size
   std::vector<float> input_0{1.f, 2.f,
                              4.f, 3.f,  // <- this should be ignored
 
                              -1.f, -2.f,
-                             -4.f, -3.f};
+                             -4.f, -3.f,
+
+                             10.f, 11.f,
+                             12.f, 13.f};
 
   std::vector<float> input_1{3.f, 4.f,
                              2.f, 1.f,  // <- this should be ignored
 
                              -3.f, -4.f,
-                             -2.f, -1.f};
+                             -2.f, -1.f,
+
+                             22.f, 33.f,
+                             44.f, 55.f};
 
   // iteration_count_in + 1 for each item in sequence.
   // as sequence_len is 1 for the first item in the batch, the final value should be 0 + 1.
   // as sequence_len is 2 for the second item in the batch, the final value should be 10 + 1 + 1.
-  std::vector<float> iteration_count_out{1.f, 12.f};
+  std::vector<float> iteration_count_out{1.f, 12.f, 3.f};
 
   // batch_size, max_sequence_len, 1
   // as sequence_len is 1 for the first item in the batch we expect 0.f's for the second value in the output
   // (which technically is undefined, but 0.f is consistent with other RNN ops)
-  std::vector<float> output_0{1.f, 0.f, -1.f, -4.f};
-  std::vector<float> output_1{2.f, 0.f, -2.f, -3.f};
-  std::vector<float> output_2{3.f, 0.f, -3.f, -2.f};
-  std::vector<float> output_3{4.f, 0.f, -4.f, -1.f};
+  std::vector<float> output_0{1.f, 0.f, -1.f, -4.f, 10.f, 12.f};
+  std::vector<float> output_1{2.f, 0.f, -2.f, -3.f, 11.f, 13.f};
+  std::vector<float> output_2{3.f, 0.f, -3.f, -2.f, 22.f, 44.f};
+  std::vector<float> output_3{4.f, 0.f, -4.f, -1.f, 33.f, 55.f};
 
   RunTest_v8("MixedSequenceLens", batch_size, max_sequence_len, input_size,
              nullptr, &sequence_lens,

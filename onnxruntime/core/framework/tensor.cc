@@ -8,25 +8,26 @@
 using namespace std;
 namespace onnxruntime {
 
-Tensor::Tensor(MLDataType p_type,
-               const TensorShape& shape,
-               BufferNakedPtr p_data,
-               const OrtAllocatorInfo& alloc,
-               AllocatorPtr deleter,
-               const int64_t offset)
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtAllocatorInfo& alloc,
+               int64_t offset)
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);
-  Init(p_type, shape, p_data, alloc, std::move(deleter), offset);
+  Init(p_type, shape, p_data, nullptr, offset);
 }
 
-void Tensor::Init(MLDataType p_type,
-                  const TensorShape& shape,
-                  void* p_raw_data,
-                  const OrtAllocatorInfo& alloc,
-                  AllocatorPtr deleter,
-                  const int64_t offset) {
-  if (shape.Size() < 0)
-    throw std::runtime_error("shape.Size() must >=0");
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset)
+    : alloc_info_(allocator->Info()) {
+  ORT_ENFORCE(p_type != nullptr);
+  int64_t shape_size = shape.Size();
+  if (shape_size < 0 || static_cast<uint64_t>(shape_size) >= std::numeric_limits<size_t>::max())
+    ORT_THROW("shape.Size() must >=0");
+  void* p_data = allocator->AllocArray(static_cast<size_t>(shape_size), p_type->Size());
+  Init(p_type, shape, p_data, allocator, offset);
+}
+
+void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, int64_t offset) {
+  int64_t shape_size = shape.Size();
+  if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
   dtype_ = p_type;
   shape_ = shape;
   p_data_ = p_raw_data;
@@ -37,11 +38,10 @@ void Tensor::Init(MLDataType p_type,
   // do the placement new for strings on pre-allocated buffer.
   if (buffer_deleter_ && dtype_ == DataTypeImpl::GetType<string>()) {
     auto* ptr = static_cast<string*>(p_data_);
-    for (int64_t i = 0, n = shape.Size(); i < n; ++i) {
+    for (int64_t i = 0, n = shape_size; i < n; ++i) {
       new (ptr + i) string();
     }
   }
-  alloc_info_ = alloc;
   byte_offset_ = offset;
 }
 

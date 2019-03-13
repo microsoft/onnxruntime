@@ -148,8 +148,7 @@ static void CreateMLValue(AllocatorPtr alloc,
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                               shape,
                                                               buffer,
-                                                              location,
-                                                              alloc);
+                                                              location);
   p_mlvalue->Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -161,8 +160,10 @@ AllocatorPtr GetAllocator() {
   return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 }
 
-vector<NameMLValMap> fill_feed_dict(const pair<vector<vector<float>>, vector<vector<float>>>& batch) {
-  vector<NameMLValMap> feeds;
+typedef pair<vector<string>, vector<MLValue>> TrainingData;
+
+vector<TrainingData> fill_feed_dict(const pair<vector<vector<float>>, vector<vector<float>>>& batch) {
+  vector<TrainingData> feeds;
 
   const vector<vector<float>>& images = batch.first;
   const vector<vector<float>>& labels = batch.second;
@@ -176,7 +177,7 @@ vector<NameMLValMap> fill_feed_dict(const pair<vector<vector<float>>, vector<vec
     MLValue labelMLValue;
     CreateMLValue(GetAllocator(), label_dims, labels[i], &labelMLValue);
 
-    feeds.push_back(NameMLValMap({{"X", imageMLValue}, {"labels", labelMLValue}}));
+    feeds.push_back(make_pair<vector<string>, vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue}));
   }
 
   return feeds;
@@ -187,20 +188,21 @@ void Evaluate(SessionType& sess, DataSet& data_set, bool use_full_set = false) {
   int true_count = 0;
   int num_examples = use_full_set ? data_set.NumSamples() : 1000;
 
-  vector<NameMLValMap> batch = fill_feed_dict(data_set.NextBatch(num_examples));
+  vector<TrainingData> batch = fill_feed_dict(data_set.NextBatch(num_examples));
 
   vector<string> output_names = {"predictions", "loss"};
   vector<MLValue> fetches;
+  RunOptions run_options;
 
   for (int i = 0; i < batch.size(); i++) {
-    Status s = sess.Run(batch[i], output_names, &fetches);
+    Status s = sess.Run(run_options, batch[i].first, batch[i].second, output_names, &fetches);
 
     const float* prediction_data = fetches[0].Get<Tensor>().template Data<float>();
 
     auto max_class_index = std::distance(prediction_data,
                                          std::max_element(prediction_data, prediction_data + NUM_CLASS));
 
-    const float* label_data = batch[i]["labels"].Get<Tensor>().template Data<float>();
+    const float* label_data = batch[i].second[1].Get<Tensor>().template Data<float>();
 
     // todo:  better way to convert to int
     if (int(label_data[max_class_index]) == 1) {
@@ -261,6 +263,8 @@ int main(int /*argc*/, char* /*args*/[]) {
   auto output_names_include_gradients = training_session.GetModelOutputNames();
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
+  RunOptions run_option;
+
   // loop through the data
   for (size_t batch_index = 0; batch_index < MAX_STEPS; ++batch_index) {
     NameMLValMap old_weight;
@@ -268,11 +272,11 @@ int main(int /*argc*/, char* /*args*/[]) {
     float total_loss = 0;
 
     // train for a mini batch
-    vector<NameMLValMap> training_batch = fill_feed_dict(training_set.NextBatch(BATCH_SIZE));
+    vector<TrainingData> training_batch = fill_feed_dict(training_set.NextBatch(BATCH_SIZE));
     for (const auto& fw_feeds : training_batch) {
       vector<MLValue> gradient_fetches;  // All gradients and loss are here, 1:1 mapping to the above training_output_names.
 
-      TERMINATE_IF_FAILED(training_session.Run(fw_feeds, training_output_names, &gradient_fetches));
+      TERMINATE_IF_FAILED(training_session.Run(run_option, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches));
 
       // Gradient descent: update weights in the modified model, with the output of Step 5
       // Here we modify the in-memory MLValue so that next training iteration can be run without model saving and reloading.
