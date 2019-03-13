@@ -349,7 +349,9 @@ class InferenceSession::Impl {
   common::Status Load(std::istream& model_istream) {
     auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
       ModelProto model_proto;
-      const bool result = model_proto.ParseFromIstream(&model_istream);
+      std::string s(std::istreambuf_iterator<char>(model_istream), {});
+      const bool result = model_proto.ParseFromString(s);
+      //const bool result = model_proto.ParseFromIstream(&model_istream);
       if (!result) {
         return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                       "Failed to load model because protobuf parsing failed.");

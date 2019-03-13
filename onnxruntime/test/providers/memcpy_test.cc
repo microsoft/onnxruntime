@@ -79,7 +79,8 @@ TEST(MemcpyTest, copy1) {
   kernel_registry_manager.RegisterKernels(execution_providers);
 
   onnx::ModelProto mp;
-  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(model_str, &mp));
+  ASSERT_TRUE(mp.ParseFromString(model_str));
+  //ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(model_str, &mp));
   Model model(mp);
   st = model.MainGraph().Resolve();
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();

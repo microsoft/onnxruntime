@@ -91,7 +91,7 @@ file(GLOB onnxruntime_test_ir_src
 
 file(GLOB onnxruntime_test_optimizer_src
   "${TEST_SRC_DIR}/optimizer/*.cc"
-  "${TEST_SRC_DIR}/optimizer/*.h"  
+  "${TEST_SRC_DIR}/optimizer/*.h"
   )
 
 set(onnxruntime_test_framework_src_patterns
@@ -473,7 +473,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_include_to_target(onnxruntime_custom_op_shared_lib_test gsl)
     add_dependencies(onnxruntime_custom_op_shared_lib_test onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
     target_include_directories(onnxruntime_custom_op_shared_lib_test PUBLIC "${PROJECT_SOURCE_DIR}/include")
-    target_link_libraries(onnxruntime_custom_op_shared_lib_test PRIVATE onnxruntime onnx onnx_proto  protobuf::libprotobuf)
+    target_link_libraries(onnxruntime_custom_op_shared_lib_test PRIVATE onnxruntime onnx onnx_proto  libprotobuf)
     set_target_properties(onnxruntime_custom_op_shared_lib_test PROPERTIES FOLDER "ONNXRuntimeSharedLibTest")
   endif()
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
@@ -507,7 +507,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC}
           LIBS ${onnxruntime_shared_lib_test_LIBS}
-          protobuf::libprotobuf
+          libprotobuf
           DEPENDS ${all_dependencies}
   )
   #demo

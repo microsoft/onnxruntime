@@ -9,6 +9,7 @@
 syntax = "proto2";
 
 package onnx;
+option optimize_for = LITE_RUNTIME;
 import "onnx-ml.proto";
 
 //
