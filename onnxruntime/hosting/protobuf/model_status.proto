@@ -3,7 +3,7 @@ syntax = "proto3";
 import "onnx-ml.proto";
 import "error_code.proto";
 
-package onnx.hosting;
+package onnxruntime.hosting;
 
 message GetModelStatusRequest {
     onnx.ModelProto model_spec = 1;

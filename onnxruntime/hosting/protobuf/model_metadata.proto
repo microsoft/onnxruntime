@@ -4,14 +4,14 @@ import "google/protobuf/any.proto";
 
 import "onnx-ml.proto";
 
-package onnx.hosting;
+package onnxruntime.hosting;
 
 message GetModelMetadataRequest {
-    ModelProto model_spec = 1;
+    onnx.ModelProto model_spec = 1;
     repeated string metadata_field = 2;
 }
 
 message GetModelMetadataResponse {
-    ModelProto model_spec = 1;
+    onnx.ModelProto model_spec = 1;
     map<string, google.protobuf.Any> metadata = 2;
 }
