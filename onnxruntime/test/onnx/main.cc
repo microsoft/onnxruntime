@@ -311,8 +311,8 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
       {"tf_inception_v4", "Cast opset 9 not supported yet"},
-      {"tf_nasnet_large", "disable temporarily"}
-      {"tf_nasnet_mobile", "disable temporarily"}
+      {"tf_nasnet_large", "disable temporarily"},
+      {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"}};
 
 #ifdef USE_CUDA
