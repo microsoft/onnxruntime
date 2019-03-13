@@ -530,7 +530,7 @@ if (onnxruntime_BUILD_HOSTING)
   )
   if(NOT WIN32)
     if(HAS_UNUSED_PARAMETER)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/hosting/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
 
