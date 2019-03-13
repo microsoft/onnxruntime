@@ -12,13 +12,8 @@
 
 namespace onnx {
 namespace hosting {
-namespace protobufutil = google::protobuf::util;
-
-class Util {
- public:
-  static protobufutil::Status GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request);
-  static protobufutil::Status GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string& json_string);
-};
+google::protobuf::util::Status GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request);
+google::protobuf::util::Status GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string& json_string);
 }
 }
 

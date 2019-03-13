@@ -8,7 +8,7 @@ namespace protobufutil = google::protobuf::util;
 
 namespace onnx {
 namespace hosting {
-protobufutil::Status Util::GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request) {
+protobufutil::Status GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request) {
   protobufutil::JsonParseOptions options;
   options.ignore_unknown_fields = true;
 
@@ -16,7 +16,7 @@ protobufutil::Status Util::GetRequestFromJson(std::string json_string, /* out */
   return result;
 }
 
-protobufutil::Status Util::GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string& json_string) {
+protobufutil::Status GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string& json_string) {
   protobufutil::JsonPrintOptions options;
   options.add_whitespace = false;
   options.always_print_primitive_fields = false;
