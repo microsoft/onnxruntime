@@ -381,9 +381,6 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
 
       std::unique_ptr<ExternalDataInfo> external_data_info;
       ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-      if (external_data_info->GetOffset() > 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Cannot support tensor data with offset > 0");
-      }
       std::basic_string<ORTCHAR_T> full_path;
       if (tensor_proto_path != nullptr) {
         ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(tensor_proto_path, full_path));
@@ -391,11 +388,12 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       } else {
         full_path = external_data_info->GetRelPath();
       }
-
+      raw_data_len = external_data_info->GetLength();
       // load the file
       {
         void* file_data;
-        ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), file_data, raw_data_len, deleter_for_file_data.d));
+        ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), external_data_info->GetOffset(),
+            file_data, raw_data_len, deleter_for_file_data.d));
         raw_data = file_data;
       }
     } else if (tensor_proto.has_raw_data()) {

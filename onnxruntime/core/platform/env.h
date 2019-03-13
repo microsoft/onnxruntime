@@ -105,9 +105,10 @@ class Env {
    * \param[out] len lenght of p
    * @return
    */
-  virtual common::Status ReadFileAsString(const char* file_path, void*& p, size_t& len, OrtCallback& deleter) const = 0;
+  virtual common::Status ReadFileAsString(const char* file_path, off_t offset, void*& p, size_t& len,
+      OrtCallback& deleter) const = 0;
 #else
-  virtual common::Status ReadFileAsString(const wchar_t* file_path, void*& p, size_t& len,
+  virtual common::Status ReadFileAsString(const wchar_t* file_path, int64_t offset, void*& p, size_t& len,
                                           OrtCallback& deleter) const = 0;
 #endif
 

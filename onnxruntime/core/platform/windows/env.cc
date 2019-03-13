@@ -94,9 +94,29 @@ class WindowsEnv : public Env {
   void ExecuteTask(const Task& t) const override {
     t.f();
   }
-  common::Status ReadFileAsString(const wchar_t* fname, void*& p, size_t& len, OrtCallback& deleter) const override {
+
+  static common::Status CalcFileSize(const wchar_t* fname, HANDLE hFile, size_t& l) {
+    if (l > 0) return Status::OK();
+    LARGE_INTEGER filesize;
+    if (!GetFileSizeEx(hFile, &filesize)) {
+      int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
+    }
+    if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "ReadFileAsString: File is too large");
+    }
+    l = static_cast<size_t>(filesize.QuadPart);
+    return Status::OK();
+  }
+
+  common::Status ReadFileAsString(const wchar_t* fname, int64_t offset, void*& p, size_t& len,
+                                  OrtCallback& deleter) const override {
     if (!fname) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+    }
+    if (offset > 0 && len == 0) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "ReadFileAsString: please specify length to read");
     }
     deleter.f = nullptr;
     deleter.param = nullptr;
@@ -106,21 +126,25 @@ class WindowsEnv : public Env {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(fname), " fail, errcode =", err);
     }
     std::unique_ptr<void, decltype(&CloseHandle)> handler_holder(hFile, CloseHandle);
-    LARGE_INTEGER filesize;
-    if (!GetFileSizeEx(hFile, &filesize)) {
-      int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
-    }
+    ORT_RETURN_IF_ERROR(CalcFileSize(fname, hFile, len));
     // check the file file for avoiding allocating a zero length buffer
-    if (filesize.QuadPart == 0) {  // empty file
+    if (len == 0) {  // empty file
       p = nullptr;
       len = 0;
       return Status::OK();
     }
-    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(filesize.QuadPart)));
+    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
     char* wptr = reinterpret_cast<char*>(buffer.get());
-    auto length_remain = filesize.QuadPart;
+    size_t length_remain = len;
     DWORD readed = 0;
+    if (offset > 0) {
+      LARGE_INTEGER liCurrentPosition;
+      liCurrentPosition.QuadPart = offset;
+      if (SetFilePointerEx(hFile, liCurrentPosition, &liCurrentPosition, FILE_BEGIN) != TRUE) {
+        int err = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(fname), " fail, errcode =", err);
+      }
+    }
     for (; length_remain > 0; wptr += readed, length_remain -= readed) {
       //read at most 1GB each time
       DWORD bytes_to_read;
@@ -142,7 +166,6 @@ class WindowsEnv : public Env {
       }
     }
     p = buffer.release();
-    len = filesize.QuadPart;
     deleter.f = DeleteBuffer;
     deleter.param = p;
     return common::Status::OK();
