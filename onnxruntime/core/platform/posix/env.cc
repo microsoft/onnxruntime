@@ -179,7 +179,7 @@ class PosixEnv : public Env {
           return st;
         }
       } else {
-        p = mmap(NULL, len, PROT_READ, MAP_SHARED|MAP_HUGETLB, fd, offset);
+        p = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, offset);
         if (p == MAP_FAILED) {
           auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
           (void)close(fd);
