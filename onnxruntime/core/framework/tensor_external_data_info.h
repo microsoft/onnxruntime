@@ -11,10 +11,8 @@ namespace onnxruntime {
 class ExternalDataInfo {
  private:
   std::basic_string<ORTCHAR_T> rel_path_;
-  //-1 means doesn't exist
-  ptrdiff_t offset_;
-  //-1 means doesn't exist
-  ptrdiff_t length_;
+  ptrdiff_t offset_ = 0;
+  ptrdiff_t length_ = 0;
   std::string checksum_;
 
  public:
