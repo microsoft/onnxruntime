@@ -15,6 +15,7 @@
 #include <core/platform/ort_mutex.h>
 #include <core/framework/data_types.h>
 #include <core/framework/ml_value.h>
+#include <fstream>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -399,7 +400,12 @@ Status OnnxTestCase::ParseConfig() {
       f.SetCloseOnDelete(true);
       //parse model
       onnxruntime::proto::TestCaseConfig config_pb;
-      if (!google::protobuf::TextFormat::Parse(&f, &config_pb)) {
+
+      std::ifstream model_istream(config_path, std::ifstream::in);
+      std::string s(std::istreambuf_iterator<char>(model_istream), {});
+      const bool result = config_pb.ParseFromString(s);
+      if (!result) {
+        //      if (!google::protobuf::TextFormat::Parse(&f, &config_pb)) {
         LOGF_DEFAULT(ERROR, "Parse config failed");
         return;
       } else {

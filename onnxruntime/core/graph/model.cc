@@ -3,6 +3,8 @@
 
 #include "core/graph/model.h"
 #include <memory>
+#include <iterator>
+#include <fstream>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -13,7 +15,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 #include "gsl/pointers"
 #include "gsl/gsl_util"
@@ -207,7 +209,9 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
-  const bool result = p_model_proto->ParseFromIstream(&model_istream);
+  std::string s(std::istreambuf_iterator<char>(model_istream), {});
+  const bool result = p_model_proto->ParseFromString(s);
+  //  const bool result = p_model_proto->ParseFromIstream(&model_istream);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
@@ -270,18 +274,22 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, con
     }
   }
   try {
-    status = Model::Load(fd, p_model, local_registries);
+    std::unique_ptr<ModelProto> p_model_proto = std::make_unique<ModelProto>();
+    std::ifstream model_istream(file_path, std::ifstream::binary | std::ifstream::in);
+    ORT_RETURN_IF_ERROR(Model::Load(model_istream, p_model_proto.get()));
+    p_model = std::make_shared<Model>(std::move(p_model_proto), local_registries);
+    ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    //ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    //ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
-  return Env::Default().FileClose(fd);
+  return Status::OK();  // Env::Default().FileClose(fd);
 }
 
 template <typename T>
@@ -290,18 +298,22 @@ static Status SaveModel(Model& model, const T& file_path) {
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
   try {
-    status = Model::Save(model, fd);
+    std::string output_str;
+    auto model_proto = model.ToProto();
+    model_proto.SerializeToString(&output_str);
+    std::ofstream model_ostream(file_path, std::ofstream::out | std::ofstream::binary);
+    model_ostream << output_str;
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    //ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    //ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
-  return Env::Default().FileClose(fd);
+  return Status::OK();  //Env::Default().FileClose(fd);
 }
 
 #ifdef _WIN32
@@ -341,54 +353,54 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
   return Status::OK();
 }
 
-using ::google::protobuf::io::CodedInputStream;
-using ::google::protobuf::io::FileInputStream;
-using ::google::protobuf::io::ZeroCopyInputStream;
+// using ::google::protobuf::io::CodedInputStream;
+// using ::google::protobuf::io::FileInputStream;
+// using ::google::protobuf::io::ZeroCopyInputStream;
 
-Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  if (fd < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
-  }
+// Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+//   if (fd < 0) {
+//     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
+//   }
 
-  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
-  if (!model_proto->ParseFromFileDescriptor(fd)) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#else
-  // CNTK uses ORT as a submodule in order to use its GraphIR code.
-  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
-  // This code block is needed to support CNTK and any other 
-  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
-  FileInputStream fs(fd);
-  CodedInputStream cis(&fs);
+//   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+// #if GOOGLE_PROTOBUF_VERSION >= 3002000
+//   if (!model_proto->ParseFromFileDescriptor(fd)) {
+//     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+//   }
+// #else
+//   // CNTK uses ORT as a submodule in order to use its GraphIR code.
+//   // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
+//   // This code block is needed to support CNTK and any other
+//   // GraphIR client that will be built with protobuf at a version older than 3.2.0.
+//   FileInputStream fs(fd);
+//   CodedInputStream cis(&fs);
 
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB. 
-  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
-  if (!model_proto->ParseFromCodedStream(&cis)) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#endif
-  p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
+//   // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
+//   cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
+//   if (!model_proto->ParseFromCodedStream(&cis)) {
+//     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+//   }
+// #endif
+//   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
 
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+//   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
-  return Status::OK();
-}
+//   return Status::OK();
+// }
 
-Status Model::Save(Model& model, int p_fd) {
-  if (p_fd < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> is less than 0.");
-  }
+// Status Model::Save(Model& model, int p_fd) {
+//   if (p_fd < 0) {
+//     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> is less than 0.");
+//   }
 
-  ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
+//   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
-  auto model_proto = model.ToProto();
-  const bool result = model_proto.SerializeToFileDescriptor(p_fd);
-  if (result) {
-    return Status::OK();
-  } else {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
-  }
-}
+//   auto model_proto = model.ToProto();
+//   const bool result = model_proto.SerializeToFileDescriptor(p_fd);
+//   if (result) {
+//     return Status::OK();
+//   } else {
+//     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+//   }
+// }
 }  // namespace onnxruntime

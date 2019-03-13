@@ -4,7 +4,7 @@
 #include "test/compare_mlvalue.h"
 #include <cmath>
 #include <sstream>
-#include <google/protobuf/text_format.h>
+#include <google/protobuf/message_lite.h>
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "Eigen/Core"
@@ -364,8 +364,9 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     }
     std::vector<int64_t> shape = GetTensorShape(info.get());
     if (!AreShapesEqual(shape, t.shape())) {
-      std::string result;
-      if (!google::protobuf::TextFormat::PrintToString(t.shape(), &result)) {
+      std::string result = t.shape().SerializeAsString();
+      if (result.empty()) {
+        //      if (!google::protobuf::TextFormat::PrintToString(t.shape(), &result)) {
         result = "(unknown)";
       }
       std::ostringstream oss;
