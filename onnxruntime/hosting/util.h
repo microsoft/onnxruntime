@@ -14,10 +14,11 @@ namespace onnx {
 namespace hosting {
 namespace protobufutil = google::protobuf::util;
 
-protobufutil::Status GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request);
-protobufutil::Status GetRequestFromBinary(std::istream* input_stream, /* out */ onnx::hosting::PredictRequest& request);
-protobufutil::Status GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string json_string);
-protobufutil::Status GenerateResponseInStream(onnx::hosting::PredictResponse response, /* out */ std::ostream* output_stream);
+class Util {
+ public:
+  static protobufutil::Status GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request);
+  static protobufutil::Status GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string& json_string);
+};
 }
 }
 

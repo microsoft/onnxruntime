@@ -8,30 +8,22 @@ namespace protobufutil = google::protobuf::util;
 
 namespace onnx {
 namespace hosting {
-protobufutil::Status GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request) {
+protobufutil::Status Util::GetRequestFromJson(std::string json_string, /* out */ onnx::hosting::PredictRequest& request) {
   protobufutil::JsonParseOptions options;
-  protobufutil::Status result = JsonStringToMessage(json_string, &request, options);
+  options.ignore_unknown_fields = true;
 
+  protobufutil::Status result = JsonStringToMessage(json_string, &request, options);
   return result;
 }
 
-protobufutil::Status GetRequestFromBinary(std::istream* input_stream, /* out */ onnx::hosting::PredictRequest& request) {
-  bool succeeded = request.ParseFromIstream(input_stream);
+protobufutil::Status Util::GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string& json_string) {
+  protobufutil::JsonPrintOptions options;
+  options.add_whitespace = false;
+  options.always_print_primitive_fields = false;
+  options.preserve_proto_field_names = false;
 
-  if (succeeded) {
-    return protobufutil::Status(protobufutil::error::Code::OK, "Parsing istream succeeded.");
-  } else {
-    std::string error_message = request.InitializationErrorString();  // TODO: log the error
-    return protobufutil::Status(protobufutil::error::Code::INVALID_ARGUMENT, error_message.c_str());
-  }
-}
-
-protobufutil::Status GenerateResponseInJson(onnx::hosting::PredictResponse response, /* out */ std::string json_string) {
-  return protobufutil::Status(protobufutil::error::Code::OK, "Parsing istream succeeded.");
-}
-
-protobufutil::Status GenerateResponseInStream(onnx::hosting::PredictResponse response, /* out */ std::ostream* output_stream) {
-  return protobufutil::Status(protobufutil::error::Code::OK, "Parsing istream succeeded.");
+  protobufutil::Status result = MessageToJsonString(response, &json_string, options);
+  return result;
 }
 }
 }
