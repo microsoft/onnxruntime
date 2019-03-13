@@ -23,6 +23,41 @@ Abstract:
 
 MLAS_PLATFORM MlasPlatform;
 
+#ifdef MLAS_TARGET_AMD64_IX86
+
+//
+// Reads the processor extended control register to determine platform
+// capabilities.
+//
+
+#if !defined(_XCR_XFEATURE_ENABLED_MASK)
+#define _XCR_XFEATURE_ENABLED_MASK 0
+#endif
+
+inline
+uint64_t
+MlasReadExtendedControlRegister(
+    unsigned int ext_ctrl_reg
+    )
+{
+#if defined(_WIN32)
+    return _xgetbv(ext_ctrl_reg);
+#else
+    uint32_t eax, edx;
+
+    __asm__
+    (
+        "xgetbv"
+        : "=a" (eax), "=d" (edx)
+        : "c" (ext_ctrl_reg)
+    );
+
+    return ((uint64_t)edx << 32) | eax;
+#endif
+}
+
+#endif
+
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
     )
@@ -74,11 +109,7 @@ Return Value:
         // Check if the operating system supports saving SSE and AVX states.
         //
 
-#if defined(_WIN32)
-        uint64_t xcr0 = _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
-#else
-        uint64_t xcr0 = xgetbv(_XCR_XFEATURE_ENABLED_MASK);
-#endif
+        uint64_t xcr0 = MlasReadExtendedControlRegister(_XCR_XFEATURE_ENABLED_MASK);
 
         if ((xcr0 & 0x6) == 0x6) {
 
