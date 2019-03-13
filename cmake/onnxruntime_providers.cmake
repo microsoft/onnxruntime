@@ -163,7 +163,6 @@ if (onnxruntime_USE_TENSORRT)
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4996)
   endif()
-  list(APPEND onnxruntime_libs onnxruntime_providers_tensorrt)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

@@ -91,7 +91,7 @@ file(GLOB onnxruntime_test_ir_src
 
 file(GLOB onnxruntime_test_optimizer_src
   "${TEST_SRC_DIR}/optimizer/*.cc"
-  "${TEST_SRC_DIR}/optimizer/*.h"  
+  "${TEST_SRC_DIR}/optimizer/*.h"
   )
 
 set(onnxruntime_test_framework_src_patterns
@@ -180,14 +180,6 @@ file(GLOB_RECURSE onnxruntime_test_tvm_src
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
 
-if(onnxruntime_USE_TENSORRT)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
-  list(APPEND onnx_test_libs onnxruntime_providers_tensorrt)
-endif()
-
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
@@ -213,6 +205,13 @@ set(onnxruntime_test_providers_libs
     onnxruntime_test_utils_for_framework
     ${ONNXRUNTIME_TEST_LIBS}
   )
+
+if(onnxruntime_USE_TENSORRT)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+endif()
 
 if( NOT WIN32 AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
   list(APPEND onnxruntime_test_providers_libs stdc++fs)
