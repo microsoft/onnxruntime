@@ -40,5 +40,16 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 /** Remove the given single-input-single-output Node from the Graph. */
 bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
 
+/** Returns true if the graph has the given input.*/
+bool HasGraphInput(const Graph& graph, const NodeArg* input);
+
+/** Checks if the given node has only constant inputs (initializers). */
+bool IsConstantInputsNode(const Graph& graph, const Node& node);
+
+/** Remove all output edges from the given Node of the Graph. 
+    This should probably be elevated to the Graph API eventually. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
 }  // namespace utils
+
 }  // namespace onnxruntime

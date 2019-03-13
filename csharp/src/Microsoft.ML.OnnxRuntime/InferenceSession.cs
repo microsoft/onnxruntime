@@ -299,6 +299,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal static NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
         {
+            var valueType = NativeMethods.OrtOnnxTypeFromTypeInfo(typeInfo);
+            if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
+            {
+                return new NodeMetadata(valueType, new int[] { }, typeof(NamedOnnxValue));
+            }
+
             IntPtr tensorInfo = NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo);
             // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo*
 
@@ -317,7 +323,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 intDimensions[i] = (int)dimensions[i];
             }
-            return new NodeMetadata(intDimensions, dotnetType);
+            return new NodeMetadata(valueType, intDimensions, dotnetType);
         }
 
         #endregion
@@ -360,13 +366,23 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class NodeMetadata
     {
+        private OnnxValueType _onnxValueType;
         private int[] _dimensions;
         private Type _type;
 
-        internal NodeMetadata(int[] dimensions, Type type)
+        internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, Type type)
         {
+            _onnxValueType = onnxValueType;
             _dimensions = dimensions;
             _type = type;
+        }
+
+        public OnnxValueType OnnxValueType
+        {
+            get
+            {
+                return _onnxValueType;
+            }
         }
 
         public int[] Dimensions

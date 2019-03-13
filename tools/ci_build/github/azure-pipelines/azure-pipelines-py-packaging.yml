@@ -30,6 +30,10 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Ubuntu1604_py_GPU_Wheels
@@ -62,6 +66,10 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         ArtifactName: onnxruntime_gpu
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -110,6 +118,10 @@ jobs:
         filename: deactivate
       continueOnError: true
       condition: always()
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -174,6 +186,10 @@ jobs:
       continueOnError: true
       condition: always()
 
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: MacOS_py_Wheels
@@ -212,5 +228,9 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         ArtifactName: onnxruntime
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml

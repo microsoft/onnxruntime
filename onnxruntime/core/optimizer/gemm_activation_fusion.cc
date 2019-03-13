@@ -12,7 +12,10 @@ namespace onnxruntime {
 
 namespace {
 bool IsFusableActivation(const Node& node) {
-  return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
+  return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
+         utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
+         utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
+         utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
 }
 
 void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_gemm) {

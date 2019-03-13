@@ -19,7 +19,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/callback.h"
+#include "core/common/callback.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"

@@ -6,6 +6,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
+#include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 
 #ifdef MICROSOFT_INTERNAL
@@ -18,8 +19,8 @@ void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool u
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OpSchema;
 using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OpSchema;
 
 void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx) {
   if (!hasInputShape(ctx, input1Idx) && !hasInputShape(ctx, input2Idx)) {
@@ -220,6 +221,119 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
+
+  // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
+  static const char* Affine_ver1_doc = R"DOC(
+Affine takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the affine function, y = alpha * x + beta,
+is applied to the tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
+      .SinceVersion(1)
+      .SetDoc(Affine_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, 1.0f)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, 0.0f)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* ParametricSoftplus_ver1_doc = R"DOC(
+ParametricSoftplus takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the softplus function, y = alpha * ln(exp(beta * x) + 1), is applied to
+the tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
+      .SinceVersion(1)
+      .SetDoc(ParametricSoftplus_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D input tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* ImageScaler_ver1_doc =
+      R"DOC(Scale and bias the input image. Bias values are stored in
+the same ordering as the image pixel format.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
+      .SinceVersion(1)
+      .SetDoc(ImageScaler_ver1_doc)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* Crop_ver1_doc =
+      R"DOC(Crop and image to the specified spatial dimensions. If scale is given,
+then optionally start the crop offset by the left/top border amounts.
+If scale is not provided, crop the borders as provided.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
+      .SinceVersion(1)
+      .SetDoc(Crop_ver1_doc)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(Affine_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, 1.0f)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, 0.0f)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(ParametricSoftplus_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D input tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(ImageScaler_ver1_doc)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(Crop_ver1_doc)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
+
+  // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -271,7 +385,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -1088,39 +1202,6 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(StringNormalizer)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "Strings to normalize", "T")
-      .Output(0, "Y", "Normalized strings", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(string)"},
-          "Input/Output is a string tensor")
-      .Attr(
-          "casechangeaction",
-          "string enum that cases output to be lowercased/uppercases/unchanged. Valid values are \"LOWER\", \"UPPER\", \"NONE\"",
-          AttributeProto::STRING)
-      .Attr(
-          "is_case_sensitive",
-          "Boolean. Whether the identification of stop words in X is case-sensitive.",
-          AttributeProto::INT)
-      .Attr(
-          "stopwords",
-          "List of stop words",
-          AttributeProto::STRINGS,
-          OPTIONAL)
-      .Attr(
-          "locale",
-          "Environment dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
-          AttributeProto::STRING,
-          OPTIONAL)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
-      })
-      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kMSDomain)

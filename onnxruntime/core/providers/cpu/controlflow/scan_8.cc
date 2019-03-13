@@ -425,8 +425,10 @@ Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* c
                              implicit_inputs_, output_iterators_, ffm, cached_ffm);
 
     // use the cached info from now on
-    cached_ffm = ffm;
-    ffm = nullptr;
+    if (ffm) {
+      cached_ffm = ffm;
+      ffm = nullptr;
+    }
 
     // zero out any remaining values in the sequence
     for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {
