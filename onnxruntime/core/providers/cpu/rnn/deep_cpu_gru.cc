@@ -159,8 +159,6 @@ using namespace rnn::detail;
 // internal helper code
 namespace detail {
 
-/// The class represents DeepCPU implementation of a gated recurrent unit (GRU) operator.
-/// For details, refer to http://aka.ms/dl-optimization/.
 template <typename T>
 class UniDirectionalGru {
  public:
@@ -176,12 +174,7 @@ class UniDirectionalGru {
                     const gsl::span<const T>& initial_hidden_state,
                     const ActivationFuncs::Entry& activation_func_f,
                     const ActivationFuncs::Entry& activation_func_g,
-                    const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                    Eigen::NonBlockingThreadPool& ttp_);
-#else
-                    TaskThreadPool& ttp_);
-#endif
+                    const float clip);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -197,12 +190,6 @@ class UniDirectionalGru {
   AllocatorPtr allocator_;
   const logging::Logger& logger_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool& ttp_;
-#else
-  TaskThreadPool& ttp_;
-#endif
-
   int seq_length_;
   int batch_size_;
   int input_size_;
@@ -213,8 +200,6 @@ class UniDirectionalGru {
 
   Direction direction_;
   bool use_bias_;
-
-  int hidden_num_threads_ = -1;
 
   IAllocatorUniquePtr<T> outputZRH_ptr_;
   gsl::span<T> outputZRH_;
@@ -248,14 +233,16 @@ class UniDirectionalGru {
   gsl::span<T> inputs_reverse_;
   gsl::span<T> outputs_reverse_;
 
-  deepcpu::ClipWithBiasFuncPtr clip_with_bias_ptr_ = nullptr;
+  deepcpu::ClipWithBiasFuncPtr clip_with_bias_ptr_{};
 
-  float zr_alpha_ = 0.f, zr_beta_ = 0.f;
-  float h_alpha_ = 0.f, h_beta_ = 0.f;
+  float zr_alpha_{};
+  float zr_beta_{};
+  float h_alpha_{};
+  float h_beta_{};
 
-  deepcpu::GruResetGateFuncPtr reset_gate_ = nullptr;
-  deepcpu::ActivationFuncPtr update_gate_ = nullptr;
-  deepcpu::GruOutputGateFuncPtr output_gate_ = nullptr;
+  deepcpu::GruResetGateFuncPtr reset_gate_{};
+  deepcpu::ActivationFuncPtr update_gate_{};
+  deepcpu::GruOutputGateFuncPtr output_gate_{};
 
   void AllocateBuffers();
 };
@@ -272,7 +259,6 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
 
   Status status;
-  // auto& logger = context->Logger();
 
   auto data_type = X.DataType();
   if (data_type == DataTypeImpl::GetType<float>())
@@ -311,7 +297,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   // GRU outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
-  Tensor* Y = context.Output(/*index*/ 0, Y_dims);  // TODO: Adjust for however optional outputs gets implemented
+  Tensor* Y = context.Output(/*index*/ 0, Y_dims);  // TODO: Adjust for how optional outputs gets implemented
 
   TensorShape Y_h_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_h = context.Output(/*index*/ 1, Y_h_dims);
@@ -387,7 +373,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
-        clip_, ttp_);
+        clip_);
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
@@ -396,27 +382,28 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         bias_2, initial_hidden_2,
         activation_funcs_.Entries()[2],
         activation_funcs_.Entries()[3],
-        clip_, ttp_);
+        clip_);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
 
-  } else {
+  }
+  else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
         seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
-        clip_, ttp_);
+        clip_);
 
     gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
   }
 
-  if (!output.empty())
-    DumpMatrix("Y", output.data(), seq_length * num_directions_ * batch_size, hidden_size_);
+if (!output.empty())
+  DumpMatrix("Y", output.data(), seq_length* num_directions_* batch_size, hidden_size_);
 
-  DumpMatrix("Y_h", hidden_output.data(), num_directions_ * batch_size, hidden_size_);
+DumpMatrix("Y_h", hidden_output.data(), num_directions_* batch_size, hidden_size_);
 
-  return Status::OK();
+return Status::OK();
 }
 
 //
@@ -436,15 +423,9 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const gsl::span<const T>& initial_hidden_state,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
-                                        const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                                        Eigen::NonBlockingThreadPool& ttp)
-#else
-                                        TaskThreadPool& ttp)
-#endif
+                                        const float clip)
     : allocator_(allocator),
       logger_(logger),
-      ttp_(ttp),
       seq_length_(seq_length),
       batch_size_(batch_size),
       input_size_(input_size),
@@ -453,7 +434,6 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
       clip_(clip),
       direction_(direction),
       use_bias_(!bias.empty()) {
-  //
   clip_with_bias_ptr_ = use_bias_ ? deepcpu::clip_add_bias : deepcpu::clip_ignore_bias;
 
   // setup activation function pointers and alpha/beta values to use with them
