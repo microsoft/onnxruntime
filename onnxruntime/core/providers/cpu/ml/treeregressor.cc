@@ -259,9 +259,9 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
     }
     if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::LOGISTIC) {
       for (float& output : outputs) {
-        output = ::onnxruntime::ml::ml_logit(output);
+        output = ::onnxruntime::ml::ml_logistic(output);
       }
-    } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::PROBIT {
+    } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::PROBIT) {
       for (float& output : outputs) {
         output = ::onnxruntime::ml::ml_probit(output);
       }
