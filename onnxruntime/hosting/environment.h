@@ -19,7 +19,7 @@ class HostingEnvironment {
   HostingEnvironment();
 
   const onnxruntime::logging::Logger& GetLogger();
-  const std::shared_ptr<onnxruntime::InferenceSession> GetSession();
+  std::shared_ptr<onnxruntime::InferenceSession> GetSession() const;
 
  private:
   std::string logger_id_;

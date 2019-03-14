@@ -27,7 +27,7 @@ const onnxruntime::logging::Logger& HostingEnvironment::GetLogger() {
   return this->default_logging_manager_.DefaultLogger();
 }
 
-const std::shared_ptr<onnxruntime::InferenceSession> HostingEnvironment::GetSession() {
+std::shared_ptr<onnxruntime::InferenceSession> HostingEnvironment::GetSession() const {
   return this->session_;
 }
 
