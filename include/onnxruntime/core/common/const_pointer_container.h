@@ -20,6 +20,11 @@ class ConstPointerContainer {
   class ConstIterator {
    public:
     using const_iterator = typename Container::const_iterator;
+    using iterator_category = std::input_iterator_tag;
+    using value_type = T*;
+    using difference_type = ptrdiff_t;
+    using pointer = T**;
+    using reference = T*&;
 
     /** Construct iterator for container that will return const T* entries.*/
     explicit ConstIterator(const_iterator position) noexcept : current_(position) {}
