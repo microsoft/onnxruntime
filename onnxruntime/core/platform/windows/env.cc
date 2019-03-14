@@ -136,7 +136,7 @@ class WindowsEnv : public Env {
     std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
     char* wptr = reinterpret_cast<char*>(buffer.get());
     size_t length_remain = len;
-    DWORD readed = 0;
+    DWORD bytes_read = 0;
     if (offset > 0) {
       LARGE_INTEGER liCurrentPosition;
       liCurrentPosition.QuadPart = offset;
@@ -145,7 +145,7 @@ class WindowsEnv : public Env {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(fname), " fail, errcode =", err);
       }
     }
-    for (; length_remain > 0; wptr += readed, length_remain -= readed) {
+    for (; length_remain > 0; wptr += bytes_read, length_remain -= bytes_read) {
       //read at most 1GB each time
       DWORD bytes_to_read;
       if (length_remain > (1 << 30)) {
@@ -153,13 +153,13 @@ class WindowsEnv : public Env {
       } else {
         bytes_to_read = static_cast<DWORD>(length_remain);
       }
-      if (ReadFile(hFile, wptr, bytes_to_read, &readed, nullptr) != TRUE) {
+      if (ReadFile(hFile, wptr, bytes_to_read, &bytes_read, nullptr) != TRUE) {
         int err = GetLastError();
         p = nullptr;
         len = 0;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail, errcode =", err);
       }
-      if (readed != bytes_to_read) {
+      if (bytes_read != bytes_to_read) {
         p = nullptr;
         len = 0;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail: unexpected end");

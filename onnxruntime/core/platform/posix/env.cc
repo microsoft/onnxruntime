@@ -128,16 +128,16 @@ class PosixEnv : public Env {
     auto length_remain = len;
     do {
       size_t bytes_to_read = length_remain;
-      ssize_t bytes_readed;
-      TEMP_FAILURE_RETRY(bytes_readed =
+      ssize_t bytes_read;
+      TEMP_FAILURE_RETRY(bytes_read =
                              offset > 0 ? pread(fd, wptr, bytes_to_read, offset) : read(fd, wptr, bytes_to_read));
-      if (bytes_readed <= 0) {
+      if (bytes_read <= 0) {
         int err = errno;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read file '", fname, "' fail, error code = ", err);
       }
-      assert(static_cast<size_t>(bytes_readed) <= bytes_to_read);
-      wptr += bytes_readed;
-      length_remain -= bytes_readed;
+      assert(static_cast<size_t>(bytes_read) <= bytes_to_read);
+      wptr += bytes_read;
+      length_remain -= bytes_read;
     } while (length_remain > 0);
     p = buffer.release();
     deleter.f = DeleteBuffer;
