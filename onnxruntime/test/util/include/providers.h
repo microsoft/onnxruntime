@@ -16,6 +16,6 @@
 #if USE_BRAINSLICE
 #include "core/providers/brainslice/brainslice_provider_factory.h"
 #endif
-#if USE_TRT
-#include "core/providers/trt/trt_provider_factory.h"
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif

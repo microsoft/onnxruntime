@@ -13,12 +13,20 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_TRT();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
   return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
+}
+
+std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
+#ifdef USE_TENSORRT
+  return CreateExecutionProviderFactory_Tensorrt()->CreateProvider();
+#else
+  return nullptr;
+#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
@@ -49,14 +57,6 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #ifdef USE_BRAINSLICE
   return CreateExecutionProviderFactory_BrainSlice(0, 1, -1, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin")->CreateProvider();
-#else
-  return nullptr;
-#endif
-}
-
-std::unique_ptr<IExecutionProvider> DefaultTRTExecutionProvider() {
-#ifdef USE_TRT
-  return CreateExecutionProviderFactory_TRT()->CreateProvider();
 #else
   return nullptr;
 #endif
