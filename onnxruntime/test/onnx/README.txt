@@ -11,15 +11,6 @@ The debug version of this program depends on dbghelp.dll. Please make sure it's 
 
 How to run node tests:
 1. Install onnx from onnxruntime\cmake\external\onnx
-   Steps:
-   "C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-   C:
-   cd C:\src\onnxruntime\onnxruntime\cmake\external\onnx
-   set PATH="C:\Program Files\CMake\bin";C:\python35;C:\python35\scripts;C:\Program Files\CMake\bin;%PATH%
-   set PATH=%PATH%;C:\os\onnx\protoc
-   set INCLUDE=%INCLUDE%;C:\os\protobuf-2.6.1\src
-   set LIB=%LIB%;C:\os\protobuf-2.6.1\vsprojects\x64\Release
-   python setup.py install
 
 2. Execute test data generator:
        backend-test-tools generate-data -o <some_empty_folder>
@@ -34,13 +25,9 @@ How to run node tests:
 
 
 How to run model tests:
-1. Download test data from VSTS drop
-   1) Download drop app from https://aiinfra.artifacts.visualstudio.com/_apis/drop/client/exe
-      Unzip the downloaded file and add lib/net45 dir to your PATH
-   2) Download the test data by using this command:
-      drop get -a -s https://aiinfra.artifacts.visualstudio.com/DefaultCollection -n Lotus/testdata/onnx/model/16 -d C:\testdata
-	  You may change C:\testdata to any directory in your disk.
-   Full document: https://www.1eswiki.com/wiki/VSTS_Drop
+1. Download the test data from Azure
+   You can get the latest url from tools/ci_build/github/azure-pipelines/templates/set-test-data-variables-step.yml
+   After downloading, please unzip the downloaded file
 
 2. compile onnxruntime_test_runner and run
    onnxruntime_test_runner <test_data_dir>
