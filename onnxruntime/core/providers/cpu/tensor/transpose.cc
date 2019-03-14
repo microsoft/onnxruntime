@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 // ComputeOffset: compute offset into a tensor. This is essentially the dot-product of
 // index and stride, restricted to the specified number of axes.
-inline size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector<size_t>& stride, int64_t num_axes) {
+static inline size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector<size_t>& stride, int64_t num_axes) {
   size_t offset = 0;
   for (int64_t j = 0; j < num_axes; ++j) {
     offset += index[j] * stride[j];
@@ -25,7 +25,7 @@ inline size_t ComputeOffset(const std::vector<int64_t>& index, const std::vector
 
 // IncrementIndex: Increment an index into a tensor (in lexicographic ordering), wrapping
 // around the specified upper_bound.
-inline void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound, int64_t num_axes) {
+static inline void IncrementIndex(std::vector<int64_t>& index, const std::vector<int64_t>& upper_bound, int64_t num_axes) {
   for (int64_t k = num_axes - 1; k >= 0; --k) {
     index[k]++;
     if (index[k] < upper_bound[k]) break;
@@ -87,30 +87,8 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
 }
 
 template <class T>
-inline void CopyPrim(const uint8_t* source, uint8_t* target) {
+inline void CopyPrim(uint8_t* target, const uint8_t* source) {
   *reinterpret_cast<T*>(target) = *reinterpret_cast<const T*>(source);
-}
-
-static inline void CopyPrimitiveElement(const uint8_t* source, uint8_t* target, size_t element_size) {
-  // Make sure some assumptions hold
-  static_assert(sizeof(MLFloat16) == sizeof(uint16_t), "MLFloat16 not covered");
-  static_assert(sizeof(BFloat16) == sizeof(uint16_t), "BFloat16 not covered");
-  switch (element_size) {
-    case sizeof(uint64_t):
-      CopyPrim<uint64_t>(source, target);
-      break;
-    case sizeof(uint32_t):
-      CopyPrim<uint32_t>(source, target);
-      break;
-    case sizeof(uint16_t):
-      CopyPrim<uint16_t>(source, target);
-      break;
-    case sizeof(uint8_t):
-      *target = *source;
-      break;
-    default:
-      assert(false);
-  }
 }
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
@@ -121,16 +99,62 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
                                size_t element_size) {
   // index used to iterate over target iteration-space
   std::vector<int64_t> target_index(num_axes, 0);
-  for (size_t i = 0; i < num_blocks; ++i) {
-    // convert target_index into an offset in source data
-    size_t source_offset = ComputeOffset(target_index, stride, num_axes);
 
-    // copy
-    CopyPrimitiveElement(source + (source_offset * element_size), target, element_size);
+  switch (element_size) {
+    case sizeof(uint64_t):
+      for (size_t i = 0; i < num_blocks; ++i) {
+        // convert target_index into an offset in source data
+        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
 
-    // increment target_index:
-    IncrementIndex(target_index, target_dims, num_axes);
-    target += element_size;
+        // copy
+        CopyPrim<uint64_t>(target, source + (source_offset * element_size));
+
+        // increment target_index:
+        IncrementIndex(target_index, target_dims, num_axes);
+        target += element_size;
+      }
+      break;
+    case sizeof(uint32_t):
+      for (size_t i = 0; i < num_blocks; ++i) {
+        // convert target_index into an offset in source data
+        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
+
+        // copy
+        CopyPrim<uint32_t>(target, source + (source_offset * element_size));
+
+        // increment target_index:
+        IncrementIndex(target_index, target_dims, num_axes);
+        target += element_size;
+      }
+      break;
+    case sizeof(uint16_t):
+      for (size_t i = 0; i < num_blocks; ++i) {
+        // convert target_index into an offset in source data
+        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
+
+        // copy
+        CopyPrim<uint16_t>(target, source + (source_offset * element_size));
+
+        // increment target_index:
+        IncrementIndex(target_index, target_dims, num_axes);
+        target += element_size;
+      }
+      break;
+    case sizeof(uint8_t):
+      for (size_t i = 0; i < num_blocks; ++i) {
+        // convert target_index into an offset in source data
+        size_t source_offset = ComputeOffset(target_index, stride, num_axes);
+
+        // copy
+        *target = *(source + (source_offset * element_size));
+
+        // increment target_index:
+        IncrementIndex(target_index, target_dims, num_axes);
+        target += element_size;
+      }
+      break;
+    default:
+      assert(false);
   }
 }
 
