@@ -1,67 +1,75 @@
 jobs:
+
 - job: Linux_C_API_Packaging_CPU_x64
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64'
+          artifactName: 'onnxruntime-linux-x64-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
-
 
 - job: Linux_C_API_Packaging_CPU_x86
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --x86 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x " --x86 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x86'
+          artifactName: 'onnxruntime-linux-x86-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          commitId: $(OnnxRuntimeGitCommitHash)          
     - template: templates/clean-agent-build-directory-step.yml
-
 
 - job: Linux_C_API_Packaging_GPU_x64
   pool: Linux-GPU
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64-gpu'
+          artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
-
+ 
 
 - job: MacOS_C_API_Packaging_CPU_x64
   pool: 
     vmImage: 'macOS-10.13'
   steps:
+  
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
+
     - script: |
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
       displayName: 'Build and Test MacOS'
-
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'RelWithDebInfo'
-          artifactName: 'onnxruntime-osx-x64'
+          artifactName: 'onnxruntime-osx-x64-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.dylib'
-
+          commitId: $(OnnxRuntimeGitCommitHash)
+          
     - template: templates/clean-agent-build-directory-step.yml
-  
+
 
 - job: Windows_Packaging_CPU_x64
   pool: 'Win-CPU'
@@ -72,6 +80,7 @@ jobs:
 
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
@@ -89,8 +98,8 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)'
-
+        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
+        commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -103,6 +112,7 @@ jobs:
 
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
@@ -120,8 +130,8 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)'
-
+        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
+        commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
 
@@ -134,6 +144,7 @@ jobs:
 
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
 
     - task: CmdLine@2
       displayName: 'Set CUDA 9.1 path'
@@ -161,13 +172,13 @@ jobs:
       inputs:
         script: |
           $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --use_openmp --msvc_toolset=14.11 --use_cuda --cuda_version 9.1 --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" 
-
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
         buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-gpu-$(buildArch)'
+        artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
+        commitId: $(OnnxRuntimeGitCommitHash)
 
     - task: PowerShell@2
       displayName: 'Clean up Cuda Path 9.1'

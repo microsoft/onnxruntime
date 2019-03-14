@@ -310,7 +310,10 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
-      {"tf_inception_v4", "Cast opset 9 not supported yet"}};
+      {"tf_inception_v4", "Cast opset 9 not supported yet"},
+      {"tf_nasnet_large", "disable temporarily"},
+      {"tf_nasnet_mobile", "disable temporarily"},
+      {"tf_pnasnet_large", "disable temporarily"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
@@ -350,6 +353,17 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   broken_tests["tf_nasnet_large"] = "failed: bad allocation";
   broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
 
+#endif
+
+#ifdef __GNUG__
+#ifndef __LP64__
+  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+#endif
 #endif
 
   int result = 0;

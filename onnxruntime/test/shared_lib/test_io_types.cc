@@ -25,6 +25,9 @@ static void TestModelInfo(const OrtSession* inference_session, bool is_input, co
     input_type_info.reset(t);
   }
   ASSERT_NE(nullptr, input_type_info);
+  enum ONNXType otype = OrtOnnxTypeFromTypeInfo(input_type_info.get());
+  ASSERT_EQ(ONNX_TYPE_TENSOR, otype);
+
   const OrtTensorTypeAndShapeInfo* p = OrtCastTypeInfoToTensorInfo(input_type_info.get());
   ASSERT_NE(nullptr, p);
 
