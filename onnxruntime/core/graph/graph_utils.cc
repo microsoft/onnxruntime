@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 
-namespace utils {
+namespace graph_utils {
 // fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
@@ -148,6 +148,6 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return edges_to_remove.size();
 }
 
-}  // namespace utils
+}  // namespace graph_utils
 
 }  // namespace onnxruntime

@@ -45,7 +45,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   }
 
   // Remove the output edges of the constant node and then remove the node itself.
-  utils::RemoveNodeOutputEdges(graph, node);
+  graph_utils::RemoveNodeOutputEdges(graph, node);
   graph.RemoveNode(node.Index());
 
   // The output nodes already have the right input arg, since we used the same name in the initializer.
@@ -57,7 +57,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 }  // namespace onnxruntime
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
-  return OpTypeCondition(node) && utils::IsConstantInputsNode(graph, node);
+  return OpTypeCondition(node) && graph_utils::IsConstantInputsNode(graph, node);
 }
 
 bool ConstantFolding::OpTypeCondition(const Node& node) {
