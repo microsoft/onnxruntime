@@ -35,6 +35,7 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
         result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+        break;
       }
     }
   }
@@ -64,6 +65,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
     ORT_THROW("duplicated allocator");
   }
   allocators_.insert(iter, {key, allocator});
+  allocator_list_.push_back(gsl::not_null<IAllocator*>(allocator.get()));
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,

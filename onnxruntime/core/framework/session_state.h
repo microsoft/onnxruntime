@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <map>
 #include <unordered_map>
 #include <vector>
 #include "gsl/gsl_util"
@@ -14,9 +15,11 @@
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
+#include "core/common/callback.h"
 #include "core/framework/mlvalue_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
@@ -40,24 +43,33 @@ struct MemoryPatternGroup;
 class TaskThreadPool;
 #endif
 
-// SessionState should be modified by the inference session class only.
-// It is supposed to be passed by const-ref only to all the executors.
+/**
+ * SessionState should be modified by the inference session class only.
+ * It is supposed to be passed by const-ref only to all the executors.
+ * This class owns all the initializers.
+ */
 class SessionState {
  public:
   SessionState(const ExecutionProviders& execution_providers)
       : execution_providers_{execution_providers} {
   }
 
+  ~SessionState() {
+    for (auto& kvp : deleter_for_initialized_tensors_) {
+      kvp.second.f(kvp.second.param);
+    }
+  }
+
   // Graph viewer.
-  void SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> graph_viewer);
-  const onnxruntime::GraphViewer* GetGraphViewer() const;
+  void SetGraphViewer(std::unique_ptr<GraphViewer> graph_viewer);
+  const GraphViewer* GetGraphViewer() const;
 
   // kernels
   // Get kernel for specified node.
   // It should called right before graph execution only.
-  const OpKernel* GetKernel(onnxruntime::NodeIndex node_id) const;
+  const OpKernel* GetKernel(NodeIndex node_id) const;
 
-  void AddKernel(onnxruntime::NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel);
+  void AddKernel(NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel);
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
@@ -68,12 +80,14 @@ class SessionState {
   /**
   * Adds an initialized tensor (weight) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
+  * This function will take a shallow copy of d if d is not NULL
   */
-  void AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue);
+  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d);
 
   /**
   * Gets the list of all initialized tensors (weights) so that it can be used by the
   * execution frame to setup the appropriate MLValue vectors.
+  * The lifetime of returned MLValues are limited by this SessionState object.
   */
   const std::unordered_map<int, MLValue>& GetInitializedTensors() const;
 
@@ -125,26 +139,23 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
-  /**
-  Set enable memory pattern flag
-  */
-  void SetEnableMemoryPattern(bool flag);
-
-  /**
-  Get enable memory pattern flag
-  */
-  bool GetEnableMemoryPattern() const;
-
   struct NodeInfo {
+    /**
+     *
+     * \param index0
+     * \param p_node0 Nullable
+     * \param kci0 Nullable
+     */
     NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0)
         : index(index0),
           p_node(p_node0),
           kci(kci0) {
     }
-    NodeInfo() = default;
 
     size_t index;
+    // Nullable
     const onnxruntime::Node* p_node = nullptr;
+    // Nullable
     const KernelCreateInfo* kci = nullptr;
   };
 
@@ -192,22 +203,23 @@ class SessionState {
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
-  std::unordered_map<onnxruntime::NodeIndex, std::unique_ptr<OpKernel>> session_kernels_;
-  std::unique_ptr<onnxruntime::GraphViewer> graph_viewer_;
+  std::unordered_map<NodeIndex, std::unique_ptr<OpKernel>> session_kernels_;
+  std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
   MLValueNameIdxMap mlvalue_name_idx_map_;
 
   // initialized tensorset
   std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
+  // This data structure is for unintializing string tensors and
+  // munmap memory region and close file descriptor
+  std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_;
 
-  // switch for enable memory pattern optimization or not.
-  bool enable_mem_pattern_ = true;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
@@ -232,5 +244,7 @@ class SessionState {
   FuncManager fused_funcs_mgr_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
+  std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
 };
+
 }  // namespace onnxruntime

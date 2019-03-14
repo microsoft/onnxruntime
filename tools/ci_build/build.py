@@ -38,7 +38,8 @@ class UsageError(BaseError):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
                                      usage='''
-Default behavior is --update --build --test.
+Default behavior is --update --build --test for native architecture builds.
+Default behavior is --update --build for cross-compiled builds.
 
 The Update phase will update git submodules, and run cmake to generate makefiles.
 The Build phase will build all projects.
@@ -64,6 +65,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--pb_home", help="Path to protobuf installation")
+    parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. Will be overridden by {pb_home}/bin/protoc.exe if {pb_home} is set.")
     parser.add_argument("--download_test_data", action="store_true",
                         help='''Downloads test data without running the tests''')
     parser.add_argument("--test_data_url", help="Test data URL.")
@@ -93,6 +95,10 @@ Use the individual flags to only run the specified stages.
                              "These are just CMake -D options without the leading -D.")
     parser.add_argument("--x86", action='store_true',
                         help="Create x86 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument("--arm", action='store_true',
+                        help="Create ARM makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument("--arm64", action='store_true',
+                        help="Create ARM64 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
 
     # Arguments needed by CI
@@ -196,7 +202,7 @@ def install_ubuntu_deps(args):
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
 def install_python_deps():
-    dep_packages = ['setuptools', 'wheel', 'numpy']
+    dep_packages = ['setuptools', 'wheel', 'numpy==1.15.0']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -271,7 +277,7 @@ def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
                 run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, configs, cmake_extra_defines, args, cmake_extra_args):
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
@@ -301,6 +307,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"),
                  "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
                  "-Donnxruntime_ENABLE_TRAINING=" + ("ON"),
+                  # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
+                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
+                 "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -326,6 +335,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if pb_home:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=" + os.path.join(pb_home,'bin','protoc'), '-Donnxruntime_USE_PREBUILT_PB=ON']
+
+    elif path_to_protoc_exe:
+        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -476,7 +488,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             if onnxml_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -488,19 +500,24 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         cmd = []
         if provider:
           cmd += ["-e", provider]
-          if provider == 'cuda':
-            cmd += ["-j", "2"]
+
+        if num_parallel_models > 0:
+          cmd += ["-j", str(num_parallel_models)]
+
         if config != 'Debug' and os.path.exists(model_dir):
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
-        run_subprocess([exe] + cmd, cwd=cwd)
+        
         if enable_parallel_executor_test:
+          run_subprocess([exe] + cmd, cwd=cwd)  
           if provider == 'mkldnn':
             #limit concurrency to 1
-            run_subprocess([exe,'-x', '-c', '1', '-j', '1'] + cmd, cwd=cwd)
+            run_subprocess([exe,'-x', '-c', '1'] + cmd, cwd=cwd)
           else:
             run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+        else:
+          run_subprocess([exe] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
@@ -514,17 +531,48 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda):
         if is_ubuntu_1604():
             run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
 
+def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
+    if not is_windows():
+        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
+
+    log.info("Building protoc for host to be used in cross-compiled build process")
+    protoc_build_dir = os.path.join(build_dir, 'host_protoc')
+    os.makedirs(protoc_build_dir, exist_ok=True)
+    # Generate step
+    cmd_args = [cmake_path,
+                os.path.join(source_dir, 'cmake\external\protobuf\cmake'),
+                '-T',
+                'host=x64',
+                '-G',
+                'Visual Studio 15 2017',
+                '-Dprotobuf_BUILD_TESTS=OFF',
+                '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
+                '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
+    run_subprocess(cmd_args, cwd= protoc_build_dir)
+    # Build step
+    cmd_args = [cmake_path,
+                "--build", protoc_build_dir,
+                "--config", "Release",
+                "--target", "protoc"]
+    run_subprocess(cmd_args)
+
+    if not os.path.exists(os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')):
+        raise BuildError("Couldn't build protoc.exe for host. Failing build.")
+
 def main():
     args = parse_arguments()
 
     cmake_extra_defines = args.cmake_extra_defines if args.cmake_extra_defines else []
 
-    # if there was no explicit argument saying what to do, default to update, build and test.
+    # if there was no explicit argument saying what to do, default to update, build and test (for native builds).
     if (args.update == False and args.clean == False and args.build == False and args.test == False):
-        log.debug("Defaulting to running update, build and test.")
+        log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        args.test = True
+        if args.arm or args.arm64:
+            args.test = False
+        else:
+            args.test = True
 
     if args.build_wheel:
         args.enable_pybind = True
@@ -552,7 +600,20 @@ def main():
         cmake_extra_args = []
         if(is_windows()):
           if (args.x86):
-            cmake_extra_args = ['-A','Win32','-G', 'Visual Studio 15 2017']
+            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', 'Visual Studio 15 2017']
+          elif (args.arm or args.arm64):
+            # Cross-compiling for ARM(64) architecture
+            # First build protoc for host to use during cross-compilation
+            build_protoc_for_windows_host(cmake_path, source_dir, build_dir)
+            if args.arm:
+                cmake_extra_args = ['-A', 'ARM']
+            else:
+                cmake_extra_args = ['-A', 'ARM64']
+            cmake_extra_args += ['-G', 'Visual Studio 15 2017']
+            # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
+            if args.test:
+                log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
+                args.test = False
           else:
             toolset = 'host=x64'
             if (args.msvc_toolset):
@@ -562,6 +623,8 @@ def main():
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if is_ubuntu_1604():
+            if (args.arm or args.arm64):
+                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             install_ubuntu_deps(args)
             if not is_docker():
                 install_python_deps()
@@ -572,10 +635,17 @@ def main():
 
         if args.enable_onnx_tests or args.download_test_data:
             if not args.test_data_url or not args.test_data_checksum:
-                raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
-        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, configs, cmake_extra_defines,
+        path_to_protoc_exe = None
+        if args.path_to_protoc_exe:
+            path_to_protoc_exe = args.path_to_protoc_exe
+        # Need to provide path to protoc.exe built for host to be used in the cross-compiled build process
+        elif args.arm or args.arm64:
+            path_to_protoc_exe = os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')
+
+        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
     if (args.clean):
@@ -593,11 +663,15 @@ def main():
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
             if args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
+            elif args.x86 or platform.system() == 'Darwin':
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 1)
+              # TODO: parallel executor test fails on MacOS
             else:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
+
               if args.use_mkldnn:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True)
+                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
     if args.build:
         if args.build_wheel:

@@ -24,6 +24,7 @@ limitations under the License.
 #include <gsl/pointers>
 
 #include "core/common/common.h"
+#include "core/common/callback.h"
 #include "core/platform/env_time.h"
 
 #ifndef _WIN32
@@ -93,9 +94,22 @@ class Env {
   ///
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const std::string& name,
+  virtual Thread* StartThread(const ThreadOptions& thread_options, const std::string& name,
                               std::function<void()> fn) const = 0;
+
+#ifndef _WIN32
+  /**
+   *
+   * \param file_path file_path must point to a regular file, which can't be a pipe/socket/...
+   * \param[out] p  allocated buffer with the file data
+   * \param[out] len lenght of p
+   * @return
+   */
+  virtual common::Status ReadFileAsString(const char* file_path, void*& p, size_t& len, OrtCallback& deleter) const = 0;
+#else
+  virtual common::Status ReadFileAsString(const wchar_t* file_path, void*& p, size_t& len,
+                                          OrtCallback& deleter) const = 0;
+#endif
 
 #ifdef _WIN32
   //Mainly for use with protobuf library

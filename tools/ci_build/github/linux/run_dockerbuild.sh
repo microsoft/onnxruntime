@@ -5,7 +5,7 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.0-cudnn7.3
 
-while getopts c:o:d:r:p:x: parameter_Option
+while getopts c:o:d:r:p:x:a: parameter_Option
 do case "${parameter_Option}"
 in
 #ubuntu16.04
@@ -19,6 +19,7 @@ p) PYTHON_VER=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 # "cuda10.0-cudnn7.3, cuda9.1-cudnn7.1"
 c) CUDA_VER=${OPTARG};;
+a) BUILD_ARCH=${OPTARG};;
 esac
 done
 
@@ -36,7 +37,11 @@ if [ $BUILD_DEVICE = "gpu" ]; then
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     IMAGE="ubuntu16.04"
-    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+    if [ $BUILD_ARCH = "x86" ]; then
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
+    else
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+    fi
 fi
 
 set +e

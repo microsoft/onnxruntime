@@ -24,12 +24,18 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   profiling_start_time_ = StartTime();
 }
 
-void Profiler::StartProfiling(const std::string& file_name) {
+template <typename T>
+void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
   profile_stream_ = std::ofstream(file_name, std::ios::out | std::ios::trunc);
-  profile_stream_file_ = file_name;
+  profile_stream_file_ = ToMBString(file_name);
   profiling_start_time_ = StartTime();
 }
+
+template void Profiler::StartProfiling<char>(const std::basic_string<char>& file_name);
+#ifdef _WIN32
+template void Profiler::StartProfiling<wchar_t>(const std::basic_string<wchar_t>& file_name);
+#endif
 
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,

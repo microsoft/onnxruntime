@@ -58,10 +58,12 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return InferenceSession::Impl::Initialize();
   }
 
-  Status Run(const NameMLValMap& feeds,
-             const vector<string>& output_names,
-             vector<MLValue>* p_fetches) {
-    return InferenceSession::Impl::Run(feeds, output_names, p_fetches);
+  Status Run(const RunOptions& run_options,
+             const std::vector<std::string>& feed_names,
+             const std::vector<MLValue>& feeds,
+             const std::vector<std::string>& output_names,
+             std::vector<MLValue>* p_fetches) {
+    return InferenceSession::Impl::Run(run_options, feed_names, feeds, output_names, p_fetches);
   }
 
   NameMLValMap GetWeights() const {
@@ -169,10 +171,12 @@ Status TrainingSession::Initialize() {
 }
 
 // Compute gradients.
-Status TrainingSession::Run(const NameMLValMap& feeds,
-                            const vector<string>& output_names,
-                            vector<MLValue>* p_fetches) {
-  return impl_->Run(feeds, output_names, p_fetches);
+Status TrainingSession::Run(const RunOptions& run_options,
+                            const std::vector<std::string>& feed_names,
+                            const std::vector<MLValue>& feeds,
+                            const std::vector<std::string>& output_names,
+                            std::vector<MLValue>* p_fetches) {
+  return impl_->Run(run_options, feed_names, feeds, output_names, p_fetches);
 }
 
 NameMLValMap TrainingSession::GetWeights() const {

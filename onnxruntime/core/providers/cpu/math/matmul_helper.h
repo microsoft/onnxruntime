@@ -75,7 +75,7 @@ class MatMulComputeHelper {
     std::vector<int64_t> output_dims(num_output_dims);
 
     // broadcasting for all output dims except last two
-    for (int idx_dim = 0; idx_dim < num_dims_with_pad - 2; ++idx_dim) {
+    for (size_t idx_dim = 0; idx_dim < num_dims_with_pad - 2; ++idx_dim) {
       output_dims[idx_dim] = std::max(left_padded_dims_[idx_dim], right_padded_dims_[idx_dim]);
       if (left_padded_dims_[idx_dim] != output_dims[idx_dim])
         ORT_RETURN_IF_NOT(left_padded_dims_[idx_dim] == 1, "left operand cannot broadcast on dim ", idx_dim);

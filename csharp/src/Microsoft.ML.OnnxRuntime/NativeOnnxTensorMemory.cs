@@ -16,32 +16,30 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private bool _disposed;
         private int _referenceCount;
-        private IntPtr _onnxValueHandle;
-        private IntPtr _dataBufferHandle;
+        private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
+        private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
+        private string[] _dataBufferAsString; // string tensor values copied into managed memory
         private int _elementCount;
         private int _elementWidth;
         private int[] _dimensions;
 
-        public NativeOnnxTensorMemory(IntPtr onnxValueHandle)
+        public NativeOnnxTensorMemory(IntPtr onnxValueHandle, bool isStringTensor = false)
         {
             IntPtr typeAndShape = IntPtr.Zero;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(onnxValueHandle, out typeAndShape));
-
-                TensorElementType elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
-
                 Type type = null;
                 int width = 0;
-                TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
-                if (typeof(T) != type)
-                    throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>)+" does not support T = "+nameof(T));
-                _elementWidth = width;
-
                 _onnxValueHandle = onnxValueHandle;
-                // derive the databuffer pointer, element_count, element_width, and shape
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(_onnxValueHandle, out _dataBufferHandle));
-                // throws OnnxRuntimeException if native call failed
+
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(onnxValueHandle, out typeAndShape));
+                TensorElementType elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
+                TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
+
+                if (typeof(T) != type)
+                    throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " does not support T = " + nameof(T));
+
+                _elementWidth = width;
 
                 ulong dimension = NativeMethods.OrtGetNumOfDimensions(typeAndShape);
                 long count = NativeMethods.OrtGetTensorShapeElementCount(typeAndShape);  // count can be negative. 
@@ -59,6 +57,48 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     _dimensions[i] = (int)shape[i];
                 }
+
+                if (!isStringTensor)
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(_onnxValueHandle, out _dataBufferPointer));
+                }
+                else
+                {
+                    if (typeof(T) != typeof(byte))
+                        throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " T = " + nameof(T) + ". Should = byte, when isStringTensor is true");
+                    ulong strLen;
+                    var offsets = new ulong[_elementCount];
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
+                    var dataBuffer = new byte[strLen];
+                    var dataBufferMemory = new Memory<byte>(dataBuffer);
+                    var dataBufferHandle = dataBufferMemory.Pin();
+                    IntPtr dataBufferPointer = IntPtr.Zero;
+
+                    var offsetMemory = new Memory<ulong>(offsets);
+                    var offsetMemoryHandle = offsetMemory.Pin();
+                    IntPtr offsetBufferPointer = IntPtr.Zero;
+                    unsafe
+                    {
+                        dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
+                        offsetBufferPointer = (IntPtr)offsetMemoryHandle.Pointer;
+                    }
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorContent(_onnxValueHandle, dataBufferPointer, strLen, offsetBufferPointer, Convert.ToUInt64(_elementCount)));
+                    _dataBufferPointer = dataBufferPointer;
+                    _dataBufferAsString = new string[_elementCount];
+
+                    for (var i = 0; i < offsets.Length; i++)
+                    {
+                        var length = (i == offsets.Length - 1)
+                            ? strLen - offsets[i]
+                            : offsets[i + 1] - offsets[i];
+                        // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
+                        _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
+                    }
+
+                    // unpin memory
+                    offsetMemoryHandle.Dispose();
+                    dataBufferHandle.Dispose();
+                }
             }
             catch (Exception e)
             {
@@ -74,6 +114,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
+
         ~NativeOnnxTensorMemory()
         {
             Dispose(false);
@@ -128,12 +169,22 @@ namespace Microsoft.ML.OnnxRuntime
             Span<T> span = null;
             unsafe
             {
-                span = new Span<T>((void*)_dataBufferHandle, _elementCount);
+                span = new Span<T>((void*)_dataBufferPointer, _elementCount);
             }
 
             return span;
         }
 
+        public Memory<String> GetBytesAsStringMemory()
+        {
+            if (IsDisposed)
+                throw new ObjectDisposedException(nameof(NativeOnnxTensorMemory<T>));
+
+            if (typeof(T) != typeof(byte))
+                throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>.GetBytesAsStringMemory) + ": T must be byte");
+
+            return (_dataBufferAsString == null) ? new Memory<string>() : new Memory<string>(_dataBufferAsString);
+        }
 
         public override MemoryHandle Pin(int elementIndex = 0)
         {
@@ -146,16 +197,14 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 Retain();
 
-                return new MemoryHandle((void*)((int)_dataBufferHandle + elementIndex*_elementWidth)); //could not use Unsafe.Add
+                return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * _elementWidth)); //could not use Unsafe.Add
             }
         }
-
 
         public override void Unpin()
         {
             Release();
         }
-
 
         private bool Release()
         {
@@ -202,9 +251,5 @@ namespace Microsoft.ML.OnnxRuntime
             arraySegment = default(ArraySegment<T>);
             return false;
         }
-
-
-
-        
     }
 }

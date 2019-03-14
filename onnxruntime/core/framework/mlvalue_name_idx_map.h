@@ -35,7 +35,7 @@ class MLValueNameIdxMap {
 
     auto it = map_.find(name);
     if (it == map_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find MLValue with name: ", name);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find MLValue with name '", name, "'");
     }
 
     idx = it->second;
