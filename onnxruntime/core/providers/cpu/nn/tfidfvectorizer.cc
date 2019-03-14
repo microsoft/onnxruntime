@@ -455,7 +455,8 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
     C = input_dims[0];
     if (C < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+                    std::string("Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0 (1): ") +
+                        input_shape.ToString());
     }
   } else if (input_dims.size() == 2) {
     B = input_dims[0];
@@ -463,11 +464,13 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
     b_dim = B;
     if (B < 1 || C < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+                    std::string("Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0 (2): ") +
+                        input_shape.ToString());
     }
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+                  std::string("Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0 (3): ") +
+                      input_shape.ToString());
   }
 
   assert((b_dim * C) == total_items);
