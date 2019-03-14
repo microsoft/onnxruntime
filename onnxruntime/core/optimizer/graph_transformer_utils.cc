@@ -57,7 +57,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
     std::vector<std::unique_ptr<RewriteRule>> filtered_list;
     for (const auto& rule_name : *custom_list) {
       std::for_each(rules.begin(), rules.end(), [&](std::unique_ptr<RewriteRule>& item) {
-        if (item->Name() == rule_name) {
+        if((item != nullptr) && (item->Name() == rule_name)) {
           filtered_list.push_back(std::move(item));
         }
       });
@@ -94,7 +94,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
     for (const auto& t_name : *custom_list) {
       std::for_each(transformers.begin(), transformers.end(), 
           [&](TransformerProviderSet& item) {
-             if(item.first->Name() == t_name){
+             if((item.first != nullptr) && (item.first->Name() == t_name)){
                filtered_list.push_back(std::move(item));
              }
           });

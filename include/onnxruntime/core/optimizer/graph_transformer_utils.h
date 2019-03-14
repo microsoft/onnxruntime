@@ -23,11 +23,11 @@ void SetTransformerContext(const uint32_t& level, uint32_t& levels_enabled,
 *  If custom list is empty returns all pre-defined rules for this level
 */
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, 
-                                                               const std::vector<std::string>* custom_list);
+                                                               const std::vector<std::string>* custom_list = nullptr);
 
 using TransformerProviderSet = std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>;
 std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel& level, 
-                                                           const std::vector<std::string>* custom_list);
+                                                           const std::vector<std::string>* custom_list = nullptr);
 
 }  // namespace transformerutils
 }  // namespace onnxruntime
