@@ -4,7 +4,7 @@
 #include "boost/program_options.hpp"
 
 #include "http_server.h"
-#include "core/session/inference_session.h"
+#include "environment.h"
 
 namespace po = boost::program_options;
 namespace beast = boost::beast;
@@ -61,8 +61,15 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  onnxruntime::SessionOptions options{};
-  onnxruntime::InferenceSession session(options);
+  onnxruntime::hosting::HostingEnvironment env;
+  auto logger = env.GetLogger();
+
+  // TODO: below code snippet just trying to show case how to use the "env".
+  //       Will be moved to proper place.
+  LOGS(logger, VERBOSE) << "Logging manager initialized.";
+  LOGS(logger, VERBOSE) << "Model path: " << vm["model_path"].as<std::string>();
+  auto status = env.GetSession()->Load(vm["model_path"].as<std::string>());
+  LOGS(logger, VERBOSE) << "Load Model Status: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
 
   auto const boost_address = boost::asio::ip::make_address(vm["address"].as<std::string>());
 
