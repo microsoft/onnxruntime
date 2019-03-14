@@ -480,8 +480,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),'--output_dir','test_models'], cwd=cwd)
                 onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
                 onnx_test_runners = [onnx_test_runner, onnx_test_runner + ".exe"]
-                if any(map(os.path.exists, onnx_test_runners)):
+                if os.path.exists('test_models'):
                     run_subprocess([os.path.join(cwd, 'onnx_test_runner'), 'test_models'], cwd=cwd)
+                else:
+                    warnings.warn("Unable to find folder 'test_models'. Skip 'onnx_test_runner'.")
                 if config != 'Debug':
                     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
             if not args.skip_keras_test:
