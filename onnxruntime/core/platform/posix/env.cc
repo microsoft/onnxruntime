@@ -31,6 +31,11 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 
+// MAC OS X doesn't have this macro
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(X) X
+#endif
+
 namespace onnxruntime {
 
 namespace {
