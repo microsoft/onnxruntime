@@ -38,6 +38,7 @@ endif()
 
 file(GLOB_RECURSE onnxruntime_hosting_srcs
   "${ONNXRUNTIME_ROOT}/hosting/main.cc"
+  "${ONNXRUNTIME_ROOT}/hosting/environment.cc"
 )
 
 # For IDE only
@@ -45,7 +46,7 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_hosting_srcs} ${onnxruntime_h
 
 # Hosting library
 add_library(onnxruntime_hosting_lib ${onnxruntime_hosting_lib_srcs})
-target_include_directories(hosting_proto PRIVATE
+target_include_directories(onnxruntime_hosting_lib PRIVATE
   ${ONNXRUNTIME_ROOT}
   ${CMAKE_CURRENT_BINARY_DIR}/onnx
   ${ONNXRUNTIME_ROOT}/hosting/http
