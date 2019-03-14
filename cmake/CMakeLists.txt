@@ -86,7 +86,7 @@ if(onnxruntime_USE_OPENMP)
 endif()
 
 if(onnxruntime_CROSS_COMPILING)
-  set(CMAKE_CROSSCOMPILING ON)  
+  set(CMAKE_CROSSCOMPILING ON)
 endif()
 
 #must after OpenMP settings
@@ -350,7 +350,7 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    # treat warning as error only on x64 platform. 
+    # treat warning as error only on x64 platform.
     # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors

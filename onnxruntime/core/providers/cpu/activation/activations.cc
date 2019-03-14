@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
+#if defined(USE_MLAS)
 #include "core/mlas/inc/mlas.h"
+#endif
 
 namespace onnxruntime {
 
@@ -35,7 +37,13 @@ Status Sigmoid<float>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   Tensor* Y = context->Output(0, x_shape);
+#if defined(USE_MLAS)
   MlasComputeLogistic(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
+#else  // make Eigen the default
+  ConstEigenVectorArrayMap<float> xm(X->template Data<float>(), X->Shape().Size());
+  EigenVectorArrayMap<float> ym(Y->template MutableData<float>(), Y->Shape().Size());
+  ym = (xm >= 0).select(1 / (1. + (-xm.abs()).exp()), 1 - 1 / (1. + (-xm.abs()).exp()));
+#endif
   return Status::OK();
 }
 
@@ -44,7 +52,12 @@ Status Tanh<float>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   Tensor* Y = context->Output(0, x_shape);
+#if defined(USE_MLAS)
   MlasComputeTanh(X->template Data<float>(), Y->template MutableData<float>(), x_shape.Size());
+#else  // make Eigen the default
+  EigenVectorArrayMap<float>(Y->template MutableData<float>(), Y->Shape().Size()) =
+      ConstEigenVectorArrayMap<float>(X->template Data<float>(), X->Shape().Size()).tanh();
+#endif
   return Status::OK();
 }
 
