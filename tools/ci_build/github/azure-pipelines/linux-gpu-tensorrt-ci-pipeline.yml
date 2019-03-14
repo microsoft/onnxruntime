@@ -1,0 +1,16 @@
+jobs:
+- job: Linux_CI_GPU_TENSORRT_Dev
+  pool: Linux-GPU-CUDA10
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    # There are some tests in 20190130.zip that TensorRT can't run. Instead here use 20181210 opset8 for TensorRT test.
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d tensorrt -r $(Build.BinariesDirectory) -x "--test_data_url https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip --test_data_checksum a966def7447f4ff04f5665bca235b3f3"'
+
+      displayName: 'Command Line Script'
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
+    - template: templates/clean-agent-build-directory-step.yml
