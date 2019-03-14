@@ -294,22 +294,26 @@ void TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
   }
 
   for (auto p_node : provider_nodes_) {
+    // make a copy of replacement map as the node may exclude mapping for InputDefs with MemTypeOnCpuExplicitly
     auto dup_replacements = replacements;
 
     const KernelCreateInfo* kci = nullptr;
     kernel_registries.SearchKernelRegistry(*p_node, &kci);
     p_node->ForEachWithIndex(
         p_node->InputDefs(),
-        [p_node, kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
           if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index)))
             dup_replacements.erase(&arg);
           return Status::OK();
         });
+
+    // normally initializers are only inputs, but things may change with ops like assign
     p_node->ForEachWithIndex(
         p_node->OutputDefs(),
-        [p_node, kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-          if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->OutputMemoryType(index)))
-            dup_replacements.erase(&arg);
+        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->OutputMemoryType(index))) {
+            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
+          }
           return Status::OK();
         });
 
