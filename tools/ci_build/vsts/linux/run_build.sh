@@ -47,8 +47,8 @@ elif [ $BUILD_DEVICE = "fpga" ]; then
 else
     python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
         --config Debug Release --build_shared_lib \
-        --skip_submodule_sync --enable_onnx_tests\
-        --enable_pybind --use_nuphar \
-        --parallel --use_mkldnn --use_mklml --build_shared_lib --use_tvm --enable_msinternal $BUILD_EXTR_PAR
+        --skip_submodule_sync --enable_onnx_tests \
+        --enable_pybind \
+        --parallel --build_shared_lib --enable_msinternal $BUILD_EXTR_PAR
 fi
 rm -rf /home/onnxruntimedev/models
