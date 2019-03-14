@@ -132,10 +132,24 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
       std::copy(axes_tensor->Data<int64_t>(), axes_tensor->Data<int64_t>() + size, input_axes.begin());
   }
 
-  // should not reach this - just an additional safety check
+  // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
   else {
-    ORT_ENFORCE(false, "Data type for starts/ends inputs need to be int32_t/int64_t, but instead got ", dtype);
+    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", dtype);
   }
+}
+
+template <typename T>
+Status SliceImpl(const Tensor& input_tensor,
+                 Tensor& output_tensor,
+                 const std::vector<int64_t>& starts) {
+  auto* output = output_tensor.template MutableData<T>();
+  const auto* output_end = output + output_tensor.Shape().Size();
+
+  SliceIterator<T> input_iterator(input_tensor, starts, output_tensor.Shape().GetDims());
+  while (output != output_end)
+    *output++ = *input_iterator++;
+
+  return Status::OK();
 }
 
 template <typename T, bool dynamic>
@@ -162,14 +176,6 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
 
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
-  auto* output = output_tensor.template MutableData<T>();
-  const auto* output_end = output + output_shape.Size();
-
-  SliceIterator<T> input_iterator(input_tensor, starts, output_dims);
-  while (output != output_end)
-    *output++ = *input_iterator++;
-
-  return Status::OK();
+  return SliceImpl<T>(input_tensor, output_tensor, starts);
 }
-
 }  // namespace onnxruntime
