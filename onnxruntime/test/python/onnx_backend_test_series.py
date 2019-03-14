@@ -44,7 +44,7 @@ backend_test.exclude(r'('
 '|^test_convtranspose_1d_cpu.*'
 '|^test_convtranspose_3d_cpu.*'
 '|^test_constantofshape_*.*'
-
+'|^test_dynamic_slice_*.*'
 '|^test_AvgPool1d_cpu.*'
 '|^test_AvgPool1d_stride_cpu.*'
 '|^test_AvgPool2d_cpu.*'

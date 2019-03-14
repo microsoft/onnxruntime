@@ -627,13 +627,14 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   } else if (input_dims.size() == 2) {
     if (input_dims[0] < 1 || input_dims[1] < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid N and/or C dimension values");
+                    "Invalid N and/or C dimension values for Tokenizer");
     }
     N = input_dims[0];
     C = input_dims[1];
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input dimensions are either [C] or [N][C] allowed");
+                  std::string("Input dimensions are either [C] or [N][C] allowed for Tokenizer, got ") +
+                      X->Shape().ToString());
   }
 
   Status s;
