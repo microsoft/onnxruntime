@@ -176,12 +176,7 @@ class UniDirectionalGru {
                     const gsl::span<const T>& initial_hidden_state,
                     const ActivationFuncs::Entry& activation_func_f,
                     const ActivationFuncs::Entry& activation_func_g,
-                    const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                    Eigen::NonBlockingThreadPool& ttp_);
-#else
-                    TaskThreadPool& ttp_);
-#endif
+                    const float clip);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -197,12 +192,6 @@ class UniDirectionalGru {
   AllocatorPtr allocator_;
   const logging::Logger& logger_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool& ttp_;
-#else
-  TaskThreadPool& ttp_;
-#endif
-
   int seq_length_;
   int batch_size_;
   int input_size_;
@@ -213,8 +202,6 @@ class UniDirectionalGru {
 
   Direction direction_;
   bool use_bias_;
-
-  int hidden_num_threads_ = -1;
 
   IAllocatorUniquePtr<T> outputZRH_ptr_;
   gsl::span<T> outputZRH_;
@@ -395,7 +382,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
               bias_1, initial_hidden_1,
               activation_funcs_.Entries()[0],
               activation_funcs_.Entries()[1],
-              clip_, ttp_);
+              clip_);
           fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 
 #if defined(USE_MLAS) && !defined(USE_OPENMP)
@@ -425,7 +412,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
       bias_2, initial_hidden_2,
       activation_funcs_.Entries()[2],
       activation_funcs_.Entries()[3],
-      clip_, ttp_);
+      clip_);
   bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
 
 #if defined(USE_MLAS) && !defined(USE_OPENMP)
@@ -444,7 +431,7 @@ else {
       bias_1, initial_hidden_1,
       activation_funcs_.Entries()[0],
       activation_funcs_.Entries()[1],
-      clip_, ttp_);
+      clip_);
 
   gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 }
@@ -474,15 +461,9 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const gsl::span<const T>& initial_hidden_state,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
-                                        const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                                        Eigen::NonBlockingThreadPool& ttp)
-#else
-                                        TaskThreadPool& ttp)
-#endif
+                                        const float clip)
     : allocator_(allocator),
       logger_(logger),
-      ttp_(ttp),
       seq_length_(seq_length),
       batch_size_(batch_size),
       input_size_(input_size),
