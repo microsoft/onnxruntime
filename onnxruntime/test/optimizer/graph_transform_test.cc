@@ -56,8 +56,8 @@ TEST(GraphTransformationTests, IdentityElimination) {
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
   rule_transformer->Register(std::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {"", onnxruntime::kCpuExecutionProvider});
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1).IsOK());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {});
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -75,8 +75,8 @@ TEST(GraphTransformationTests, SliceElimination) {
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
   rule_transformer->Register(std::make_unique<EliminateSlice>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {"", onnxruntime::kCpuExecutionProvider});
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1).IsOK());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {});
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 3);
@@ -96,8 +96,8 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   rule_transformer->Register(std::make_unique<ConstantFolding>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {""});
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1).IsOK());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {});
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
@@ -119,7 +119,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
 
-  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {"", onnxruntime::kCpuExecutionProvider});
+  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {});
   session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
   session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
   session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
@@ -178,7 +178,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   std::unique_ptr<UnsqueezeElimination> Unsqueeze_transformer = std::make_unique<UnsqueezeElimination>();
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
 
-  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {"", onnxruntime::kCpuExecutionProvider});
+  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {});
   session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
   Status st = session_object.Initialize();
   ASSERT_TRUE(st.IsOK()) << st;
@@ -198,8 +198,8 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   std::unique_ptr<UnsqueezeElimination> Unsqueeze_transformer = std::make_unique<UnsqueezeElimination>();
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
 
-  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {"", onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {"", onnxruntime::kCpuExecutionProvider});
+  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {});
+  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
 
   Status st = session_object.Initialize();
   ASSERT_TRUE(st.IsOK()) << st;
@@ -221,7 +221,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
 
-  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {onnxruntime::kCpuExecutionProvider});
+  session_object.RegisterGraphTransformer(std::move(Unsqueeze_transformer), {});
   session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
   session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
   session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});

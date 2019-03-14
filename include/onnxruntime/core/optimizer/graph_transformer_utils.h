@@ -13,21 +13,24 @@ namespace transformerutils {
 */
 Status ValidateTransformerLevel(unsigned int level);
 
-/* Sets bit mask for transformers enabled based on the level provided
-*  Also populates a convenience list of all transformers  
+/* Given level (0, 1, 2 are current available options) Sets bit mask levels_enabled
+*  Also populates a convenience list of all available transformer levels
 */
 void SetTransformerContext(const uint32_t& level, uint32_t& levels_enabled, 
                            std::vector<TransformerLevel>* all_levels = nullptr);
 
-/* Generates rules listed in custom list for the given level.
-*  If custom list is empty returns all pre-defined rules for this level
+/* Generates all predefined rules for this level
+*  If rules_to_enable is not empty returns intersection of predefined rules and rules_to_enable 
 */
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, 
-                                                               const std::vector<std::string>* custom_list = nullptr);
+                                                               const std::vector<std::string>* rules_to_enable = nullptr);
 
+/* Generates all predefined transformers for this level
+*  If transformers_to_enable is not empty returns intersection of predefined transformers and transformers_to_enable 
+*/
 using TransformerProviderSet = std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>;
 std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel& level, 
-                                                           const std::vector<std::string>* custom_list = nullptr);
+                                                           const std::vector<std::string>* transformers_to_enable = nullptr);
 
 }  // namespace transformerutils
 }  // namespace onnxruntime

@@ -391,20 +391,15 @@ class InferenceSession::Impl {
     // 5. insert cast nodes.
 
     // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
-    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1));
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
 
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
-    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
-
-    std::vector<std::string> provider_types;
-    for (auto& provider_ptr : providers) {
-      provider_types.push_back(provider_ptr->Type());
-    }
+    ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));    
 
     // apply all enabled levels
     for (int i = 0; i < all_levels.size(); i++) {
-      ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, provider_types, all_levels[i]));
+      ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, all_levels[i]));
     }
 
     bool modified = false;
@@ -423,6 +418,11 @@ class InferenceSession::Impl {
         }
         return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
       }
+    }
+
+    std::vector<std::string> provider_types;
+    for (auto& provider_ptr : providers) {
+      provider_types.push_back(provider_ptr->Type());
     }
 
     // Insert copy node/s.
@@ -997,7 +997,7 @@ class InferenceSession::Impl {
     };
 
     if ((enabled_levels & TransformerLevel::Level1) || !custom_list.empty()) {
-      add_transformers(TransformerLevel::Level1, {"", onnxruntime::kCpuExecutionProvider}, "Level1");
+      add_transformers(TransformerLevel::Level1, {}, "Level1");
     }
 
     if ((enabled_levels & TransformerLevel::Level2) || !custom_list.empty()) {

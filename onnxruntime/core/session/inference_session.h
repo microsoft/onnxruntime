@@ -65,7 +65,7 @@ struct SessionOptions {
   // 0 -> disable all optimizations
   // 1 -> enable basic optimizations
   // 2 -> enable all optimizations
-  unsigned graph_optimization_level = 1;
+  unsigned graph_optimization_level = 0;
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;

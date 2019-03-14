@@ -39,7 +39,7 @@ void SetTransformerContext(const uint32_t& level, uint32_t& levels_enabled,
 }
 
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, 
-                                                               const std::vector<std::string>* custom_list) {
+                                                               const std::vector<std::string>* rules_to_enable) {
   std::vector<std::unique_ptr<RewriteRule>> rules;
   switch (level) {
     case TransformerLevel::Level1:
@@ -53,9 +53,9 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
       ORT_ENFORCE(false, "Unsupported level" + level);
   }
 
-  if (custom_list != nullptr && !custom_list->empty()) {
+  if (rules_to_enable != nullptr && !rules_to_enable->empty()) {
     std::vector<std::unique_ptr<RewriteRule>> filtered_list;
-    for (const auto& rule_name : *custom_list) {
+    for (const auto& rule_name : *rules_to_enable) {
       std::for_each(rules.begin(), rules.end(), [&](std::unique_ptr<RewriteRule>& item) {
         if((item != nullptr) && (item->Name() == rule_name)) {
           filtered_list.push_back(std::move(item));
@@ -69,11 +69,11 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
 }
 
 std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel& level, 
-                                                         const std::vector<std::string>* custom_list) {
+                                                         const std::vector<std::string>* transformers_to_enable) {
   std::vector<TransformerProviderSet> transformers;
   switch (level) {
     case TransformerLevel::Level1: {
-      std::vector<std::string> l1_execution_providers = {"", onnxruntime::kCpuExecutionProvider};
+      std::vector<std::string> l1_execution_providers = {};
       transformers.emplace_back(std::make_unique<UnsqueezeElimination>(), l1_execution_providers);
     } break;
 
@@ -88,10 +88,10 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
       break;
   }
 
-  if (custom_list != nullptr && !custom_list->empty()) {
+  if (transformers_to_enable != nullptr && !transformers_to_enable->empty()) {
     // pick custom transformers enabled for this session
     std::vector<TransformerProviderSet> filtered_list;
-    for (const auto& t_name : *custom_list) {
+    for (const auto& t_name : *transformers_to_enable) {
       std::for_each(transformers.begin(), transformers.end(), 
           [&](TransformerProviderSet& item) {
              if((item.first != nullptr) && (item.first->Name() == t_name)){

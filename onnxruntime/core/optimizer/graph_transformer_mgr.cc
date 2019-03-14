@@ -8,25 +8,19 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, std::vector<std::string> providers, const TransformerLevel& level) const {
+common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, const TransformerLevel& level) const {
   const auto& transformers = level_to_transformer_map_.find(level);
   if (transformers == level_to_transformer_map_.end()) {
     return Status::OK();
   }
 
-  // sort the providers. This makes it easy to find intersection of requested providers for this run
-  // and registered providers for a transformer
-  std::sort(providers.begin(), providers.end());
-
   for (unsigned step = 0; step < steps_; ++step) {
     bool graph_changed = false;
     for (const auto& transformer : transformers->second) {
-      const auto compatible_providers = GenerateCompatibleProvidersList(providers, transformer->Name());
-      if (!compatible_providers.empty()) {      
-        bool modified = false;
-        ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, compatible_providers));
-        graph_changed = graph_changed || modified;
-      }
+      bool modified = false;
+      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, 
+                                             GetProvidersForTransformer(transformer->Name())));
+      graph_changed = graph_changed || modified;
     }
     if (!graph_changed) {
       break;

@@ -18,29 +18,21 @@ class GraphTransformerManager {
   }  
 
   // Register a transformer with a level and compatible providers list
-  // If a transformer is execution provider independent add empty string in providers {""}
-  common::Status Register(std::unique_ptr<GraphTransformer> transformer, const TransformerLevel& level, std::vector<std::string>&& provider);  
+  // If a transformer is execution provider independent
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer, const TransformerLevel& level, std::vector<std::string>&& provider = {});
 
   // Apply all transformers registered for the given level on the given graph
-  // Only transformers which are compatible with the given providers list will be applied
-  // When applying transformers before partitioning (.i.e no execution providers are assigned yet) add empty string in providers {""}
-  common::Status ApplyTransformers(Graph& graph, std::vector<std::string> providers, const TransformerLevel& level) const;
+  common::Status ApplyTransformers(Graph& graph, const TransformerLevel& level) const;
 
  private:
   GraphTransformerManager() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
 
-  std::vector<std::string> GenerateCompatibleProvidersList(const std::vector<std::string>& provider_types, const std::string& name) const {
-    std::vector<std::string> compatible_providers;
+  const std::vector<std::string>& GetProvidersForTransformer(const std::string& name) const {
     const auto& entry = transformers_info_.find(name);
     ORT_ENFORCE(entry != transformers_info_.end());
-
-    std::set_intersection(provider_types.begin(), provider_types.end(),
-                          entry->second.compatible_providers.begin(), entry->second.compatible_providers.end(),
-                          std::back_inserter(compatible_providers));
-    
-    return compatible_providers;
-  }    
+    return entry->second.compatible_providers;
+  }
 
   const unsigned steps_;
 
