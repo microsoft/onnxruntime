@@ -135,7 +135,7 @@ class InferenceSession {
     * Calling this API is optional.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, std::vector<std::string>&& providers);
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, std::vector<std::string>&& providers = {});
 
   /**
     * Enable a custom set of transformers. Call this before invoking Initialize().
