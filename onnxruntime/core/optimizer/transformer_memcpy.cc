@@ -21,7 +21,7 @@ class TransformerMemcpyImpl {
   void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries);
   void BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries);
   void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
-  void ProcessInitializers();
+  void ProcessInitializers(const KernelRegistryManager& kernel_registries);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
@@ -114,7 +114,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   }
 
   // for initializers shared by different providers, create dups
-  ProcessInitializers();
+  ProcessInitializers(kernel_registries);
 
   for (auto arg : graph_.GetInputs())
     BuildDefsMapping(arg, kernel_registries);
@@ -271,7 +271,7 @@ static const onnxruntime::NodeArg* FindNodeArg(const NodeArgSetType& def_set, co
 // We duplicate any initializer that is used by both provider nodes and non-provider nodes
 // to ensure that provider nodes and non-provider nodes don't share initializers, as they
 // need to stay in different memory locations.
-void TransformerMemcpyImpl::ProcessInitializers() {
+void TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& kernel_registries) {
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
   for (const auto& pair : graph_.GetAllInitializedTensors()) {
     const auto& name = pair.first;
@@ -294,7 +294,26 @@ void TransformerMemcpyImpl::ProcessInitializers() {
   }
 
   for (auto p_node : provider_nodes_) {
-    p_node->ReplaceDefs(replacements);
+    auto dup_replacements = replacements;
+
+    const KernelCreateInfo* kci = nullptr;
+    kernel_registries.SearchKernelRegistry(*p_node, &kci);
+    p_node->ForEachWithIndex(
+        p_node->InputDefs(),
+        [p_node, kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index)))
+            dup_replacements.erase(&arg);
+          return Status::OK();
+        });
+    p_node->ForEachWithIndex(
+        p_node->OutputDefs(),
+        [p_node, kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->OutputMemoryType(index)))
+            dup_replacements.erase(&arg);
+          return Status::OK();
+        });
+
+    p_node->ReplaceDefs(dup_replacements);
   }
 }
 
