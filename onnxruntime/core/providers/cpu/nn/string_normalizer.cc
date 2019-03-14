@@ -218,13 +218,14 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   } else if (input_dims.size() == 2) {
     if (input_dims[0] != 1 || input_dims[1] < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input dimensions are either[C > 0] or [1][C > 0] allowed for StringNormalizer");
+                    std::string("Input dimensions are either[C > 0] or [1][C > 0] allowed for StringNormalizer, got ") +
+                        X->Shape().ToString());
     }
     N = 1;
     C = input_dims[1];
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  std::string("Input dimensions are either[C > 0] or [1][C > 0] allowed for StringNormalizer, got") +
+                  std::string("Input dimensions are either[C > 0] or [1][C > 0] allowed for StringNormalizer, got ") +
                       X->Shape().ToString());
   }
 
