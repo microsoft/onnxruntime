@@ -22,14 +22,14 @@
 #endif
 
 #if USE_MKLDNN
-#define BACKEND_MKLDNN "-MKL-DNN"
+#define BACKEND_MKLDNN "-MKLDNN"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
 #else
 #define BACKEND_MKLDNN ""
 #endif
 
 #if USE_MKLML
-#define BACKEND_MKLML "-MKL-ML"
+#define BACKEND_MKLML "-MKLML"
 #else
 #define BACKEND_MKLML ""
 #endif
@@ -40,7 +40,98 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_OPENBLAS
+#if USE_NSYNC
+#define BACKEND_NSYNC "-NSYNC"
+#else
+#define BACKEND_NSYNC ""
+#endif
+
+#if USE_EIGEN_FOR_BLAS
+#define BACKEND_EBLAS "-EBLAS"
+#else
+#define BACKEND_EBLAS ""
+#endif
+
+#if USE_MLAS
+#define BACKEND_MLAS "-MLAS"
+#else
+#define BACKEND_MLAS ""
+#endif
+
+#if DEV_MODE
+#define BACKEND_DEV "-DEV"
+#else
+#define BACKEND_DEV ""
+#endif
+
+#if USE_PREBUILT_PB
+#define BACKEND_PB "-PB"
+#else
+#define BACKEND_PB ""
+#endif
+
+#if USE_JEMALLOC
+#define BACKEND_JEMALLOC "-JEMALLOC"
+#else
+#define BACKEND_JEMALLOC ""
+#endif
+
+#if MSVC_STATIC_RUNTIME
+#define BACKEND_STATICRT "-STATICRT"
+#else
+#define BACKEND_STATICRT ""
+#endif
+
+#if USE_PREINSTALLED_EIGEN
+#define BACKEND_PEIGEN "-PEIGEN"
+#else
+#define BACKEND_PEIGEN ""
+#endif
+
+#if USE_TVM
+#define BACKEND_TVM "-TVM"
+#else
+#define BACKEND_TVM ""
+#endif
+
+#if BUILD_FOR_NATIVE_MACHINE
+#define BACKEND_NATIVE "-NATIVE"
+#else
+#define BACKEND_NATIVE ""
+#endif
+
+#if USE_LLVM
+#define BACKEND_LLVM "-LLVM"
+#else
+#define BACKEND_LLVM ""
+#endif
+
+#if USE_NUPHAR
+#define BACKEND_NUPHAR "-NUPHAR"
+#else
+#define BACKEND_NUPHAR ""
+#endif
+
+#if USE_BRAINSLICE
+#define BACKEND_BRAINSLICE "-BRAINSLICE"
+#else
+#define BACKEND_BRAINSLICE ""
+#endif
+
+#if USE_TRT
+#define BACKEND_TRT "-TRT"
+#else
+#define BACKEND_TRT ""
+#endif
+
+#if CROSS_COMPILING
+#define BACKEND_CCOMP "-CCOMP"
+#else
+#define BACKEND_CCOMP ""
+#endif
+
+#define BACKEND_TVM ""
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_OPENBLAS BACKEND_CCOMP BACKEND_TRT BACKEND_BRAINSLICE BACKEND_NUPHAR BACKEND_LLVM BACKEND_NATIVE BACKEND_PEIGEN BACKEND_STATICRT BACKEND_JEMALLOC BACKEND_PB BACKEND_DEV BACKEND_MLAS BACKEND_EBLAS BACKEND_NSYNC
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -274,52 +365,50 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
-            } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (shape->dim(i).has_dim_value()) {
-                  res << shape->dim(i).dim_value();
-                } else if (shape->dim(i).has_dim_param()) {
-                  res << "None";
-                }
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (shape->dim(i).has_dim_value()) {
+              res << shape->dim(i).dim_value();
+            } else if (shape->dim(i).has_dim_param()) {
+              res << "None";
             }
-            res << ")";
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
+            }
+          }
+          res << "]";
+        }
+        res << ")";
 
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
-            }
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (shape->dim(i).has_dim_value()) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (shape->dim(i).has_dim_param()) {
-                arr[i] = py::none();
-              }
-            }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (shape->dim(i).has_dim_value()) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (shape->dim(i).has_dim_param()) {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -334,16 +423,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
-            std::istringstream buffer(serializedModel);
-            auto status = sess->Load(buffer);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
-            InitializeSession(sess);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
+        std::istringstream buffer(serializedModel);
+        auto status = sess->Load(buffer);
+        if (!status.IsOK()) {
+          throw std::runtime_error(status.ToString().c_str());
+        }
+        InitializeSession(sess);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
