@@ -1,9 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+#include "core/graph/graph.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 
-namespace utils {
+namespace graph_utils {
 // fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
@@ -106,5 +110,44 @@ bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
   return true;
 }
 
-}  // namespace utils
+bool HasGraphInput(const Graph& graph, const NodeArg* input) {
+  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
+  return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
+}
+
+bool IsConstantInputsNode(const Graph& graph, const Node& node) {
+  if (node.GetInputEdgesCount() > 0) {
+    return false;
+  }
+  const onnx::TensorProto* initializer = nullptr;
+  for (const auto* input_def : node.InputDefs()) {
+    // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
+    // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should not
+    // appear in the graph's inputs (that is the only way to guarantee it will always be constant).
+    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || HasGraphInput(graph, input_def)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
+  std::vector<std::tuple<NodeIndex, int, int>> edges_to_remove;
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
+    edges_to_remove.emplace_back(std::make_tuple(it->GetNode().Index(),
+                                                 it->GetSrcArgIndex(),
+                                                 it->GetDstArgIndex()));
+  }
+  for (auto& edge_to_remove : edges_to_remove) {
+    graph.RemoveEdge(node.Index(),
+                     std::get<0>(edge_to_remove),
+                     std::get<1>(edge_to_remove),
+                     std::get<2>(edge_to_remove));
+  }
+
+  return edges_to_remove.size();
+}
+
+}  // namespace graph_utils
+
 }  // namespace onnxruntime
