@@ -819,7 +819,7 @@ TEST(ContribOpTest, TokenizerExpression_RegChar) {
   test.AddInput<std::string>("T", dims, input);
 
   std::vector<int64_t> output_dims(dims);
-  output_dims.push_back(int64_t(7));
+  output_dims.push_back(int64_t(4));
   std::vector<std::string> output{
       start_mark,
       u8"a",
