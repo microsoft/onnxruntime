@@ -30,12 +30,14 @@ ADD_TYPED_SLICE_OP(MLFloat16);
 ADD_TYPED_SLICE_OP(bool);
 ADD_TYPED_SLICE_OP(string);
 
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                                                                                                                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
-      DynamicSlice,                                                                                                                                                                              \
-      1,                                                                                                                                                                                         \
-      data_type,                                                                                                                                                                                 \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                              \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                          \
+      DynamicSlice,                                                                        \
+      1,                                                                                   \
+      data_type,                                                                           \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())     \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),   \
+                                                 DataTypeImpl::GetTensorType<int64_t>()}), \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -65,7 +67,6 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
-                                    const size_t dimension_count,
                                     const std::vector<int64_t>& input_dimensions,
                                     std::vector<int64_t>& starts,
                                     std::vector<int64_t>& output_dims) const {
@@ -78,6 +79,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   }
 
   // Iterate through the provided axes and override the start/end ranges
+  const auto& dimension_count = input_dimensions.size();
   for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
     auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
@@ -139,9 +141,12 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
 }
 
 template <typename T>
-Status SliceImpl(const Tensor& input_tensor,
-                 Tensor& output_tensor,
+Status SliceImpl(OpKernelContext* ctx,
+	             const Tensor& input_tensor,
+                 std::vector<int64_t>& output_dims,
                  const std::vector<int64_t>& starts) {
+  TensorShape output_shape(output_dims);
+  auto& output_tensor = *ctx->Output(0, output_shape);
   auto* output = output_tensor.template MutableData<T>();
   const auto* output_end = output + output_tensor.Shape().Size();
 
@@ -160,22 +165,19 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   const auto& input_dimensions = input_tensor.Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
-  const size_t dimension_count = input_dimensions.size();
-  std::vector<int64_t> starts(dimension_count, 0);
+  std::vector<int64_t> starts(input_dimensions.size(), 0);
   std::vector<int64_t> output_dims(input_dimensions);
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes;
     FillVectorsFromInput(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                                          dimension_count, input_dimensions, starts, output_dims));
+                                          input_dimensions, starts, output_dims));
   } else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
-                                          dimension_count, input_dimensions, starts, output_dims));
+                                          input_dimensions, starts, output_dims));
   }
 
-  TensorShape output_shape(output_dims);
-  auto& output_tensor = *ctx->Output(0, output_shape);
-  return SliceImpl<T>(input_tensor, output_tensor, starts);
+  return SliceImpl<T>(ctx, input_tensor, output_dims, starts);
 }
 }  // namespace onnxruntime
