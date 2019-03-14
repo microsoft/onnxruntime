@@ -261,6 +261,10 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       for (float& output : outputs) {
         output = ::onnxruntime::ml::ml_logit(output);
       }
+    } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::PROBIT {
+      for (float& output : outputs) {
+        output = ::onnxruntime::ml::ml_probit(output);
+      }
     } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::SOFTMAX) {
       ::onnxruntime::ml::compute_softmax(outputs);
     } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {

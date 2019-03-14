@@ -229,6 +229,10 @@ static inline float ml_logit(float val) {
   return (val < 0) ? (1 - v) : v;
 }
 
+static inline float ml_probit(float val) {
+  return 0.5 * erfc(-val * sqrt(0.5));
+}
+
 static inline float sigmoid_probability(float score, float proba, float probb) {
   float val = score * proba + probb;
   return 1 - ml_logit(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
