@@ -24,6 +24,7 @@
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/constant_folding.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -55,8 +56,8 @@ TEST(GraphTransformationTests, IdentityElimination) {
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
   rule_transformer->Register(std::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Optional_L1, {"", onnxruntime::kCpuExecutionProvider});  
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Optional_L1).IsOK());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {"", onnxruntime::kCpuExecutionProvider});
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -74,14 +75,14 @@ TEST(GraphTransformationTests, SliceElimination) {
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
   rule_transformer->Register(std::make_unique<EliminateSlice>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Optional_L1, {"", onnxruntime::kCpuExecutionProvider});
-  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Optional_L1).IsOK());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {"", onnxruntime::kCpuExecutionProvider});
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 3);
 }
-/*
-TEST(GraphTransformationTests, ConstantFolding) {
+
+TEST(GraphTransformationTests, ConstantFolding1) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -95,13 +96,13 @@ TEST(GraphTransformationTests, ConstantFolding) {
   rule_transformer->Register(std::make_unique<ConstantFolding>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  graph_transformation_mgr.Register(std::move(rule_transformer));
-  ASSERT_TRUE(graph_transformation_mgr.ApplyAll(graph).IsOK());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {""});
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
-
+/*
 TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 

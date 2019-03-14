@@ -14,7 +14,7 @@ namespace transformerutils {
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, const std::vector<std::string>& custom_list) {
   std::vector<std::unique_ptr<RewriteRule>> rules;
 
-  if (level == TransformerLevel::Optional_L1) {
+  if (level == TransformerLevel::Level1) {
     rules.push_back(std::make_unique<EliminateIdentity>());
     rules.push_back(std::make_unique<EliminateSlice>());
   } else {
@@ -40,11 +40,11 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
 std::vector<std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>> GenerateTransformers(const TransformerLevel& level, const std::vector<std::string>& custom_list) {
   std::vector<std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>> transformers;
 
-  if (level == TransformerLevel::Optional_L1) {
+  if (level == TransformerLevel::Level1) {
     std::vector<std::string> execution_providers = {""};
     transformers.emplace_back(std::make_unique<UnsqueezeElimination>(), execution_providers);
 
-  } else if (level == Optional_L2) {
+  } else if (level == Level2) {
     std::vector<std::string> execution_providers = {onnxruntime::kCpuExecutionProvider};
 
     transformers.emplace_back(std::make_unique<ConvAddFusion>(), execution_providers);

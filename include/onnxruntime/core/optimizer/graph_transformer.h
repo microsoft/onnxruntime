@@ -10,9 +10,9 @@ namespace onnxruntime {
 
 enum TransformerLevel {
   Default = 1,
-  Optional_L1 = 2,
-  Optional_L2 = 4,
-  MaxTransformerLevel = 8,
+  Level1 = 2,
+  Level2 = 4,
+  MaxTransformerLevel = 7,
 };
 
 /**
@@ -42,7 +42,7 @@ class GraphTransformer {
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  common::Status Apply(Graph& graph, bool& modified, const std::vector<std::string>& providers) const;  
+  common::Status Apply(Graph& graph, bool& modified, const std::vector<std::string>& providers = {}) const;
 
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */

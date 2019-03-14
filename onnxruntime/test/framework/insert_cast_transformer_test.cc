@@ -35,7 +35,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
   InsertCastTransformer transformer("Test");
 
   bool modified = true;
-  status = transformer.Apply(graph, modified, {});
+  status = transformer.Apply(graph, modified);
   EXPECT_TRUE(status.IsOK());
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -83,7 +83,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   InsertCastTransformer transformer("Test");
 
   bool modified = true;
-  EXPECT_TRUE(transformer.Apply(graph, modified, {""}).IsOK());
+  EXPECT_TRUE(transformer.Apply(graph, modified).IsOK());
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 7);

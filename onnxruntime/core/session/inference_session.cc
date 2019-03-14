@@ -194,7 +194,7 @@ class InferenceSession::Impl {
 
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                           std::vector<std::string>&& providers,
-                                          TransformerLevel level = TransformerLevel::Optional_L2) {
+                                          TransformerLevel level = TransformerLevel::Level2) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
@@ -392,7 +392,7 @@ class InferenceSession::Impl {
     // 5. insert cast nodes.
 
     // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
-    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Optional_L1));
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, {""}, TransformerLevel::Level1));
 
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
@@ -410,7 +410,7 @@ class InferenceSession::Impl {
 
     bool modified = false;
     // Insert cast node/s.
-    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified, {}));
+    ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
     // Now every node should be already assigned to an execution provider
     for (auto& node : graph.Nodes()) {
@@ -428,7 +428,7 @@ class InferenceSession::Impl {
 
     // Insert copy node/s.
     MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
-    ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified, provider_types));
+    ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified));
 
     return common::Status::OK();
   }
@@ -973,8 +973,8 @@ class InferenceSession::Impl {
 
   // Registers all the predefined transformers with transformer manager
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager, const uint32_t& enabled_levels, const std::vector<std::string>& custom_list) {
-    if ((enabled_levels & TransformerLevel::Optional_L1) || !custom_list.empty()) {
-      auto level = TransformerLevel::Optional_L1;
+    if ((enabled_levels & TransformerLevel::Level1) || !custom_list.empty()) {
+      auto level = TransformerLevel::Level1;
       // Generate and register rewrite rules for L1
       auto rewrite_rules_to_register = transformerutils::GenerateRewriteRules(level, custom_list);
       if (!rewrite_rules_to_register.empty()) {
@@ -992,8 +992,8 @@ class InferenceSession::Impl {
       }
     }
 
-    if ((enabled_levels & TransformerLevel::Optional_L2) || !custom_list.empty()) {
-      auto level = TransformerLevel::Optional_L2;
+    if ((enabled_levels & TransformerLevel::Level2) || !custom_list.empty()) {
+      auto level = TransformerLevel::Level2;
       // Generate and register rewrite rules for L2
       auto rewrite_rules_to_register = transformerutils::GenerateRewriteRules(level, custom_list);
       if (!rewrite_rules_to_register.empty()) {
@@ -1034,13 +1034,13 @@ class InferenceSession::Impl {
 
     transformers_enabled = TransformerLevel::Default;
     if (level == 1) {
-      transformers_enabled |= TransformerLevel::Optional_L1;
+      transformers_enabled |= TransformerLevel::Level1;
     } else if (level == 2) {
-      transformers_enabled |= TransformerLevel::Optional_L1 | TransformerLevel::Optional_L2;
+      transformers_enabled |= TransformerLevel::Level1 | TransformerLevel::Level2;
     }
 
-    all_levels.push_back(TransformerLevel::Optional_L2);
-    all_levels.push_back(TransformerLevel::Optional_L1);
+    all_levels.push_back(TransformerLevel::Level2);
+    all_levels.push_back(TransformerLevel::Level1);
   }
 
   CustomOpsLoader custom_ops_loader_;
