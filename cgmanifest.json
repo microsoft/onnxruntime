@@ -280,6 +280,15 @@
                "DownloadUrl":"https://svnweb.freebsd.org/base/release/12.0.0/lib/libc/stdlib/getopt.c?revision=341707&view=co"
             }
          }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"3ad2bd19d6f0a2475805e9aa5ae8734a0d60fbaa",
+               "repositoryUrl":"https://github.com/stevenlix/onnx-tensorrt.git"
+            }
+         }
       }
    ],
    "Version":1
