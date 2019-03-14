@@ -22,9 +22,11 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, std::vec
     bool graph_changed = false;
     for (const auto& transformer : transformers->second) {
       const auto compatible_providers = GenerateCompatibleProvidersList(providers, transformer->Name());
-      bool modified = false;
-      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, compatible_providers));
-      graph_changed = graph_changed || modified;
+      if (!compatible_providers.empty()) {      
+        bool modified = false;
+        ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, compatible_providers));
+        graph_changed = graph_changed || modified;
+      }
     }
     if (!graph_changed) {
       break;

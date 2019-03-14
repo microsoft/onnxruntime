@@ -9,9 +9,25 @@
 namespace onnxruntime {
 
 namespace transformerutils {
-std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, const std::vector<std::string>& custom_list);
+/* Validates whether level can be mapped to a valid TransformerLevel enum
+*/
+Status ValidateTransformerLevel(unsigned int level);
 
-std::vector<std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>> GenerateTransformers(const TransformerLevel& level, const std::vector<std::string>& custom_list);
+/* Sets bit mask for transformers enabled based on the level provided
+*  Also populates a convenience list of all transformers  
+*/
+void SetTransformerContext(const uint32_t& level, uint32_t& levels_enabled, 
+                           std::vector<TransformerLevel>* all_levels = nullptr);
 
-}  // namespace utils
+/* Generates rules listed in custom list for the given level.
+*  If custom list is empty returns all pre-defined rules for this level
+*/
+std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, 
+                                                               const std::vector<std::string>* custom_list);
+
+using TransformerProviderSet = std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>;
+std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel& level, 
+                                                           const std::vector<std::string>* custom_list);
+
+}  // namespace transformerutils
 }  // namespace onnxruntime
