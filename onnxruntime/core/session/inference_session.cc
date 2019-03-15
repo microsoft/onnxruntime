@@ -507,7 +507,7 @@ class InferenceSession::Impl {
         SessionStateInitializer initializer{model_location_, subgraph, *subgraph_session_state, execution_providers_,
                                             kernel_registry_manager_};
 
-        ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
+        ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, node.ImplicitInputDefs(),
                                                    session_options_.enable_sequential_execution));
 
         ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&node.ImplicitInputDefs()));

@@ -31,7 +31,7 @@ The MLValue flips between two internal temporary buffers to minimize copies.
 class LoopStateVariable {
  public:
   LoopStateVariable(const MLValue& original_value, MLValue& final_value, const int64_t sequence_len,
-                    AllocatorPtr& allocator);
+                    AllocatorPtr& allocator, bool isCopyOfPreExistingValue);
 
   // get current Input MLValue
   const MLValue& Input() const;
@@ -40,7 +40,7 @@ class LoopStateVariable {
   MLValue& Output();
 
   // move to next usage of the loop state variable. call after each iteration of the subgraph.
-  void Next();
+  void Next(const MLValue& last_fetch);
 
  private:
   int64_t iteration_num_{0};
@@ -62,6 +62,8 @@ class LoopStateVariable {
     */
   MLValue a_;
   MLValue b_;
+
+  bool is_copy_of_preexisting_value_;
 };
 
 /*
