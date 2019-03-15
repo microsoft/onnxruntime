@@ -36,6 +36,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kAllocateOutput:
       out << "AllocateOutput";
       break;
+    case AllocKind::kShare:
+      out << "Share";
+      break;
   }
   return out;
 }
@@ -507,7 +510,7 @@ class PlannerImpl {
 
           // perf optimization to not copy a pre-existing value to an output if this is a subgraph.
           // in this scenario we have a different contract with how we treat inputs, so can do this.
-          // TEMPORARY ugly hardcode of "Identity" for now 
+          // TEMPORARY ugly hardcode of "Identity" for now
           // ideally this is a kernel level attribute, however that may be too heavy if this is the only use case
           if (parent_node_ && pnode->OpType() == "Identity") {
             const auto& input_name = pnode->InputDefs()[0]->Name();
