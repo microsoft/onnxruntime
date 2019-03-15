@@ -159,7 +159,7 @@ enum class SVM_TYPE {
   SVM_SVC
 };
 
-static inline float ml_inv_erf(float x) {
+static inline float ErfInv(float x) {
   float sgn = x < 0 ? -1.0f : 1.0f;
   x = (1 - x) * (1 + x);
   float log = std::log(x);
@@ -226,21 +226,21 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
 
 static const float ml_sqrt2 = 1.41421356f;
 
-static inline float ml_logistic(float val) {
+static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));
   return (val < 0) ? (1 - v) : v;
 }
 
-static inline float ml_probit(float val) {
-  return ml_sqrt2 * ml_inv_erf(2 * val - 1);
+static inline float ComputeProbit(float val) {
+  return ml_sqrt2 * ErfInv(2 * val - 1);
 }
 
 static inline float sigmoid_probability(float score, float proba, float probb) {
   float val = score * proba + probb;
-  return 1 - ml_logistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
+  return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void compute_softmax(std::vector<float>& values) {
+static inline void ComputeSoftmax(std::vector<float>& values) {
   std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
@@ -260,7 +260,7 @@ static inline void compute_softmax(std::vector<float>& values) {
 }
 
 //this function skips zero values (since exp(0) is non zero)
-static inline void compute_softmax_zero(std::vector<float>& values) {
+static inline void ComputeSoftmaxZero(std::vector<float>& values) {
   std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
@@ -286,17 +286,17 @@ static inline void compute_softmax_zero(std::vector<float>& values) {
 
 static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z, int add_second_class) {
   if (post_transform == POST_EVAL_TRANSFORM::PROBIT && scores.size() == 1) {
-    scores[0] = ml_probit(scores[0]);
+    scores[0] = ComputeProbit(scores[0]);
     Z->template MutableData<float>()[write_index] = scores[0];
   } else if (scores.size() >= 2) {  //multiclass
     if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
       for (float& score : scores) {
-        score = ml_logistic(score);
+        score = ComputeLogistic(score);
       }
     } else if (post_transform == POST_EVAL_TRANSFORM::SOFTMAX) {
-      compute_softmax(scores);
+      ComputeSoftmax(scores);
     } else if (post_transform == POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      compute_softmax_zero(scores);
+      ComputeSoftmaxZero(scores);
     }
   } else {                                              //binary case
     if (add_second_class == 0 && scores.size() == 1) {  //0=all positive weights, winning class is positive
@@ -307,16 +307,16 @@ static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM 
       scores[0] = 1.f - scores[0];                             //put opposite score in positive slot
     } else if (add_second_class == 2 && scores.size() == 1) {  //2 = mixed weights, winning class is positive
       if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-        scores.push_back(ml_logistic(scores[0]));
-        scores[0] = ml_logistic(-scores[0]);
+        scores.push_back(ComputeLogistic(scores[0]));
+        scores[0] = ComputeLogistic(-scores[0]);
       } else {
         scores.push_back(scores[0]);
         scores[0] = -scores[0];
       }
     } else if (add_second_class == 3 && scores.size() == 1) {  //3 = mixed weights, winning class is negative
       if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-        scores.push_back(ml_logistic(scores[0]));
-        scores[0] = ml_logistic(-scores[0]);
+        scores.push_back(ComputeLogistic(scores[0]));
+        scores[0] = ComputeLogistic(-scores[0]);
       } else {
         scores.push_back(-scores[0]);
       }

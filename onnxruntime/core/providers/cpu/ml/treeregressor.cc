@@ -259,16 +259,16 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
     }
     if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::LOGISTIC) {
       for (float& output : outputs) {
-        output = ::onnxruntime::ml::ml_logistic(output);
+        output = ::onnxruntime::ml::ComputeLogistic(output);
       }
     } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::PROBIT) {
       for (float& output : outputs) {
-        output = ::onnxruntime::ml::ml_probit(output);
+        output = ::onnxruntime::ml::ComputeProbit(output);
       }
     } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::SOFTMAX) {
-      ::onnxruntime::ml::compute_softmax(outputs);
+      ::onnxruntime::ml::ComputeSoftmax(outputs);
     } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      ::onnxruntime::ml::compute_softmax_zero(outputs);
+      ::onnxruntime::ml::ComputeSoftmaxZero(outputs);
     }
     for (float output : outputs) {
       Y->template MutableData<float>()[write_index] = output;
