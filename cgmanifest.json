@@ -191,15 +191,6 @@
       },
       {
          "component":{
-            "type":"git",
-            "git":{
-               "commitHash":"3ad2bd19d6f0a2475805e9aa5ae8734a0d60fbaa",
-               "repositoryUrl":"https://github.com/onnx/onnx-tensorrt"
-            }
-         }
-      },
-      {
-         "component":{
             "Type":"other",
             "Other":{
                "Name":"LLVM",
