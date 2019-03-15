@@ -80,17 +80,121 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
+// check if new_output_name can be used to replace removed_output_name
+// if there is an existing NodeArg in a subgraph that implicitly consumes removed_output_name, it is not safe.
+static bool CanUpdateImplicitInputNameInSubgraph(Node& node,
+                                                 const std::string& removed_output_name,
+                                                 const std::string& new_output_name) {
+  for (auto& attr_subgraph_pair : node.GetAttributeNameToMutableSubgraphMap()) {
+    Graph& subgraph = *attr_subgraph_pair.second;
+    // if we have an existing NodeArg in the subgraph with the new_output_name that would override an implicit input
+    // with the same name
+    if (subgraph.GetNodeArg(new_output_name) != nullptr) {
+      return false;
+    }
+
+    for (auto& subgraph_node : attr_subgraph_pair.second->Nodes()) {
+      // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
+      // subgraphs, and at least one level lower uses removed_output_name as an implicit input
+      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      if (!subgraph_node_implicit_inputs.empty()) {
+        auto subgraph_node_also_consumes_nodearg_as_implicit_input =
+            std::find_if(subgraph_node_implicit_inputs.cbegin(),
+                         subgraph_node_implicit_inputs.cend(),
+                         [&removed_output_name](const NodeArg* input) {
+                           return input != nullptr && input->Name() == removed_output_name;
+                         });
+
+        if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.cend()) {
+          if (!CanUpdateImplicitInputNameInSubgraph(subgraph_node, removed_output_name, new_output_name))
+            return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+static void UpdateImplicitInputNameInSubgraph(Node& node,
+                                              const std::string& removed_output_name,
+                                              const std::string& new_output_name) {
+  for (auto& attr_subgraph_pair : node.GetAttributeNameToMutableSubgraphMap()) {
+    Graph& subgraph = *attr_subgraph_pair.second;
+
+    for (auto& subgraph_node : subgraph.Nodes()) {
+      // recurse if this node also consumes removed_output_name as an implicit input
+      // (i.e. there are multiple levels of nested subgraphs, and at least one level lower uses
+      // removed_output_name as an implicit input
+      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      if (!subgraph_node_implicit_inputs.empty()) {
+        auto subgraph_node_also_consumes_nodearg_as_implicit_input =
+            std::find_if(subgraph_node_implicit_inputs.cbegin(),
+                         subgraph_node_implicit_inputs.cend(),
+                         [&removed_output_name](const NodeArg* input) {
+                           return input->Name() == removed_output_name;
+                         });
+
+        if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.cend()) {
+          UpdateImplicitInputNameInSubgraph(subgraph_node, removed_output_name, new_output_name);
+        }
+      }
+
+      // Need mutable input defs to be able to update the implicit input names
+      auto& input_args = subgraph_node.MutableInputDefs();
+
+      if (!input_args.empty()) {
+        int input_slot_index = -1;
+        for (const auto* input_arg : input_args) {
+          ++input_slot_index;
+          // if the input matches, replace the NodeArg with one using the new name
+          if (input_arg->Exists() && input_arg->Name() == removed_output_name) {
+            // sanity check there was no edge for this input. implicit inputs from outer scope do not have edges
+            ORT_ENFORCE(std::count_if(subgraph_node.InputEdgesBegin(), subgraph_node.InputEdgesEnd(),
+                                      [input_slot_index](const Node::EdgeEnd& entry) {
+                                        return entry.GetDstArgIndex() == input_slot_index;
+                                      }) == 0);
+
+            // Create a new NodeArg with the new name
+            input_args[input_slot_index] = &attr_subgraph_pair.second->GetOrCreateNodeArg(new_output_name,
+                                                                                          input_arg->TypeAsProto());
+          }
+        }
+      }
+    }
+  }
+}
+
 bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
   if (!IsSingleInSingleOutNode(node)) {
     return false;
   }
+
   // Get input/output edges, nodes, and node args.
   const Node::EdgeEnd& input_edge = *node.InputEdgesBegin();
-  const NodeIndex input_edge_node = input_edge.GetNode().Index();
+  const Node& input_edge_node = input_edge.GetNode();
   const int input_edge_dst_arg = input_edge.GetSrcArgIndex();
   const Node::EdgeEnd& output_edge = *node.OutputEdgesBegin();
-  const NodeIndex output_edge_node = output_edge.GetNode().Index();
+  const Node& output_edge_node = output_edge.GetNode();
   const int output_edge_dst_arg = output_edge.GetDstArgIndex();
+
+  // check if the output from the node to remove is implicit input to the downstream node.
+  // if so, it's used in subgraph in that node and we have to check if it's valid to update that subgraph
+  bool is_implicit_input_to_subgraph = output_edge_dst_arg >= output_edge.GetNode().InputDefs().size();
+  if (is_implicit_input_to_subgraph) {
+    // the output we need to wire to the downstream node, and the output name from the node we want to remove
+    const auto& output_name = input_edge_node.OutputDefs()[output_edge.GetSrcArgIndex()]->Name();
+    const auto& removed_output_name = node.OutputDefs()[0]->Name();
+
+    Node& mutable_output_edge_node = *graph.GetNode(output_edge_node.Index());
+
+    if (CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, removed_output_name, output_name)) {
+      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, removed_output_name, output_name);
+    } else {
+      // we can't safely remove this node
+      return false;
+    }
+  }
 
   // Remove output edge.
   graph.RemoveEdge(node.Index(), output_edge.GetNode().Index(),
@@ -100,7 +204,7 @@ bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
   graph.RemoveNode(node.Index());
 
   // Add new edge connecting the input with the output nodes directly.
-  graph.AddEdge(input_edge_node, output_edge_node,
+  graph.AddEdge(input_edge_node.Index(), output_edge_node.Index(),
                 input_edge_dst_arg, output_edge_dst_arg);
 
   return true;
