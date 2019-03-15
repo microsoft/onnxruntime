@@ -23,15 +23,6 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return InferenceSession::Impl::Load(model_uri);
   }
 
-  Status RegisterCustomLossFunction(const std::string& loss_func_name) {
-    try {
-      LossFunctionRegistry::GetInstance().RegisterCustomLossFunction(loss_func_name);
-      return Status::OK();
-    } catch (const OnnxRuntimeException& exp) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register custom loss function.", exp.what());
-    }
-  }
-
   Status AddLossFuncion(const LossFunctionInfo& loss_func_info) {
     loss_func_info_ = loss_func_info;
 
@@ -77,6 +68,9 @@ class TrainingSessionImpl : public InferenceSession::Impl {
   }
 
   Status Save(const string& model_uri, TrainingSession::SaveOption opt) {
+    // Delete the old file before saving.
+    std::remove(model_uri.c_str());
+
     // Have to load the original model again.
     // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
     shared_ptr<Model> new_model;
@@ -152,10 +146,6 @@ TrainingSession::~TrainingSession() {
 
 Status TrainingSession::Load(const string& model_uri) {
   return impl_->Load(model_uri);
-}
-
-Status TrainingSession::RegisterCustomLossFunction(const std::string& loss_func_name) {
-  return impl_->RegisterCustomLossFunction(loss_func_name);
 }
 
 Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {

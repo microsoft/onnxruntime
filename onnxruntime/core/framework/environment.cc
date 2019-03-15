@@ -47,7 +47,7 @@ Status Environment::Initialize() {
       // preserve this order: this depends on operatorsetschema registration.
       training::RegisterGradientSchemas();
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
-      training::LossFunctionRegistry::GetInstance().RegisterStandardLossFunctions();
+      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
 #endif
     });
     //TODO:put all of the following things into call_once

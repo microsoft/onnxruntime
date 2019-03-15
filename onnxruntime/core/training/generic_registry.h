@@ -45,6 +45,10 @@ class GenericRegistry {
     return nullptr;
   }
 
+  bool Contains(const std::string& name) const {
+    return name_to_creator_func_.count(name) != 0;
+  }
+
   typedef std::function<std::unique_ptr<BaseType>(ConstructorArgTypes&&...)> Creator;
 
   // Register a name using default creator.

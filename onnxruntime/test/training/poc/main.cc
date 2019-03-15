@@ -245,6 +245,9 @@ int main(int /*argc*/, char* /*args*/[]) {
   SessionOptions so;
   TrainingSession training_session{so};
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));
+  // Uncomment this to try adding a loss func with an existing op.
+  // although BW-graph building fail due to the incorrect output shape
+  // TERMINATE_IF_FAILED(training_session.AddLossFuncion({"Sub", "predictions", "labels", "loss"}));
   TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", "predictions", "labels", "loss"}));
   TERMINATE_IF_FAILED(training_session.Save(GENERATED_MODEL_WITH_COST_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
