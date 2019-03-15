@@ -250,6 +250,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern OnnxValueType /*Onnxtype*/   OrtGetValueType(IntPtr /*(OrtValue*)*/ value);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern OnnxValueType /*Onnxtype*/   OrtOnnxTypeFromTypeInfo(IntPtr /*(OrtTypeInfo*)*/ typeinfo);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetValueCount(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(size_t*)*/ count);
 
         [DllImport(nativeLib, CharSet = charSet)]

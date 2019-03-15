@@ -11,8 +11,8 @@ Status Size::Compute(OpKernelContext* ctx) const {
   if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   TensorShape scalar_shape;
   Tensor* p_output_tensor = ctx->Output(0, scalar_shape);
-  assert(p_output_tensor->Size() == sizeof(int64_t));
   int64_t* p_output_scalar = p_output_tensor->template MutableData<int64_t>();
+  assert(p_output_tensor->Size() == sizeof(int64_t));
 
   *p_output_scalar = input_tensor->Shape().Size();
 

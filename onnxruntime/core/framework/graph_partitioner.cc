@@ -180,6 +180,10 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         //prepare the func kernel
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
+        if (node->GetExecutionProviderType() == onnxruntime::kTensorrtExecutionProvider) {
+          builder.SetDefaultInputsMemoryType(OrtMemTypeCPUInput);
+          builder.SetDefaultOutputMemoryType(OrtMemTypeCPUOutput);
+        }
         ORT_RETURN_IF_ERROR(fused_kernel_registry->Register(
             builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); }));
       }

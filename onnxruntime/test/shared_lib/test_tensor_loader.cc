@@ -52,12 +52,16 @@ TEST_F(CApiTest, load_simple_float_tensor) {
   OrtCallback* deleter;
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), nullptr, output.data(),
                                      output.size() * sizeof(float), &value, &deleter);
-  // check the result
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
-  ASSERT_EQ(output[0], 1.0f);
-  ASSERT_EQ(output[1], 2.2f);
-  ASSERT_EQ(output[2], 3.5f);
+  float* real_output;
+  st = OrtGetTensorMutableData(value, (void**)&real_output);
+  ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
+  // check the result
+  ASSERT_EQ(real_output[0], 1.0f);
+  ASSERT_EQ(real_output[1], 2.2f);
+  ASSERT_EQ(real_output[2], 3.5f);
   OrtReleaseValue(value);
+  OrtRunCallback(deleter);
 }
 
 template <bool use_current_dir>
@@ -104,13 +108,16 @@ static void run_external_data_test() {
   }
   auto st = OrtTensorProtoToOrtValue(s.data(), static_cast<int>(s.size()), cwd.empty() ? nullptr : cwd.c_str(),
                                      output.data(), output.size() * sizeof(float), &value, &deleter);
-
-  // check the result
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
-  ASSERT_EQ(output[0], 1.0f);
-  ASSERT_EQ(output[1], 2.2f);
-  ASSERT_EQ(output[2], 3.5f);
+  float* real_output;
+  st = OrtGetTensorMutableData(value, (void**)&real_output);
+  ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
+  // check the result
+  ASSERT_EQ(real_output[0], 1.0f);
+  ASSERT_EQ(real_output[1], 2.2f);
+  ASSERT_EQ(real_output[2], 3.5f);
   OrtReleaseValue(value);
+  OrtRunCallback(deleter);
 }
 TEST_F(CApiTest, load_float_tensor_with_external_data) {
   run_external_data_test<true>();
@@ -159,6 +166,7 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
     ASSERT_EQ(1, buffer[i]);
   }
   OrtReleaseValue(value);
+  OrtRunCallback(deleter);
 }
 #endif
 }  // namespace test

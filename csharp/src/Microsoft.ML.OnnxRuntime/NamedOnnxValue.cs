@@ -345,7 +345,7 @@ namespace Microsoft.ML.OnnxRuntime
         DataTypeMax = 17
     }
 
-    internal enum OnnxValueType
+    public enum OnnxValueType
     {
         ONNX_TYPE_UNKNOWN = 0,
         ONNX_TYPE_TENSOR = 1,
