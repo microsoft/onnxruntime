@@ -125,7 +125,7 @@ The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9
 You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
 
 ```
-./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --usr_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
+./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
 
