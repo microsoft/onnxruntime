@@ -34,9 +34,6 @@ Abstract:
 #include <cpuid.h>
 #include <immintrin.h>
 #endif
-#if defined(__x86_64__)
-#include "x86_64/xgetbv.h"
-#endif
 #endif
 
 //

@@ -58,6 +58,7 @@ set(onnxruntime_pybind11_state_libs
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -118,9 +119,6 @@ file(GLOB onnxruntime_python_datasets_data
     "${ONNXRUNTIME_ROOT}/python/datasets/*.pb"
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
-file(GLOB onnxruntime_python_sklapi_srcs
-    "${ONNXRUNTIME_ROOT}/python/sklapi/*.py"
-)
 
 # adjust based on what target/s onnxruntime_unittests.cmake created
 if (SingleUnitTestProject)
@@ -135,7 +133,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/sklapi
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -163,9 +160,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_datasets_data}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_sklapi_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/sklapi/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/

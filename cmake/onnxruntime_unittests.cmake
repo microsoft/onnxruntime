@@ -9,7 +9,6 @@ endif()
 
 set(disabled_warnings)
 set(extra_includes)
-
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
   if(_UT_LIBS)
@@ -30,9 +29,10 @@ function(AddTest)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS} eigen)
   endif(_UT_DEPENDS)
   if(_UT_DYN)
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime Threads::Threads)
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime ${CMAKE_DL_LIBS} Threads::Threads)
   else()
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG}
+            optimized ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
   onnxruntime_add_include_to_target(${_UT_TARGET} gsl eigen)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
@@ -91,7 +91,7 @@ file(GLOB onnxruntime_test_ir_src
 
 file(GLOB onnxruntime_test_optimizer_src
   "${TEST_SRC_DIR}/optimizer/*.cc"
-  "${TEST_SRC_DIR}/optimizer/*.h"  
+  "${TEST_SRC_DIR}/optimizer/*.h"
   )
 
 set(onnxruntime_test_framework_src_patterns
@@ -189,6 +189,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -204,6 +205,13 @@ set(onnxruntime_test_providers_libs
     onnxruntime_test_utils_for_framework
     ${ONNXRUNTIME_TEST_LIBS}
   )
+
+if(onnxruntime_USE_TENSORRT)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+endif()
 
 if( NOT WIN32 AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
   list(APPEND onnxruntime_test_providers_libs stdc++fs)
@@ -498,10 +506,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
     list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_tensor_loader.cc)
   endif()
+  set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common
+          onnx_proto)
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+  endif()
   AddTest(DYN
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC}
-          LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto protobuf::libprotobuf
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
   #demo

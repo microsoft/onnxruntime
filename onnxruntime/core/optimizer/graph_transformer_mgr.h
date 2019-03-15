@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/constant_folding.h"
 
 namespace onnxruntime {
 // Manages a list of graph transformers. It is initialized with a list of graph
@@ -11,7 +12,7 @@ namespace onnxruntime {
 class GraphTransformerManager {
  public:
   explicit GraphTransformerManager(unsigned steps) noexcept : steps_(steps) {
-    // TODO: Register default transformers.
+    // Register default transformers.
   }
 
   // Register a graph transformer.
