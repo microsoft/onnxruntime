@@ -44,7 +44,7 @@ class RewriteRule {
   @param[out] deleted Set to indicate if the node was deleted. 
   @returns Status indicating success or providing error information */
   common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-    return SatisfyCondition(node) ? Apply(graph, node, modified, deleted) : Status::OK();
+    return SatisfyCondition(graph, node) ? Apply(graph, node, modified, deleted) : Status::OK();
   }
 
  private:
@@ -53,11 +53,14 @@ class RewriteRule {
   const std::string name_;
   const std::string desc_;
 
-  /** Check if the Node satisfies a condition.
+  /** Check if the Node of the given Graph satisfies a condition.
   The rewrite rule is applied if the condition function returns true. This can include
   a more complex pattern matching (conditions on the ascending or descending nodes of the
   node for which this rule was triggered) or some other properties of the nodes. */
-  virtual bool SatisfyCondition(const Node& node) = 0;
+  virtual bool SatisfyCondition(const Graph& graph, const Node& node) = 0;
+
+  /** Returns true if the op type of the node is compatible with this rewrite rule. */
+  virtual bool OpTypeCondition(const Node& node) = 0;
 
   /**
   Apply the rewrite rule to a specific node.

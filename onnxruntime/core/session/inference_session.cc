@@ -56,61 +56,6 @@
 using namespace ONNX_NAMESPACE;
 
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
-const onnxruntime::DataTypeImpl* TensorElementDataTypeToMLDataType(ONNXTensorElementDataType type);
-
-namespace onnxruntime {
-const char* ElementTypeToString(MLDataType type) {
-  if (type == DataTypeImpl::GetType<float>()) {
-    return "tensor(float)";
-  } else if (type == DataTypeImpl::GetType<bool>()) {
-    return "tensor(bool)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int32_t>()) {
-    return "tensor(int32)";
-  }
-
-  else if (type == DataTypeImpl::GetType<double>()) {
-    return "tensor(double)";
-  }
-
-  else if (type == DataTypeImpl::GetType<std::string>()) {
-    return "tensor(string)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint8_t>()) {
-    return "tensor(uint8)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint16_t>()) {
-    return "tensor(uint16)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int16_t>()) {
-    return "tensor(int16)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int64_t>()) {
-    return "tensor(int64)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint32_t>()) {
-    return "tensor(uint32)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint64_t>()) {
-    return "tensor(uint64)";
-  }
-
-  else if (type == DataTypeImpl::GetType<MLFloat16>()) {
-    return "tensor(MLFloat16)";
-  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
-    return "tensor(bfloat16)";
-  } else {
-    return "unknown";
-  }
-}
-}  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -282,14 +227,16 @@ class InferenceSession::Impl {
         for (size_t i = 0; i < input_count; i++) {
           auto type = op->GetInputType(op, i);
 
-          schema.Input(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+          schema.Input(i, "A", "Description",
+                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
         }
 
         auto output_count = op->GetOutputTypeCount(op);
         for (size_t i = 0; i < output_count; i++) {
           auto type = op->GetOutputType(op, i);
 
-          schema.Output(i, "A", "Description", ElementTypeToString(TensorElementDataTypeToMLDataType(type)));
+          schema.Output(i, "A", "Description",
+                        DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
         }
 
         schema.SinceVersion(domain->op_version_start_);

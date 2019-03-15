@@ -5,7 +5,8 @@ namespace onnxruntime {
 enum DType {
   TFloat32 = 0,
   TInt32 = 1,
-  TDouble = 2
+  TDouble = 2,
+  TInt64 = 3
   //TODO: more types
 };
 

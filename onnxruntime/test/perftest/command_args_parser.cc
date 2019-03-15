@@ -28,7 +28,7 @@ namespace perftest {
       "Options:\n"
       "\t-m [test_mode]: Specifies the test mode. Value coulde be 'duration' or 'times'.\n"
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. Default:'duration'.\n"
-      "\t-e [cpu|cuda|mkldnn]: Specifies the provider 'cpu','cuda','mkldnn'. Default:'cpu'.\n"
+      "\t-e [cpu|cuda|mkldnn|tensorrt]: Specifies the provider 'cpu','cuda','mkldnn' or 'tensorrt'. Default:'cpu'.\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
@@ -63,8 +63,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kMklDnnExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("trt"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kTRTExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else {
           return false;
         }
