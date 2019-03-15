@@ -9,7 +9,10 @@ import platform
 import sys
 
 package_name = 'onnxruntime'
-if '--use_cuda' in sys.argv:
+if '--use_tensorrt' in sys.argv:
+    package_name = 'onnxruntime-gpu-tensorrt'
+    sys.argv.remove('--use_tensorrt')
+elif '--use_cuda' in sys.argv:
     package_name = 'onnxruntime-gpu'
     sys.argv.remove('--use_cuda')
 
