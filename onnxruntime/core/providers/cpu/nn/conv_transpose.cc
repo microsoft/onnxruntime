@@ -74,10 +74,11 @@ inline void ComputeTransposePadAndOutputShape(
   }
 }
 
-Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p) const {
+Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p, bool dynamic_padding) const {
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* F = context->Input<Tensor>(1);
-  const Tensor* B = has_bias ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
   const TensorShape& input_shape = X->Shape();
 
   // input validations
@@ -130,7 +131,14 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   if (output_padding.empty()) {
     output_padding.resize(kernel_shape.size(), 0);
   }
-  std::vector<int64_t> pads(pads_);
+  std::vector<int64_t> pads;
+  if (dynamic_padding) {
+    for (size_t i = 0; i < Pads->Size(); ++i) {
+      pads.push_back(Pads->Data<int64_t>()[i]);
+    }
+  } else {
+    pads.assign(pads_.begin(), pads_.end());
+  }
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
@@ -214,9 +222,15 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
 
 template <typename T>
 Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
+  return ConvTranspose<T>::DoConvTranspose(context, false);
+}
+
+template <typename T>
+Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(context, num_inputs == 3, p));
+  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
+  ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p, dynamic_padding));
 
   const int64_t input_image_size = p.H * p.W;
   const int64_t X_offset = p.num_input_channels / group_ * input_image_size;
