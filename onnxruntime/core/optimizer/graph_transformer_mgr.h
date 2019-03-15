@@ -19,7 +19,9 @@ class GraphTransformerManager {
 
   // Register a transformer with a level and compatible providers list
   // If a transformer is execution provider independent
-  common::Status Register(std::unique_ptr<GraphTransformer> transformer, const TransformerLevel& level, std::vector<std::string>&& provider = {});
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer, 
+                          const TransformerLevel& level, 
+                          const std::vector<std::string>& provider = {});
 
   // Apply all transformers registered for the given level on the given graph
   common::Status ApplyTransformers(Graph& graph, const TransformerLevel& level) const;
@@ -38,8 +40,9 @@ class GraphTransformerManager {
 
   struct TransformerInfo {
    public:
-    TransformerInfo(TransformerLevel level, std::vector<std::string>&& providers, GraphTransformer* graphTransformer)
-        : level{level}, compatible_providers{std::move(providers)}, transformer{graphTransformer} {}
+    TransformerInfo(TransformerLevel level, const std::vector<std::string>& providers, GraphTransformer* graphTransformer)
+        : level{level}, compatible_providers{providers}, transformer{graphTransformer} {}
+
     TransformerInfo() = default;
 
     TransformerLevel level;

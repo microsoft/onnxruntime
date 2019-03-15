@@ -8,16 +8,7 @@
 
 namespace onnxruntime {
 
-namespace transformerutils {
-/* Validates whether level can be mapped to a valid TransformerLevel enum
-*/
-Status ValidateTransformerLevel(unsigned int level);
-
-/* Given level (0, 1, 2 are current available options) Sets bit mask levels_enabled
-*  Also populates a convenience list of all available transformer levels
-*/
-void SetTransformerContext(const uint32_t& level, uint32_t& levels_enabled, 
-                           std::vector<TransformerLevel>* all_levels = nullptr);
+namespace transformer_utils {
 
 /* Generates all predefined rules for this level
 *  If rules_to_enable is not empty returns intersection of predefined rules and rules_to_enable 

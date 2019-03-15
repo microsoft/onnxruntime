@@ -8,11 +8,13 @@
 
 namespace onnxruntime {
 
-enum TransformerLevel {
-  Default = 1,
-  Level1 = 2,
-  Level2 = 4,
-  MaxTransformerLevel = 7,
+enum class TransformerLevel {
+  Default = 0,
+  Level1,
+  Level2,
+  // Convenience enum to always get the max available value. 
+  // This way when we add more levels code which iterates over this enum does not need to change.
+  MaxTransformerLevel
 };
 
 /**

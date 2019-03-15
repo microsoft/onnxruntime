@@ -135,7 +135,8 @@ class InferenceSession {
     * Calling this API is optional.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, std::vector<std::string>&& providers = {});
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, 
+                                          const std::vector<std::string>& providers = {});
 
   /**
     * Enable a custom set of transformers. Call this before invoking Initialize().
@@ -143,7 +144,7 @@ class InferenceSession {
     * When this list is provided ORT ignores the levels set in session options.
     * @return OK if success.
     */
-  common::Status AddCustomTransformerList(std::vector<std::string>&& transformers_to_enable);
+  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
 
   /**
   * Load custom ops implemented in a dynamically linked shared library.

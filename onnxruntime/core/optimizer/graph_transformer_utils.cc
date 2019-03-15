@@ -9,34 +9,7 @@
 
 namespace onnxruntime {
 
-namespace transformerutils {
-
-Status ValidateTransformerLevel(unsigned int level) {
-  auto t_level = (unsigned int)std::pow(2, level);
-  if (t_level < TransformerLevel::MaxTransformerLevel) {
-    return Status::OK();
-  }
-  return Status(common::ONNXRUNTIME, common::FAIL, "Unsupported level " + level);
-}
-
-void SetTransformerContext(const uint32_t& level, uint32_t& levels_enabled, 
-                           std::vector<TransformerLevel>* all_levels) {
-
-  ORT_ENFORCE(ValidateTransformerLevel(level).IsOK(),
-              "Unsupported transformer level specified", level);
-
-  levels_enabled = TransformerLevel::Default;
-  if (level == 1) {
-    levels_enabled |= TransformerLevel::Level1;
-  } else if (level == 2) {
-    levels_enabled |= TransformerLevel::Level1 | TransformerLevel::Level2;
-  }
-
-  if (all_levels != nullptr) {
-    all_levels->push_back(TransformerLevel::Level2);
-    all_levels->push_back(TransformerLevel::Level1);
-  }
-}
+namespace transformer_utils {
 
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const TransformerLevel& level, 
                                                                const std::vector<std::string>* rules_to_enable) {
@@ -50,7 +23,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
     case TransformerLevel::Level2:
       break;
     default:
-      ORT_ENFORCE(false, "Unsupported level" + level);
+      ORT_ENFORCE(false, "Unsupported level" + static_cast<int>(level));
   }
 
   if (rules_to_enable != nullptr && !rules_to_enable->empty()) {
@@ -84,7 +57,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
     } break;
 
     default:
-      ORT_ENFORCE(false, "Unsupported level" + level);
+      ORT_ENFORCE(false, "Unsupported level " + static_cast<int>(level));
       break;
   }
 
