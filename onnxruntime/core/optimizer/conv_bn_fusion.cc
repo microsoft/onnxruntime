@@ -5,7 +5,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_bn_fusion.h"
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
@@ -14,12 +14,12 @@ Status ConvBNFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int gr
   for (auto& node : graph.Nodes()) {
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
-    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
@@ -30,7 +30,7 @@ Status ConvBNFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int gr
 
     // Get value of attribute group
     const onnxruntime::NodeAttributes& conv_attributes = conv_node.GetAttributes();
-    const onnx::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
+    const ONNX_NAMESPACE::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
     if (group_attr != nullptr &&
         group_attr->type() == AttributeProto_AttributeType_INT &&
         group_attr->has_i() && group_attr->i() != 1) {
@@ -39,7 +39,7 @@ Status ConvBNFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int gr
 
     // Get value of attribute epsilon
     const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
-    const onnx::AttributeProto* attr = &(attributes.find("epsilon")->second);
+    const ONNX_NAMESPACE::AttributeProto* attr = &(attributes.find("epsilon")->second);
     if (attr == nullptr || attr->type() != AttributeProto_AttributeType_FLOAT) {
       continue;
     }

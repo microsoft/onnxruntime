@@ -7,16 +7,23 @@
 #include <string>
 #include <stdexcept>
 #include <memory>
+#include "core/common/exceptions.h"
 
 //TODO: encode error code in the message?
-#define ORT_THROW_ON_ERROR(expr)                                       \
-  do {                                                                 \
-    OrtStatus* onnx_status = (expr);                                   \
-    if (onnx_status != nullptr) {                                      \
-      std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
-      OrtReleaseStatus(onnx_status);                                   \
-      throw std::runtime_error(ort_error_message);                     \
-    }                                                                  \
+#define ORT_THROW_ON_ERROR(expr)                                                 \
+  do {                                                                           \
+    OrtStatus* onnx_status = (expr);                                             \
+    if (onnx_status != nullptr) {                                                \
+      std::string ort_error_message = OrtGetErrorMessage(onnx_status);           \
+      OrtErrorCode error_code = OrtGetErrorCode(onnx_status);                    \
+      OrtReleaseStatus(onnx_status);                                             \
+      switch (error_code) {                                                      \
+        case ORT_NOT_IMPLEMENTED:                                                \
+          throw onnxruntime::NotImplementedException(ort_error_message);         \
+        default:                                                                 \
+          throw onnxruntime::OnnxRuntimeException(ORT_WHERE, ort_error_message); \
+      }                                                                          \
+    }                                                                            \
   } while (0);
 
 #define ORT_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \
@@ -87,7 +94,7 @@ class SessionOptionsWrapper {
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableMemPattern)
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableCpuMemArena)
   ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableCpuMemArena)
-  void EnableProfiling(_In_ const char* profile_file_prefix) {
+  void EnableProfiling(_In_ const ORTCHAR_T* profile_file_prefix) {
     OrtEnableProfiling(value.get(), profile_file_prefix);
   }
 

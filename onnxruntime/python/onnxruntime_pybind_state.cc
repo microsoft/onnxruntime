@@ -49,6 +49,9 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#endif
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
@@ -59,9 +62,10 @@
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, bool f, const char*, const char*, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -193,6 +197,12 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
 
+#ifdef USE_TENSORRT
+  {
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt());
+  }
+#endif
+
 #ifdef USE_CUDA
   {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
@@ -229,11 +239,6 @@ void addObjectMethods(py::module& m) {
   py::add_ostream_redirect(m, "onnxruntime_ostream_redirect");
   py::class_<SessionOptions>(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc")
       .def(py::init())
-      .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
-                     R"pbdoc(Enables the memory pattern optimization.
-The idea is if the input shapes are the same, we could trace the internal memory allocation
-and generate a memory pattern for future request. So next time we could just do one allocation
-with a big chunk for all the internal memory allocation. Default is true.)pbdoc")
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don't want it. Default is True.)pbdoc")

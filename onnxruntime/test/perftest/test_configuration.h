@@ -23,9 +23,9 @@ enum class Platform : std::uint8_t {
 
 struct ModelInfo {
   std::string model_name;
-  std::string model_file_path;
-  std::string input_file_path;
-  std::string result_file_path;
+  std::basic_string<ORTCHAR_T> model_file_path;
+  std::basic_string<ORTCHAR_T> input_file_path;
+  std::basic_string<ORTCHAR_T> result_file_path;
 };
 
 struct MachineConfig {
@@ -34,13 +34,14 @@ struct MachineConfig {
 };
 
 struct RunConfig {
-  std::string profile_file;
+  std::basic_string<ORTCHAR_T> profile_file;
   TestMode test_mode{TestMode::kFixDurationMode};
   size_t repeated_times{1000};
   size_t duration_in_seconds{600};
   bool f_dump_statistics{false};
   bool f_verbose{false};
   bool enable_sequential_execution{true};
+  int session_thread_pool_size{6};
 };
 
 struct PerformanceTestConfig {

@@ -9,12 +9,19 @@
 #include "core/framework/ml_value.h"
 
 namespace onnxruntime {
+class GraphNodes;
 class GraphViewer;
 class MLValueNameIdxMap;
+class Node;
 
 class NodeIndexInfo final {
  public:
+  // construct from a GraphViewer.
   NodeIndexInfo(const GraphViewer& graph_viewer, const MLValueNameIdxMap& mlvalue_idx_map);
+
+  // construct from a subset of nodes. The min and max NodeIndex values will be calculated by iterating 'nodes'.
+  NodeIndexInfo(const GraphNodes& nodes, const MLValueNameIdxMap& mlvalue_idx_map);
+  NodeIndexInfo(const std::vector<const Node*>& nodes, const MLValueNameIdxMap& mlvalue_idx_map);
 
   enum { kInvalidEntry = -1 };
 
@@ -22,9 +29,10 @@ class NodeIndexInfo final {
   // The Node will have (num inputs + num implicit inputs + num outputs) entries, in that order, starting at the
   // offset that is returned. Use the offset in calls to GetMLValueIndex.
   // Returns kInvalidEntry if the Node with the given node_index did not exist when the NodeIndexInfo was created.
-  int GetNodeOffset(onnxruntime::NodeIndex node_index) const {
-    ORT_ENFORCE(node_index < node_offsets_.size());
-    return node_offsets_[node_index];
+  int GetNodeOffset(NodeIndex node_index) const {
+    auto node_offsets_index = GetNodeOffsetsIndex(node_index);
+    ORT_ENFORCE(node_offsets_index < node_offsets_.size());
+    return node_offsets_[node_offsets_index];
   }
 
   // Get the mlvalue index value.
@@ -39,12 +47,19 @@ class NodeIndexInfo final {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodeIndexInfo);
 
+  template <typename TValidNodes>
+  void Init(const TValidNodes& nodes, NodeIndex max_node_index, const MLValueNameIdxMap& mlvalue_idx_map);
+
   // This vector contains the indices from the MLValueNameIdxMap in the SessionState for each Node's input/outputs.
   // Order is node inputs, implicit inputs, outputs.
   std::vector<int> node_values_;
 
-  // The entry at node_offset_[Node::Index()] contains the index in node_values_ where the information for the Node
-  // begins.
+  // the minimum NodeIndex. we use this to minimize the size of node_offsets_.
+  NodeIndex min_node_index_ = 0;
+
+  // The entry at node_offsets_[GetNodeOffsetsIndex(Node::Index())] contains the index in node_values_
+  // where the information for the Node begins.
+  size_t GetNodeOffsetsIndex(NodeIndex node_index) const { return node_index - min_node_index_; }
   std::vector<int> node_offsets_;
 
   const int max_mlvalue_idx_;

@@ -9,7 +9,10 @@ import platform
 import sys
 
 package_name = 'onnxruntime'
-if '--use_cuda' in sys.argv:
+if '--use_tensorrt' in sys.argv:
+    package_name = 'onnxruntime-gpu-tensorrt'
+    sys.argv.remove('--use_tensorrt')
+elif '--use_cuda' in sys.argv:
     package_name = 'onnxruntime-gpu'
     sys.argv.remove('--use_cuda')
 
@@ -53,7 +56,7 @@ with open(README) as f:
 # Setup
 setup(
     name=package_name,
-    version='0.2.1',
+    version='0.3.0',
     description='ONNX Runtime Python bindings',
     long_description=long_description,
     author='Microsoft Corporation',
@@ -71,6 +74,7 @@ setup(
     },
     extras_require={
         'backend': ['onnx>=1.2.3'],
+        'numpy': ['numpy>=1.15.0']
     },
     entry_points= {
         'console_scripts': [

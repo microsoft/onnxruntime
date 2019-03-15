@@ -17,18 +17,29 @@ limitations under the License.
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <string.h>
 #include <thread>
 #include <vector>
-
+#include <assert.h>
 #include "core/platform/env.h"
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
+
+// MAC OS X doesn't have this macro
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(X) X
+#endif
 
 namespace onnxruntime {
 
 namespace {
+constexpr int OneMillion = 1000000;
 
 class StdThread : public Thread {
  public:
@@ -39,6 +50,26 @@ class StdThread : public Thread {
  private:
   std::thread thread_;
 };
+
+static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
+
+class UnmapFileParam {
+ public:
+  void* addr;
+  size_t len;
+  int fd;
+};
+
+static void ORT_API_CALL UnmapFile(void* param) noexcept {
+  UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
+  int ret = munmap(p->addr, p->len);
+  if (ret != 0) {
+    int err = errno;
+    LOGS_DEFAULT(INFO) << "munmap failed. error code:" << err;
+  }
+  (void)close(p->fd);
+  delete p;
+}
 
 class PosixEnv : public Env {
  public:
@@ -54,16 +85,12 @@ class PosixEnv : public Env {
     return std::thread::hardware_concurrency();
   }
 
-  EnvThread* CreateThread(std::function<void()> fn) const override {
-    return new StdThread(fn);
-  }
+  EnvThread* CreateThread(std::function<void()> fn) const override { return new StdThread(fn); }
 
   Task CreateTask(std::function<void()> f) const override {
     return Task{std::move(f)};
   }
-  void ExecuteTask(const Task& t) const override {
-    t.f();
-  }
+  void ExecuteTask(const Task& t) const override { t.f(); }
 
   void SleepForMicroseconds(int64_t micros) const override {
     while (micros > 0) {
@@ -71,12 +98,11 @@ class PosixEnv : public Env {
       sleep_time.tv_sec = 0;
       sleep_time.tv_nsec = 0;
 
-      if (micros >= 1e6) {
-        sleep_time.tv_sec =
-            std::min<int64_t>(micros / 1e6, std::numeric_limits<time_t>::max());
-        micros -= static_cast<int64_t>(sleep_time.tv_sec) * 1e6;
+      if (micros >= OneMillion) {
+        sleep_time.tv_sec = std::min<int64_t>(micros / OneMillion, std::numeric_limits<time_t>::max());
+        micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
       }
-      if (micros < 1e6) {
+      if (micros < OneMillion) {
         sleep_time.tv_nsec = 1000 * micros;
         micros = 0;
       }
@@ -93,6 +119,84 @@ class PosixEnv : public Env {
 
   PIDType GetSelfPid() const override {
     return getpid();
+  }
+
+  static common::Status ReadBinaryFile(int fd, off_t offset, const char* fname, void*& p, size_t len,
+                                       OrtCallback& deleter) {
+    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
+    char* wptr = reinterpret_cast<char*>(buffer.get());
+    auto length_remain = len;
+    do {
+      size_t bytes_to_read = length_remain;
+      ssize_t bytes_read;
+      TEMP_FAILURE_RETRY(bytes_read =
+                             offset > 0 ? pread(fd, wptr, bytes_to_read, offset) : read(fd, wptr, bytes_to_read));
+      if (bytes_read <= 0) {
+        int err = errno;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read file '", fname, "' fail, error code = ", err);
+      }
+      assert(static_cast<size_t>(bytes_read) <= bytes_to_read);
+      wptr += bytes_read;
+      length_remain -= bytes_read;
+    } while (length_remain > 0);
+    p = buffer.release();
+    deleter.f = DeleteBuffer;
+    deleter.param = p;
+    return Status::OK();
+  }
+
+  static bool GetFileSizeIfUnknown(int fd, size_t& len) {
+    if(len > 0) return true;
+    struct stat stbuf;
+    if ((fstat(fd, &stbuf) != 0) || (!S_ISREG(stbuf.st_mode))) {
+      return false;
+    }
+    len = static_cast<size_t>(stbuf.st_size);
+    return true;
+  }
+
+  common::Status ReadFileAsString(const char* fname, off_t offset, void*& p, size_t& len,
+      OrtCallback& deleter) const override {
+    if (!fname) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+    }
+
+    if (offset < 0) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "ReadFileAsString: offset must be non-negative");
+    }
+    deleter.f = nullptr;
+    deleter.param = nullptr;
+    int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+      int err = errno;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", fname, " fail, errcode =", err);
+    }
+    if (!GetFileSizeIfUnknown(fd, len)) {
+      (void)close(fd);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get file '", fname, "' size fail");
+    }
+    if (len == 0) {
+      p = nullptr;
+    } else {
+      long page_size = sysconf(_SC_PAGESIZE);
+      off_t offset_to_page = offset % static_cast<off_t>(page_size);
+      p = mmap(nullptr, len + offset_to_page, PROT_READ, MAP_SHARED, fd, offset - offset_to_page);
+      if (p == MAP_FAILED) {
+        auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
+        (void)close(fd);
+        if (!st.IsOK()) {
+          return st;
+        }
+      } else {
+        // leave the file open
+        deleter.f = UnmapFile;
+        deleter.param = new UnmapFileParam{p, len + offset_to_page, fd};
+        p = reinterpret_cast<char*>(p) + offset_to_page;
+      }
+    }
+
+    return common::Status::OK();
   }
 
   common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override {

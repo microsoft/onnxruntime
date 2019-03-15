@@ -558,8 +558,6 @@ struct TensorAllocator {
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
     return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                     shape,
-                                    allocator_->Alloc(sizeof(T) * shape.Size()),
-                                    allocator_->Info(),
                                     allocator_);
   }
 

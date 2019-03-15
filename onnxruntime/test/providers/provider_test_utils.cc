@@ -215,7 +215,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   for (auto index : initializer_index_) {
     auto& data = input_data_[index];
     auto& tensor = data.data_.Get<Tensor>();
-    onnx::TensorProto tensor_proto;
+    ONNX_NAMESPACE::TensorProto tensor_proto;
     //1. set dimension
     auto& shape = tensor.Shape();
     for (auto& dim : shape.GetDims()) {
@@ -408,6 +408,7 @@ void OpTester::Run(ExpectResult expect_result,
         kMklDnnExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
+        kTensorrtExecutionProvider,
     };
 
     bool has_run = false;
@@ -446,6 +447,8 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
           execution_provider = DefaultBrainSliceExecutionProvider();
+        else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+          execution_provider = DefaultTensorrtExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

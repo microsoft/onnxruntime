@@ -13,13 +13,16 @@ IOBinding::IOBinding(const SessionState& session_state) : session_state_(session
 
 common::Status IOBinding::BindInput(const std::string& name, const MLValue& ml_value) {
   if (!ml_value.IsTensor()) {
-    feeds_[name] = ml_value;
+    feed_names_.push_back(name);
+    feeds_.push_back(ml_value);
     return Status::OK();
   }
 
   MLValue new_mlvalue;
   ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
-  feeds_[name] = new_mlvalue;
+  feed_names_.push_back(name);
+  feeds_.push_back(new_mlvalue);
+
   return Status::OK();
 }
 
@@ -82,7 +85,11 @@ std::vector<MLValue>& IOBinding::GetOutputs() {
   return outputs_;
 }
 
-const std::unordered_map<std::string, MLValue>& IOBinding::GetInputs() const {
+const std::vector<std::string>& IOBinding::GetInputNames() const {
+  return feed_names_;
+}
+
+const std::vector<MLValue>& IOBinding::GetInputs() const {
   return feeds_;
 }
 

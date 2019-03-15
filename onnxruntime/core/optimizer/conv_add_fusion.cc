@@ -5,7 +5,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_fusion.h"
 
-using namespace onnx;
+using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
@@ -14,12 +14,12 @@ Status ConvAddFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int g
   for (auto& node : graph.Nodes()) {
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
-    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;

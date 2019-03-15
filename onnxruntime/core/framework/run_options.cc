@@ -25,6 +25,7 @@ ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ co
 ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions* options) {
   return options->run_log_verbosity_level;
 }
+
 ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions* options) {
   return options->run_tag.c_str();
 }

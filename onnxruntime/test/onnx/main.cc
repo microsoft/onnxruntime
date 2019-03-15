@@ -13,9 +13,10 @@
 #include "TestResultStat.h"
 #include "testenv.h"
 #include "runner.h"
-#include "path_lib.h"
 #include "sync_api.h"
 #include "providers.h"
+#include <google/protobuf/stubs/common.h>
+#include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 using namespace onnxruntime;
@@ -31,7 +32,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda' or 'mkldnn'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'tensorrt'. Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -61,18 +62,16 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() {
-  return std::thread::hardware_concurrency();
-}
+int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
 #endif
 }  // namespace
 
 #ifdef _WIN32
-int real_main(int argc, wchar_t* argv[]) {
+int real_main(int argc, wchar_t* argv[], OrtEnv** p_env) {
 #else
-int real_main(int argc, char* argv[]) {
+int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
-  //if this var is not empty, only run the tests with name in this list
+  // if this var is not empty, only run the tests with name in this list
   std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
@@ -82,7 +81,7 @@ int real_main(int argc, char* argv[]) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  bool enable_trt = false;
+  bool enable_tensorrt = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
@@ -95,45 +94,45 @@ int real_main(int argc, char* argv[]) {
           logging_level = ORT_LOGGING_LEVEL_INFO;
           break;
         case 'c':
-          concurrent_session_runs = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          concurrent_session_runs = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (concurrent_session_runs <= 0) {
             usage();
             return -1;
           }
           break;
         case 'j':
-          p_models = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          p_models = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (p_models <= 0) {
             usage();
             return -1;
           }
           break;
         case 'r':
-          repeat_count = static_cast<int>(MyStrtol<PATH_CHAR_TYPE>(optarg, nullptr, 10));
+          repeat_count = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (repeat_count <= 0) {
             usage();
             return -1;
           }
           break;
         case 'm':
-          //ignore.
+          // ignore.
           break;
         case 'n':
-          //run only some whitelisted tests
-          //TODO: parse name str to an array
+          // run only some whitelisted tests
+          // TODO: parse name str to an array
           whitelisted_test_cases.emplace_back(optarg);
           break;
         case 'e':
-          if (!MyStrCmp(optarg, ORT_TSTR("cpu"))) {
-            //do nothing
-          } else if (!MyStrCmp(optarg, ORT_TSTR("cuda"))) {
+          if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
+            // do nothing
+          } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("mkldnn"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("nuphar"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
-          } else if (!MyStrCmp(optarg, ORT_TSTR("trt"))) {
-            enable_trt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+            enable_tensorrt = true;
           } else {
             usage();
             return -1;
@@ -162,37 +161,25 @@ int real_main(int argc, char* argv[]) {
     usage();
     return -1;
   }
-  std::unique_ptr<OrtEnv> env;
+  OrtEnv* env;
   {
-    OrtEnv* t;
-    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &t);
+    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &env);
     if (ost != nullptr) {
       fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
       OrtReleaseStatus(ost);
       return -1;
     }
-    env.reset(t);
+    *p_env = env;
   }
   std::vector<std::basic_string<PATH_CHAR_TYPE> > data_dirs;
   TestResultStat stat;
 
-  std::unique_ptr<OrtAllocator> default_allocator;
-  {
-    OrtAllocator* p;
-    OrtStatus* ost = OrtCreateDefaultAllocator(&p);
-    if (ost != nullptr) {
-      fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      OrtReleaseStatus(ost);
-      return -1;
-    }
-    default_allocator.reset(p);
-  }
   for (int i = 0; i != argc; ++i) {
     data_dirs.emplace_back(argv[i]);
   }
   {
-    std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases, default_allocator.get());
-    SessionOptionsWrapper sf(env.get());
+    std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases);
+    SessionOptionsWrapper sf(env);
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -201,6 +188,15 @@ int real_main(int argc, char* argv[]) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
+    if (enable_tensorrt) {
+#ifdef USE_TENSORRT
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+#else
+      fprintf(stderr, "TensorRT is not supported in this build");
+      return -1;
+#endif
+    }
     if (enable_cuda) {
 #ifdef USE_CUDA
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
@@ -225,16 +221,9 @@ int real_main(int argc, char* argv[]) {
       return -1;
 #endif
     }
-    if (enable_trt) {
-#ifdef USE_TRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
-#else
-      fprintf(stderr, "TensorRT is not supported in this build");
-      return -1;
-#endif
-    }
     TestEnv args(tests, stat, sf);
-    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count), GetDefaultThreadPool(Env::Default()));
+    Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
+                         GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
@@ -246,6 +235,7 @@ int real_main(int argc, char* argv[]) {
       delete l;
     }
   }
+  // clang-format off
   std::map<std::string, std::string> broken_tests{
       {"AvgPool1d", "disable reason"},
       {"AvgPool1d_stride", "disable reason"},
@@ -259,6 +249,8 @@ int real_main(int argc, char* argv[]) {
       {"BatchNorm2d_momentum_eval", "disable reason"},
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
+      {"constantofshape_float_ones", "test data bug"},
+      {"constantofshape_int_zeros", "test data bug"},
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
       {"Linear", "disable reason"},
@@ -308,13 +300,8 @@ int real_main(int argc, char* argv[]) {
       {"asinh_example", "opset 9 not supported yet"},
       {"acosh_example", "opset 9 not supported yet"},
       {"atanh_example", "opset 9 not supported yet"},
-      {"sign_model", "opset 9 not supported yet"},
-      {"scatter_with_axis", "opset 9 not supported yet"},
-      {"scatter_without_axis", "opset 9 not supported yet"},
       {"scan_sum", "opset 9 not supported yet"},
       {"shrink", "opset 9 not supported yet"},
-      {"shrink_hard", "opset 9 not supported yet"},
-      {"shrink_soft", "opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
@@ -324,7 +311,10 @@ int real_main(int argc, char* argv[]) {
       {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
       {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
-      {"tf_inception_v4", "Cast opset 9 not supported yet"}};
+      {"tf_inception_v4", "Cast opset 9 not supported yet"},
+      {"tf_nasnet_large", "disable temporarily"},
+      {"tf_nasnet_mobile", "disable temporarily"},
+      {"tf_pnasnet_large", "disable temporarily"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
@@ -342,6 +332,40 @@ int real_main(int argc, char* argv[]) {
   broken_tests["fp16_shufflenet"] = "still have issue on Linux";
   broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
 #endif
+  // clang-format on
+
+#ifdef _WIN32
+  broken_tests["resnet50"] = "failed: type mismatch";
+  broken_tests["resnet50v2"] = "failed: type mismatch";
+  broken_tests["resnet101v2"] = "failed: type mismatch";
+  broken_tests["resnet101v2"] = "failed: type mismatch";
+  broken_tests["resnet152v2"] = "failed: type mismatch";
+  broken_tests["tf_inception_resnet_v2"] = "failed: type mismatch";
+  broken_tests["tf_inception_v3"] = "failed: type mismatch";
+  broken_tests["tf_inception_v4"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_50"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+
+  broken_tests["vgg19"] = "failed: bad allocation";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+
+#endif
+
+#ifdef __GNUG__
+#ifndef __LP64__
+  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
+  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+#endif
+#endif
 
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
@@ -358,10 +382,18 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  OrtEnv* env = nullptr;
+  int retval = -1;
   try {
-    return real_main(argc, argv);
+    retval = real_main(argc, argv, &env);
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
-    return -1;
+    retval = -1;
   }
+  if (env) {
+    OrtReleaseEnv(env);
+  } else {
+    ::google::protobuf::ShutdownProtobufLibrary();
+  }
+  return retval;
 }

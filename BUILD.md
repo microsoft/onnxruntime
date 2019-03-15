@@ -52,7 +52,7 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
     ```
 5. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows)
 
-The build script runs all unit tests by default.
+The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
@@ -88,8 +88,9 @@ You can build with:
 ```
 
 Depending on compatibility between the CUDA, CUDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset. 
-CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
-CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9)
+- CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions 
+  - https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/
+- CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
 
 To install the 14.11 MSVC toolset, see <https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017/>
 
@@ -214,4 +215,11 @@ Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build runs 
 By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours) 
 
 ### Cross compiling on Windows
+#### Using Visual C++ compilers
+1. Download and install Visual C++ compilers and libraries for ARM(64). 
+   If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
+   
+2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable. 
+
+### Using other compilers
 (TODO)

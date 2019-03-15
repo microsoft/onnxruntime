@@ -90,7 +90,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  model_proto_.reset(std::move(model_proto.release()));
+  model_proto_ = std::move(model_proto);
   for (auto& prop : model_proto_->metadata_props()) {
     model_metadata_[prop.key()] = prop.value();
   }
@@ -260,9 +260,10 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, con
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model failed. File doesn't exist");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+                                 " failed. File doesn't exist");
         case EINVAL:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }
@@ -349,21 +350,25 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-  auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
-  auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
-
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
-  coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
-
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
-  const bool result = model_proto->ParseFromCodedStream(coded_input.get());
-  coded_input.reset();
-  raw_input.reset();
-
-  if (!result) {
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  if (!model_proto->ParseFromFileDescriptor(fd)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
+#else
+  // CNTK uses ORT as a submodule in order to use its GraphIR code.
+  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
+  // This code block is needed to support CNTK and any other 
+  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
+  FileInputStream fs(fd);
+  CodedInputStream cis(&fs);
 
+  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB. 
+  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
+  if (!model_proto->ParseFromCodedStream(&cis)) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+#endif
   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
