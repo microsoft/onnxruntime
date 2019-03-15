@@ -257,23 +257,8 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       }
       outputs.push_back(val);
     }
-    if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::LOGISTIC) {
-      for (float& output : outputs) {
-        output = ::onnxruntime::ml::ComputeLogistic(output);
-      }
-    } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::PROBIT) {
-      for (float& output : outputs) {
-        output = ::onnxruntime::ml::ComputeProbit(output);
-      }
-    } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::SOFTMAX) {
-      ::onnxruntime::ml::ComputeSoftmax(outputs);
-    } else if (transform_ == ::onnxruntime::ml::POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      ::onnxruntime::ml::ComputeSoftmaxZero(outputs);
-    }
-    for (float output : outputs) {
-      Y->template MutableData<float>()[write_index] = output;
-      write_index++;
-    }
+    write_scores(outputs, transform_, write_index, Y, -1);
+    write_index += scores.size();
   }
   return Status::OK();
 }
