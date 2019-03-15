@@ -116,16 +116,15 @@ ONNX Runtime supports the Tensort RT execution provider (released as preview). Y
 
 The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6. 
 
- - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
- - The path to the CUDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. The CUDNN path should contain `bin`, `include` and `lib` directories.
- - The path to the CUDNN bin directory must be added to the PATH environment variable so that libcudnn.so is found.
-
+ - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
+ - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
+ - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. 
 - The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
-You can build from source on Linux by using the following cmd from the onnxruntime directory:
+You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
 
 ```
-./build.sh --cudnn_home /usr/lib/x86_64-linux-gnu/ --cuda_home <path to folder for libcudd*.so> /usr/local/cuda --usr_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
+./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --usr_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
 
