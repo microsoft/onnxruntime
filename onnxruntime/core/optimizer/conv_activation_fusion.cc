@@ -12,10 +12,10 @@ namespace onnxruntime {
 
 namespace {
 bool IsFusableActivation(const Node& node) {
-  return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
-         utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
-         utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
-         utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
 }
 
 void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
@@ -44,10 +44,9 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto node = graph.GetNode(index);
-
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
-    if (!utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
       continue;
     }
     const Node& next_node = *(node->OutputNodesBegin());

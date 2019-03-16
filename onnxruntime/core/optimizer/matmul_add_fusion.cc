@@ -19,8 +19,8 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
-    if (!(utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 1) ||
-          utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 9)) ||
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 1) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 9)) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
@@ -31,7 +31,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7)) {
       continue;
     }
 

@@ -4,6 +4,7 @@ parameters:
   buildConfig: 'RelWithDebInfo'
   artifactName: 'onnxruntime-linux-x64'
   libraryName: 'libonnxruntime.so'
+  commitId: ''
 steps:
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
@@ -20,6 +21,8 @@ steps:
           cp $(Build.SourcesDirectory)/docs/C_API.md $(Build.BinariesDirectory)/${{parameters.artifactName}}/C_API.md
           cp $(Build.SourcesDirectory)/LICENSE $(Build.BinariesDirectory)/${{parameters.artifactName}}/LICENSE
           cp $(Build.SourcesDirectory)/ThirdPartyNotices.txt $(Build.BinariesDirectory)/${{parameters.artifactName}}/ThirdPartyNotices.txt
+          cp $(Build.SourcesDirectory)/VERSION_NUMBER $(Build.BinariesDirectory)/${{parameters.artifactName}}/VERSION_NUMBER
+          echo ${{parameters.commitId}} > $(Build.BinariesDirectory)/${{parameters.artifactName}}/GIT_COMMIT_ID
 
         workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 

@@ -189,6 +189,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -204,6 +205,13 @@ set(onnxruntime_test_providers_libs
     onnxruntime_test_utils_for_framework
     ${ONNXRUNTIME_TEST_LIBS}
   )
+
+if(onnxruntime_USE_TENSORRT)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+endif()
 
 if( NOT WIN32 AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
   list(APPEND onnxruntime_test_providers_libs stdc++fs)
