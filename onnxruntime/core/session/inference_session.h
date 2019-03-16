@@ -22,8 +22,6 @@ class ModelProto;
 
 struct OrtCustomOpDomain {
   std::string domain_;
-  int op_version_start_{};
-  int op_version_end_{};
   std::vector<OrtCustomOp*> custom_ops_;
 };
 
@@ -129,15 +127,6 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer);
-
-  /**
-  * Load custom ops implemented in a dynamically linked shared library.
-  * @param dso_list list of library file paths containing the custom ops implementation.
-  * In order to implement a custom op please see file: custom_ops_author.h
-  * TODO add sample code
-  * @return OK if success
-  */
-  common::Status LoadCustomOps(const std::vector<std::string>& dso_list);
 
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 

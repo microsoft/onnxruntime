@@ -46,7 +46,7 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/session/CustomOpsLoader.h"
+#include "core/framework/custom_ops_author.h"
 #include "core/session/IOBinding.h"
 
 #ifdef USE_EIGEN_THREADPOOL
@@ -195,21 +195,6 @@ class InferenceSession::Impl {
     return graph_transformation_mgr_.Register(std::move(p_graph_transformer));
   }
 
-  common::Status LoadCustomOps(const std::vector<std::string>& dso_list) {
-    if (dso_list.empty()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Empty list of shared libraries in the input.");
-    }
-    for (auto& dso_file_path : dso_list) {
-      std::shared_ptr<CustomRegistry> custom_registry;
-      ORT_RETURN_IF_ERROR(custom_ops_loader_.LoadCustomOps(dso_file_path, custom_registry));
-      if (!custom_registry) {
-        return Status(common::ONNXRUNTIME, common::FAIL, "Null custom_registry after loading custom ops.");
-      }
-      ORT_RETURN_IF_ERROR(RegisterCustomRegistry(custom_registry));
-    }
-    return Status::OK();
-  }
-
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
     auto custom_registry = std::make_shared<CustomRegistry>();
 
@@ -217,8 +202,8 @@ class InferenceSession::Impl {
       SchemasContainer schemas_container;
 
       schemas_container.domain = domain->domain_;
-      schemas_container.baseline_opset_version = domain->op_version_start_;
-      schemas_container.opset_version = domain->op_version_end_;
+      schemas_container.baseline_opset_version = 1;
+      schemas_container.opset_version = 1000;
 
       for (auto& op : domain->custom_ops_) {
         ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
@@ -239,7 +224,7 @@ class InferenceSession::Impl {
                         DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
         }
 
-        schema.SinceVersion(domain->op_version_start_);
+        schema.SinceVersion(1);
         schema.AllowUncheckedAttributes();
 
         schemas_container.schemas_list.push_back(schema);
@@ -247,7 +232,7 @@ class InferenceSession::Impl {
         KernelDefBuilder def_builder;
         def_builder.SetName(op->GetName(op))
             .SetDomain(onnxruntime::kOnnxDomain)
-            .SinceVersion(domain->op_version_start_)
+            .SinceVersion(1)
             .Provider(onnxruntime::kCpuExecutionProvider);
         KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
         KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
@@ -955,8 +940,6 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  CustomOpsLoader custom_ops_loader_;
-
   const SessionOptions session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
@@ -1146,10 +1129,6 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
   return impl_->Run(io_binding);
-}
-
-common::Status InferenceSession::LoadCustomOps(const std::vector<std::string>& dso_list) {
-  return impl_->LoadCustomOps(dso_list);
 }
 
 common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) {
