@@ -10,7 +10,7 @@ source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_util_srcs})
 
 add_library(onnxruntime_util ${onnxruntime_util_srcs})
 target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${MKLDNN_INCLUDE_DIR} ${MKLML_INCLUDE_DIR})
-onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnxruntime_framework gsl onnx onnx_proto libprotobuf)
+onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
 if(UNIX)
     target_compile_options(onnxruntime_util PUBLIC "-Wno-error=comment")
 endif()
