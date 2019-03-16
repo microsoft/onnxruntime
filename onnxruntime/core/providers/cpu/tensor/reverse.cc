@@ -58,58 +58,62 @@ inline EigenTensorMapPair<T, rank> buffers_to_eigen_tensormaps(const T* input_bu
 
 template <int rank>
 void ReverseImpl(const void* input_buffer, void* output_buffer, const std::vector<int64_t>& dims, const std::vector<bool>& reverse_axes, const MLDataType& dtype) {
-    auto eigen_reverse_axes = Eigen::array<bool, rank>();
-    for (int i = 0; i < rank; ++i)
-      eigen_reverse_axes[i] = reverse_axes[i];
+  auto eigen_reverse_axes = Eigen::array<bool, rank>();
+  for (int i = 0; i < rank; ++i)
+    eigen_reverse_axes[i] = reverse_axes[i];
 
-	if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-      EigenTensorMapPair<uint8_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint8_t, rank>(static_cast<const uint8_t*>(input_buffer), static_cast<uint8_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    } 
-	if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-      EigenTensorMapPair<uint16_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint16_t, rank>(static_cast<const uint16_t*>(input_buffer), static_cast<uint16_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    } 
-	if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-      EigenTensorMapPair<uint32_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint32_t, rank>(static_cast<const uint32_t*>(input_buffer), static_cast<uint32_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
-    if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-      EigenTensorMapPair<uint64_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint64_t, rank>(static_cast<const uint64_t*>(input_buffer), static_cast<uint64_t*>(output_buffer), dims);
-        eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
-    if (dtype == DataTypeImpl::GetType<int8_t>()) {
-      EigenTensorMapPair<int8_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int8_t, rank>(static_cast<const int8_t*>(input_buffer), static_cast<int8_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
-    if (dtype == DataTypeImpl::GetType<int16_t>()) {
-      EigenTensorMapPair<int16_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int16_t, rank>(static_cast<const int16_t*>(input_buffer), static_cast<int16_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
-    if (dtype == DataTypeImpl::GetType<int32_t>()) {
-      EigenTensorMapPair<int32_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int32_t, rank>(static_cast<const int32_t*>(input_buffer), static_cast<int32_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
-    if (dtype == DataTypeImpl::GetType<int64_t>()) {
-      EigenTensorMapPair<int64_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int64_t, rank>(static_cast<const int64_t*>(input_buffer), static_cast<int64_t*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    } 
-	if (dtype == DataTypeImpl::GetType<float>()) {
-	EigenTensorMapPair<float, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<float, rank>(static_cast<const float*>(input_buffer), static_cast<float*>(output_buffer), dims);
+  if (dtype == DataTypeImpl::GetType<uint8_t>()) {
+    EigenTensorMapPair<uint8_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint8_t, rank>(static_cast<const uint8_t*>(input_buffer), static_cast<uint8_t*>(output_buffer), dims);
     eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-	}
-    if (dtype == DataTypeImpl::GetType<double>()) {
-        EigenTensorMapPair<double, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<double, rank>(static_cast<const double*>(input_buffer), static_cast<double*>(output_buffer), dims);
-        eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
-    if (dtype == DataTypeImpl::GetType<bool>()) {
-      EigenTensorMapPair<bool, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<bool, rank>(static_cast<const bool*>(input_buffer), static_cast<bool*>(output_buffer), dims);
-      eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
-    }
+  }
+  if (dtype == DataTypeImpl::GetType<uint16_t>()) {
+    EigenTensorMapPair<uint16_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint16_t, rank>(static_cast<const uint16_t*>(input_buffer), static_cast<uint16_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<uint32_t>()) {
+    EigenTensorMapPair<uint32_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint32_t, rank>(static_cast<const uint32_t*>(input_buffer), static_cast<uint32_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<uint64_t>()) {
+    EigenTensorMapPair<uint64_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<uint64_t, rank>(static_cast<const uint64_t*>(input_buffer), static_cast<uint64_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<int8_t>()) {
+    EigenTensorMapPair<int8_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int8_t, rank>(static_cast<const int8_t*>(input_buffer), static_cast<int8_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<int16_t>()) {
+    EigenTensorMapPair<int16_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int16_t, rank>(static_cast<const int16_t*>(input_buffer), static_cast<int16_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<int32_t>()) {
+    EigenTensorMapPair<int32_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int32_t, rank>(static_cast<const int32_t*>(input_buffer), static_cast<int32_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<int64_t>()) {
+    EigenTensorMapPair<int64_t, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<int64_t, rank>(static_cast<const int64_t*>(input_buffer), static_cast<int64_t*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<float>()) {
+    EigenTensorMapPair<float, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<float, rank>(static_cast<const float*>(input_buffer), static_cast<float*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<double>()) {
+    EigenTensorMapPair<double, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<double, rank>(static_cast<const double*>(input_buffer), static_cast<double*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
+  if (dtype == DataTypeImpl::GetType<bool>()) {
+    EigenTensorMapPair<bool, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<bool, rank>(static_cast<const bool*>(input_buffer), static_cast<bool*>(output_buffer), dims);
+    eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
+  }
 }
 
 template <int rank>
 void ReverseImplStringType(const std::string* input_buffer, std::string* output_buffer, const std::vector<int64_t>& dims, const std::vector<bool>& reverse_axes) {
+  auto eigen_reverse_axes = Eigen::array<bool, rank>();
+  for (int i = 0; i < rank; ++i)
+    eigen_reverse_axes[i] = reverse_axes[i];
+
   EigenTensorMapPair<std::string, rank> eigen_tensormaps_pair = buffers_to_eigen_tensormaps<std::string, rank>(static_cast<const std::string*>(input_buffer), static_cast<std::string*>(output_buffer), dims);
   eigen_tensormaps_pair.second = eigen_tensormaps_pair.first.reverse(eigen_reverse_axes);
 }
@@ -122,7 +126,7 @@ Status Reverse::Compute(OpKernelContext* p_op_kernel_context) const {
 
   // TODO: Handle scalar Tensor
   if (input_rank > 8)
-    ORT_THROW("Reverse operator is not implemented for input tensors with 9 or more dimensions (rank)");
+    ORT_THROW("Reverse operator is not implemented for input tensors with 9 or more dimensions (rank >= 9)");
 
   std::vector<bool> attr_axes_bool(input_rank, false);
   // non-default axes - process them and validate for correctness along the way
@@ -163,37 +167,37 @@ Status Reverse::Compute(OpKernelContext* p_op_kernel_context) const {
       if (dtype == DataTypeImpl::GetType<std::string>())
         ReverseImplStringType<3>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, attr_axes_bool);
       else
-		ReverseImpl<3>(source, target, input_dims, attr_axes_bool, dtype);
+        ReverseImpl<3>(source, target, input_dims, attr_axes_bool, dtype);
       break;
     case 4:
       if (dtype == DataTypeImpl::GetType<std::string>())
         ReverseImplStringType<4>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, attr_axes_bool);
       else
-		ReverseImpl<4>(source, target, input_dims, attr_axes_bool, dtype);
+        ReverseImpl<4>(source, target, input_dims, attr_axes_bool, dtype);
       break;
     case 5:
       if (dtype == DataTypeImpl::GetType<std::string>())
         ReverseImplStringType<5>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, attr_axes_bool);
       else
-	    ReverseImpl<5>(source, target, input_dims, attr_axes_bool, dtype);
+        ReverseImpl<5>(source, target, input_dims, attr_axes_bool, dtype);
       break;
     case 6:
       if (dtype == DataTypeImpl::GetType<std::string>())
         ReverseImplStringType<6>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, attr_axes_bool);
       else
-	    ReverseImpl<6>(source, target, input_dims, attr_axes_bool, dtype);
+        ReverseImpl<6>(source, target, input_dims, attr_axes_bool, dtype);
       break;
     case 7:
       if (dtype == DataTypeImpl::GetType<std::string>())
         ReverseImplStringType<7>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, attr_axes_bool);
       else
-	    ReverseImpl<7>(source, target, input_dims, attr_axes_bool, dtype);
+        ReverseImpl<7>(source, target, input_dims, attr_axes_bool, dtype);
       break;
     case 8:
       if (dtype == DataTypeImpl::GetType<std::string>())
         ReverseImplStringType<8>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, attr_axes_bool);
       else
-	      ReverseImpl<8>(source, target, input_dims, attr_axes_bool, dtype);
+        ReverseImpl<8>(source, target, input_dims, attr_axes_bool, dtype);
       break;
     default:
       ORT_THROW("Reverse operator is not implemented for input tensors with 9 or more dimensions (rank)");
