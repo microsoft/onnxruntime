@@ -23,6 +23,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
+#include "core/util/protobuf_parsing_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -42,7 +43,10 @@ size_t CountCopyNodes(const onnxruntime::Graph& graph) {
 
 static common::Status LoadInferenceSessionFromModel(InferenceSession& session, onnxruntime::Model& model) {
   std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
+  io::OstreamOutputStream zero_copy_output(s1);
+  if (!model.ToProto().SerializeToZeroCopyStream(&zero_copy_output)) {
+    return common::Status(ONNXRUNTIME, FAIL, "Failed to serialize to ostream");
+  }
   return session.Load(s1);
 }
 

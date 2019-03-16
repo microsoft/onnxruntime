@@ -13,7 +13,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/util/protobuf_parsing_utils.h"
 
 #include "gsl/pointers"
 #include "gsl/gsl_util"

@@ -48,7 +48,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/util/protobuf_parsing_utils.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
