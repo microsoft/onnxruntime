@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "boost/program_options.hpp"
-
 #include "http_server.h"
+#include "server_configuration.h"
 #include "environment.h"
 
-namespace po = boost::program_options;
 namespace beast = boost::beast;
 namespace http = beast::http;
 
@@ -29,36 +27,13 @@ void test_request(const std::string& name, const std::string& version,
 }
 
 int main(int argc, char* argv[]) {
-  // TODO: create configuration class for all config related params
-  std::string model_path;
-  std::string address;
-  int port;
-  int threads;
+  onnxruntime::hosting::ServerConfiguration config{};
+  auto res = config.ParseInput(argc, argv);
 
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "Print a help message")("address,a", po::value(&address), "The base HTTP address")("port,p", po::value(&port), "HTTP port to listen to requests")("threads,t", po::value(&threads), "Number of http threads")("model_path,m", po::value(&model_path), "Path of the model file");
-
-  po::variables_map vm;
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);  // can throw
-
-    if (vm.count("help")) {
-      std::cout << "ONNX Hosting: host an ONNX model for inferencing with ONNXRuntime\n"
-                << std::endl
-                << desc << std::endl;
-      return EXIT_SUCCESS;
-    }
-
-    po::notify(vm);  // throws on error, so do after help
-  } catch (po::error& e) {
-    std::cerr << "An error with program arguments occurred with error: " << e.what() << std::endl
-              << std::endl;
-    std::cerr << desc << std::endl;
-    return EXIT_FAILURE;
-  } catch (const std::exception& e) {
-    std::cerr << "An unknown problem occurred with error: " << e.what() << std::endl
-              << std::endl;
-    return EXIT_FAILURE;
+  if (res == onnxruntime::hosting::Result::ExitSuccess) {
+    exit(EXIT_SUCCESS);
+  } else if (res == onnxruntime::hosting::Result::ExitFailure) {
+    exit(EXIT_FAILURE);
   }
 
   onnxruntime::hosting::HostingEnvironment env;
@@ -67,17 +42,17 @@ int main(int argc, char* argv[]) {
   // TODO: below code snippet just trying to show case how to use the "env".
   //       Will be moved to proper place.
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
-  LOGS(logger, VERBOSE) << "Model path: " << vm["model_path"].as<std::string>();
-  auto status = env.GetSession()->Load(vm["model_path"].as<std::string>());
+  LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
+  auto status = env.GetSession()->Load(config.model_path);
   LOGS(logger, VERBOSE) << "Load Model Status: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
 
-  auto const boost_address = boost::asio::ip::make_address(vm["address"].as<std::string>());
+  auto const boost_address = boost::asio::ip::make_address(config.address);
 
   onnxruntime::hosting::App app{};
   app.Post(R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))", test_request)
-      .Bind(boost_address, vm["port"].as<int>())
-      .NumThreads(vm["threads"].as<int>())
-      .Run();
+     .Bind(boost_address, config.http_port)
+     .NumThreads(config.num_http_threads)
+     .Run();
 
   return EXIT_SUCCESS;
 }
