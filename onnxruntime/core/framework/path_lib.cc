@@ -16,9 +16,6 @@ namespace onnxruntime {
 namespace {
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
-  if (PathIsUNCW(pszPath) == TRUE) {
-    return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "UNC path is not supported yet");
-  }
   for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
     ;
   PWSTR pszLast = PathSkipRootW(pszPath);
@@ -55,7 +52,7 @@ common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std
   auto st = onnxruntime::RemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1);
   if (!st.IsOK()) {
     std::ostringstream oss;
-    oss << "illegal input path:" << ToMBString(s);
+    oss << "illegal input path:" << ToMBString(s) << ". " << st.ErrorMessage();
     return Status(st.Category(), st.Code(), oss.str());
   }
   ret.resize(wcslen(ret.c_str()));
