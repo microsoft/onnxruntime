@@ -21,7 +21,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
 */
 using TransformerProviderSet = std::pair<std::unique_ptr<GraphTransformer>, std::vector<std::string>>;
 std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel& level, 
-                                                           const std::vector<std::string>* transformers_to_enable = nullptr);
+                                                         const std::vector<std::string>* transformers_to_enable = nullptr);
 
 }  // namespace transformerutils
 }  // namespace onnxruntime
