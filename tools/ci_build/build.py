@@ -490,7 +490,7 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -499,6 +499,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                        cwd=cwd, dll_path=dll_path)
 
         if enable_python_tests:
+            # Disable python tests for TensorRT because many tests are not supported yet
+            if enable_tensorrt:
+                return
             if is_windows():
                 cwd = os.path.join(cwd, config)
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
@@ -561,12 +564,14 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           else:
             run_subprocess([exe] + cmd, cwd=cwd)
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        if use_cuda:
+        if use_tensorrt:
+            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)            
+        elif use_cuda:
             run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
         else:
             run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
@@ -705,7 +710,7 @@ def main():
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
     if (args.test):
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm)
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
         if (args.enable_onnx_tests):
             # directory from ONNX submodule with ONNX test data
@@ -713,8 +718,8 @@ def main():
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
             if args.use_tensorrt:
-              onnx_test_data_dir = ''
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)            
+              # Disable onnx unit tests for TensorRT because many tests are not supported yet
+              run_onnx_tests(build_dir, configs, '', 'tensorrt', False, 1)            
             elif args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
@@ -728,7 +733,7 @@ def main():
 
     if args.build:
         if args.build_wheel:
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt)
 
     log.info("Build complete")
 
