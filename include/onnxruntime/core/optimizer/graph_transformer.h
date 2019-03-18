@@ -41,6 +41,7 @@ class GraphTransformer {
   }
 
   /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
+  @param[in] providers Optional - providers this transformer can be applied to
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */

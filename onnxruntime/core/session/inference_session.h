@@ -133,10 +133,14 @@ class InferenceSession {
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
+    * @param[in] - providers Optional. If providers is non-empty this transformer will only to 
+      applied to nodes which are assigned to given providers.
+    * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, 
-                                          const std::vector<std::string>& providers = {});
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                           
+                                          const std::vector<std::string>& providers = {},
+                                          const uint32_t& level = 2);
 
   /**
     * Enable a custom set of transformers. Call this before invoking Initialize().

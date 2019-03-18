@@ -190,12 +190,13 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          const std::vector<std::string>& providers) {
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                          
+                                          const std::vector<std::string>& providers,
+                                          const uint32_t& level) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
-    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), TransformerLevel::Level2, providers);
+    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), static_cast<TransformerLevel>(level), providers);
   }
 
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
@@ -1181,10 +1182,11 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return impl_->RegisterExecutionProvider(std::move(p_exec_provider));
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                                          const std::vector<std::string>& providers) {
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
+                                                          const std::vector<std::string>& providers,
+                                                          const uint32_t& level) {
 
-  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), std::move(providers));
+  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
 }
 
 common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
