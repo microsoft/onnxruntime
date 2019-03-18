@@ -15,18 +15,7 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/tensor/onehot.h"
-
-// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
-// warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4554)
-#endif
 #include "core/util/eigen_common_wrapper.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 #include "core/platform/env.h"
 
 #define EIGEN_USE_THREADS
@@ -56,8 +45,8 @@ REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
 REG_ONE_HOT_OP(int64_t, string, int64_t);
 REG_ONE_HOT_OP(float, string, int64_t);
-REG_ONE_HOT_OP(float, float, float); // added this to satisfy onnx model tests
-REG_ONE_HOT_OP(int64_t, int32_t, float); // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {

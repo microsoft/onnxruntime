@@ -1,0 +1,144 @@
+jobs:
+- job: Windows_CI_GPU_Dev
+  pool: Win-GPU-CUDA10
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    CUDA_VERSION: '10.0'
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+    - task: NuGetCommand@2
+      displayName: 'NuGet restore'
+      inputs:
+        restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        feedsToUse: config
+        nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
+        restoreDirectory: '$(Build.SourcesDirectory)\csharp'
+    - task: UniversalPackages@0
+      displayName: 'Download python'
+      inputs:
+        command: download
+        vstsFeed: '$(System.TeamProject)'
+        vstsFeedPackage: 'miniconda3_win64'
+        vstsPackageVersion: '4.5.11'
+        downloadDirectory: '$(Build.BinariesDirectory)\python'
+    - task: CmdLine@1
+      displayName: 'Run python installer'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\python\installer.exe'
+        arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
+      timeoutInMinutes: 10
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+    - task: CmdLine@1
+      displayName: 'Install conda modules'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
+        arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
+      timeoutInMinutes: 10
+
+
+    - task: CmdLine@1
+      displayName: 'Download cmake'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+
+    - task: BatchScript@1
+      displayName: 'Setup VS2017 env vars'
+      inputs:
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
+        arguments: 'amd64 -vcvars_ver=14.11'
+        modifyEnvironment: true
+
+    - task: CmdLine@1
+      displayName: 'Download test data and generate cmake config'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update --msvc_toolset=14.11'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: VSBuild@1
+      displayName: 'Build Debug'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
+        platform: 'x64'
+        configuration: 'Debug'
+        msbuildArgs: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
+        msbuildArchitecture: 'x64'
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\Debug'
+    - task: BatchScript@1
+      displayName: 'Test Debug'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        workingFolder: '$(Build.BinariesDirectory)'
+    - task: VSBuild@1
+      displayName: 'Build C# Debug'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: 'Debug'
+        platform: 'any cpu'
+        restoreNugetPackages: false
+        msbuildArchitecture: 'x64'
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
+        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+
+    - task: VSTest@2
+      displayName: 'VsTest - C# Debug'
+      inputs:
+        testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
+        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
+        runInParallel: true
+        configuration: Debug
+
+    - task: VSBuild@1
+      displayName: 'Build Release'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
+        platform: 'x64'
+        configuration: 'Release'
+        msbuildArgs: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
+        msbuildArchitecture: 'x64'
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\Release'
+
+    - task: BatchScript@1
+      displayName: 'Test Release'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --build_shared_lib  --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        workingFolder: "$(Build.BinariesDirectory)"
+
+    - task: VSBuild@1
+      displayName: 'Build c# Release'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'any cpu'
+        configuration: 'Release'
+        msbuildArchitecture: 'x64'
+        restoreNugetPackages: false
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
+        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+
+    - task: VSTest@2
+      displayName: 'VsTest - C# Release'
+      inputs:
+        testAssemblyVer2: '**\bin\Release\**\*Tests.dll'
+        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
+        runInParallel: true
+        configuration: Release
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**\*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+    - template: templates/clean-agent-build-directory-step.yml
+

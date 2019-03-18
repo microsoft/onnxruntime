@@ -536,6 +536,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_sequence_map_int_float.pb");
             using (var session = new InferenceSession(modelPath))
             {
+
+                var outMeta = session.OutputMetadata;
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outMeta["label"].OnnxValueType);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["probabilities"].OnnxValueType);
+
                 var container = new List<NamedOnnxValue>();
                 var tensorIn = new DenseTensor<float>(new float[] { 5.8f, 2.8f }, new int[] { 1, 2 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
@@ -584,6 +589,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             using (var session = new InferenceSession(modelPath))
             {
+                var outMeta = session.OutputMetadata;
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outMeta["label"].OnnxValueType);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["probabilities"].OnnxValueType);
+
                 var container = new List<NamedOnnxValue>();
                 var tensorIn = new DenseTensor<float>(new float[] { 5.8f, 2.8f }, new int[] { 1, 2 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);

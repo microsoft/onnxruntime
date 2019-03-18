@@ -24,6 +24,7 @@ limitations under the License.
 #include <gsl/pointers>
 
 #include "core/common/common.h"
+#include "core/common/callback.h"
 #include "core/platform/env_time.h"
 
 #ifndef _WIN32
@@ -96,11 +97,20 @@ class Env {
   virtual Thread* StartThread(const ThreadOptions& thread_options, const std::string& name,
                               std::function<void()> fn) const = 0;
 
-  /// file_path must point to a regular file, which can't be a pipe/socket/...
 #ifndef _WIN32
-  virtual common::Status ReadFileAsString(const char* file_path, std::string* out) const = 0;
+  /**
+   *
+   * \param file_path file_path must point to a regular file, which can't be a pipe/socket/...
+   * \param[out] p  allocated buffer with the file data
+   * \param[in] offset file offset. If offset>0, then len must also be >0.
+   * \param[in, out] len length to read(or has read). If len==0, read the whole file.
+   * @return
+   */
+  virtual common::Status ReadFileAsString(const char* file_path, off_t offset, void*& p, size_t& len,
+      OrtCallback& deleter) const = 0;
 #else
-  virtual common::Status ReadFileAsString(const wchar_t* file_path, std::string* out) const = 0;
+  virtual common::Status ReadFileAsString(const wchar_t* file_path, int64_t offset, void*& p, size_t& len,
+                                          OrtCallback& deleter) const = 0;
 #endif
 
 #ifdef _WIN32
