@@ -106,8 +106,7 @@ class Scan8Impl {
                                const std::vector<const NodeArg*>& graph_inputs);
 
   Status AllocateOutputTensors();
-  Status CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& batch_loop_state_variables,
-                                  const FeedsFetchesManager& ffm);
+  Status CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& loop_state_variables);
 
   using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const MLValue>::Iterator>;
   using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<MLValue>::Iterator>;
@@ -335,8 +334,7 @@ Status Scan8Impl::AllocateOutputTensors() {
 }
 
 // setup the loop state variables for each batch item
-Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& batch_loop_state_variables,
-                                           const FeedsFetchesManager& ffm) {
+Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& batch_loop_state_variables) {
   // Setup loop state variables
   // 1. Slice the input/output loop state variable tensors provided to Scan into the per-batch-item chunks
   //    (slice on the first dimension which is the batch size).
@@ -363,9 +361,6 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
   auto status = context_.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
 
-  const auto& ffi = ffm.GetFeedsFetchesInfo();
-  const auto& allocation_plan = session_state_.GetExecutionPlan()->allocation_plan;
-
   // setup the loop state variables for each batch row
   for (int64_t b = 0; b < batch_size_; ++b) {
     std::vector<LoopStateVariable>& variables = batch_loop_state_variables[b];
@@ -375,13 +370,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
       auto& input_iter = loop_state_input_iterators[i];
       auto& output_iter = *output_iterators_[i];
 
-      // if the output is a copy of a pre-existing value we can avoid a data copy until the final iteration
-      // by copying at the MLValue level (shared_ptr copy).
-      auto fetch_mlvalue_idx = ffi.fetches_mlvalue_idxs[i];
-      bool isCopyOfPreExistingValue = allocation_plan[fetch_mlvalue_idx].alloc_kind == AllocKind::kShare;
-
-      variables.push_back(LoopStateVariable(*input_iter, *output_iter, sequence_lens_[b], alloc,
-                                            isCopyOfPreExistingValue));
+      variables.push_back(LoopStateVariable(*input_iter, *output_iter, sequence_lens_[b], alloc));
 
       ++input_iter;
       ++output_iter;
@@ -402,7 +391,7 @@ Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* c
 
   // for each batch item, std::vector of LoopStateVariables
   std::vector<std::vector<LoopStateVariable>> batch_loop_state_variables;
-  status = CreateLoopStateVariables(batch_loop_state_variables, ffm ? *ffm : *cached_ffm);
+  status = CreateLoopStateVariables(batch_loop_state_variables);
   ORT_RETURN_IF_ERROR(status);
 
   for (int64_t b = 0; b < batch_size_; ++b) {

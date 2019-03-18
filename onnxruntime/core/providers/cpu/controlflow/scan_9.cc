@@ -127,8 +127,7 @@ class ScanImpl {
   Status SetupInputs();
 
   Status AllocateOutputTensors();
-  Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables,
-                                  const FeedsFetchesManager& ffm);
+  Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
   Status TransposeOutput();
 
   using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const MLValue>::Iterator>;
@@ -403,29 +402,19 @@ Status ScanImpl::AllocateOutputTensors() {
   return Status::OK();
 }
 
-Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables,
-                                          const FeedsFetchesManager& ffm) {
+Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables) {
   AllocatorPtr alloc;
   auto status = context_.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
 
   loop_state_variables.reserve(num_loop_state_variables_);
 
-  const auto& ffi = ffm.GetFeedsFetchesInfo();
-  const auto& allocation_plan = session_state_.GetExecutionPlan()->allocation_plan;
-
   for (int i = 0; i < num_loop_state_variables_; ++i) {
-    auto fetch_mlvalue_idx = ffi.fetches_mlvalue_idxs[i];
-    // if the output is a copy of a pre-existing value we can avoid a data copy until the final iteration
-    // by copying at the MLValue level (shared_ptr copy).
-    bool isCopyOfPreExistingValue = allocation_plan[fetch_mlvalue_idx].alloc_kind == AllocKind::kShare;
-
     const MLValue& input_mlvalue = *context_.GetInputMLValue(i);
     MLValue* output_mlvalue = context_.GetOutputMLValue(i);
     ORT_ENFORCE(output_mlvalue, "Output MLValue has not been created for loop state variable output ", i);
 
-    loop_state_variables.push_back(LoopStateVariable(input_mlvalue, *output_mlvalue, sequence_len_, alloc,
-                                                     isCopyOfPreExistingValue));
+    loop_state_variables.push_back(LoopStateVariable(input_mlvalue, *output_mlvalue, sequence_len_, alloc));
   }
 
   return status;
@@ -441,7 +430,7 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   Status status = Status::OK();
 
   std::vector<LoopStateVariable> loop_state_variables;
-  status = CreateLoopStateVariables(loop_state_variables, ffm ? *ffm : *cached_ffm);
+  status = CreateLoopStateVariables(loop_state_variables);
   ORT_RETURN_IF_ERROR(status);
 
   // Setup input MLValue streams

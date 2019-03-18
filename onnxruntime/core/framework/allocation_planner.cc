@@ -508,11 +508,11 @@ class PlannerImpl {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
 
-          // perf optimization to not copy a pre-existing value to an output if this is a subgraph.
-          // in this scenario we have a different contract with how we treat inputs, so can do this.
-          // TEMPORARY ugly hardcode of "Identity" for now
-          // ideally this is a kernel level attribute, however that may be too heavy if this is the only use case
-          if (parent_node_ && pnode->OpType() == "Identity") {
+          // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph.
+          // ideally this is temporary, and a future ONNX change to allow empty variadic inputs means we don't
+          // have converted models that unnecessarily add loop state variables. if the value is just being
+          // passed through an implicit input should be used instead.
+          if (parent_node_ && pnode->OpType() == "Identity" && parent_node_->OpType() == "Loop") {
             const auto& input_name = pnode->InputDefs()[0]->Name();
             const auto input_index = Index(input_name);
             const auto& alloc_plan = AllocPlan(input_index);

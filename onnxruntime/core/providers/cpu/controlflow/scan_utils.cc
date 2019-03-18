@@ -222,11 +222,8 @@ Status IterateSequence(OpKernelContextInternal& context,
 
     ORT_RETURN_IF_ERROR(status);
 
-    // cycle the LoopStateVariable input/output in preparation for the next iteration.
-    // provide the MLValue from the fetch in case we are passing around a pre-existing value
-    for (int lsv_output = 0; lsv_output < num_loop_state_variables; ++lsv_output) {
-      loop_state_variables[lsv_output].Next(fetches[lsv_output]);
-    }
+    // cycle the LoopStateVariable input/output in preparation for the next iteration
+    std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });
 
     // and move the output iterators.
     for (int output = num_loop_state_variables; output < num_variadic_outputs; ++output) {
@@ -296,35 +293,29 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
 LoopStateVariable::LoopStateVariable(const MLValue& original_value,
                                      MLValue& final_value,
                                      const int64_t sequence_len,
-                                     AllocatorPtr& allocator,
-                                     bool isCopyOfPreExistingValue)
+                                     AllocatorPtr& allocator)
     : sequence_len_{sequence_len},
       original_value_{original_value},
-      final_value_{final_value},
-      is_copy_of_preexisting_value_{isCopyOfPreExistingValue} {
+      final_value_{final_value} {
   auto& tensor = original_value.Get<Tensor>();
   auto& shape = tensor.Shape();
 
-  // if the output is a copy of a prexisting value we want to pass in an empty value each time
-  // otherwise pre-allocate so we copy into an existing buffer
-  if (!isCopyOfPreExistingValue) {
-    // allocate a new Tensor in an MLValue with the same shape and type as the tensor in original_value.
-    // the Tensor will own the buffer, and the MLValue will own the Tensor.
-    // the MLValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
-    // with the Tensor being used via a shared_ptr (so remains valid during execution and is cleaned up
-    // automatically at the end).
-    // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
-    // may make it harder to parallelize processing of the batch in the future.
+  // allocate a new Tensor in an MLValue with the same shape and type as the tensor in original_value.
+  // the Tensor will own the buffer, and the MLValue will own the Tensor.
+  // the MLValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
+  // with the Tensor being used via a shared_ptr (so remains valid during execution and is cleaned up
+  // automatically at the end).
+  // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
+  // may make it harder to parallelize processing of the batch in the future.
 
-    // if length is > 1, we need a_ for the first output location. otherwise we use final_value for the output.
-    if (sequence_len_ > 1) {
-      a_ = AllocateTensorInMLValue(tensor.DataType(), shape, allocator);
-    }
+  // if length is > 1, we need a_ for the first output location. otherwise we use final_value for the output.
+  if (sequence_len_ > 1) {
+    a_ = AllocateTensorInMLValue(tensor.DataType(), shape, allocator);
+  }
 
-    // if length is > 2, we need b_ for the second output location
-    if (sequence_len_ > 2) {
-      b_ = AllocateTensorInMLValue(tensor.DataType(), shape, allocator);
-    }
+  // if length is > 2, we need b_ for the second output location
+  if (sequence_len_ > 2) {
+    b_ = AllocateTensorInMLValue(tensor.DataType(), shape, allocator);
   }
 }
 
@@ -340,25 +331,11 @@ MLValue& LoopStateVariable::Output() {
     return final_value_;
   }
 
-  auto& mlvalue = iteration_num_ % 2 == 1 ? b_ : a_;
-
-  // clear if we are receiving a copy of an existing value. if we passed in an existing buffer the subgraph
-  // execution would copy into it. instead we will wire the returned value back in via Next()
-  if (is_copy_of_preexisting_value_) {
-    mlvalue = MLValue();
-  }
-
-  return mlvalue;
+  return iteration_num_ % 2 == 1 ? b_ : a_;
 }
 
-void LoopStateVariable::Next(const MLValue& last_fetch) {
+void LoopStateVariable::Next() {
   ORT_ENFORCE(iteration_num_ < sequence_len_, "Misuse of LoopStateVariable. Attempt to move beyond end of sequence");
-
-  if (is_copy_of_preexisting_value_) {
-    auto& mlvalue = iteration_num_ % 2 == 1 ? b_ : a_;
-    mlvalue = last_fetch;
-  }
-
   ++iteration_num_;
 }
 
