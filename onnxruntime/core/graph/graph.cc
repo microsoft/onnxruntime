@@ -20,6 +20,10 @@
 #include "core/common/logging/logging.h"
 #include "onnx/checker.h"
 #include "core/graph/schema_registry.h"
+
+// TEMP
+#include "core/platform/env.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ONNX_NAMESPACE::checker;
@@ -318,21 +322,26 @@ void Node::SetExecutionProviderType(ProviderType execution_provider_type) {
   execution_provider_type_ = execution_provider_type;
 }
 
-void Node::ToProto(NodeProto& proto) const {
-  // Set name.
+void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   proto.set_name(name_);
-  // Set op type.
   proto.set_op_type(op_type_);
-  // Set op domain;
-  proto.set_domain(domain_);
-  // Set doc string.
-  proto.set_doc_string(description_);
+
+  if (!domain_.empty())
+    proto.set_domain(domain_);
+
+  if (!description_.empty())
+    proto.set_doc_string(description_);
 
   // Set attributes.
   proto.clear_attribute();
   for (auto attribute : attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
     *attr = attribute.second;
+    if (update_subgraphs && attribute.second.has_g()) {
+      GraphProto latest = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+      attr->clear_g();
+      *attr->mutable_g() = latest;
+    }
   }
 
   // Set inputs' definitions.
@@ -627,6 +636,8 @@ Graph::Graph(GraphProto* graph_proto,
         const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
         *tensor = node.attribute(0).t();
         *(tensor->mutable_name()) = node.output(0);
+
+        name_to_initial_tensor_[tensor->name()] = tensor;
 
         // we remove the node and add it as an initializer, but still need it to appear in the
         // graph inputs to make the ONNX checker happy. add a new input due to that.
@@ -2104,7 +2115,7 @@ const GraphProto& Graph::ToGraphProto() {
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto_->add_node()};
     const gsl::not_null<Node*> p_node{GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
+    p_node->ToProto(*node_proto, true);
   }
 
   if (!removed_initializer_indexes_.empty()) {

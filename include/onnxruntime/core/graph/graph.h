@@ -279,8 +279,12 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
-  /** Gets the NodeProto representation of this Node. */
-  void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
+  /** Gets the NodeProto representation of this Node. 
+  @param update_subgraphs Update the GraphProto values for subgraphs in the returned NodeProto. 
+                          If graph optimization has been run this is most likely required 
+                          to ensure the complete Graph is valid.
+  */
+  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
       If the NodeArg is an explicit or implicit input, is_input will be true when func is called. 
