@@ -132,6 +132,67 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     return parser.parse_args()
 
+def update_version():
+    version = ''
+    with open('../../VERSION_NUMBER') as f:
+        version = f.readline().strip()
+    lines = []
+    current_version = ''
+    with open('../../docs/Versioning.md') as f:
+        lines = f.readlines()
+        for line in lines:
+            if line.startswith('|'):
+                sections = line.split('|')
+                if len(sections) == 6 and sections[1].strip()[0].isdigit() :
+                    current_version = sections[1].strip()
+                    break
+        if version != current_version:
+            with open('../../docs/Versioning.md','w') as f:
+                for i,line in enumerate(lines):
+                    f.write(line)
+                    if line.startswith('|--'):
+                        sections = lines[i+1].split('|')
+                        sections[1] = ' ' + version + ' '
+                        new_line = '|'.join(sections)
+                        f.write(new_line)
+                f.close()
+    lines = []
+    current_version = ''
+    with open('../../docs/python/README.rst') as f:
+        lines = f.readlines()
+        for line in lines:
+            sections = line.strip().split('.')
+            if len(sections) == 3 and sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
+                current_version = line.strip()
+                break
+    if version != current_version:
+        inserted = False
+        with open('../../docs/python/README.rst','w') as f:
+            for line in lines:
+                sections = line.strip().split('.')
+                if inserted == False and len(sections) == 3 and sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
+                    f.write(version + '\n')
+                    f.write('^^^^^\n\n')
+                    inserted = True
+                f.write(line)
+            f.close()
+    lines = []
+    current_version = ''
+    with open('../../package/rpm/onnxruntime.spec') as f:
+        lines = f.readlines()
+        for line in lines:
+            if line.startswith('Version:'):
+                current_version = line.split(':')[1].strip()
+                break
+    if version != current_version:
+        with open('../../package/rpm/onnxruntime.spec','w') as f:
+            for line in lines:
+                if line.startswith('Version:'):
+                    f.write('Version:        ' + version + '\n')
+                    continue
+                f.write(line)
+            f.close()
+
 def resolve_executable_path(command_or_path):
     """Returns the absolute path of an executable."""
     executable_path = shutil.which(command_or_path)
@@ -589,6 +650,8 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
         raise BuildError("Couldn't build protoc.exe for host. Failing build.")
 
 def main():
+    update_version()
+
     args = parse_arguments()
 
     cmake_extra_defines = args.cmake_extra_defines if args.cmake_extra_defines else []
