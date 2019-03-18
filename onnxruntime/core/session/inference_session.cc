@@ -48,6 +48,8 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/CustomOpsLoader.h"
 #include "core/session/IOBinding.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/graph_transformer_utils.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -188,11 +190,20 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                          
+                                          const std::vector<std::string>& providers,
+                                          const uint32_t& level) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
-    return graph_transformation_mgr_.Register(std::move(p_graph_transformer));
+    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), static_cast<TransformerLevel>(level), providers);
+  }
+
+  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
+    std::copy(transformers_to_enable.begin(), transformers_to_enable.end(),
+              std::back_inserter(transformers_to_enable_));
+
+    return Status::OK();
   }
 
   common::Status LoadCustomOps(const std::vector<std::string>& dso_list) {
@@ -374,15 +385,20 @@ class InferenceSession::Impl {
     // 4. insert copy nodes
     // 5. insert cast nodes.
 
-    // first apply the default/system/basic graph to graph optimizations.
-    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
+    // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
 
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
     ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
 
-    bool modified = false;
+    // apply transformers except default transformers
+    // Default transformers are required for correctness and they are owned and run by inference session
+    for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+      ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i)));
+    }
 
+    bool modified = false;
     // Insert cast node/s.
     ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
@@ -494,6 +510,9 @@ class InferenceSession::Impl {
         ORT_RETURN_IF_ERROR(execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
                                                      std::make_unique<CPUExecutionProvider>(epi)));
       }
+
+      // add predefined transformers
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level, transformers_to_enable_);
 
       onnxruntime::Graph& graph = model_->MainGraph();
 
@@ -946,6 +965,44 @@ class InferenceSession::Impl {
     session_state_.SetLogger(*session_logger_);
   }
 
+  // Registers all the predefined transformers with transformer manager
+  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                 const uint32_t& graph_optimization_level,
+                                 const std::vector<std::string>& custom_list) {
+    auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
+      // Generate and register rewrite rules for level
+      auto rewrite_rules_to_register =
+          transformer_utils::GenerateRewriteRules(level, &custom_list);
+      if (!rewrite_rules_to_register.empty()) {
+        std::unique_ptr<RuleBasedGraphTransformer> graph_rewrite_rules =
+            std::make_unique<TopDownRuleBasedTransformer>(t_name + "_RuleBasedTransformer",
+                                                          "Apply rewrite rules for " + t_name);
+        for (auto& entry : rewrite_rules_to_register) {
+          graph_rewrite_rules->Register(std::move(entry));
+        }
+        transformer_manager.Register(std::move(graph_rewrite_rules), level,
+                                     std::move(providers));
+      }
+
+      ORT_ENFORCE(graph_optimization_level < static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel),
+                  "Allowed values are 1 and 2. Current level is set to " + std::to_string(graph_optimization_level));
+
+      // Generate and register transformers for level
+      auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry.first), level, std::move(entry.second));
+      }
+    };
+
+    if ((graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::Level1)) || !custom_list.empty()) {
+      add_transformers(TransformerLevel::Level1, {}, "Level1");
+    }
+
+    if ((graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::Level2)) || !custom_list.empty()) {
+      add_transformers(TransformerLevel::Level2, {onnxruntime::kCpuExecutionProvider}, "Level2");
+    }
+  }
+
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
     if (timeout_in_ms > 0) {
       ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
@@ -960,6 +1017,11 @@ class InferenceSession::Impl {
   const SessionOptions session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+
+  // List of transformers to run. When this list is not empty only the transformers in this list
+  // will be run regardless of the level set.
+  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
+  std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
   logging::LoggingManager* logging_manager_;
@@ -1120,8 +1182,15 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return impl_->RegisterExecutionProvider(std::move(p_exec_provider));
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
-  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer));
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
+                                                          const std::vector<std::string>& providers,
+                                                          const uint32_t& level) {
+
+  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
+}
+
+common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
+  return impl_->AddCustomTransformerList(transformers_to_enable);
 }
 
 common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
