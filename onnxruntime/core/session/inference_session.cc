@@ -984,7 +984,7 @@ class InferenceSession::Impl {
       }
 
       ORT_ENFORCE(graph_optimization_level < static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel),
-                  "Allowed values are 1 and 2. Current level is set to " + graph_optimization_level);
+                  "Allowed values are 1 and 2. Current level is set to " + std::to_string(graph_optimization_level));
 
       // Generate and register transformers for level
       auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);

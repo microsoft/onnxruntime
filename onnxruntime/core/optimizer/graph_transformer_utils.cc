@@ -23,7 +23,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(const Transformer
     case TransformerLevel::Level2:
       break;
     default:
-      ORT_ENFORCE(false, "Unsupported level" + static_cast<int>(level));
+      ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
   }
 
   if (rules_to_enable != nullptr && !rules_to_enable->empty()) {
@@ -57,7 +57,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
     } break;
 
     default:
-      ORT_ENFORCE(false, "Unsupported level " + static_cast<int>(level));
+      ORT_ENFORCE(false, "Unsupported level " + std::to_string(static_cast<uint32_t>(level)));
       break;
   }
 
