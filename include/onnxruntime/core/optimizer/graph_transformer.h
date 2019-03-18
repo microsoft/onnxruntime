@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 
-enum class TransformerLevel {
+enum class TransformerLevel : uint32_t {
   Default = 0,
   Level1,
   Level2,
