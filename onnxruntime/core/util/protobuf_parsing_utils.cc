@@ -122,15 +122,14 @@ FileInputStream::CopyingFileInputStream::CopyingFileInputStream(
 FileInputStream::CopyingFileInputStream::~CopyingFileInputStream() {
   if (close_on_delete_) {
     if (!Close()) {
-      // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/strerror-s-strerror-s-wcserror-s-wcserror-s?view=vs-2017
-      const size_t errmsglen = 100;  // strerrorlen_s not available on MSVC
-      char errmsg[errmsglen];
 #ifdef _WIN32
+      const size_t errmsglen = 100;  // strerrorlen_s not available on MSVC, https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/strerror-s-strerror-s-wcserror-s-wcserror-s?view=vs-2017
+      char errmsg[errmsglen];
       strerror_s(errmsg, errmsglen, errno);
       GOOGLE_LOG(ERROR) << "close() failed: " << errmsg;
 #else  // POSIX
-      char* emsg = strerror_r(errno, errmsg, errmsglen);
-      GOOGLE_LOG(ERROR) << "close() failed: " << emsg;
+      char* e_msg = strerror(errno);
+      GOOGLE_LOG(ERROR) << "close() failed: " << e_msg;
 #endif
     }
   }
@@ -229,15 +228,15 @@ FileOutputStream::CopyingFileOutputStream::CopyingFileOutputStream(
 FileOutputStream::CopyingFileOutputStream::~CopyingFileOutputStream() {
   if (close_on_delete_) {
     if (!Close()) {
+#ifdef _WIN32
       // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/strerror-s-strerror-s-wcserror-s-wcserror-s?view=vs-2017
       const size_t errmsglen = 100;  //strerrorlen_s not available on MSVC
       char errmsg[errmsglen];
-#ifdef _WIN32
       strerror_s(errmsg, errmsglen, errno);
       GOOGLE_LOG(ERROR) << "close() failed: " << errmsg;
 #else  // POSIX
-      char* emsg = strerror_r(errno, errmsg, errmsglen);
-      GOOGLE_LOG(ERROR) << "close() failed: " << emsg;
+      char* e_msg = strerror(errno);
+      GOOGLE_LOG(ERROR) << "close() failed: " << e_msg;
 #endif
     }
   }

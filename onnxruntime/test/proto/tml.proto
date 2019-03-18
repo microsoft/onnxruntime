@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "onnx-ml.proto";
+
 option optimize_for = LITE_RUNTIME;
 
 package onnxruntime.proto;

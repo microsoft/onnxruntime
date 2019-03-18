@@ -43,9 +43,9 @@ size_t CountCopyNodes(const onnxruntime::Graph& graph) {
 
 static common::Status LoadInferenceSessionFromModel(InferenceSession& session, onnxruntime::Model& model) {
   std::stringstream s1;
-  io::OstreamOutputStream zero_copy_output(s1);
+  google::protobuf::io::OstreamOutputStream zero_copy_output(&s1);
   if (!model.ToProto().SerializeToZeroCopyStream(&zero_copy_output)) {
-    return common::Status(ONNXRUNTIME, FAIL, "Failed to serialize to ostream");
+    return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to serialize to ostream");
   }
   return session.Load(s1);
 }
