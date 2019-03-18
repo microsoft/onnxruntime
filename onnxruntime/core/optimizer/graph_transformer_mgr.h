@@ -9,18 +9,28 @@
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+
+// Older GCC versions don't support std::hash with enum types 
+// Therefore, std::hash<T> appears to be undefined when T is an enum Type. This is fixed in version 6.1
+// TODO: remove this when we update to 6.1 or later
+struct EnumHashKey {
+  template <typename T>
+  uint32_t operator()(T t) const {
+    return static_cast<uint32_t>(t);
+  }
+};
+
 // Manages a list of graph transformers. It is initialized with a list of graph
 // transformers. Each inference session can further register additional ones.
 class GraphTransformerManager {
  public:
   explicit GraphTransformerManager(unsigned steps) : steps_(steps) {
-    
-  }  
+  }
 
   // Register a transformer with a level and compatible providers list
   // If a transformer is execution provider independent
-  common::Status Register(std::unique_ptr<GraphTransformer> transformer, 
-                          const TransformerLevel& level, 
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer,
+                          const TransformerLevel& level,
                           const std::vector<std::string>& provider = {});
 
   // Apply all transformers registered for the given level on the given graph
@@ -48,10 +58,9 @@ class GraphTransformerManager {
     TransformerLevel level;
     std::vector<std::string> compatible_providers;
     GraphTransformer* transformer;
-  };
+  };  
 
-  std::unordered_map<TransformerLevel, std::vector<std::unique_ptr<GraphTransformer>>> level_to_transformer_map_;
-  std::unordered_map<std::string, TransformerInfo> transformers_info_;  
-
+  std::unordered_map<TransformerLevel, std::vector<std::unique_ptr<GraphTransformer>>, EnumHashKey> level_to_transformer_map_;
+  std::unordered_map<std::string, TransformerInfo> transformers_info_;
 };
 }  // namespace onnxruntime
