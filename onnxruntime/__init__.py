@@ -12,8 +12,11 @@ community, it supports traditional ML models as well
 as Deep Learning algorithms in the
 `ONNX-ML format <https://github.com/onnx/onnx/blob/master/docs/IR.md>`_.
 """
+import os
+
 __version__ = ''
-with open('../VERSION_NUMBER') as f:
+cwd = os.path.dirname(os.path.realpath(__file__))
+with open(cwd + '/../VERSION_NUMBER') as f:
     __version__ = f.readline().strip() 
 __author__ = "Microsoft"
 
