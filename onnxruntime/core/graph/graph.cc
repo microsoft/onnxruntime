@@ -20,10 +20,6 @@
 #include "core/common/logging/logging.h"
 #include "onnx/checker.h"
 #include "core/graph/schema_registry.h"
-
-// TEMP
-#include "core/platform/env.h"
-
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ONNX_NAMESPACE::checker;
@@ -636,8 +632,6 @@ Graph::Graph(GraphProto* graph_proto,
         const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
         *tensor = node.attribute(0).t();
         *(tensor->mutable_name()) = node.output(0);
-
-        name_to_initial_tensor_[tensor->name()] = tensor;
 
         // we remove the node and add it as an initializer, but still need it to appear in the
         // graph inputs to make the ONNX checker happy. add a new input due to that.
