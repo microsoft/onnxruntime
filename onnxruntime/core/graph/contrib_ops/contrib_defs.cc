@@ -1117,6 +1117,24 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
           "scores",
           "An input tensor with shape [num_batches, num_classes, spatial_dimention]",
           "tensor(float)")
+      .Input(
+          2,
+          "max_output_boxes_per_batch",
+          "Integer representing the maximum number of boxes to be selected per batch. It is a scalar. Value should be greater than 0",
+          "tensor(int32)",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "iou_threshold",
+          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. It is scalar. Value range [0, 1].",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Input(
+          4,
+          "score_threshold",
+          "Float representing the threshold for deciding when to remove boxes based on score. It is a scalar",
+          "tensor(float)",
+          OpSchema::Optional)
       .Output(
           0,
           "output_boxes",
@@ -1132,21 +1150,6 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
           "selected_indices",
           "selected indices from the boxes tensor. Mostly used for TensorFlow models",
           "tensor(int32)")
-      .Attr(
-          "score_threshold",
-          "Float tensor representing the threshold for deciding when to remove boxes based on score. The default is 0.0",
-          AttributeProto::FLOAT,
-          static_cast<float>(0.0f))
-      .Attr(
-          "iou_threshold",
-          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. Value range [0, 1]. The default is 0.0",
-          AttributeProto::FLOAT,
-          static_cast<float>(0.0f))
-      .Attr(
-          "max_output_boxes_per_batch",
-          "Integer representing the maximum number of boxes to be selected per batch by non max suppression. The default is 0 which means not used.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
       .Attr(
           "center_point_box",
           "Integer indicate the format of the box data. The default is 0."

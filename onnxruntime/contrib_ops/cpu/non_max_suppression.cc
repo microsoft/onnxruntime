@@ -35,7 +35,7 @@ void NonMaxSuppression::MaxMin(const float& lhs, const float& rhs, float& min, f
   }
 }
 
-bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index1, int32_t box_index2) const {
+bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index1, int32_t box_index2, float iou_threshold) const {
   float x1_min, y1_min, x1_max, y1_max, x2_min, y2_min, x2_max, y2_max;
   // center_point_box_ only support 0 or 1
   if (0 == center_point_box_) {
@@ -84,10 +84,11 @@ bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index
 
   const float intersection_over_union = intersection_area / union_area;
 
-  return intersection_over_union > iou_threshold_;
+  return intersection_over_union > iou_threshold;
 }
 
-Status NonMaxSuppression::ParepareCompute(const TensorShape& boxes_shape, const TensorShape& scores_shape) const {
+Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShape& boxes_shape, const TensorShape& scores_shape,
+                                          int32_t& max_output_boxes_per_batch, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const {
   ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 4, "boxes must be a 4D tensor.");
   ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 3, "scores must be a 3D tensor.");
 
@@ -102,6 +103,24 @@ Status NonMaxSuppression::ParepareCompute(const TensorShape& boxes_shape, const 
   const_cast<int64_t&>(num_classes_) = boxes_dims[1];
   const_cast<int64_t&>(num_boxes_) = boxes_dims[2];
 
+  const Tensor* max_output_boxes_per_batch_tensor = ctx->Input<Tensor>(2);
+  if (max_output_boxes_per_batch_tensor != nullptr) {
+    max_output_boxes_per_batch = *(max_output_boxes_per_batch_tensor->Data<int32_t>());
+    ORT_RETURN_IF_NOT(max_output_boxes_per_batch > 0, "max_output_boxes_per_batch should be greater than 0.");
+  }
+
+  const Tensor* iou_threshold_tensor = ctx->Input<Tensor>(3);
+  if (iou_threshold_tensor != nullptr) {
+    iou_threshold = *(iou_threshold_tensor->Data<float>());
+    ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1), "iou_threshold must be in range [0, 1].");
+  }
+
+  const Tensor* score_threshold_tensor = ctx->Input<Tensor>(4);
+  if (score_threshold_tensor != nullptr) {
+    has_score_threshold = true;
+    score_threshold = *(score_threshold_tensor->Data<float>());
+  }
+
   return Status::OK();
 }
 
@@ -113,7 +132,15 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
   auto& boxes_shape = boxes->Shape();
   auto& scores_shape = scores->Shape();
-  auto ret = ParepareCompute(boxes_shape, scores_shape);
+
+  int32_t max_output_boxes_per_batch = 0;
+  float iou_threshold = 0;
+  // Not so sure for the value range of score_threshold, so set a bool to indicate whether it has this input
+  bool has_score_threshold = false;
+  float score_threshold = 0;
+
+  auto ret = ParepareCompute(ctx, boxes_shape, scores_shape, max_output_boxes_per_batch,
+                             iou_threshold, score_threshold, has_score_threshold);
   ORT_RETURN_IF_NOT(ret.IsOK(), ret.ErrorMessage());
 
   const float* boxes_data = boxes->Data<float>();
@@ -154,7 +181,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
       // Filter by score_threshold_
       std::priority_queue<ScoreIndexPair, std::deque<ScoreIndexPair>, decltype(LessCompare)> sorted_scores_with_index(LessCompare);
       for (int64_t i = 0; i < num_boxes_; ++i) {
-        if (scores_data[pos + i] > score_threshold_) {
+        if (!has_score_threshold || (has_score_threshold && scores_data[pos + i] > score_threshold)) {
           sorted_scores_with_index.emplace(ScoreIndexPair({scores_data[pos + i], static_cast<int32_t>(pos + i)}));
         }
       }
@@ -169,14 +196,14 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         bool selected = true;
         // Check with existing selected boxes for this class, suppress if exceed the IOU (Intersection Over Union) threshold
         for (int i = 0; i < num_of_selected_per_class; ++i) {
-          if (SuppressByIOU(boxes_data, selected_index[num_selected - i - 1], next_top_score.index)) {
+          if (SuppressByIOU(boxes_data, selected_index[num_selected - i - 1], next_top_score.index, iou_threshold)) {
             selected = false;
             break;
           }
         }
 
         if (selected) {
-          if (max_output_boxes_per_batch_ > 0 && per_batch_count >= max_output_boxes_per_batch_) {
+          if (max_output_boxes_per_batch > 0 && per_batch_count >= max_output_boxes_per_batch) {
             break;
           }
           selected_index[num_selected] = next_top_score.index;
