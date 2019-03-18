@@ -52,7 +52,9 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
-version_number = open('VERSION_NUMBER').readline().strip()
+version_number = ''
+with open('VERSION_NUMBER') as f:
+    version_number = f.readline().strip()
 
 # Setup
 setup(
