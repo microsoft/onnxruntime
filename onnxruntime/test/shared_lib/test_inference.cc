@@ -63,7 +63,7 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr = nullptr) {
+                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
@@ -148,7 +148,7 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), false);
+  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), nullptr);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
@@ -234,7 +234,7 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("");
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, custom_op_domain);
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain);
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
