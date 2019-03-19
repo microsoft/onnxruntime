@@ -90,14 +90,72 @@ class IfImpl {
   std::vector<std::pair<AllocationType, MLValue>> outputs_;
 };
 
+void If::StaticOptimizations(const OpKernelInfo& info,
+                             const ONNX_NAMESPACE::GraphProto& then_proto,
+                             const ONNX_NAMESPACE::GraphProto& else_proto) {
+  auto check_identity_passthrough = [](const ONNX_NAMESPACE::GraphProto& proto) -> const std::string {
+    if (proto.node_size() == 1 && proto.output_size() == 1) {
+      const auto& node = proto.node().Get(0);
+      if (node.op_type() == "Identity") {
+        const auto& input_name = node.input().Get(0);
+        const auto& output_name = node.output().Get(0);
+        const auto& graph_output_name = proto.output().Get(0).name();
+
+        // if the Identity node is producing the graph output, we can just use the input directly
+        if (graph_output_name == output_name)
+          return input_name;
+      }
+    }
+
+    return "";
+  };
+
+  then_passthrough_input_name_ = check_identity_passthrough(then_proto);
+  else_passthrough_input_name_ = check_identity_passthrough(else_proto);
+}
+
 Status If::Compute(OpKernelContext* ctx) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
   auto condition = *ctx->Input<Tensor>(0)->Data<bool>();
-
   auto attribute = condition ? "then_branch" : "else_branch";
+
   auto* session_state = ctx_internal->SubgraphSessionState(attribute);
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for '", attribute, "' attribute.");
+
+  // TODO: Implicit inputs don't need to be converted to a map anymore.
+
+  // see if it's a straight copy. if so, no need to execute the subgraph
+  const std::string& passthrough_input_name = condition ? then_passthrough_input_name_ : else_passthrough_input_name_;
+
+  if (!passthrough_input_name.empty()) {
+    // have to match on name as there could be different implicit inputs for 'then' vs 'else'
+    auto implicit_inputs = ctx_internal->GetImplicitInputs();
+
+    auto* input_mlvalue = implicit_inputs[passthrough_input_name];
+    const Tensor& X = input_mlvalue->Get<Tensor>();
+    const auto X_type = X.DataType();
+    const auto& shape = X.Shape();
+
+    auto& Y = *ctx->Output(0, shape);
+
+    const void* source = X.DataRaw(X_type);
+    void* target = Y.MutableDataRaw(X_type);
+
+    // If source and target pointers are not equal, we need to copy the data. We don't expect them to ever be equal though
+    if (target != source) {
+      if (X_type != DataTypeImpl::GetType<std::string>()) {
+        memcpy(target, source, X.Size());
+      } else {
+        // handle std::string
+        const std::string* src = X.template Data<std::string>();
+        std::string* dst = Y.template MutableData<std::string>();
+        std::copy(src, src + shape.Size(), dst);
+      }
+    }
+
+    return Status::OK();
+  }
 
   IfImpl impl{*ctx_internal, *session_state};
 

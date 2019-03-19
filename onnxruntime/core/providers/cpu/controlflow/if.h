@@ -19,15 +19,24 @@ class If final : public OpKernel {
     // The GraphProto attributes are loaded as a Graph instance by main Graph::Resolve,
     // and a SessionState instance for executing the subgraph is created by InferenceSession.
     // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
-    ONNX_NAMESPACE::GraphProto proto;
-    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("then_branch", &proto).IsOK());
-    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("else_branch", &proto).IsOK());
-    ORT_IGNORE_RETURN_VALUE(proto);
+    ONNX_NAMESPACE::GraphProto then_proto;
+    ONNX_NAMESPACE::GraphProto else_proto;
+    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("then_branch", &then_proto).IsOK());
+    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("else_branch", &else_proto).IsOK());
+    // ORT_IGNORE_RETURN_VALUE(proto);
+
+    StaticOptimizations(info, then_proto, else_proto);
   }
 
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
+  void StaticOptimizations(const OpKernelInfo& info,
+                           const ONNX_NAMESPACE::GraphProto& then_proto,
+                           const ONNX_NAMESPACE::GraphProto& else_proto);
+
+  std::string then_passthrough_input_name_ = {};
+  std::string else_passthrough_input_name_ = {};
   mutable std::unique_ptr<FeedsFetchesManager> cached_then_feeds_fetches_manager_;
   mutable std::unique_ptr<FeedsFetchesManager> cached_else_feeds_fetches_manager_;
 };
