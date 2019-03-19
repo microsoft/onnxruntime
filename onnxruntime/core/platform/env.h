@@ -102,12 +102,14 @@ class Env {
    *
    * \param file_path file_path must point to a regular file, which can't be a pipe/socket/...
    * \param[out] p  allocated buffer with the file data
-   * \param[out] len lenght of p
+   * \param[in] offset file offset. If offset>0, then len must also be >0.
+   * \param[in, out] len length to read(or has read). If len==0, read the whole file.
    * @return
    */
-  virtual common::Status ReadFileAsString(const char* file_path, void*& p, size_t& len, OrtCallback& deleter) const = 0;
+  virtual common::Status ReadFileAsString(const char* file_path, off_t offset, void*& p, size_t& len,
+      OrtCallback& deleter) const = 0;
 #else
-  virtual common::Status ReadFileAsString(const wchar_t* file_path, void*& p, size_t& len,
+  virtual common::Status ReadFileAsString(const wchar_t* file_path, int64_t offset, void*& p, size_t& len,
                                           OrtCallback& deleter) const = 0;
 #endif
 

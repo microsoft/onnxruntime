@@ -31,6 +31,11 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 
+// MAC OS X doesn't have this macro
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(X) X
+#endif
+
 namespace onnxruntime {
 
 namespace {
@@ -116,33 +121,49 @@ class PosixEnv : public Env {
     return getpid();
   }
 
-  static common::Status ReadBinaryFile(int fd, const char* fname, const struct stat& stbuf, void*& p, size_t& len,
+  static common::Status ReadBinaryFile(int fd, off_t offset, const char* fname, void*& p, size_t len,
                                        OrtCallback& deleter) {
-    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(stbuf.st_size)));
+    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
     char* wptr = reinterpret_cast<char*>(buffer.get());
-    auto length_remain = stbuf.st_size;
+    auto length_remain = len;
     do {
       size_t bytes_to_read = length_remain;
-      ssize_t bytes_readed = read(fd, wptr, bytes_to_read);
-      if (bytes_readed <= 0) {
+      ssize_t bytes_read;
+      TEMP_FAILURE_RETRY(bytes_read =
+                             offset > 0 ? pread(fd, wptr, bytes_to_read, offset) : read(fd, wptr, bytes_to_read));
+      if (bytes_read <= 0) {
         int err = errno;
-        (void)close(fd);
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read file '", fname, "' fail, error code = ", err);
       }
-      assert(static_cast<size_t>(bytes_readed) <= bytes_to_read);
-      wptr += bytes_readed;
-      length_remain -= bytes_readed;
+      assert(static_cast<size_t>(bytes_read) <= bytes_to_read);
+      wptr += bytes_read;
+      length_remain -= bytes_read;
     } while (length_remain > 0);
     p = buffer.release();
-    len = stbuf.st_size;
     deleter.f = DeleteBuffer;
     deleter.param = p;
     return Status::OK();
   }
 
-  common::Status ReadFileAsString(const char* fname, void*& p, size_t& len, OrtCallback& deleter) const override {
+  static bool GetFileSizeIfUnknown(int fd, size_t& len) {
+    if(len > 0) return true;
+    struct stat stbuf;
+    if ((fstat(fd, &stbuf) != 0) || (!S_ISREG(stbuf.st_mode))) {
+      return false;
+    }
+    len = static_cast<size_t>(stbuf.st_size);
+    return true;
+  }
+
+  common::Status ReadFileAsString(const char* fname, off_t offset, void*& p, size_t& len,
+      OrtCallback& deleter) const override {
     if (!fname) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
+    }
+
+    if (offset < 0) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "ReadFileAsString: offset must be non-negative");
     }
     deleter.f = nullptr;
     deleter.param = nullptr;
@@ -151,35 +172,27 @@ class PosixEnv : public Env {
       int err = errno;
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", fname, " fail, errcode =", err);
     }
-    struct stat stbuf;
-    if ((fstat(fd, &stbuf) != 0) || (!S_ISREG(stbuf.st_mode))) {
+    if (!GetFileSizeIfUnknown(fd, len)) {
       (void)close(fd);
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get file '", fname, "' size fail");
     }
-    if (stbuf.st_size == 0) {
+    if (len == 0) {
       p = nullptr;
-      len = 0;
     } else {
-      if (sizeof(fname) <= 4) {
-        auto st = ReadBinaryFile(fd, fname, stbuf, p, len, deleter);
+      long page_size = sysconf(_SC_PAGESIZE);
+      off_t offset_to_page = offset % static_cast<off_t>(page_size);
+      p = mmap(nullptr, len + offset_to_page, PROT_READ, MAP_SHARED, fd, offset - offset_to_page);
+      if (p == MAP_FAILED) {
+        auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
         (void)close(fd);
         if (!st.IsOK()) {
           return st;
         }
       } else {
-        size_t flen = static_cast<size_t>(stbuf.st_size);
-        p = mmap(NULL, flen, PROT_READ, MAP_SHARED, fd, 0);
-        if (p == MAP_FAILED) {
-          auto st = ReadBinaryFile(fd, fname, stbuf, p, len, deleter);
-          (void)close(fd);
-          if (!st.IsOK()) {
-            return st;
-          }
-        } else {
-          len = stbuf.st_size;
-          deleter.f = UnmapFile;
-          deleter.param = new UnmapFileParam{p, flen, fd};
-        }
+        // leave the file open
+        deleter.f = UnmapFile;
+        deleter.param = new UnmapFileParam{p, len + offset_to_page, fd};
+        p = reinterpret_cast<char*>(p) + offset_to_page;
       }
     }
 

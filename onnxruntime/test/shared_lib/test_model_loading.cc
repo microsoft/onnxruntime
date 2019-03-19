@@ -4,7 +4,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/platform/env.h"
 #include "onnx_protobuf.h"
-//#include <google/protobuf/text_format.h>
 #include "test_fixture.h"
 #include "file_util.h"
 #include <fstream>
@@ -32,7 +31,7 @@ void WriteStringToTempFile(const char* test_data, std::basic_string<ORTCHAR_T>& 
 }
 }  // namespace
 
-TEST_F(CApiTest, model_missing_data) {
+TEST_F(CApiTest, DISABLED_model_missing_data) {  // TODO: protobuf-lite doesn't support parsing protobuf data represented as text
   const char* test_data =
       "ir_version: 4\n"
       "graph {\n"
@@ -94,7 +93,7 @@ TEST_F(CApiTest, model_missing_data) {
   OrtReleaseStatus(st);
 }
 
-TEST_F(CApiTest, model_with_external_data) {
+TEST_F(CApiTest, DISABLED_model_with_external_data) {  // TODO: protobuf-lite doesn't support parsing protobuf data represented as text
   const char* test_data_begin =
       "ir_version: 4\n"
       "graph {\n"

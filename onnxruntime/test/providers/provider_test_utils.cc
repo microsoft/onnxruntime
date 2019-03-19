@@ -409,6 +409,7 @@ void OpTester::Run(ExpectResult expect_result,
         kMklDnnExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
+        kTensorrtExecutionProvider,
     };
 
     bool has_run = false;
@@ -447,6 +448,8 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
           execution_provider = DefaultBrainSliceExecutionProvider();
+        else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+          execution_provider = DefaultTensorrtExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

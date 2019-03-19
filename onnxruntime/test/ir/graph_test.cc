@@ -12,7 +12,6 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-//#include "google/protobuf/util/message_differencer.h"
 #ifdef _MSC_VER
 #pragma warning(pop)
 #else
@@ -34,7 +33,6 @@
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
-//using google::protobuf::util::MessageDifferencer;
 
 static bool RegisterCustomSchemas() {
   OPERATOR_SCHEMA(Variable_DFS)
@@ -331,15 +329,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
   bool equal_proto_1_and_2 = model_proto.SerializeAsString() == model_proto2.SerializeAsString();
-  std::string diff;
-  // if (!equal_proto_1_and_2) {
-  //   MessageDifferencer d;
-  //   d.ReportDifferencesToString(&diff);
-  //   d.Compare(model_proto, model_proto2);
-  // } else {
-  //   diff = "it's fine";
-  // }
-  EXPECT_TRUE(equal_proto_1_and_2); // << diff;
+  EXPECT_TRUE(equal_proto_1_and_2);
 
   // Load the model again to ensure that it's still the right thing.
   //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());

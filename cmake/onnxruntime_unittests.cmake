@@ -189,6 +189,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -204,6 +205,13 @@ set(onnxruntime_test_providers_libs
     onnxruntime_test_utils_for_framework
     ${ONNXRUNTIME_TEST_LIBS}
   )
+
+if(onnxruntime_USE_TENSORRT)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+endif()
 
 if( NOT WIN32 AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
   list(APPEND onnxruntime_test_providers_libs stdc++fs)
@@ -394,7 +402,7 @@ onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onn
 add_dependencies(onnx_test_runner_common eigen onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
-
+target_link_libraries(onnx_test_runner_common PRIVATE libprotobuf)
 
 set(onnx_test_libs
   onnxruntime_test_utils
@@ -461,7 +469,7 @@ if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
 endif()
 onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
-target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} libprotobuf)
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # shared lib

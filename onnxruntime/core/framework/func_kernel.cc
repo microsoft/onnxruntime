@@ -22,6 +22,8 @@ DType ORT_type_to_c_type(MLDataType type) {
     return DType::TDouble;
   else if (type == DataTypeImpl::GetType<int32_t>())
     return DType::TInt32;
+  else if (type == DataTypeImpl::GetType<int64_t>())
+    return DType::TInt64;
   else
     ORT_NOT_IMPLEMENTED("Unsupport MLType to c type.");
 }
