@@ -55,16 +55,19 @@
 
 using namespace ONNX_NAMESPACE;
 
-ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
+ONNXTensorElementDataType
+MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info,
+                    _In_ const char* name, _Out_ float* out) {
   auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info,
+                    _In_ const char* name, _Out_ int64_t* out) {
   auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
   if (status.IsOK())
     return nullptr;
@@ -106,6 +109,7 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 }  // namespace
+
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     op_.CreateKernel(&op_, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
@@ -475,16 +479,16 @@ class InferenceSession::Impl {
     auto tp = session_profiler_.StartTime();
 
     try {
-      LOGS(*session_logger_, INFO) << "Initializing session.";
       std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (!is_model_loaded_) {
-        LOGS(*session_logger_, ERROR) << "Model was not loaded";
-        return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
-      }
-
       if (is_inited_) {  // already initialized
         LOGS(*session_logger_, INFO) << "Session has already been initialized.";
         return common::Status::OK();
+      }
+
+      LOGS(*session_logger_, INFO) << "Initializing session.";
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
       }
 
       // Register default CPUExecutionProvider if user didn't provide it through the Register() calls
@@ -507,8 +511,8 @@ class InferenceSession::Impl {
       // Register 2nd registries into KernelRegistryManager.
       ORT_RETURN_IF_ERROR(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
-      SessionStateInitializer session_initializer{model_location_, graph, session_state_, execution_providers_,
-                                                  kernel_registry_manager_};
+      SessionStateInitializer session_initializer{model_location_, graph, session_state_,
+                                                  execution_providers_, kernel_registry_manager_};
 
       // create SessionState for subgraphs as it's needed by the transformers
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
@@ -519,7 +523,8 @@ class InferenceSession::Impl {
                                          insert_cast_transformer_,
                                          session_state_));
 
-      // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
+      // now that all the transforms are done, call Resolve on the main graph.
+      // This will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR(graph.Resolve());
 
       ORT_RETURN_IF_ERROR(session_initializer.CreatePlan({}, session_options_.enable_sequential_execution));
@@ -561,72 +566,35 @@ class InferenceSession::Impl {
     auto actual_name = std::string(typeid(*actual).name());
     auto expected_name = std::string(typeid(*expected).name());
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
+                  "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" +
+                  expected_name + ")");
   }
 
   common::Status ValidateInputs(const std::vector<std::string>& feed_names,
                                 const std::vector<MLValue>& feeds) {
-    const auto begin_names = feed_names.cbegin();
-    const auto end_names = feed_names.cend();
-    std::unordered_set<ptrdiff_t> required_feed_ids;
-    for (auto& arg : required_input_def_list_) {
-      auto& arg_name = arg->Name();
-      if (arg_name.empty()) {
-        continue;
-      }
-
-      auto feed_names_entry = std::find(begin_names, end_names, arg_name);
-      if (feed_names_entry == end_names) {
+    if (feed_names.size() != feeds.size()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Missing required input: ", arg_name);
-      }
-
-      auto idx = feed_names_entry - begin_names;
-      required_feed_ids.insert(idx);
-      auto& input_ml_value = feeds.at(idx);
-      auto expected_type = utils::GetMLDataType(*arg);
-
-      if (input_ml_value.IsTensor()) {
-        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-        ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
-      } else {
-        auto input_type = input_ml_value.Type();
-        ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
-      }
+                               "Size mismatch: feed_names has ", feed_names.size(),
+                               "elements, but feeds has ", feeds.size(), " elements.");
     }
-
-    if (feeds.size() > required_feed_ids.size()) {
-      // More feeds are offered.
-      // In the case of overriding some initializers (which are also taken as graph inputs).
-      for (size_t i = 0; i < feeds.size(); ++i) {
-        if (required_feed_ids.count(i) > 0) {
-          continue;
-        }
-        auto iter = input_def_map_.find(feed_names[i]);
-        if (input_def_map_.end() == iter) {
-          std::ostringstream ostr;
-          std::for_each(std::begin(model_input_names_),
-                        std::end(model_input_names_),
-                        [&ostr](const std::string& elem) {
-                          ostr << elem << " ";
-                        });
+    
+    for (size_t i = 0; i < feed_names.size(); ++i) {
+      auto iter = input_def_map_.find(feed_names[i]);
+      if (iter == input_def_map_.end()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Invalid Feed Input Names:", feed_names[i],
-                                 ". Valid input names are: ", ostr.str());
-        }
-
-        auto& input_ml_value = feeds.at(i);
-        ORT_ENFORCE(input_ml_value.IsTensor());
-        auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-
-        auto expected_type = utils::GetMLDataType(*iter->second);
-        auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-
-        ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
+                                 "Invalid Feed Input Names:", feed_names[i]);
       }
+      auto& input_ml_value = feeds.at(i);
+      ORT_ENFORCE(input_ml_value.IsTensor());
+      auto input_element_type = input_ml_value.Get<Tensor>().DataType();
+
+      auto expected_type = utils::GetMLDataType(*iter->second);
+      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+
+      ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
     }
 
+    // TODO: Add checks for shape and device!    
     return Status::OK();
   }
 
@@ -650,28 +618,14 @@ class InferenceSession::Impl {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
     }
 
-    bool valid = true;
-    std::ostringstream invalid_names;
     for (const auto& name : output_names) {
       if (model_output_names_.find(name) == model_output_names_.end()) {
-        valid = false;
-        invalid_names << " " << name;
+        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                              "Invalid output name:" + name);
       }
     }
 
-    if (!valid) {
-      std::ostringstream ostr;
-      std::for_each(std::begin(model_output_names_),
-                    std::end(model_output_names_),
-                    [&ostr](const std::string& elem) {
-                      ostr << elem << " ";
-                    });
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Invalid Output Names:" + invalid_names.str() +
-                                " Valid output names are: " + ostr.str());
-    }
-
-    // TODO add more validation here like checking shape of the allocated buffers
+    // TODO: Add checks for type, shape, and device!
 
     return common::Status::OK();
   }
@@ -685,12 +639,9 @@ class InferenceSession::Impl {
     Status retval = Status::OK();
 
     try {
-      {
-        std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-        if (!is_inited_) {
-          LOGS(*session_logger_, ERROR) << "Session was not initialized";
-          retval = Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-        }
+      if (!is_inited_) {
+        LOGS(*session_logger_, ERROR) << "Session was not initialized";
+        retval = Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
       }
 
       ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
@@ -723,14 +674,15 @@ class InferenceSession::Impl {
 
       // execute the graph
       ORT_CHECK_AND_SET_RETVAL(
-          utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
-                              session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                              false));
+          utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                              {}, session_options_.enable_sequential_execution,
+                              run_options.terminate, run_logger, false));
 
     } catch (const std::exception& e) {
       retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
     } catch (...) {
-      retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+      retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION,
+                      "Encountered unknown exception in Run()");
     }
 
     // info all execution providers InferenceSession:Run ended
@@ -747,51 +699,39 @@ class InferenceSession::Impl {
   }
 
   std::pair<common::Status, const ModelMetadata*> GetModelMetadata() const {
-    {
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (!is_model_loaded_) {
-        LOGS(*session_logger_, ERROR) << "Model was not loaded";
-        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
-                              nullptr);
-      }
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL,
+                                           "Model was not loaded."),
+                            nullptr);
     }
-
     return std::make_pair(common::Status::OK(), &model_metadata_);
   }
 
   std::pair<common::Status, const InputDefList*> GetModelInputs() const {
-    {
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (!is_model_loaded_) {
-        LOGS(*session_logger_, ERROR) << "Model was not loaded";
-        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
-                              nullptr);
-      }
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL,
+                                           "Model was not loaded."),
+                            nullptr);
     }
-
     return std::make_pair(common::Status::OK(), &required_input_def_list_);
   }
 
   std::pair<common::Status, const OutputDefList*> GetModelOutputs() const {
-    {
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (!is_model_loaded_) {
-        LOGS(*session_logger_, ERROR) << "Model was not loaded";
-        return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."),
-                              nullptr);
-      }
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL,
+                                           "Model was not loaded."),
+                            nullptr);
     }
-
     return std::make_pair(common::Status::OK(), &output_def_list_);
   }
 
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
-    {
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (!is_inited_) {
-        LOGS(*session_logger_, ERROR) << "Session was not initialized";
-        return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-      }
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
     // private constructor, can't use make_unique
@@ -1031,7 +971,7 @@ class InferenceSession::Impl {
 //
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
-    : impl_(std::make_unique<Impl>(session_options, logging_manager)) {
+  : impl_(std::make_unique<Impl>(session_options, logging_manager)) {
 }
 
 InferenceSession::~InferenceSession() = default;
