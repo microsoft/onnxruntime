@@ -63,7 +63,7 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, bool custom_op, OrtCustomOpDomain* custom_op_domain_ptr = nullptr) {
+                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr = nullptr) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
