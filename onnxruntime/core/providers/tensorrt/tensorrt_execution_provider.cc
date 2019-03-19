@@ -79,11 +79,11 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
-      std::set<size_t> node_set(group.begin(), group.end()); //slx
-      //std::set<size_t> node_set;
-      //for (const auto& index : group) {
-      //  node_set.insert(node_index[index]);
-      //}
+      //std::set<size_t> node_set(group.begin(), group.end());
+      std::set<size_t> node_set;
+      for (const auto& index : group) {
+        node_set.insert(node_index[index]);
+      }
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -92,12 +92,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       int output_order = 0;
 
       for (const auto& index : group) {
-        supported_nodes_set.insert(index);
-        sub_graph->nodes.push_back(index);
-        const auto& node = graph.GetNode(index);
-        //supported_nodes_set.insert(node_index[index]);
-        //sub_graph->nodes.push_back(node_index[index]);
-        //const auto& node = graph.GetNode(node_index[index]);
+        supported_nodes_set.insert(node_index[index]);
+        sub_graph->nodes.push_back(node_index[index]);
+        const auto& node = graph.GetNode(node_index[index]);
 
         for (const auto& input : node->InputDefs()) {
           const auto& it = fused_outputs.find(input);
@@ -284,6 +281,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     string string_buf;
     model_proto.SerializeToString(&string_buf);
 
+    std::lock_guard<OrtMutex> glock(global_context_mu);
     TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
@@ -370,6 +368,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     // Create compute function
     compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
+      std::lock_guard<OrtMutex> glock(global_context_mu);
       ORT_UNUSED_PARAMETER(num_inputs);
       ORT_UNUSED_PARAMETER(num_outputs);
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);

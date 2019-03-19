@@ -7,11 +7,13 @@
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
 static const int kMaxBatchSize = 1;
 static const int kMaxWorkSpaceSize = 1 << 30;
+static OrtMutex global_context_mu;
 
 class TensorrtLogger : public nvinfer1::ILogger {
     nvinfer1::ILogger::Severity verbosity_;
