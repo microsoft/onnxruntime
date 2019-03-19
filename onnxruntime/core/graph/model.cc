@@ -3,8 +3,6 @@
 
 #include "core/graph/model.h"
 #include <memory>
-#include <iterator>
-#include <fstream>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -257,41 +255,54 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
 
 template <typename T>
 static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  try {
-    std::ifstream model_istream(file_path, std::ifstream::binary | std::ifstream::in);
-    if (!model_istream.good()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open file ", ToMBString(file_path));
+  int fd;
+  Status status = Env::Default().FileOpenRd(file_path, fd);
+  if (!status.IsOK()) {
+    if (status.Category() == common::SYSTEM) {
+      switch (status.Code()) {
+        case ENOENT:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+                                 " failed. File doesn't exist");
+        case EINVAL:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
+      }
     }
-
-    std::unique_ptr<ModelProto> p_model_proto = std::make_unique<ModelProto>();
-    ORT_RETURN_IF_ERROR(Model::Load(model_istream, p_model_proto.get()));
-    p_model = std::make_shared<Model>(std::move(p_model_proto), local_registries);
-    ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  }
+  try {
+    status = Model::Load(fd, p_model, local_registries);
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
-    //ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
-  return Status::OK();  // Env::Default().FileClose(fd);
-}  // namespace onnxruntime
+  if (!status.IsOK()) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return status;
+  }
+  return Env::Default().FileClose(fd);
+}
 
 template <typename T>
 static Status SaveModel(Model& model, const T& file_path) {
+  int fd;
+  Status status = Env::Default().FileOpenWr(file_path, fd);
+  ORT_RETURN_IF_ERROR(status);
   try {
-    std::ofstream model_ostream(file_path, std::ofstream::out | std::ofstream::binary);
-    if (!model_ostream.good()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open file for wiritng: ", ToMBString(file_path));
-    }
-    std::string output_str;
-    auto model_proto = model.ToProto();
-    model_proto.SerializeToString(&output_str);
-    model_ostream << output_str;
+    status = Model::Save(model, fd);
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
-    //ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
   }
-  return Status::OK();  //Env::Default().FileClose(fd);
+  if (!status.IsOK()) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return status;
+  }
+  return Env::Default().FileClose(fd);
 }
 
 #ifdef _WIN32

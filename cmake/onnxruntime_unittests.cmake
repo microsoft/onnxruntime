@@ -469,7 +469,7 @@ if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
 endif()
 onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
-target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} libprotobuf)
+target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # shared lib
@@ -481,7 +481,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_include_to_target(onnxruntime_custom_op_shared_lib_test gsl)
     add_dependencies(onnxruntime_custom_op_shared_lib_test onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
     target_include_directories(onnxruntime_custom_op_shared_lib_test PUBLIC "${PROJECT_SOURCE_DIR}/include")
-    target_link_libraries(onnxruntime_custom_op_shared_lib_test PRIVATE onnxruntime onnx onnx_proto  libprotobuf)
+    target_link_libraries(onnxruntime_custom_op_shared_lib_test PRIVATE onnxruntime onnx onnx_proto  protobuf::libprotobuf)
     set_target_properties(onnxruntime_custom_op_shared_lib_test PROPERTIES FOLDER "ONNXRuntimeSharedLibTest")
   endif()
   add_library(onnxruntime_mocked_allocator ${ONNXRUNTIME_ROOT}/test/util/test_allocator.cc)
@@ -515,7 +515,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
           TARGET onnxruntime_shared_lib_test
           SOURCES ${onnxruntime_shared_lib_test_SRC}
           LIBS ${onnxruntime_shared_lib_test_LIBS}
-          libprotobuf
+          protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
   #demo

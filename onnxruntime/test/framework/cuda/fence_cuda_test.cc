@@ -38,7 +38,7 @@ class FenceCudaTestInferenceSession : public InferenceSession {
  public:
   FenceCudaTestInferenceSession(const SessionOptions& so) : InferenceSession(so) {}
   Status LoadModel(onnxruntime::Model& model) {
-    auto& model_proto = model.ToProto();
+    auto model_proto = model.ToProto();
     auto st = Load(model_proto);
     return st;
   }

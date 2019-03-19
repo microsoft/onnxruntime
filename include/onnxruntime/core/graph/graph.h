@@ -752,7 +752,6 @@ class Graph {
   Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
   virtual ~Graph();
-  common::Status Resolve(bool no_proto_sync_required);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
@@ -853,6 +852,8 @@ class Graph {
     // A sub graph (function).
     Sub = 2,
   };
+
+  common::Status Resolve(bool no_proto_sync_required);
 
   // Recursively find all subgraphs including nested subgraphs
   void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
