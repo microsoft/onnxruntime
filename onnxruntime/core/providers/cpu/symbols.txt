@@ -6,7 +6,6 @@ OrtAllocatorInfoGetId
 OrtAllocatorInfoGetMemType
 OrtAllocatorInfoGetName
 OrtAllocatorInfoGetType
-OrtAppendCustomOpLibPath
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
 OrtCompareAllocatorInfo
@@ -62,6 +61,7 @@ OrtReleaseTensorTypeAndShapeInfo
 OrtReleaseTypeInfo
 OrtReleaseValue
 OrtRun
+OrtRunCallback
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
