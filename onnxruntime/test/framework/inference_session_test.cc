@@ -1343,5 +1343,67 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   run_test(run_number++);
 }
 
+TEST(InferenceSessionTests, TestL1Transformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";  
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestL1Transformers";
+  so.graph_optimization_level = 1;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  Status st = session_object.Initialize();
+  ASSERT_TRUE(st.IsOK()) << st;
+}
+
+TEST(InferenceSessionTests, TestL1AndL2Transformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+  so.graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());  
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
+
+TEST(InferenceSessionTests, TestCustomTransformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+  so.graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"});
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
+
+TEST(InferenceSessionTests, DisableAllTransformers) {  
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableAllTransformers";
+  so.graph_optimization_level = 0;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
+
 }  // namespace test
 }  // namespace onnxruntime

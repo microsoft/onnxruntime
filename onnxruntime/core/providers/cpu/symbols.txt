@@ -6,7 +6,6 @@ OrtAllocatorInfoGetId
 OrtAllocatorInfoGetMemType
 OrtAllocatorInfoGetName
 OrtAllocatorInfoGetType
-OrtAppendCustomOpLibPath
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
 OrtCompareAllocatorInfo
