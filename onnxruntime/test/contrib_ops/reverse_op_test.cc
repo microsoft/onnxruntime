@@ -75,15 +75,15 @@ void RunTestWrapper()
     std::vector<int64_t> reverse_axes_5 = {0, 0};
     std::initializer_list<T> expected_vals_5 = {8, 7, 6, 5, 4, 3, 2, 1};
     std::vector<int64_t> expected_dimensions_5 = {2, 4};
-    RunTest<T>(input_vals_5, input_dimensions_5, reverse_axes_5, expected_vals_5, expected_dimensions_5, OpTester::ExpectResult::kExpectFailure, "axes attribute has duplicate values in Reverse operator");
+    RunTest<T>(input_vals_5, input_dimensions_5, reverse_axes_5, expected_vals_5, expected_dimensions_5, OpTester::ExpectResult::kExpectFailure, "axes attribute has duplicates in Reverse operator");
 
-	// Test 6 (explicit axes with explicit duplicate values)
+	// Test 6 (explicit axes with implicit duplicate values)
     std::initializer_list<T> input_vals_6 = {1, 2, 3, 4, 5, 6, 7, 8};
     std::vector<int64_t> input_dimensions_6 = {2, 4};
     std::vector<int64_t> reverse_axes_6 = {-1, 1};
     std::initializer_list<T> expected_vals_6 = {8, 7, 6, 5, 4, 3, 2, 1};
     std::vector<int64_t> expected_dimensions_6 = {2, 4};
-    RunTest<T>(input_vals_5, input_dimensions_6, reverse_axes_6, expected_vals_6, expected_dimensions_6, OpTester::ExpectResult::kExpectFailure, "axes attribute has implicit dupes");
+    RunTest<T>(input_vals_5, input_dimensions_6, reverse_axes_6, expected_vals_6, expected_dimensions_6, OpTester::ExpectResult::kExpectFailure, "axes attribute has duplicates in Reverse operator");
 }
 
 template <>

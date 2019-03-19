@@ -3,6 +3,9 @@
 
 #include "reverse.h"
 #include <utility>
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -15,157 +18,233 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Reverse);
 
-Status handle_scalar_tensor(const Tensor* input, Tensor* output, const MLDataType& dtype) {
+Status handle_scalar_tensor(const Tensor* input_tensor, Tensor* output_tensor, const MLDataType& dtype) {
   // for scalar tensors, "reversing" is just copying the input buffer to the output buffer
- 
+
   // string scalar
   if (dtype == DataTypeImpl::GetType<std::string>()) {
-    const std::string* src = input->template Data<std::string>();
-    std::string* dst = output->template MutableData<std::string>();
+    const std::string* src = input_tensor->template Data<std::string>();
+    std::string* dst = output_tensor->template MutableData<std::string>();
     if (src != dst)
       std::copy(src, src + 1, dst);
     return Status::OK();
   }
 
-  // non-string scalars
-  const void* source = input->DataRaw(dtype);
-  void* target = output->MutableDataRaw(dtype);
-  if (target != source)
-    memcpy(target, source, 1 * dtype->Size());
+  // MLFLoat16 scalar
+  if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
+    const auto* src = input_tensor->Data<MLFloat16>();
+    auto* dst = output_tensor->template MutableData<MLFloat16>();
+    dst[0] = MLFloat16(math::floatToHalf(math::halfToFloat(src[0].val)));
+    return Status::OK();
+  }
+
+  // BFLoat16 scalar
+  if (dtype == DataTypeImpl::GetType<BFloat16>()) {
+    const auto* src = input_tensor->Data<BFloat16>();
+    auto* dst = output_tensor->template MutableData<BFloat16>();
+    dst[0] = BFloat16(src[0].ToFloat());
+    return Status::OK();
+  }
+
+  // non-string and non-float16 scalars - just copy the raw bytes
+  const void* src = input_tensor->DataRaw(dtype);
+  void* dst = output_tensor->MutableDataRaw(dtype);
+  if (src != dst)
+    memcpy(dst, src, 1 * dtype->Size());
 
   return Status::OK();
 }
 
+#define ProcessType(type, ml_data_type, rank, dims)                                                                                                            \
+  const ConstEigenTensorMap<type, rank> input = buffer_as_const_eigen_tensor<type, rank>(static_cast<const type*>(input_tensor->DataRaw(ml_data_type)), dims); \
+  EigenTensorMap<type, rank> output = buffer_as_eigen_tensor<type, rank>(static_cast<type*>(output_tensor->MutableDataRaw(ml_data_type)), dims);              \
+  output = input.reverse(eigen_reverse_axes);
+
 template <int rank>
-void ReverseImpl(const void* input_buffer, void* output_buffer, const std::vector<int64_t>& dims, const std::vector<int64_t>& reverse_axes, const MLDataType& dtype) {
+void ReverseImpl(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
+  const auto& dtype = input_tensor->DataType();
+  const auto& dims = shape.GetDims();
   const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
+
   if (dtype == DataTypeImpl::GetType<float>()) {
-    const ConstEigenTensorMap<float, rank> input = buffer_as_const_eigen_tensor<float, rank>(static_cast<const float*>(input_buffer), dims);
-    EigenTensorMap<float, rank> output = buffer_as_eigen_tensor<float, rank>(static_cast<float*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
-    const ConstEigenTensorMap<double, rank> input = buffer_as_const_eigen_tensor<double, rank>(static_cast<const double*>(input_buffer), dims);
-    EigenTensorMap<double, rank> output = buffer_as_eigen_tensor<double, rank>(static_cast<double*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    const ConstEigenTensorMap<int8_t, rank> input = buffer_as_const_eigen_tensor<int8_t, rank>(static_cast<const int8_t*>(input_buffer), dims);
-    EigenTensorMap<int8_t, rank> output = buffer_as_eigen_tensor<int8_t, rank>(static_cast<int8_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-    const ConstEigenTensorMap<int16_t, rank> input = buffer_as_const_eigen_tensor<int16_t, rank>(static_cast<const int16_t*>(input_buffer), dims);
-    EigenTensorMap<int16_t, rank> output = buffer_as_eigen_tensor<int16_t, rank>(static_cast<int16_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-    const ConstEigenTensorMap<int32_t, rank> input = buffer_as_const_eigen_tensor<int32_t, rank>(static_cast<const int32_t*>(input_buffer), dims);
-    EigenTensorMap<int32_t, rank> output = buffer_as_eigen_tensor<int32_t, rank>(static_cast<int32_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-    const ConstEigenTensorMap<int64_t, rank> input = buffer_as_const_eigen_tensor<int64_t, rank>(static_cast<const int64_t*>(input_buffer), dims);
-    EigenTensorMap<int64_t, rank> output = buffer_as_eigen_tensor<int64_t, rank>(static_cast<int64_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-    const ConstEigenTensorMap<uint8_t, rank> input = buffer_as_const_eigen_tensor<uint8_t, rank>(static_cast<const uint8_t*>(input_buffer), dims);
-    EigenTensorMap<uint8_t, rank> output = buffer_as_eigen_tensor<uint8_t, rank>(static_cast<uint8_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-    const ConstEigenTensorMap<uint16_t, rank> input = buffer_as_const_eigen_tensor<uint16_t, rank>(static_cast<const uint16_t*>(input_buffer), dims);
-    EigenTensorMap<uint16_t, rank> output = buffer_as_eigen_tensor<uint16_t, rank>(static_cast<uint16_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-    const ConstEigenTensorMap<uint32_t, rank> input = buffer_as_const_eigen_tensor<uint32_t, rank>(static_cast<const uint32_t*>(input_buffer), dims);
-    EigenTensorMap<uint32_t, rank> output = buffer_as_eigen_tensor<uint32_t, rank>(static_cast<uint32_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-    const ConstEigenTensorMap<uint64_t, rank> input = buffer_as_const_eigen_tensor<uint64_t, rank>(static_cast<const uint64_t*>(input_buffer), dims);
-    EigenTensorMap<uint64_t, rank> output = buffer_as_eigen_tensor<uint64_t, rank>(static_cast<uint64_t*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<bool>()) {
-    const ConstEigenTensorMap<bool, rank> input = buffer_as_const_eigen_tensor<bool, rank>(static_cast<const bool*>(input_buffer), dims);
-    EigenTensorMap<bool, rank> output = buffer_as_eigen_tensor<bool, rank>(static_cast<bool*>(output_buffer), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else {
+    ProcessType(float, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<double>()) {
+    ProcessType(double, dtype, rank, dims)
+  }
+  else if (dtype == DataTypeImpl::GetType<bool>()) {
+    ProcessType(bool, dtype, rank, dims)
+  }
+  else if (dtype == DataTypeImpl::GetType<int8_t>()) {
+    ProcessType(int8_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<int16_t>()) {
+    ProcessType(int16_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<int32_t>()) {
+    ProcessType(int32_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+    ProcessType(int64_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
+    ProcessType(uint8_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
+    ProcessType(uint16_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
+    ProcessType(uint32_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
+    ProcessType(uint64_t, dtype, rank, dims)
+  } 
+  else if (dtype == DataTypeImpl::GetType<std::string>()) {
+    const ConstEigenTensorMap<std::string, rank> input = buffer_as_const_eigen_tensor<std::string, rank>(static_cast<const std::string*>(input_tensor->template Data<std::string>()), dims);
+    EigenTensorMap<std::string, rank> output = buffer_as_eigen_tensor<std::string, rank>(static_cast<std::string*>(output_tensor->template MutableData<std::string>()), dims);
+    output = input.reverse(eigen_reverse_axes);  
+  } 
+  else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
+    ReverseImplMLFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes); 
+  } 
+  else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
+    ReverseImplBFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes);
+  }
+  else {
     ORT_THROW("Unsupported input datatype for Reverse operator. Got ", dtype);
   }
 }
 
 template <int rank>
-void ReverseImplStringType(const std::string* input_buffer, std::string* output_buffer, const std::vector<int64_t>& dims, const std::vector<int64_t>& reverse_axes) {
+void ReverseImplMLFloat16Type(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
+  AllocatorPtr allocator;
+  ctx->GetTempSpaceAllocator(&allocator);
+  //ORT_ENFORCE(ctx->GetTempSpaceAllocator(&allocator), "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
+  ORT_ENFORCE(allocator != nullptr, "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
+
+  const int64_t len = shape.Size();
+  ORT_ENFORCE(len > 0, "Need atleast one float16 element to be processed in Reverse operator");
+
+  float* buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
+  ORT_ENFORCE(buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
+
+  const auto& dims = shape.GetDims();
   const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
-  const ConstEigenTensorMap<std::string, rank> input = buffer_as_const_eigen_tensor<std::string, rank>(static_cast<const std::string*>(input_buffer), dims);
-  EigenTensorMap<std::string, rank> output = buffer_as_eigen_tensor<std::string, rank>(static_cast<std::string*>(output_buffer), dims);
-  output = input.reverse(eigen_reverse_axes);
+
+  // fill the intermediate buffer with the values in the input tensor
+  const auto& span = gsl::make_span(input_tensor->Data<MLFloat16>(), len);
+  std::transform(span.cbegin(), span.cend(), buffer, [](const MLFloat16& val) { return math::halfToFloat(val.val); });
+
+  // process the intermediate buffer
+  EigenTensorMap<float, rank> eigen_tensor = buffer_as_eigen_tensor<float, rank>(buffer, dims);
+  eigen_tensor = eigen_tensor.reverse(eigen_reverse_axes);
+
+  // fill output tensor's values with results in intermediate buffer
+  auto* output_data = output_tensor->template MutableData<MLFloat16>();
+  std::transform(buffer, buffer + len, output_data, [](const float& val) { return MLFloat16(math::floatToHalf(val)); });
+
+  // free the intermediate buffer
+  allocator->Free(buffer);
+
 }
 
 template <int rank>
-void ReverseImplMLFloat16Type(const MLFloat16* input_buffer, MLFloat16* output_buffer, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
-    ORT_ENFORCE(allocator != nullptr, "ORT needs access to allocator to process float16 data in Reverse operator");
-    const int64_t len = shape.Size();
-    ORT_ENFORCE(len > 0, "Need atleast one float16 element to be processed in Reverse operator");
-    void* buffer = allocator->AllocArray(sizeof(float), len);
-    ORT_ENFORCE(buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
-    Tensor tmp_tensor(DataTypeImpl::GetType<float>(), shape, buffer, allocator->Info());
+void ReverseImplBFloat16Type(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
+  AllocatorPtr allocator;
+  ctx->GetTempSpaceAllocator(&allocator);
+  //ORT_ENFORCE(ctx->GetTempSpaceAllocator(&allocator), "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
+  ORT_ENFORCE(allocator != nullptr, "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
 
-    allocator->Free(buffer);
-  }
+  const int64_t len = shape.Size();
+  ORT_ENFORCE(len > 0, "Need atleast one float16 element to be processed in Reverse operator");
+
+  float* buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
+  ORT_ENFORCE(buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
+
+  const auto& dims = shape.GetDims();
+  const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
+
+  // fill the intermediate buffer with the values in the input tensor
+  const auto& span = gsl::make_span(input_tensor->Data<BFloat16>(), len);
+  std::transform(span.cbegin(), span.cend(), buffer, [](const BFloat16& val) { return val.ToFloat(); });
+
+  // process the intermediate buffer
+  EigenTensorMap<float, rank> eigen_tensor = buffer_as_eigen_tensor<float, rank>(buffer, dims);
+  eigen_tensor = eigen_tensor.reverse(eigen_reverse_axes);
+
+  // fill output tensor's values with results in intermediate buffer
+  auto* output_data = output_tensor->template MutableData<BFloat16>();
+  std::transform(buffer, buffer + len, output_data, [](const float& val) { return BFloat16(val); });
+
+  // free the intermediate buffer
+  allocator->Free(buffer);
 }
 
 Status Reverse::Compute(OpKernelContext* p_op_kernel_context) const {
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
-  const auto& input_shape = input->Shape();
-  const auto& input_dims = input_shape.GetDims();
-  const auto& input_rank = input_shape.NumDimensions();
-  auto* output = p_op_kernel_context->Output(0, input_shape);
+  const auto& shape = input->Shape();
+  const auto& rank = shape.NumDimensions();
+  auto* output = p_op_kernel_context->Output(0, shape);
   const auto& dtype = input->DataType();
 
-  if (input_rank == 0)
+  if (rank == 0)
     return handle_scalar_tensor(input, output, dtype);
 
   // non-default axes - validate them for rank related correctness
   std::vector<int64_t> copy_attr_axes_ = attr_axes_;
   std::unordered_set<int64_t> axes_elements;
   if (copy_attr_axes_.size() > 0) {
-    if (copy_attr_axes_.size() > input_rank)
+    if (copy_attr_axes_.size() > rank)
       ORT_THROW("Number of elements in axes attribute exceeds the input tensor rank in Reverse operator");
     for (const auto& axis : copy_attr_axes_) {
-      if (axis >= static_cast<int64_t>(input_rank) || axis < static_cast<int64_t>(-input_rank))
+      if (axis >= static_cast<int64_t>(rank) || axis < static_cast<int64_t>(-rank))
         ORT_THROW("Elements in axes attribute are outside bounds of the input tensor's rank in Reverse operator");
-       // check for implicit dupes - (e.g.) axes contains -1 and 4 for an input tensor of rank 5
-	   // TODO: Do we need checks like these ? It could unnecessarily affect run-time perf
-	  if (axis < 0) {
-        if (axes_elements.find(axis + input_rank) != axes_elements.end())
-          ORT_THROW("axes attribute has implicit dupes - a negative value corresponding to an existing positive value in the axes attribute" 
-			        " for the rank of the input tensor ", input_rank);
-        axes_elements.insert(axis + input_rank);      
-	  } else {
+      // check for implicit and explicit dupes in axes attribute
+	  // explicit dupes (e.g.) 0 and 0 
+	  // implicit dupes (e.g.) -1 and 1 for an input tensor of rank 2
+      // TODO: Do we need checks like these ? It could unnecessarily affect run-time perf
+      if (axis < 0) {
+        if (axes_elements.find(axis + rank) != axes_elements.end())
+          ORT_THROW("axes attribute has duplicates in Reverse operator");
+        axes_elements.insert(axis + rank);
+      } else {
         if (axes_elements.find(axis) != axes_elements.end())
-            ORT_THROW("axes attribute has implicit dupes - a negative value corresponding to an existing positive value in the axes attribute"
-                      " for the rank of the input tensor ", input_rank);
-        axes_elements.insert(axis);        
-	  }
-    }    
+          ORT_THROW("axes attribute has duplicates in Reverse operator");
+        axes_elements.insert(axis);
+      }
+    }
   }
 
-  const void* source = input->DataRaw(dtype);
-  void* target = output->MutableDataRaw(dtype);
-
   // process the output tensor's buffer
-  switch (input_rank) {
+  switch (rank) {
     case 1:
-      if (dtype == DataTypeImpl::GetType<std::string>())
-        ReverseImplStringType<1>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, copy_attr_axes_);
-      else
-        ReverseImpl<1>(source, target, input_dims, copy_attr_axes_, dtype);
+      ReverseImpl<1>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
       break;
     case 2:
-      if (dtype == DataTypeImpl::GetType<std::string>())
-        ReverseImplStringType<2>(input->template Data<std::string>(), output->template MutableData<std::string>(), input_dims, copy_attr_axes_);
-      else
-        ReverseImpl<2>(source, target, input_dims, copy_attr_axes_, dtype);
+      ReverseImpl<2>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
+      break;
+    case 3:
+      ReverseImpl<3>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
+      break;
+    case 4:
+      ReverseImpl<4>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
+      break;
+    case 5:
+      ReverseImpl<5>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
+      break;
+    case 6:
+      ReverseImpl<6>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
+      break;
+    case 7:
+      ReverseImpl<7>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
+      break;
+    case 8:
+      ReverseImpl<8>(p_op_kernel_context, input, output, shape, copy_attr_axes_);
       break;
     default:
       ORT_THROW("Reverse operator is not implemented for input tensors with 9 or more dimensions (rank)");
   }
   return Status::OK();
 }
-}
-}  // namespace onnxruntime 
+}  // namespace contrib
+}  // namespace onnxruntime

@@ -19,21 +19,6 @@ template <typename T, int rank>
 using ConstEigenTensorMap = Eigen::TensorMap<Eigen::Tensor<const T, rank, Eigen::RowMajor, Eigen::DenseIndex>>;
 
 // utility helpers specific to Reverse
-// explicit dupes - (e.g.) axes contains 0 and another 0
-inline bool axes_has_explicit_dupes(const std::vector<int64_t>& axes) {
-  if (axes.size() == 0)
-    return false;
-
-  std::unordered_set<int64_t> elements;
-  for (const auto& axis : axes) {
-    if (elements.find(axis) != elements.end())
-      return true;
-    elements.insert(axis);
-  }
-
-  return false;
-}
-
 template <int rank>
 Eigen::array<bool, rank> vector_to_eigen_array(const std::vector<int64_t>& reverse_axes) {
   Eigen::array<bool, rank> eigen_reverse_axes;
@@ -78,8 +63,7 @@ ConstEigenTensorMap<T, rank> buffer_as_const_eigen_tensor(const T* buffer, const
 class Reverse final : public OpKernel {
  public:
   explicit Reverse(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-    auto has_axes = op_kernel_info.GetAttrs("axes", attr_axes_).IsOK();
-    ORT_ENFORCE(!has_axes || !axes_has_explicit_dupes(attr_axes_), "axes attribute has duplicate values in Reverse operator");
+    op_kernel_info.GetAttrs("axes", attr_axes_);
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
