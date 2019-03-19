@@ -348,6 +348,30 @@ If scale is not provided, crop the borders as provided.)DOC";
 Sample echo operator.)DOC");
 
   // register schemas for more operators here
+    ONNX_CONTRIB_OPERATOR_SCHEMA(Reverse)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .SetDoc(R"DOC(For internal use.)DOC")
+    .Attr(
+        "axes",
+        "A list of integers indicating the axes to reverse. "
+        "Negative values mean counting dimensions from the back."
+        "By default, reverse over all axes of input dimensions",
+        AttributeProto::INTS,
+        OPTIONAL)
+    .Input(0, "input", "Tensor of rank r >= 1.", "T")
+    .Output(0, "output", "Tensor of rank r >= 1 (same rank as input).", "T")
+    .TypeConstraint(
+        "T",
+        OpSchema::all_tensor_types(),
+        "Input and output types can be of any tensor type.")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      if (ONNX_NAMESPACE::hasNInputShapes(ctx, 1)) {
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+      }
+    });
+      
   ONNX_CONTRIB_OPERATOR_SCHEMA(MaxpoolWithMask)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
