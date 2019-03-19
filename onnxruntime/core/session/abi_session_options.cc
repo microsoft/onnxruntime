@@ -14,7 +14,7 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   throw std::runtime_error("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
-    : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
+    : value(other.value), provider_factories(other.provider_factories) {
 }
 
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
@@ -80,8 +80,4 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
   if (session_thread_pool_size <= 0) return -1;
   options->value.session_thread_pool_size = session_thread_pool_size;
   return 0;
-}
-
-ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path) {
-  options->custom_op_paths.emplace_back(lib_path);
 }
