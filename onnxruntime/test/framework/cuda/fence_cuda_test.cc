@@ -34,6 +34,16 @@ namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
+class FenceCudaTestInferenceSession : public InferenceSession {
+ public:
+  FenceCudaTestInferenceSession(const SessionOptions& so) : InferenceSession(so) {}
+  Status LoadModel(onnxruntime::Model& model) {
+    auto& model_proto = model.ToProto();
+    auto st = Load(model_proto);
+    return st;
+  }
+};
+
 size_t CountCopyNodes(const onnxruntime::Graph& graph) {
   size_t num_copy_nodes = 0;
   for (auto& p : graph.Nodes())
@@ -41,13 +51,8 @@ size_t CountCopyNodes(const onnxruntime::Graph& graph) {
   return num_copy_nodes;
 }
 
-static common::Status LoadInferenceSessionFromModel(InferenceSession& session, onnxruntime::Model& model) {
-  std::stringstream s1;
-  google::protobuf::io::OstreamOutputStream zero_copy_output(&s1);
-  if (!model.ToProto().SerializeToZeroCopyStream(&zero_copy_output)) {
-    return common::Status(common::ONNXRUNTIME, common::FAIL, "Failed to serialize to ostream");
-  }
-  return session.Load(s1);
+static common::Status LoadInferenceSessionFromModel(FenceCudaTestInferenceSession& session, onnxruntime::Model& model) {
+  return session.LoadModel(model);
 }
 
 #define CREATE_INITIALIZER_FUNC(T, PROTO_DATATYPE, PROTO_ADD_DATA)                                          \
@@ -109,7 +114,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  InferenceSession session(so);
+  FenceCudaTestInferenceSession session(so);
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
@@ -164,7 +169,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  InferenceSession session(so);
+  FenceCudaTestInferenceSession session(so);
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
@@ -228,7 +233,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  InferenceSession session(so);
+  FenceCudaTestInferenceSession session(so);
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
