@@ -147,16 +147,15 @@ def update_version():
                 if len(sections) == 6 and sections[1].strip()[0].isdigit() :
                     current_version = sections[1].strip()
                     break
-        if version != current_version:
-            with open(cwd + '/../../docs/Versioning.md','w') as f:
-                for i,line in enumerate(lines):
-                    f.write(line)
-                    if line.startswith('|--'):
-                        sections = lines[i+1].split('|')
-                        sections[1] = ' ' + version + ' '
-                        new_line = '|'.join(sections)
-                        f.write(new_line)
-                f.close()
+    if version != current_version:
+        with open(cwd + '/../../docs/Versioning.md','w') as f:
+            for i,line in enumerate(lines):
+                f.write(line)
+                if line.startswith('|--'):
+                    sections = lines[i+1].split('|')
+                    sections[1] = ' ' + version + ' '
+                    new_line = '|'.join(sections)
+                    f.write(new_line)
     lines = []
     current_version = ''
     with open(cwd + '/../../docs/python/README.rst') as f:
@@ -176,7 +175,6 @@ def update_version():
                     f.write('^^^^^\n\n')
                     inserted = True
                 f.write(line)
-            f.close()
     lines = []
     current_version = ''
     with open(cwd + '/../../package/rpm/onnxruntime.spec') as f:
@@ -192,7 +190,6 @@ def update_version():
                     f.write('Version:        ' + version + '\n')
                     continue
                 f.write(line)
-            f.close()
 
 def resolve_executable_path(command_or_path):
     """Returns the absolute path of an executable."""
