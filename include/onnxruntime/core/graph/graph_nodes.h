@@ -122,7 +122,7 @@ class ValidNodes {
 
    private:
     TIterator current_;
-    const TIterator end_;
+    TIterator end_;
   };
 
  private:

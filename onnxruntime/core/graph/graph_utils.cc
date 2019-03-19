@@ -77,8 +77,7 @@ bool IsSingleInSingleOutNode(const Node& node) {
   return node.GetInputEdgesCount() == 1 && node.GetOutputEdgesCount() == 1;
 }
 
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(
-    const Node& node, const std::string& attr_name) {
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
   const auto& attrs = node.GetAttributes();
   const auto iter = attrs.find(attr_name);
   return iter == attrs.end() ? nullptr : &iter->second;
