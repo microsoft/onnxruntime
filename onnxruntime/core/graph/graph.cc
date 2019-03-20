@@ -608,7 +608,6 @@ Graph::Graph(GraphProto* graph_proto,
              Graph* parent_graph,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : graph_proto_{graph_proto},
-      graph_type_{Type::Main},
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       graph_proto_sync_needed_(false),
@@ -619,76 +618,60 @@ Graph::Graph(GraphProto* graph_proto,
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
-  // these are all empty unless we received a graph_proto as input
-  if (graph_proto != nullptr) {
+  for (auto& node : graph_proto_->node()) {
+    if (node.op_type() != kConstant) {
+      continue;
+    }
+
     // Copy constant nodes _value to name_to_initial_tensor_
-    for (auto& node : graph_proto_->node()) {
-      if (node.op_type() == kConstant) {
-        const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-        *tensor = node.attribute(0).t();
-        *(tensor->mutable_name()) = node.output(0);
+    const gsl::not_null<TensorProto*>
+        tensor{graph_proto_->add_initializer()};
+    *tensor = node.attribute(0).t();
+    *(tensor->mutable_name()) = node.output(0);
+  }
 
-        // we remove the node and add it as an initializer, but still need it to appear in the
-        // graph inputs to make the ONNX checker happy. add a new input due to that.
-        auto graph_inputs = graph_proto_->mutable_input();
+  // Remove constant nodes as they're replaced with initializers above.
+  const gsl::not_null<RepeatedPtrField<NodeProto>*> graph_mutable_nodes{graph_proto_->mutable_node()};
+  graph_mutable_nodes->erase(
+      std::remove_if(graph_mutable_nodes->begin(), graph_mutable_nodes->end(),
+                     [](NodeProto& p) {
+                       return (p.op_type() == kConstant);
+                     }),
+      graph_mutable_nodes->end());
 
-        ValueInfoProto* value_info = graph_inputs->Add();
-        value_info->set_name(node.output(0));
-        value_info->set_doc_string("Input to represent replaced Constant node");
+  // Copy initial tensors to a map.
+  for (auto& tensor : graph_proto_->initializer()) {
+    name_to_initial_tensor_[tensor.name()] = &tensor;
+  }
 
-        TypeProto t;
-        t.mutable_tensor_type()->set_elem_type(tensor->data_type());
-        auto shape = t.mutable_tensor_type()->mutable_shape();
-        for (auto dim : tensor->dims())
-          shape->add_dim()->set_dim_value(dim);
-
-        (*value_info->mutable_type()) = t;
-      }
+  // Collect all node arg name, type, shape information in the graph.
+  // type/shape information will be assigned to each node arg when going
+  // thru all nodes later.
+  for (auto& graph_input : graph_proto_->input()) {
+    if (graph_input.has_name() && graph_input.has_type()) {
+      name_to_type_map[graph_input.name()] = graph_input.type();
+      // always create a NodeArg for graph input in case its from an initializer
+      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
     }
+  }
 
-    // remove constant nodes
-    const gsl::not_null<RepeatedPtrField<NodeProto>*> graph_mutable_nodes{graph_proto_->mutable_node()};
-    graph_mutable_nodes->erase(
-        std::remove_if(graph_mutable_nodes->begin(), graph_mutable_nodes->end(),
-                       [](NodeProto& p) {
-                         return (p.op_type() == kConstant);
-                       }),
-        graph_mutable_nodes->end());
-
-    // Copy initial tensors to a map.
-    for (auto& tensor : graph_proto_->initializer()) {
-      name_to_initial_tensor_[tensor.name()] = &tensor;
+  for (auto& graph_output : graph_proto_->output()) {
+    if (graph_output.has_name() && graph_output.has_type()) {
+      auto& name = graph_output.name();
+      name_to_type_map[name] = graph_output.type();
+      // always create NodeArg for graph output, in case it's from initializer
+      GetOrCreateNodeArg(name, &graph_output.type());
     }
+  }
 
-    // Collect all node arg name, type, shape information in the graph.
-    // type/shape information will be assigned to each node arg when going
-    // thru all nodes later.
-    for (auto& graph_input : graph_proto_->input()) {
-      if (graph_input.has_name() && graph_input.has_type()) {
-        name_to_type_map[graph_input.name()] = graph_input.type();
-        // always create a NodeArg for graph input in case its from an initializer
-        GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
-      }
+  for (auto& node_arg : graph_proto_->value_info()) {
+    if (node_arg.has_name() && node_arg.has_type()) {
+      name_to_type_map[node_arg.name()] = node_arg.type();
     }
+  }
 
-    for (auto& graph_output : graph_proto_->output()) {
-      if (graph_output.has_name() && graph_output.has_type()) {
-        auto& name = graph_output.name();
-        name_to_type_map[name] = graph_output.type();
-        // always create NodeArg for graph output, in case it's from initializer
-        GetOrCreateNodeArg(name, &graph_output.type());
-      }
-    }
-
-    for (auto& node_arg : graph_proto_->value_info()) {
-      if (node_arg.has_name() && node_arg.has_type()) {
-        name_to_type_map[node_arg.name()] = node_arg.type();
-      }
-    }
-
-    for (auto node_proto : graph_proto_->node()) {
-      AddNode(node_proto, name_to_type_map);
-    }
+  for (auto node_proto : graph_proto_->node()) {
+    AddNode(node_proto, name_to_type_map);
   }
 }
 

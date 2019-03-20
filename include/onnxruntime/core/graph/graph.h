@@ -846,13 +846,6 @@ class Graph {
 
   common::Status PerformTypeAndShapeInferencing();
 
-  enum class Type {
-    // A main graph.
-    Main = 1,
-    // A sub graph (function).
-    Sub = 2,
-  };
-
   common::Status Resolve(bool no_proto_sync_required);
 
   // Recursively find all subgraphs including nested subgraphs
@@ -918,8 +911,6 @@ class Graph {
 
   InitializedTensorSet name_to_initial_tensor_;
   std::vector<int> removed_initializer_indexes_;
-
-  Type graph_type_ = Type::Main;
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
