@@ -21,9 +21,11 @@ struct RunOptions {
   int symbolic_dim_value_in_main_graph = -1;
   bool include_dim_values_in_subgraph = true;
   bool mixed_execution_providers = false;
+  bool test_pass_through_optimization = false;
 };
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
+static const ONNX_NAMESPACE::GraphProto CreatePassThroughSubgraph();
 
 /*
  Main graph
@@ -82,7 +84,10 @@ class IfOpTester : public OpTester {
       auto& if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
 
       auto then_proto = CreateSubgraph(true, options_);
-      auto else_proto = CreateSubgraph(false, options_);
+      auto else_proto = options_.test_pass_through_optimization
+                            ? CreatePassThroughSubgraph()
+                            : CreateSubgraph(false, options_);
+
       if_node.AddAttribute("then_branch", {then_proto});
       if_node.AddAttribute("else_branch", {else_proto});
     }
@@ -179,6 +184,32 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
   return proto;
 }
 
+static const ONNX_NAMESPACE::GraphProto CreatePassThroughSubgraph() {
+  Model model("PassThrough");
+  auto& graph = model.MainGraph();
+
+  // graph input has to have type and rank even though it's an outer scope value.
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* mutable_dim = input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim();
+  mutable_dim->set_dim_value(1);
+
+  // outer scope value
+  auto& if_input = graph.GetOrCreateNodeArg("if_input_0", &input_tensor_type);
+  graph.AddOuterScopeNodeArg("if_input_0");
+
+  // output value
+  auto& pass_through_output = graph.GetOrCreateNodeArg("pass_through_out_0", &input_tensor_type);
+
+  graph.AddNode("pass_through", "Identity", "Pass input through as output", {&if_input}, {&pass_through_output});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto& proto = graph.ToGraphProto();
+  return proto;
+}
+
 void RunTest(bool condition_value,
              RunOptions options,
              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
@@ -204,7 +235,12 @@ void RunTest(bool condition_value,
   if (condition_value) {
     test.AddOutput<float>("if_out_0", output_shape, {2.f});
   } else {
-    test.AddOutput<float>("if_out_0", output_shape, {11.f});
+    if (options.test_pass_through_optimization) {
+      // if this is true, the 'else' branch should just pass through if_graph_input_0
+      test.AddOutput<float>("if_out_0", output_shape, {1.f});
+    } else {
+      test.AddOutput<float>("if_out_0", output_shape, {11.f});
+    }
   }
 
   if (options.mixed_execution_providers) {
@@ -278,5 +314,12 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   RunTest(false, options);
 }
 
+// test that the pass through optimization for a subgraph containing only an Identity node works
+TEST(If, PassThroughOptimization) {
+  RunOptions options;
+  options.test_pass_through_optimization = true;
+
+  RunTest(false, options);
+}
 }  // namespace test
 }  // namespace onnxruntime
