@@ -38,7 +38,7 @@ class App {
   App& Run();
 
  private:
-  const std::shared_ptr<Routes> routes{std::make_shared<Routes>()};
+  const std::shared_ptr<Routes> routes = std::make_shared<Routes>();
   net::ip::address address_;
   unsigned short port_;
   int threads_;

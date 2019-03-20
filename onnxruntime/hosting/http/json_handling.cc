@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <istream>
-#include <string>
 #include <boost/beast/core.hpp>
-#include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/json_util.h>
 
 #include "predict.pb.h"
@@ -33,5 +30,6 @@ protobufutil::Status GenerateResponseInJson(onnxruntime::hosting::PredictRespons
   protobufutil::Status result = MessageToJsonString(response, &json_string, options);
   return result;
 }
+
 }  // namespace hosting
 }  // namespace onnxruntime
