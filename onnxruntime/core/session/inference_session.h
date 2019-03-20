@@ -137,7 +137,7 @@ class InferenceSession {
     */
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                           const std::vector<std::string>& providers = {},
-                                          const TransformerLevel level = TransformerLevel::Level2);
+                                          TransformerLevel level = TransformerLevel::Level2);
 
   /**
     * Enable a custom set of transformers. Call this before invoking Initialize().

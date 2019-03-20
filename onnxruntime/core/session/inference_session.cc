@@ -192,7 +192,7 @@ class InferenceSession::Impl {
 
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                          
                                           const std::vector<std::string>& providers,
-                                          const TransformerLevel level) {
+                                          TransformerLevel level) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
@@ -1181,7 +1181,7 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 
 common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
                                                           const std::vector<std::string>& providers,
-                                                          const TransformerLevel level) {
+                                                          TransformerLevel level) {
 
   return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
 }

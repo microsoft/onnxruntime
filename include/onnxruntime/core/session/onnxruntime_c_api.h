@@ -226,6 +226,7 @@ ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* l
 ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
 
 // Set Graph optimization level.
+// Return 0 on success and -1 otherwise
 // Available options are : 0, 1, 2.
 // 0 -> Disable all optimizations
 // 1 -> Enable basic optimizations
