@@ -300,7 +300,7 @@ static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM 
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = ml_sqrt2 * ml_inv_erf(2 * scores[0] - 1);
+      scores[0] = ComputeProbit(scores[0]);
       //Z->template MutableData<float>()[write_index] = scores[0];
     } else {
       switch (add_second_class) {
