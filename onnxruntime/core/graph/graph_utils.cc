@@ -202,7 +202,7 @@ bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
   if (OutputEdgeProvidesImplicitInput(output_edge)) {
     // the output we need to wire to the downstream node, and the output name from the node we want to remove
     const auto& output_name = GetNodeOutputName(input_edge_node, output_edge.GetSrcArgIndex());
-    const auto& removed_output_name = node.OutputDefs()[0]->Name();
+    const auto& removed_output_name = GetNodeOutputName(node, 0);
 
     Node& mutable_output_edge_node = *graph.GetNode(output_edge_node_index);
 
