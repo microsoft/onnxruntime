@@ -1608,6 +1608,10 @@ Status Graph::VerifyNodeAndOpMatch() {
   lsc.output_names.insert(resolve_context_.outer_scope_node_args.cbegin(),
                           resolve_context_.outer_scope_node_args.cend());
 
+  // we may have some locally defined outer scope args if we're in the middle of constructing a subgraph
+  // and need to call Resolve
+  lsc.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
+
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
     auto& node = *GetNode(node_index);
@@ -2142,6 +2146,13 @@ void Graph::SyncGraphInputsOutputs() {
   for (const auto* value_info : value_info_) {
     *(graph_proto_->mutable_value_info()->Add()) = value_info->ToProto();
   }
+
+  // add the NodeArg info for outer scope NodeArgs so we capture the type information
+  for (const auto& name : outer_scope_node_arg_names_) {
+    auto* node_arg = GetNodeArg(name);
+    ORT_ENFORCE(node_arg, "Outer scope node arg name '" + name + "'was added but does not exist. ");
+    *(graph_proto_->mutable_value_info()->Add()) = node_arg->ToProto();
+  }
 }
 
 void Graph::CleanUnusedInitializers() {
@@ -2277,7 +2288,8 @@ Status Graph::SetGraphInputsOutputs() {
           // The node input is not specified as graph input,
           // and it's not fed by another node neither.
           if (!IsSubgraph()) {
-            return Status(ONNXRUNTIME, FAIL, "Node input (" + input_arg->Name() + ") should be a graph input or initializer.");
+            return Status(ONNXRUNTIME, FAIL,
+                          "Node input (" + input_arg->Name() + ") should be a graph input or initializer.");
           }
 
           // TODO: Do we need to do a comprehensive check that the input is coming from the outer scope or is it
