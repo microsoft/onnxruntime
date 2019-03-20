@@ -12,12 +12,7 @@ community, it supports traditional ML models as well
 as Deep Learning algorithms in the
 `ONNX-ML format <https://github.com/onnx/onnx/blob/master/docs/IR.md>`_.
 """
-import os
-
-__version__ = ''
-cwd = os.path.dirname(os.path.realpath(__file__))
-with open(os.path.join(cwd, '..', 'VERSION_NUMBER')) as f:
-    __version__ = f.readline().strip() 
+__version__ = "0.3.0"
 __author__ = "Microsoft"
 
 from onnxruntime.capi import onnxruntime_validation

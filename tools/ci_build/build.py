@@ -193,6 +193,23 @@ def update_version():
                     f.write('Version:        ' + version + '\n')
                     continue
                 f.write(line)
+    lines = []
+    current_version = ''
+    file_path = os.path.join(cwd, '..', '..', 'onnxruntime', '__init__.py')
+    with open(file_path) as f:
+        lines = f.readlines()
+        for line in lines:
+            if line.startswith('__version__'):
+                current_version = line.split('=')[1].strip()[1:-1]
+                break
+    if version != current_version:
+        with open(file_path, 'w') as f:
+            for line in lines:
+                if line.startswith('__version__'):
+                    f.write('__version__ = "' + version + '"\n')
+                    continue
+                f.write(line)
+
 
 def resolve_executable_path(command_or_path):
     """Returns the absolute path of an executable."""
