@@ -20,15 +20,6 @@ static bool OutputEdgeProvidesImplicitInput(const Node::EdgeEnd& output_edge) {
   return is_implicit_input;
 }
 
-static const std::string& GetNodeInputName(const Node& node, int index) {
-  const auto& inputs = node.InputDefs();
-
-  // this should never happen as it's internal logic so just use an assert
-  assert(index < inputs.size());
-
-  return inputs[index]->Name();
-}
-
 static const std::string& GetNodeOutputName(const Node& node, int index) {
   const auto& outputs = node.OutputDefs();
 
