@@ -52,7 +52,7 @@ const std::string BACKWARD_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_bw.on
     }                                                                  \
   }
 
-int build_grad_graph(int(int /*argc*/, char* /*args*/[]) {
+int build_grad_graph(int /*argc*/, char* /*args*/[]) {
   std::string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING, false,
