@@ -4,6 +4,7 @@
 #include "environment.h"
 #include "http_server.h"
 #include "json_handling.h"
+#include "executor.h"
 
 namespace onnxruntime {
 namespace hosting {
@@ -43,8 +44,14 @@ void Predict(const std::string& name,
     return BadRequest(context, status.error_message());
   }
 
+  Executor executor(env);
+  PredictResponse response{};
+  executor.predict(name, version, "request_id", predictRequest, response);
+
+  std::string response_body{};
+  status = GenerateResponseInJson(response, response_body);
   http::response<http::string_body> res{std::piecewise_construct,
-                                        std::make_tuple(body),
+                                        std::make_tuple(response_body),
                                         std::make_tuple(http::status::ok, context.request.version())};
   res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
   res.set(http::field::content_type, "application/json");

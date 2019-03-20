@@ -28,6 +28,7 @@ int main(int argc, char* argv[]) {
   LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
   auto status = env.GetSession()->Load(config.model_path);
   LOGS(logger, VERBOSE) << "Load Model Status: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
+  LOGS(logger, VERBOSE) << "Session Initialized: " << env.GetSession()->Initialize();
 
   auto const boost_address = boost::asio::ip::make_address(config.address);
 

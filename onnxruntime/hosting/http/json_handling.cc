@@ -20,7 +20,7 @@ protobufutil::Status GetRequestFromJson(std::string json_string, /* out */ onnxr
   return result;
 }
 
-protobufutil::Status GenerateResponseInJson(onnxruntime::hosting::PredictResponse response, /* out */ std::string& json_string) {
+protobufutil::Status GenerateResponseInJson(const onnxruntime::hosting::PredictResponse& response, /* out */ std::string& json_string) {
   protobufutil::JsonPrintOptions options;
   options.add_whitespace = false;
   options.always_print_primitive_fields = false;
