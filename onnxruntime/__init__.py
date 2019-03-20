@@ -16,7 +16,7 @@ import os
 
 __version__ = ''
 cwd = os.path.dirname(os.path.realpath(__file__))
-with open(cwd + '/../VERSION_NUMBER') as f:
+with open(os.path.join(cwd, '..', 'VERSION_NUMBER')) as f:
     __version__ = f.readline().strip() 
 __author__ = "Microsoft"
 

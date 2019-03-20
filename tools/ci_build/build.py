@@ -135,11 +135,12 @@ Use the individual flags to only run the specified stages.
 def update_version():
     version = ''
     cwd = os.path.dirname(os.path.realpath(__file__)) 
-    with open(cwd + '/../../VERSION_NUMBER') as f:
+    with open(os.path.join(cwd, '..', '..', 'VERSION_NUMBER')) as f:
         version = f.readline().strip()
     lines = []
     current_version = ''
-    with open(cwd + '/../../docs/Versioning.md') as f:
+    file_path = os.path.join(cwd, '..', '..', 'docs', 'Versioning.md')
+    with open(file_path) as f:
         lines = f.readlines()
         for line in lines:
             if line.startswith('|'):
@@ -148,7 +149,7 @@ def update_version():
                     current_version = sections[1].strip()
                     break
     if version != current_version:
-        with open(cwd + '/../../docs/Versioning.md','w') as f:
+        with open(file_path, 'w') as f:
             for i,line in enumerate(lines):
                 f.write(line)
                 if line.startswith('|--'):
@@ -158,7 +159,8 @@ def update_version():
                     f.write(new_line)
     lines = []
     current_version = ''
-    with open(cwd + '/../../docs/python/README.rst') as f:
+    file_path = os.path.join(cwd, '..', '..', 'docs', 'python', 'README.rst')
+    with open(file_path) as f:
         lines = f.readlines()
         for line in lines:
             sections = line.strip().split('.')
@@ -167,7 +169,7 @@ def update_version():
                 break
     if version != current_version:
         inserted = False
-        with open(cwd + '/../../docs/python/README.rst','w') as f:
+        with open(file_path,'w') as f:
             for line in lines:
                 sections = line.strip().split('.')
                 if inserted == False and len(sections) == 3 and sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
@@ -177,14 +179,15 @@ def update_version():
                 f.write(line)
     lines = []
     current_version = ''
-    with open(cwd + '/../../package/rpm/onnxruntime.spec') as f:
+    file_path = os.path.join(cwd, '..', '..', 'package', 'rpm', 'onnxruntime.spec')
+    with open(file_path) as f:
         lines = f.readlines()
         for line in lines:
             if line.startswith('Version:'):
                 current_version = line.split(':')[1].strip()
                 break
     if version != current_version:
-        with open(cwd + '/../../package/rpm/onnxruntime.spec','w') as f:
+        with open(file_path, 'w') as f:
             for line in lines:
                 if line.startswith('Version:'):
                     f.write('Version:        ' + version + '\n')
