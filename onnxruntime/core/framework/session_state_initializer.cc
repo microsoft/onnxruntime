@@ -59,7 +59,8 @@ SessionStateInitializer::SessionStateInitializer(const std::basic_string<PATH_CH
       kernel_registry_manager_{kernel_registry_manager},
       logger_{session_state.Logger()} {}
 
-common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
+common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
+                                                   const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
   auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
 
@@ -83,7 +84,7 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(*graph_viewer, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -91,7 +92,7 @@ common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& 
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(*graph_viewer, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -112,12 +113,13 @@ common::Status SessionStateInitializer::InitializeAndSave(const std::vector<Node
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(
-      SaveInitializedTensors(env, graph_loc_, graph_, exec_plan, execution_providers_, mlvalue_name_idx_map,
-                             session_state_.GetMutableWeightsBuffers(),
-                             [this](int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status {
-                               return session_state_.AddInitializedTensor(idx, value, &d);
-                             },
-                             logger_));
+      SaveInitializedTensors(
+          env, graph_loc_, graph_, exec_plan, execution_providers_, mlvalue_name_idx_map,
+          session_state_.GetMutableWeightsBuffers(),
+          [this](int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status {
+            return session_state_.AddInitializedTensor(idx, value, &d);
+          },
+          logger_));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
@@ -445,13 +447,13 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
               SessionState::NodeInfo node_info(index, &node, kci);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
-                session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
+                ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
                 return Status::OK();
               }
 
               if (implicit_inputs) {
                 if (IsArgNameInInputsOutputs(arg.Name(), *implicit_inputs)) {
-                  session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info);
+                  ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
                   return Status::OK();
                 }
               }
@@ -476,7 +478,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // copy to a different device is required
       SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, kci);
       for (const auto& input_def : node_implicit_inputs) {
-        session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info);
+        ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }
   }
@@ -498,7 +500,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
       // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input MLValue as is given we don't believe it's used anywhere.
       LOGS(session_state.Logger(), WARNING) << "Graph input with name " << name << " is not associated with a node. ";
-      session_state.AddInputNameToNodeInfoMapping(name, empty_node_info);
+      ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(name, empty_node_info));
     }
   }
 

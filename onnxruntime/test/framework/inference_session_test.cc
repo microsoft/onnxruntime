@@ -1189,7 +1189,6 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
-  run_options.cache_feeds_fetches_info = true;  // caching should handle the truncated and non-truncated cases
 
   std::vector<int64_t> X_dims = {5, 1, 3};
   std::vector<float> X = {0.5488135f, 0.71518934f, 0.60276335f,
@@ -1332,7 +1331,6 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
     // Now run
     RunOptions run_options;
     run_options.run_tag = "run:" + std::to_string(run_num);
-    run_options.cache_feeds_fetches_info = true;
 
     common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
@@ -1345,41 +1343,66 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   run_test(run_number++);
 }
 
-// Make sure we don't match the wrong cache entry
-TEST(InferenceSessionTests, TestCacheMatching) {
+TEST(InferenceSessionTests, TestL1Transformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";  
+
   SessionOptions so;
-
-  so.session_logid = "InferenceSessionTests.TestCacheMatching";
-
+  so.session_logid = "InferenceSessionTests.TestL1Transformers";
+  so.graph_optimization_level = 1;
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  Status st = session_object.Initialize();
+  ASSERT_TRUE(st.IsOK()) << st;
+}
+
+TEST(InferenceSessionTests, TestL1AndL2Transformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+  so.graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());  
+
   ASSERT_TRUE(session_object.Initialize().IsOK());
+}
 
-  RunOptions run_options;
-  run_options.run_tag = "one session/one tag";
-  run_options.cache_feeds_fetches_info = true;
+TEST(InferenceSessionTests, TestCustomTransformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  // run once with valid names. this will cache an entry with input name of 'X' and output name of 'Y'
-  RunModel(session_object, run_options);
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+  so.graph_optimization_level = 2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"});
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
-  // run again with an invalid output name. if we match the cache, we don't do name validation so this would
-  // not error out as it would use the valid output name information from the cache.
-  std::vector<int64_t> dims_mul_x = {3, 2};
-  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value);
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("X", ml_value));
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::vector<std::string> output_names;
-  output_names.push_back("Y_invalid");
-  std::vector<MLValue> fetches;
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
 
-  common::Status status = session_object.Run(run_options, feeds, output_names, &fetches);
+TEST(InferenceSessionTests, DisableAllTransformers) {  
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Output Names: Y_invalid"));
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableAllTransformers";
+  so.graph_optimization_level = 0;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
 }  // namespace test

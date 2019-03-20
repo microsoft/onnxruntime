@@ -24,6 +24,11 @@ OpKernelContext::OpKernelContext(IExecutionFrame* frame,
 }
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
+  auto p_ml_value = OutputMLValue(index, shape);
+  return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
+}
+
+MLValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
@@ -34,7 +39,7 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   MLValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), &shape, p_ml_value);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-  return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
+  return p_ml_value;
 }
 
 int OpKernelContext::NumVariadicInputs(size_t arg_num) const {
