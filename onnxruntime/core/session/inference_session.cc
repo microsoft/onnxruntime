@@ -57,6 +57,21 @@
 
 using namespace ONNX_NAMESPACE;
 
+constexpr OrtCustomOpApi g_custom_op_api = {
+    &OrtKernelInfoGetAttribute_float,
+    &OrtKernelInfoGetAttribute_int64,
+
+    &OrtGetTensorShapeAndType,
+
+    &OrtGetNumOfDimensions,
+    &OrtGetDimensions,
+    &OrtSetDims,
+
+    &OrtGetTensorMutableData,
+
+    &OrtReleaseTensorTypeAndShapeInfo,
+};
+
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
 ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
@@ -110,7 +125,9 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }  // namespace
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
-    op_.CreateKernel(&op_, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
+    if (op_.version != 1)
+      throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
+    op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
   }
 
   ~CustomOpKernel() {
@@ -190,7 +207,7 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                          
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                           const std::vector<std::string>& providers,
                                           const uint32_t& level) {
     if (p_graph_transformer == nullptr) {
@@ -1165,10 +1182,9 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return impl_->RegisterExecutionProvider(std::move(p_exec_provider));
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                           const std::vector<std::string>& providers,
                                                           const uint32_t& level) {
-
   return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
 }
 
