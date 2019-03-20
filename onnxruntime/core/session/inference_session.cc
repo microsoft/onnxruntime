@@ -967,7 +967,7 @@ class InferenceSession::Impl {
 
   // Registers all the predefined transformers with transformer manager
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 const TransformerLevel graph_optimization_level,
+                                 TransformerLevel graph_optimization_level,
                                  const std::vector<std::string>& custom_list) {
     auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
       // Generate and register rewrite rules for level
@@ -983,9 +983,6 @@ class InferenceSession::Impl {
         transformer_manager.Register(std::move(graph_rewrite_rules), level,
                                      std::move(providers));
       }
-
-      ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
-                  "Allowed values are 1 and 2. Current level is set to " + std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
       // Generate and register transformers for level
       auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
