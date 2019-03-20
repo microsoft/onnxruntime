@@ -14,14 +14,16 @@ GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss
   std::vector<NodeDef> new_nodes;
   // Sub
   {
-    new_nodes.emplace_back(NodeDef("Sub",                    // Op
-                                   "MeanSquaredError_diff",  // name
+    new_nodes.emplace_back(NodeDef("Sub",  // Op
                                    {
                                        ArgDef(loss_func_info.prediction_name_),
                                        ArgDef(loss_func_info.label_name_)},  // Inputs
                                    {
                                        ArgDef("MeanSquaredError_diff")  // Outputs
-                                   }));
+                                   },
+                                   NodeAttributes(),
+                                   "MeanSquaredError_diff"  // name
+                                   ));
   }
   // Pow
   {
@@ -32,14 +34,16 @@ GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss
     tensor_proto.set_name("MeanSquaredError_exponent");
     graph_defs.AddInitializers({tensor_proto});
 
-    new_nodes.emplace_back(NodeDef("Pow",                   // Op
-                                   "MeanSquaredError_pow",  // name
+    new_nodes.emplace_back(NodeDef("Pow",  // Op
                                    {
                                        ArgDef("MeanSquaredError_diff"),  // Inputs
                                        ArgDef("MeanSquaredError_exponent")},
                                    {
                                        ArgDef("MeanSquaredError_diff_square")  // Outputs
-                                   }));
+                                   },
+                                   NodeAttributes(),
+                                   "MeanSquaredError_pow"  // name
+                                   ));
   }
   // ReduceMean
   {
@@ -58,14 +62,15 @@ GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss
       att.set_i(0);
       attributes["keepdims"] = att;
     }
-    new_nodes.emplace_back(NodeDef("ReduceMean",                    // Op
-                                   "MeanSquaredError_reduce_mean",  // name
+    new_nodes.emplace_back(NodeDef("ReduceMean",  // Op
                                    {
                                        ArgDef("MeanSquaredError_diff_square")},  // Inputs
                                    {
                                        ArgDef(loss_func_info.loss_name_)  // Outputs
                                    },
-                                   attributes));
+                                   attributes,
+                                   "MeanSquaredError_reduce_mean"  // name
+                                   ));
   }
 
   graph_defs.AddNodeDefs(new_nodes);

@@ -17,10 +17,13 @@ GraphAugmenter::GraphDefs LossFunctionBuilder::Build(const Graph& graph,
   // If not in the loss function registry.
   if (!registry.Contains(loss_func_info.name_)) {
     //If is a valid op, add to the loss function registry
-    //TODO: handle op version and domain.
+    //TODO: Better handle op version and domain.
     if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(loss_func_info.name_,
                                                                 GRADIENT_OP_VERSION,
-                                                                ONNX_NAMESPACE::ONNX_DOMAIN)) {
+                                                                ONNX_NAMESPACE::ONNX_DOMAIN) ||
+        ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(loss_func_info.name_,
+                                                                1,
+                                                                kMSDomain)) {
       registry.RegisterOperatorLossFunction(loss_func_info.name_);
     } else {
       ORT_THROW(loss_func_info.name_, "is not a system provided loss function nor a valid op");

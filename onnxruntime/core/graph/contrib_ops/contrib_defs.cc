@@ -19,8 +19,8 @@ void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool u
 namespace onnxruntime {
 namespace contrib {
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
 using ::ONNX_NAMESPACE::OpSchema;
+using ::ONNX_NAMESPACE::OPTIONAL;
 
 void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx) {
   if (!hasInputShape(ctx, input1Idx) && !hasInputShape(ctx, input2Idx)) {
@@ -221,7 +221,6 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
-
   // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
   static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
@@ -1358,6 +1357,32 @@ Example 4:
   map and from feature map into RoI feature; in each ROI bin,
   the value of the sampled locations are computed directly
   through bilinear interpolation.)DOC");
+
+  // TODO: push this to ONNX
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropy)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(1, "label", "label is 2-D input of shape (batch_size, num_classes).", "T")
+      .Output(0, "Y", "loss.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(2, "label", "label is 2-D input of shape (batch_size, num_classes).", "T")
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops

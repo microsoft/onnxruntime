@@ -20,6 +20,9 @@ struct LossFunctionInfo {
 
   //loss_name Output name of the loss function, must be different from any existing outputs in the model
   std::string loss_name_;
+
+  //The domain of loss function op
+  std::string domain_;
 };
 
 class ILossFunction {

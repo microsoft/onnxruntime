@@ -11,6 +11,7 @@
 #include "core/training/weight_updater.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
+//#include "core/graph/constants.h"
 
 #include <random>
 
@@ -229,6 +230,7 @@ int main(int /*argc*/, char* /*args*/[]) {
   mnist::MNIST_dataset<std::vector, std::vector<uint8_t>, uint8_t> dataset = {};
 
   //Step 0 : Read MNIST data
+  DataSet training_set, testing_set;
   bool load_mnist_data = true;
   if (load_mnist_data) {
     dataset = mnist::read_dataset<std::vector, std::vector, uint8_t, uint8_t>(MNIST_DATA_PATH);
@@ -237,9 +239,10 @@ int main(int /*argc*/, char* /*args*/[]) {
     std::cout << "Nbr of training labels = " << dataset.training_labels.size() << std::endl;
     std::cout << "Nbr of test images = " << dataset.test_images.size() << std::endl;
     std::cout << "Nbr of test labels = " << dataset.test_labels.size() << std::endl;
+
+    training_set = DataSet(dataset.training_images, dataset.training_labels);
+    testing_set = DataSet(dataset.test_images, dataset.test_labels);
   }
-  DataSet training_set(dataset.training_images, dataset.training_labels);
-  DataSet testing_set(dataset.test_images, dataset.test_labels);
 
   // Step 1: Load the model and generate gradient graph in a training session.
   SessionOptions so;
@@ -247,8 +250,12 @@ int main(int /*argc*/, char* /*args*/[]) {
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));
   // Uncomment this to try adding a loss func with an existing op.
   // although BW-graph building fail due to the incorrect output shape
-  // TERMINATE_IF_FAILED(training_session.AddLossFuncion({"Sub", "predictions", "labels", "loss"}));
-  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", "predictions", "labels", "loss"}));
+  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"SoftmaxCrossEntropy",
+                                                       "predictions",
+                                                       "labels",
+                                                       "loss",
+                                                       kMSDomain}));
+  //TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", "predictions", "labels", "loss"}));
   TERMINATE_IF_FAILED(training_session.Save(GENERATED_MODEL_WITH_COST_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
   TERMINATE_IF_FAILED(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss"));

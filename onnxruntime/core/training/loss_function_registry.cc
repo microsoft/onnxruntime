@@ -12,18 +12,19 @@ class LossFunctionUsingOperator : public ILossFunction {
  public:
   GraphAugmenter::GraphDefs GetDefs(const LossFunctionInfo& loss_func_info) const {
     GraphAugmenter::GraphDefs graph_defs;
-    graph_defs.AddNodeDefs({{
-        loss_func_info.name_,
-        "",  // node name, leave it empty
-        {
-            ArgDef(loss_func_info.prediction_name_),  // inputs
-            ArgDef(loss_func_info.label_name_)},
-        {
-            ArgDef(loss_func_info.loss_name_)  // outputs
-        }
-        // TODO: support setting attributes of the custom op.
-    }});
 
+    std::vector<NodeDef> node_defs;
+    node_defs.emplace_back(
+        NodeDef(OpDef{loss_func_info.name_, loss_func_info.domain_},  // op_def
+                {
+                    ArgDef(loss_func_info.prediction_name_),
+                    ArgDef(loss_func_info.label_name_)},  // inputs
+                {
+                    ArgDef(loss_func_info.loss_name_)}  // outputs
+                // TODO: support setting attributes of the custom op.
+                ));
+
+    graph_defs.AddNodeDefs(node_defs);
     graph_defs.AddGraphOutputs({loss_func_info.loss_name_});
     return graph_defs;
   }

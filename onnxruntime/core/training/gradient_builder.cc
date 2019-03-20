@@ -288,5 +288,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
               {GI(0), GI(1)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SoftmaxCrossEntropyGrad", kMSDomain},
+              {GO(0), I(0), I(1)},
+              {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

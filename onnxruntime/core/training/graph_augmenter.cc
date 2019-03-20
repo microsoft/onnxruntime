@@ -34,7 +34,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
                   input_args,
                   output_args,
                   &node_def.attributes,
-                  "" /*domain*/);
+                  node_def.domain);
   }
 
   // Add new outputs to the graph.

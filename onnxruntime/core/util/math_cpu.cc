@@ -199,8 +199,8 @@ void Gemm<int32_t, CPUMathUtil>(
     int32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No int32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-    GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No int32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -217,8 +217,8 @@ void Gemm<uint32_t, CPUMathUtil>(
     uint32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No uint32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-    GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No uint32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -235,8 +235,8 @@ void Gemm<int64_t, CPUMathUtil>(
     int64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No int64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-    GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No int64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -253,8 +253,8 @@ void Gemm<uint64_t, CPUMathUtil>(
     uint64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No uint64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-    GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No uint64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
+  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -463,9 +463,9 @@ void Gemm<double, CPUMathUtil>(
     double* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-    int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-    cblas_dgemm(CblasRowMajor, TransA, TransB,
+  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
+  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
+  cblas_dgemm(CblasRowMajor, TransA, TransB,
               gsl::narrow_cast<int>(M),
               gsl::narrow_cast<int>(N),
               gsl::narrow_cast<int>(K),
@@ -487,8 +487,8 @@ void Gemm<int32_t, CPUMathUtil>(
     int32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No int32_t Gemm offering from MKLML. Directly fallback to Eigen.
-    GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No int32_t Gemm offering from MKLML. Directly fallback to Eigen.
+  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -505,8 +505,8 @@ void Gemm<uint32_t, CPUMathUtil>(
     uint32_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-   // No uint32_t Gemm offering from MKLML. Directly fallback to Eigen.
-    GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No uint32_t Gemm offering from MKLML. Directly fallback to Eigen.
+  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -523,8 +523,8 @@ void Gemm<int64_t, CPUMathUtil>(
     int64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No int64_t Gemm offering from MKLML. Directly fallback to Eigen.
-    GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No int64_t Gemm offering from MKLML. Directly fallback to Eigen.
+  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -541,8 +541,8 @@ void Gemm<uint64_t, CPUMathUtil>(
     uint64_t* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-    // No uint64_t Gemm offering from MKLML. Directly fallback to Eigen.
-    GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+  // No uint64_t Gemm offering from MKLML. Directly fallback to Eigen.
+  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
@@ -677,15 +677,15 @@ void GemmBatched<float, CPUMathUtil>(
   }
 }
 
-  // MKL will be implmenet as an execution provider
-  ////////////////////////////////////////////////////////////////////////////////
-  // MKL VML alternatives.
-  // Depending on whether we are using MKL, we will delegate the Caffe math
-  // functions that are VML-related to either the VML call or the Eigen
-  // implementation. If you are setting the flags (such as AVX) right for your CPU
-  // architecture, usually Eigen will deliver a throughput as fast as the VML
-  // functions.
-  ////////////////////////////////////////////////////////////////////////////////
+// MKL will be implmenet as an execution provider
+////////////////////////////////////////////////////////////////////////////////
+// MKL VML alternatives.
+// Depending on whether we are using MKL, we will delegate the Caffe math
+// functions that are VML-related to either the VML call or the Eigen
+// implementation. If you are setting the flags (such as AVX) right for your CPU
+// architecture, usually Eigen will deliver a throughput as fast as the VML
+// functions.
+////////////////////////////////////////////////////////////////////////////////
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                      \
   template <>                                                                  \
@@ -779,6 +779,26 @@ SPECIALIZED_REDUCEMAX(int32_t)
 SPECIALIZED_REDUCEMAX(int64_t)
 
 #undef SPECIALIZED_REDUCEMAX
+
+#define SPECIALIZED_ROWWISESUM(T)                                 \
+  template <>                                                     \
+  void RowwiseSum<T, CPUMathUtil>(                                \
+      const int N, const int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, N) =                                     \
+        ConstEigenMatrixMap<T>(x, D, N).colwise().sum();          \
+  }
+SPECIALIZED_ROWWISESUM(float)
+#undef SPECIALIZED_ROWWISESUM
+
+#define SPECIALIZED_COLWISESUM(T)                                 \
+  template <>                                                     \
+  void ColwiseSum<T, CPUMathUtil>(                                \
+      const int N, const int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, D) =                                     \
+        ConstEigenMatrixMap<T>(x, D, N).rowwise().sum();          \
+  }
+SPECIALIZED_COLWISESUM(float)
+#undef SPECIALIZED_COLWISESUM
 
 #define SPECIALIZED_ROWWISEMAX(T)                                 \
   template <>                                                     \
@@ -1431,7 +1451,6 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(
     h_pad += stride_h;
   }
 }
-
 
 #define SPECIALIZED_COPYVECTOR(T)                                    \
   template <>                                                        \
