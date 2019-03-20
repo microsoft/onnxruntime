@@ -96,7 +96,7 @@ class IfOpTester : public OpTester {
     {
       inputs = {if_input};
       outputs = {&graph.GetOrCreateNodeArg("if_input_0", if_input->TypeAsProto())};
-      graph.AddNode("identity", "Identity", "Pass if input through from graph inputs.", inputs, outputs);
+      graph.AddNode("identity", kIdentity, "Pass if input through from graph inputs.", inputs, outputs);
     }
   }
 
@@ -201,7 +201,7 @@ static const ONNX_NAMESPACE::GraphProto CreatePassThroughSubgraph() {
   // output value
   auto& pass_through_output = graph.GetOrCreateNodeArg("pass_through_out_0", &input_tensor_type);
 
-  graph.AddNode("pass_through", "Identity", "Pass input through as output", {&if_input}, {&pass_through_output});
+  graph.AddNode("pass_through", kIdentity, "Pass input through as output", {&if_input}, {&pass_through_output});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());

@@ -40,7 +40,7 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
 }
 
 TEST(TensorOpTest, Identity) {
-  OpTester test("Identity");
+  OpTester test(kIdentity);
   std::vector<float> X{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   test.AddInput<float>("input", {2, 3}, X);
   test.AddOutput<float>("output", {2, 3}, X);
@@ -48,7 +48,7 @@ TEST(TensorOpTest, Identity) {
 }
 
 TEST(TensorOpTest, IdentityString) {
-  OpTester test("Identity");
+  OpTester test(kIdentity);
   std::vector<std::string> X{"this", "is", "a", "test", "for", "identity"};
   test.AddInput<std::string>("input", {2, 3}, X);
   test.AddOutput<std::string>("output", {2, 3}, X);

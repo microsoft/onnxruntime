@@ -12,6 +12,7 @@
 namespace onnxruntime {
 constexpr const char* kNoOp = "NoOp";
 constexpr const char* kConstant = "Constant";
+constexpr const char* kIdentity = "Identity";
 constexpr const char* kFunctionOp = "_kFunctionOp";
 constexpr const char* kConstantValue = "value";
 constexpr const char* kOnnxDomain = "";
@@ -25,4 +26,3 @@ constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
 constexpr const char* kBrainSliceExecutionProvider = "BrainSliceExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 }  // namespace onnxruntime
-

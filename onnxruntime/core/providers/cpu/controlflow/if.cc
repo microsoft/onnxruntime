@@ -91,14 +91,13 @@ class IfImpl {
   std::vector<std::pair<AllocationType, MLValue>> outputs_;
 };
 
-void If::CheckForPassthroughOptimization(const OpKernelInfo& info,
-                                         const ONNX_NAMESPACE::GraphProto& then_proto,
+void If::CheckForPassthroughOptimization(const ONNX_NAMESPACE::GraphProto& then_proto,
                                          const ONNX_NAMESPACE::GraphProto& else_proto) {
   // check if subgraph has a single identity node passing a single input through as a single output
   auto check_identity_passthrough = [](const ONNX_NAMESPACE::GraphProto& proto) -> const std::string {
     if (proto.node_size() == 1 && proto.output_size() == 1) {
       const auto& node = proto.node().Get(0);
-      if (node.op_type() == "Identity") {
+      if (node.op_type() == kIdentity) {
         const auto& output_name = node.output().Get(0);
         const auto& graph_output_name = proto.output().Get(0).name();
 
@@ -168,7 +167,7 @@ Status IfImpl::Initialize() {
   auto& graph_outputs = subgraph_.GetOutputs();
   auto num_subgraph_outputs = graph_outputs.size();
 
-  if (num_subgraph_outputs != num_outputs_) {
+  if (num_subgraph_outputs != static_cast<size_t>(num_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
                            " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }

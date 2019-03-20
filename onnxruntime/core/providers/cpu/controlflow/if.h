@@ -24,7 +24,7 @@ class If final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("then_branch", &then_proto).IsOK());
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("else_branch", &else_proto).IsOK());
 
-    CheckForPassthroughOptimization(info, then_proto, else_proto);
+    CheckForPassthroughOptimization(then_proto, else_proto);
   }
 
   Status Compute(OpKernelContext* ctx) const override;
@@ -32,8 +32,7 @@ class If final : public OpKernel {
  private:
   // check if either subgraph is simply passing through an input using a single Identity node.
   // if so we can skip subgraph execution
-  void CheckForPassthroughOptimization(const OpKernelInfo& info,
-                                       const ONNX_NAMESPACE::GraphProto& then_proto,
+  void CheckForPassthroughOptimization(const ONNX_NAMESPACE::GraphProto& then_proto,
                                        const ONNX_NAMESPACE::GraphProto& else_proto);
 
   std::string then_passthrough_input_name_ = {};

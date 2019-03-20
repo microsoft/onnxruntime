@@ -61,7 +61,7 @@ class ScanOpTester : public OpTester {
         constant.AddAttribute("value", value_tensor);
 
         auto& outer_scope_node_arg = graph.GetOrCreateNodeArg("outer_scope_0", &float_single_value);
-        graph.AddNode("outer_scope_id", "Identity", "Identity for outer_scope_0",
+        graph.AddNode("outer_scope_id", kIdentity, "Identity for outer_scope_0",
                       {&outer_scope_constant}, {&outer_scope_node_arg});
       }
     }
@@ -864,7 +864,7 @@ TEST(Scan9, TransposeOutputDim2) {
   auto& scan_in_1 = graph.GetOrCreateNodeArg("scan_in_1", &float_tensor);
   auto& scan_out_1 = graph.GetOrCreateNodeArg("scan_out_1", &float_tensor);
 
-  graph.AddNode("pass_through", "Identity", "Copy scan_in_1 to scan_out_1", {&scan_in_1}, {&scan_out_1});
+  graph.AddNode("pass_through", kIdentity, "Copy scan_in_1 to scan_out_1", {&scan_in_1}, {&scan_out_1});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
@@ -1041,10 +1041,10 @@ void MixedTypeInputs(bool is_v8) {
   auto& scan_out_1 = graph.GetOrCreateNodeArg("scan_out_1", &float_tensor);
   auto& scan_out_2 = graph.GetOrCreateNodeArg("scan_out_2", &int_tensor);
 
-  graph.AddNode("node1", "Identity", "Copy state_in_1 to scan_out_1", {&state_in_1}, {&scan_out_1});
-  graph.AddNode("node2", "Identity", "Copy state_in_2 to scan_out_2", {&state_in_2}, {&scan_out_2});
-  graph.AddNode("node3", "Identity", "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
-  graph.AddNode("node4", "Identity", "Copy scan_in_2 to state_out_2", {&scan_in_2}, {&state_out_2});
+  graph.AddNode("node1", kIdentity, "Copy state_in_1 to scan_out_1", {&state_in_1}, {&scan_out_1});
+  graph.AddNode("node2", kIdentity, "Copy state_in_2 to scan_out_2", {&state_in_2}, {&scan_out_2});
+  graph.AddNode("node3", kIdentity, "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
+  graph.AddNode("node4", kIdentity, "Copy scan_in_2 to state_out_2", {&scan_in_2}, {&state_out_2});
 
   graph.SetInputOrder({&state_in_1, &state_in_2, &scan_in_1, &scan_in_2});
   graph.SetOutputOrder({&state_out_1, &state_out_2, &scan_out_1, &scan_out_2});
@@ -1105,8 +1105,8 @@ void UnknownDimInSubgraphOutput(bool is_v8) {
   auto& state_out_1 = graph.GetOrCreateNodeArg("state_out_1", &float_tensor);
   auto& scan_out_1 = graph.GetOrCreateNodeArg("scan_out_1", &float_tensor);
 
-  graph.AddNode("node1", "Identity", "Copy state_in_1 to scan_out_1", {&state_in_1}, {&scan_out_1});
-  graph.AddNode("node2", "Identity", "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
+  graph.AddNode("node1", kIdentity, "Copy state_in_1 to scan_out_1", {&state_in_1}, {&scan_out_1});
+  graph.AddNode("node2", kIdentity, "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
 
   graph.SetInputOrder({&state_in_1, &scan_in_1});
   graph.SetOutputOrder({&state_out_1, &scan_out_1});
