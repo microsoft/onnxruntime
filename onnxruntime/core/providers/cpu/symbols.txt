@@ -78,6 +78,7 @@ OrtSessionOptionsAppendExecutionProvider_CPU
 OrtSetDims
 OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
+OrtSetSessionGraphOptimizationLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue
