@@ -125,9 +125,6 @@ class SessionOptionsWrapper {
     return ret;
   }
 #endif
-  void AppendCustomOpLibPath(_In_ const char* lib_path) {
-    OrtAppendCustomOpLibPath(value.get(), lib_path);
-  }
 };
 inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
