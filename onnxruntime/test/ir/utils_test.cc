@@ -198,7 +198,7 @@ static void CheckNodeRemovalSubgraphUpdate(const std::string& new_name, const Gr
 }
 
 static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
-  Model model("UpdateSubgraphWhenRemovingNode" + include_nested ? ":Nested" : "SingleLevel");
+  Model model(std::string("UpdateSubgraphWhenRemovingNode") + (include_nested ? ":Nested" : ":SingleLevel"));
 
   CreateNodeRemovalGraph(model, true, include_nested);
 
@@ -232,7 +232,7 @@ TEST(GraphUtils, UpdateNestedSubgraphWhenRemovingNode) {
 // we can't remove a node if it is used as an implicit input in a subgraph, and changing the implicit input name
 // will result with in a clash with an existing node in the subgraph
 static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
-  Model model("DontRemoveNodeIfItWillBreakSubgraph" + test_nested ? ":Nested" : ":SingleLevel");
+  Model model(std::string("DontRemoveNodeIfItWillBreakSubgraph") + (test_nested ? ":Nested" : ":SingleLevel"));
   CreateNodeRemovalGraph(model, false, test_nested);
 
   auto& graph = model.MainGraph();
