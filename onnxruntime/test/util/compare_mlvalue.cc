@@ -4,7 +4,13 @@
 #include "test/compare_mlvalue.h"
 #include <cmath>
 #include <sstream>
+
+#ifdef USE_FULL_PROTOBUF
+#include <google/protobuf/message.h>
+#else
 #include <google/protobuf/message_lite.h>
+#endif
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "Eigen/Core"
