@@ -75,10 +75,10 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
   }
 }
 
-template <typename LabelType, typename LabelVectorType>
-int _set_score_svm(Tensor* Y, const double& maxweight, const int64_t& maxclass, const int64_t& n,
+template <typename LabelType>
+int _set_score_svm(Tensor* Y, const float& maxweight, const int64_t& maxclass, const int64_t& n,
                    POST_EVAL_TRANSFORM post_transform_, const std::vector<float>& proba_, bool weights_are_all_positive_,
-                   const LabelVectorType& classlabels, const LabelType& posclass, const LabelType& negclass) {
+                   const std::vector<LabelType>& classlabels, const LabelType& posclass, const LabelType& negclass) {
   int write_additional_scores = -1;
   if (classlabels.size() == 2) {
     write_additional_scores = post_transform_ == POST_EVAL_TRANSFORM::NONE ? 2 : 0;
@@ -115,7 +115,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   dims = {static_cast<int64_t>(N), static_cast<int64_t>(nc)};
   Tensor* Z = ctx->Output(1, TensorShape(dims));
 
-  const auto* x_data = X->template Data<T>();
+  const T* x_data = X->template Data<T>();
   int64_t zindex = 0;
 
   for (int64_t n = 0; n < N; n++)  //for each example
@@ -130,8 +130,8 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     if (vector_count_ == 0 && mode_ == SVM_TYPE::SVM_LINEAR) {
       // This was in the original code but it does not appear in libsvm or scikit-learn.
       for (int64_t j = 0; j < class_count_; j++) {  //for each class
-        float val = kernel_dot(x_data, current_weight_0, coefficients_, feature_count_ * j,
-                               feature_count_, get_kernel_type());
+        auto val = kernel_dot(x_data, current_weight_0, coefficients_, feature_count_ * j,
+                              feature_count_, get_kernel_type());
         val += rho_[0];
         scores.push_back(val);
       }
@@ -141,8 +141,8 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       int evals = 0;
 
       for (int64_t j = 0; j < vector_count_; j++) {
-        float val = kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j,
-                               feature_count_, get_kernel_type());
+        auto val = kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j,
+                              feature_count_, get_kernel_type());
         kernels.push_back(val);
       }
       votes.resize(class_count_, 0);
@@ -158,13 +158,13 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
 
           int64_t pos1 = (vector_count_) * (j - 1);
           int64_t pos2 = (vector_count_) * (i);
-          float* val1 = (float*)&(coefficients_[pos1 + start_index_i]);
-          float* val2 = (float*)&(kernels[start_index_i]);
+          const float* val1 = &(coefficients_[pos1 + start_index_i]);
+          const float* val2 = &(kernels[start_index_i]);
           for (int64_t m = 0; m < class_i_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
 
-          val1 = (float*)&(coefficients_[pos2 + start_index_j]);
-          val2 = (float*)&(kernels[start_index_j]);
+          val1 = &(coefficients_[pos2 + start_index_j]);
+          val2 = &(kernels[start_index_j]);
           for (int64_t m = 0; m < class_j_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
 
@@ -205,7 +205,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       // See https://github.com/scikit-learn/scikit-learn/pull/10440
     }
 
-    double maxweight = 0;
+    float maxweight = 0;
     if (votes.size() > 0) {
       auto it_maxvotes = std::max_element(votes.begin(), votes.end());
       maxclass = std::distance(votes.begin(), it_maxvotes);
@@ -220,11 +220,11 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     int write_additional_scores = -1;
     if (rho_.size() == 1) {
       if (using_strings_) {
-        write_additional_scores = _set_score_svm<std::string, std::vector<std::string>>(
+        write_additional_scores = _set_score_svm<std::string>(
             Y, maxweight, maxclass, n, post_transform_, proba_,
             weights_are_all_positive_, classlabels_strings_, "1", "0");
       } else {
-        write_additional_scores = _set_score_svm<int64_t, std::vector<int64_t>>(
+        write_additional_scores = _set_score_svm<int64_t>(
             Y, maxweight, maxclass, n, post_transform_, proba_,
             weights_are_all_positive_, classlabels_ints_, 1, 0);
       }
