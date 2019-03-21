@@ -11,6 +11,7 @@
 #include "core/framework/framework_common.h"
 #include "core/graph/basic_types.h"
 #include "core/common/logging/logging.h"
+#include "core/optimizer/graph_transformer_level.h"
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -22,8 +23,6 @@ class ModelProto;
 
 struct OrtCustomOpDomain {
   std::string domain_;
-  int op_version_start_{};
-  int op_version_end_{};
   std::vector<OrtCustomOp*> custom_ops_;
 };
 
@@ -59,6 +58,9 @@ struct SessionOptions {
   unsigned session_log_verbosity_level = 0;  ///< applies to session load, initialization, etc
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
+
+  // set graph optimization level
+  TransformerLevel graph_optimization_level = TransformerLevel::Default;
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
@@ -126,18 +128,22 @@ class InferenceSession {
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
+    * @param[in] - providers Optional. If providers is non-empty this transformer will only to 
+      applied to nodes which are assigned to given providers.
+    * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer);
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
+                                          const std::vector<std::string>& providers = {},
+                                          TransformerLevel level = TransformerLevel::Level2);
 
   /**
-  * Load custom ops implemented in a dynamically linked shared library.
-  * @param dso_list list of library file paths containing the custom ops implementation.
-  * In order to implement a custom op please see file: custom_ops_author.h
-  * TODO add sample code
-  * @return OK if success
-  */
-  common::Status LoadCustomOps(const std::vector<std::string>& dso_list);
+    * Enable a custom set of transformers. Call this before invoking Initialize().
+    * Calling this API is optional.
+    * When this list is provided ORT ignores the levels set in session options.
+    * @return OK if success.
+    */
+  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
 
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 

@@ -46,8 +46,10 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/session/CustomOpsLoader.h"
+#include "core/framework/custom_ops_author.h"
 #include "core/session/IOBinding.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/graph_transformer_utils.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -188,25 +190,19 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                          
+                                          const std::vector<std::string>& providers,
+                                          TransformerLevel level) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
-    return graph_transformation_mgr_.Register(std::move(p_graph_transformer));
+    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level, providers);
   }
 
-  common::Status LoadCustomOps(const std::vector<std::string>& dso_list) {
-    if (dso_list.empty()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Empty list of shared libraries in the input.");
-    }
-    for (auto& dso_file_path : dso_list) {
-      std::shared_ptr<CustomRegistry> custom_registry;
-      ORT_RETURN_IF_ERROR(custom_ops_loader_.LoadCustomOps(dso_file_path, custom_registry));
-      if (!custom_registry) {
-        return Status(common::ONNXRUNTIME, common::FAIL, "Null custom_registry after loading custom ops.");
-      }
-      ORT_RETURN_IF_ERROR(RegisterCustomRegistry(custom_registry));
-    }
+  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
+    std::copy(transformers_to_enable.begin(), transformers_to_enable.end(),
+              std::back_inserter(transformers_to_enable_));
+
     return Status::OK();
   }
 
@@ -217,8 +213,8 @@ class InferenceSession::Impl {
       SchemasContainer schemas_container;
 
       schemas_container.domain = domain->domain_;
-      schemas_container.baseline_opset_version = domain->op_version_start_;
-      schemas_container.opset_version = domain->op_version_end_;
+      schemas_container.baseline_opset_version = 1;
+      schemas_container.opset_version = 1000;
 
       for (auto& op : domain->custom_ops_) {
         ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
@@ -239,7 +235,7 @@ class InferenceSession::Impl {
                         DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
         }
 
-        schema.SinceVersion(domain->op_version_start_);
+        schema.SinceVersion(1);
         schema.AllowUncheckedAttributes();
 
         schemas_container.schemas_list.push_back(schema);
@@ -247,7 +243,7 @@ class InferenceSession::Impl {
         KernelDefBuilder def_builder;
         def_builder.SetName(op->GetName(op))
             .SetDomain(onnxruntime::kOnnxDomain)
-            .SinceVersion(domain->op_version_start_)
+            .SinceVersion(1)
             .Provider(onnxruntime::kCpuExecutionProvider);
         KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
         KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
@@ -374,15 +370,20 @@ class InferenceSession::Impl {
     // 4. insert copy nodes
     // 5. insert cast nodes.
 
-    // first apply the default/system/basic graph to graph optimizations.
-    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyAll(graph));
+    // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
+    ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
 
     // Do partitioning based on execution providers' capability.
     GraphPartitioner partitioner(kernel_registry_manager, providers);
     ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
 
-    bool modified = false;
+    // apply transformers except default transformers
+    // Default transformers are required for correctness and they are owned and run by inference session
+    for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+      ORT_RETURN_IF_ERROR(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i)));
+    }
 
+    bool modified = false;
     // Insert cast node/s.
     ORT_RETURN_IF_ERROR(insert_cast_transformer.Apply(graph, modified));
 
@@ -454,7 +455,7 @@ class InferenceSession::Impl {
         SessionStateInitializer initializer{model_location_, subgraph, *subgraph_session_state, execution_providers_,
                                             kernel_registry_manager_};
 
-        ORT_RETURN_IF_ERROR(initializer.CreatePlan(node.ImplicitInputDefs(),
+        ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, node.ImplicitInputDefs(),
                                                    session_options_.enable_sequential_execution));
 
         ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&node.ImplicitInputDefs()));
@@ -495,6 +496,9 @@ class InferenceSession::Impl {
                                                      std::make_unique<CPUExecutionProvider>(epi)));
       }
 
+      // add predefined transformers
+      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level, transformers_to_enable_);
+
       onnxruntime::Graph& graph = model_->MainGraph();
 
       // Collect the kernel registries from execution provider instances;
@@ -522,7 +526,7 @@ class InferenceSession::Impl {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR(graph.Resolve());
 
-      ORT_RETURN_IF_ERROR(session_initializer.CreatePlan({}, session_options_.enable_sequential_execution));
+      ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, {}, session_options_.enable_sequential_execution));
       ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
       // handle any subgraphs
@@ -946,6 +950,41 @@ class InferenceSession::Impl {
     session_state_.SetLogger(*session_logger_);
   }
 
+  // Registers all the predefined transformers with transformer manager
+  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                 TransformerLevel graph_optimization_level,
+                                 const std::vector<std::string>& custom_list) {
+    auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
+      // Generate and register rewrite rules for level
+      auto rewrite_rules_to_register =
+          transformer_utils::GenerateRewriteRules(level, &custom_list);
+      if (!rewrite_rules_to_register.empty()) {
+        std::unique_ptr<RuleBasedGraphTransformer> graph_rewrite_rules =
+            std::make_unique<TopDownRuleBasedTransformer>(t_name + "_RuleBasedTransformer",
+                                                          "Apply rewrite rules for " + t_name);
+        for (auto& entry : rewrite_rules_to_register) {
+          graph_rewrite_rules->Register(std::move(entry));
+        }
+        transformer_manager.Register(std::move(graph_rewrite_rules), level,
+                                     std::move(providers));
+      }
+
+      // Generate and register transformers for level
+      auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
+      for (auto& entry : transformers_to_register) {
+        transformer_manager.Register(std::move(entry.first), level, std::move(entry.second));
+      }
+    };
+
+    if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
+      add_transformers(TransformerLevel::Level1, {}, "Level1");
+    }
+
+    if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
+      add_transformers(TransformerLevel::Level2, {onnxruntime::kCpuExecutionProvider}, "Level2");
+    }
+  }
+
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
     if (timeout_in_ms > 0) {
       ORT_NOT_IMPLEMENTED(__FUNCTION__, "timeout_in_ms >0 is not supported");  // TODO
@@ -955,11 +994,14 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  CustomOpsLoader custom_ops_loader_;
-
   const SessionOptions session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+
+  // List of transformers to run. When this list is not empty only the transformers in this list
+  // will be run regardless of the level set.
+  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
+  std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
   logging::LoggingManager* logging_manager_;
@@ -1120,8 +1162,15 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return impl_->RegisterExecutionProvider(std::move(p_exec_provider));
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
-  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer));
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
+                                                          const std::vector<std::string>& providers,
+                                                          TransformerLevel level) {
+
+  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
+}
+
+common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
+  return impl_->AddCustomTransformerList(transformers_to_enable);
 }
 
 common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
@@ -1146,10 +1195,6 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
   return impl_->Run(io_binding);
-}
-
-common::Status InferenceSession::LoadCustomOps(const std::vector<std::string>& dso_list) {
-  return impl_->LoadCustomOps(dso_list);
 }
 
 common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) {
