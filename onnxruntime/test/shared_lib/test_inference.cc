@@ -173,6 +173,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
   }
 };
 
+// Once we use C++17 this could be replaced with std::size
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
