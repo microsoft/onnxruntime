@@ -530,12 +530,12 @@ typedef struct OrtKernelInfo OrtKernelInfo;
 /*
  * These allow reading node attributes during kernel creation
 */
-ORT_API_STATUS(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
-ORT_API_STATUS(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+ORT_API_STATUS(OrtKernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
+ORT_API_STATUS(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
 
 struct OrtCustomOpApi {
-  OrtStatus*(ORT_API_CALL* OrtKernelInfoGetAttribute_float)(_In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
-  OrtStatus*(ORT_API_CALL* OrtKernelInfoGetAttribute_int64)(_In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+  OrtStatus*(ORT_API_CALL* OrtKernelInfoGetAttribute_float)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
+  OrtStatus*(ORT_API_CALL* OrtKernelInfoGetAttribute_int64)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
 
   OrtStatus*(ORT_API_CALL* OrtGetTensorShapeAndType)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
@@ -557,7 +557,7 @@ struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtCustomOpApi* api, _In_ OrtKernelInfo* info, _Out_ void** op_kernel);
+  void(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtCustomOpApi* api, _In_ const OrtKernelInfo* info, _Out_ void** op_kernel);
 
   // Returns the name of the op
   const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);

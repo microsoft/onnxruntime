@@ -177,7 +177,7 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
-  MyCustomKernel(const OrtCustomOpApi& api, OrtKernelInfo& /*info*/) : api_(api) {
+  MyCustomKernel(const OrtCustomOpApi& api, const OrtKernelInfo& /*info*/) : api_(api) {
   }
 
   void GetOutputShape(OrtValue** inputs, size_t /*input_count*/, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
@@ -207,7 +207,7 @@ struct MyCustomKernel {
 struct MyCustomOp : OrtCustomOp {
   MyCustomOp() {
     OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](OrtCustomOp* /*this_*/, const OrtCustomOpApi* api, OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*api, *info); };
+    OrtCustomOp::CreateKernel = [](OrtCustomOp* /*this_*/, const OrtCustomOpApi* api, const OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*api, *info); };
     OrtCustomOp::GetName = [](OrtCustomOp* /*this_*/) { return "Foo"; };
 
     static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
