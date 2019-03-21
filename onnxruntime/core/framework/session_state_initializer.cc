@@ -327,7 +327,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     id_to_initialized_tensor[mlvalue_index] = entry.second;
   }
   for (const auto& entry : id_to_initialized_tensor) {
-    size_t len;
+    size_t len = 0;
     ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<alignment>(*entry.second, &len));
     ORT_RETURN_IF_ERROR(planner.TraceAllocation(entry.first, len));
   }
