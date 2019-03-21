@@ -20,7 +20,4 @@ inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
   return axis = axis < 0 ? axis + tensor_rank : axis;
 }
 
-struct OpNames {
-  static const char* Identity = "Identity";
-};
 }  // namespace onnxruntime
