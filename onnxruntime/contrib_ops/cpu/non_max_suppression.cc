@@ -215,6 +215,9 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     } //for class_index
   } // for batch_index
 
+  // Set filtered boxes and scores to 0
+  // Sort the selected_indices with ascending order, so that we can set the whole memory block if there sit together
+  // e.g, selected_indices are [5, 10], we can set the memory blocks [0, 4], [6, 9], [11, ~] to 0.
   std::priority_queue<int32_t, std::vector<int32_t>, std::greater<int32_t>> selected_indices_ordered;
   for (int32_t index = 0; index < num_selected; ++index) {
     selected_indices_ordered.push(selected_index[index]);

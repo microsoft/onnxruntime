@@ -1110,12 +1110,12 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
       .Input(
           0,
           "boxes",
-          "An input tensor with shape [num_batches, num_classes, spatial_dimention, 4]. The box data format is indicated by center_point_box.",
+          "An input tensor with shape [num_batches, num_classes, spatial_dimension, 4]. The box data format is indicated by center_point_box.",
           "tensor(float)")
       .Input(
           1,
           "scores",
-          "An input tensor with shape [num_batches, num_classes, spatial_dimention]",
+          "An input tensor with shape [num_batches, num_classes, spatial_dimension]",
           "tensor(float)")
       .Input(
           2,
