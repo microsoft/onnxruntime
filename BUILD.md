@@ -52,13 +52,13 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
     ```
 5. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows)
 
-## Build x86 
-1. For windows, just add --x86 argument when launching build.bat
-2. For linux, it must be built out of a 32 bit os, meanwhile --x86 argument also needs be specified to build.sh
-
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
+
+## Build x86 
+1. For Windows, just add --x86 argument when launching build.bat
+2. For Linux, it must be built out of a 32 bit os, meanwhile --x86 argument also needs be specified to build.sh
 
 ## Build/Test Flavors for CI
 
