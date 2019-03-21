@@ -369,14 +369,16 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
     std::vector<int64_t> shape = GetTensorShape(info.get());
-    if (!AreShapesEqual(shape, t.shape())) {
-      std::string result = t.shape().SerializeAsString();
-      if (result.empty()) {
-        //      if (!google::protobuf::TextFormat::PrintToString(t.shape(), &result)) {
-        result = "(unknown)";
-      }
+    const auto& tensor_shape_proto = t.shape();
+    if (!AreShapesEqual(shape, tensor_shape_proto)) {
       std::ostringstream oss;
-      oss << "Tensor shape mismatch, model file expects '" << result << "', real output is ";
+      oss << "Tensor shape mismatch, model file expects '";
+      if (tensor_shape_proto.dim_size() == 0) {
+        oss << "(unknown)";
+      } else {
+        oss << tensor_shape_proto;
+      }
+      oss << "', real output is ";
       VectorToString(shape, oss);
       return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
     }
