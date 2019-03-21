@@ -19,6 +19,8 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 
+#include "core/platform/ort_mutex.h"
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -177,11 +179,7 @@ class UniDirectionalGru {
                     const ActivationFuncs::Entry& activation_func_f,
                     const ActivationFuncs::Entry& activation_func_g,
                     const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                    Eigen::NonBlockingThreadPool& ttp_);
-#else
-                    TaskThreadPool& ttp_);
-#endif
+                    onnxruntime::concurrency::ThreadPool& ttp_);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -197,11 +195,7 @@ class UniDirectionalGru {
   AllocatorPtr allocator_;
   const logging::Logger& logger_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool& ttp_;
-#else
-  TaskThreadPool& ttp_;
-#endif
+  onnxruntime::concurrency::ThreadPool& ttp_;
 
   int seq_length_;
   int batch_size_;
@@ -383,43 +377,66 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
-    std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
-        bias_1, initial_hidden_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        clip_, ttp_);
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+#if defined(USE_MLAS) && !defined(USE_OPENMP)
+    auto fn =
+        [&]() {
+#endif  // USE_MLAS && ! USE_OPENMP
+          std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
+              alloc, logger,
+              seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
+              bias_1, initial_hidden_1,
+              activation_funcs_.Entries()[0],
+              activation_funcs_.Entries()[1],
+              clip_, ttp_);
+          fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 
-    std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
-        bias_2, initial_hidden_2,
-        activation_funcs_.Entries()[2],
-        activation_funcs_.Entries()[3],
-        clip_, ttp_);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+#if defined(USE_MLAS) && !defined(USE_OPENMP)
+        };
+    OrtCondVar cv;
+    OrtMutex lock;
+    bool done = false;
 
-  } else {
-    std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
-        bias_1, initial_hidden_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        clip_, ttp_);
+    ttp_.Schedule([&]() {
+      fn();
+      auto ul = std::unique_lock<OrtMutex>(lock);
+      done = true;
+      cv.notify_one();
+    });
+#endif  // USE_MLAS && ! USE_OPENMP
 
-    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
-  }
+  std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
+      alloc, logger,
+      seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+      bias_2, initial_hidden_2,
+      activation_funcs_.Entries()[2],
+      activation_funcs_.Entries()[3],
+      clip_, ttp_);
+  bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
 
-  if (!output.empty())
-    DumpMatrix("Y", output.data(), seq_length * num_directions_ * batch_size, hidden_size_);
+#if defined(USE_MLAS) && !defined(USE_OPENMP)
+  auto ul = std::unique_lock<OrtMutex>(lock);
+  if (!done) cv.wait(ul);
+#endif  // USE_MLAS && ! USE_OPENMP
+}  // namespace onnxruntime
+else {
+  std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
+      alloc, logger,
+      seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
+      bias_1, initial_hidden_1,
+      activation_funcs_.Entries()[0],
+      activation_funcs_.Entries()[1],
+      clip_, ttp_);
 
-  DumpMatrix("Y_h", hidden_output.data(), num_directions_ * batch_size, hidden_size_);
-
-  return Status::OK();
+  gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 }
+
+if (!output.empty())
+  DumpMatrix("Y", output.data(), seq_length* num_directions_* batch_size, hidden_size_);
+
+DumpMatrix("Y_h", hidden_output.data(), num_directions_* batch_size, hidden_size_);
+
+return Status::OK();
+}  // namespace onnxruntime
 
 //
 // Implementation of internal helper code
@@ -439,11 +456,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
                                         const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                                        Eigen::NonBlockingThreadPool& ttp)
-#else
-                                        TaskThreadPool& ttp)
-#endif
+                                        onnxruntime::concurrency::ThreadPool& ttp)
     : allocator_(allocator),
       logger_(logger),
       ttp_(ttp),
@@ -604,7 +617,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
     if (batch_size_ % hidden_num_threads_ != 0)
       fused_hidden_rows++;
 
-    // lambda executed by Eigen::NonBlockingThreadPool
+    // lambda executed by ThreadPool
     auto hidden_gemm_and_activations = [&](const int row) {
       //handling boundaries
       int local_fused_hidden_rows = fused_hidden_rows;

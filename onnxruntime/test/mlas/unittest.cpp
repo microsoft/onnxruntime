@@ -240,7 +240,7 @@ TrialSgemm(
         CReference[f] = -0.5f;
     }
 
-    MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
     ReferenceSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
 
     for (size_t f = 0; f < M * N; f++) {
@@ -439,7 +439,7 @@ ReferenceConv2D(
             }
 
             MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
-                filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize);
+                filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, nullptr);
 
             //
             // Apply the bias.
@@ -516,7 +516,8 @@ TrialConv2D(
                     OutputShape,
                     FilterCount,
                     &Activation,
-                    &WorkingBufferSize);
+                    &WorkingBufferSize,
+                    0);
 
     size_t OutputHeight = size_t(OutputHeight64);
     size_t OutputWidth = size_t(OutputWidth64);
@@ -549,7 +550,8 @@ TrialConv2D(
              Filter,
              Bias,
              BufferWorking.GetBuffer(WorkingBufferSize),
-             Output);
+             Output,
+             nullptr);
 
     ReferenceConv2D(BatchCount,
                     GroupCount,
@@ -975,7 +977,7 @@ TrialPool2D(
     float* Output = BufferOutput.GetBuffer(OutputBufferElements);
     float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
-    MlasPool(MlasMaximumPooling, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
+    MlasPool(MlasMaximumPooling, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
     ReferenceMaximumPool2D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
 
     if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -983,7 +985,7 @@ TrialPool2D(
             InputChannels, InputHeight, InputWidth, KernelHeight, KernelWidth);
     }
 
-    MlasPool(MlasAveragePoolingExcludePad, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
+    MlasPool(MlasAveragePoolingExcludePad, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
     ReferenceAveragePool2D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);
 
     if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -991,7 +993,7 @@ TrialPool2D(
             InputChannels, InputHeight, InputWidth, KernelHeight, KernelWidth);
     }
 
-    MlasPool(MlasAveragePoolingIncludePad, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
+    MlasPool(MlasAveragePoolingIncludePad, 2, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
     ReferenceAveragePool2D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, true);
 
     if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1042,7 +1044,7 @@ TrialPool3D(
     float* Output = BufferOutput.GetBuffer(OutputBufferElements);
     float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
-    MlasPool(MlasMaximumPooling, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
+    MlasPool(MlasMaximumPooling, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
     ReferenceMaximumPool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
 
     if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1050,7 +1052,7 @@ TrialPool3D(
             InputChannels, InputDepth, InputHeight, InputWidth, KernelDepth, KernelHeight, KernelWidth);
     }
 
-    MlasPool(MlasAveragePoolingExcludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
+    MlasPool(MlasAveragePoolingExcludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
     ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);
 
     if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1058,7 +1060,7 @@ TrialPool3D(
             InputChannels, InputDepth, InputHeight, InputWidth, KernelDepth, KernelHeight, KernelWidth);
     }
 
-    MlasPool(MlasAveragePoolingIncludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
+    MlasPool(MlasAveragePoolingIncludePad, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, nullptr);
     ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, true);
 
     if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
@@ -1190,7 +1192,7 @@ EvaluateThreadingPerformance(
                 DWORD start = GetTickCount();
                 DWORD stop;
                 do {
-                    MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, A, K, B, N, 0.0f, C, N);
+                    MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, A, K, B, N, 0.0f, C, N, nullptr);
                     stop = GetTickCount();
                     NumberIterations++;
                 } while ((stop - start) <= 5000);
@@ -1210,7 +1212,7 @@ EvaluateThreadingPerformance(
 
                     start = GetTickCount();
                     for (size_t iters = 0; iters < NumberIterations; iters++) {
-                        MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, A, K, B, N, 0.0f, C, N);
+                        MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, A, K, B, N, 0.0f, C, N, nullptr);
                         stop = GetTickCount();
                         if ((stop - start) > 20000) {
                             break;

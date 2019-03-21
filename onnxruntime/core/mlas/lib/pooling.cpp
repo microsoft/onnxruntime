@@ -1182,7 +1182,8 @@ MlasPool(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    const ThreadPool *ExternalThreadPool
     )
 /*++
 
@@ -1313,6 +1314,17 @@ Return Value:
         if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
             PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
         }
+    }
+
+    //
+    // Use an external thread pool if one is provided.
+    // TODO: change to use MlasExecuteThreaded
+
+    if (!(ExternalThreadPool == nullptr)) {
+      std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
+      const_cast<ThreadPool*>(ExternalThreadPool)->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+
+      return;
     }
 
     //

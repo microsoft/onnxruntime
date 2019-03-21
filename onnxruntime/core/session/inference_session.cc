@@ -13,9 +13,9 @@
 #include <list>
 
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/platform/notification.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/threadpool.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
@@ -156,18 +156,14 @@ class InferenceSession::Impl {
 
     InitLogger(logging_manager);
 
-    // currently the threadpool is used by the parallel executor only and hence
-    // there is no point creating it when only sequential execution is enabled.
-    if (!session_options.enable_sequential_execution) {
-      int pool_size = session_options_.session_thread_pool_size == 0
+    // The threadpool is currently evolving.  We will always create a per session threadpool.
+    // Beyond this, we will create a global thread pool to share across sessions.
+    {
+      int pool_size = session_options_.session_thread_pool_size <= 0
                           ? std::thread::hardware_concurrency() / 2
                           : session_options_.session_thread_pool_size;
 
-#ifdef USE_EIGEN_THREADPOOL
-      thread_pool_ = std::make_unique<Eigen::NonBlockingThreadPool>(pool_size);
-#else
-      thread_pool_ = std::make_unique<TaskThreadPool>(pool_size);
-#endif
+      thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("SESSION", pool_size);
     }
 
     session_state_.SetThreadPool(thread_pool_.get());
@@ -1043,18 +1039,8 @@ class InferenceSession::Impl {
   std::unordered_set<std::string> model_input_names_;
   std::unordered_set<std::string> model_output_names_;
 
-  // Environment for this session
-  // not used now; we'll need it when we introduce threadpool
-  // statically allocated pointer, no need to manage its lifetime.
-  //Env* env_;
-
   // Threadpool for this session
-  //thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
-#ifdef USE_EIGEN_THREADPOOL
-  std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
-#else
-  std::unique_ptr<TaskThreadPool> thread_pool_;
-#endif
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;

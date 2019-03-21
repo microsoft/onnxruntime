@@ -9,16 +9,12 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-
-#ifndef USE_EIGEN_THREADPOOL
-#include "core/common/task_thread_pool.h"
-#endif
-
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -259,7 +255,6 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     out_standings_++;
   }
 
-#ifdef USE_EIGEN_THREADPOOL
   session_state.GetThreadPool()->Schedule([this, p_node_index, &session_state, &logger]() {
     try {
       ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
@@ -267,9 +262,5 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
       // catch node processing failure exceptions here to prevent app crash.
     }
   });
-#else
-  std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
-  session_state.GetThreadPool()->RunTask(std::move(task));
-#endif
 }
 }  // namespace onnxruntime

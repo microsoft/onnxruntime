@@ -34,6 +34,9 @@ Abstract:
 #include <cpuid.h>
 #include <immintrin.h>
 #endif
+#if defined(__x86_64__)
+#include "x86_64/xgetbv.h"
+#endif
 #endif
 
 //
@@ -308,7 +311,8 @@ void
 MlasExecuteThreaded(
     PMLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
-    int32_t Iterations
+    int32_t Iterations,
+    const ThreadPool *ExternalThreadPool
     );
 
 //
