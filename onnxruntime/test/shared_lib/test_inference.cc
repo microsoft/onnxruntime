@@ -156,13 +156,13 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(const OrtCustomOpApi& api, OrtValue* value) {
+  OrtTensorDimensions(const OrtCustomOpApi& ort, OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info;
-    ORT_THROW_ON_ERROR(api.OrtGetTensorShapeAndType(value, &info));
-    auto dimensionCount = api.OrtGetNumOfDimensions(info);
+    ORT_THROW_ON_ERROR(ort.GetTensorShapeAndType(value, &info));
+    auto dimensionCount = ort.GetNumOfDimensions(info);
     resize(dimensionCount);
-    api.OrtGetDimensions(info, data(), dimensionCount);
-    api.OrtReleaseTensorTypeAndShapeInfo(info);
+    ort.GetDimensions(info, data(), dimensionCount);
+    ort.ReleaseTensorTypeAndShapeInfo(info);
   }
 
   size_t ElementCount() const {
@@ -177,31 +177,31 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
-  MyCustomKernel(const OrtCustomOpApi& api, const OrtKernelInfo& /*info*/) : api_(api) {
+  MyCustomKernel(const OrtCustomOpApi& ort, const OrtKernelInfo& /*info*/) : ort_(ort) {
   }
 
   void GetOutputShape(OrtValue** inputs, size_t /*input_count*/, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
-    OrtTensorDimensions dimensions(api_, inputs[0]);
-    ORT_THROW_ON_ERROR(api_.OrtSetDims(info, dimensions.data(), dimensions.size()));
+    OrtTensorDimensions dimensions(ort_, inputs[0]);
+    ORT_THROW_ON_ERROR(ort_.SetDims(info, dimensions.data(), dimensions.size()));
   }
 
   void Compute(OrtValue** inputs, size_t /*input_count*/, OrtValue** outputs, size_t /*output_count*/) {
     const float* X;
     const float* Y;
-    ORT_THROW_ON_ERROR(api_.OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
-    ORT_THROW_ON_ERROR(api_.OrtGetTensorMutableData(inputs[1], reinterpret_cast<void**>(const_cast<float**>(&Y))));
+    ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
+    ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(inputs[1], reinterpret_cast<void**>(const_cast<float**>(&Y))));
 
     float* out;
-    ORT_THROW_ON_ERROR(api_.OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
+    ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
 
-    int64_t size = OrtTensorDimensions(api_, inputs[0]).ElementCount();
+    int64_t size = OrtTensorDimensions(ort_, inputs[0]).ElementCount();
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
   }
 
  private:
-  const OrtCustomOpApi& api_;
+  const OrtCustomOpApi& ort_;
 };
 
 struct MyCustomOp : OrtCustomOp {
