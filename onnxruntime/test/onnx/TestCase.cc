@@ -399,7 +399,6 @@ static std::string trim_str(const std::string& s) {
 static bool read_config_file(const std::basic_string<PATH_CHAR_TYPE>& path, std::map<std::string, std::string>& fc) {
   std::ifstream infile(path);
   if (!infile.good()) {
-    LOGF_DEFAULT(ERROR, "Parsing config failed.");
     return false;
   }
 

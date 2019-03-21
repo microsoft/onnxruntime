@@ -614,9 +614,6 @@ def main():
     if args.build_csharp:
         args.build_shared_lib = True
 
-    if args.use_full_protobuf:
-        args.use_full_protobuf = True
-
     configs = set(args.config)
 
     # setup paths and directories

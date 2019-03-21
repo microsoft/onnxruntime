@@ -4,10 +4,9 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/platform/env.h"
 #include "onnx_protobuf.h"
+#include <google/protobuf/text_format.h>
 #include "test_fixture.h"
 #include "file_util.h"
-#include <fstream>
-
 namespace onnxruntime {
 namespace test {
 namespace {
@@ -15,23 +14,18 @@ void WriteStringToTempFile(const char* test_data, std::basic_string<ORTCHAR_T>& 
   int fd;
   CreateTestFile(fd, filename);
   onnx::ModelProto mp;
-  if (!mp.ParseFromString(test_data)) {
-    //  if (!google::protobuf::TextFormat::ParseFromString(test_data, &mp)) {
+  if (!google::protobuf::TextFormat::ParseFromString(test_data, &mp)) {
     throw std::runtime_error("protobuf parsing failed");
   }
-  std::ofstream ofs(filename);
-  std::string out;
-  if (!mp.SerializeToString(&out))
-    //  if (!mp.SerializeToFileDescriptor(fd))
+  if (!mp.SerializeToFileDescriptor(fd))
     throw std::runtime_error("write file failed");
-  ofs << out;
   auto st = Env::Default().FileClose(fd);
   if (!st.IsOK())
     throw std::runtime_error("close file failed");
 }
 }  // namespace
 
-TEST_F(CApiTest, DISABLED_model_missing_data) {  // TODO: protobuf-lite doesn't support parsing protobuf data represented as text
+TEST_F(CApiTest, model_missing_data) {
   const char* test_data =
       "ir_version: 4\n"
       "graph {\n"
@@ -93,7 +87,7 @@ TEST_F(CApiTest, DISABLED_model_missing_data) {  // TODO: protobuf-lite doesn't 
   OrtReleaseStatus(st);
 }
 
-TEST_F(CApiTest, DISABLED_model_with_external_data) {  // TODO: protobuf-lite doesn't support parsing protobuf data represented as text
+TEST_F(CApiTest, model_with_external_data) {
   const char* test_data_begin =
       "ir_version: 4\n"
       "graph {\n"

@@ -134,7 +134,7 @@ function(onnxruntime_protobuf_generate)
         COMMAND  ${PROTOC_EXECUTABLE}
         ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
         DEPENDS ${_abs_file} ${PROTOC_DEPS}
-        COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer compiler on ${_proto}"
+        COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer (full) compiler on ${_proto}"
         VERBATIM )
     else()
       add_custom_command(
@@ -142,7 +142,7 @@ function(onnxruntime_protobuf_generate)
         COMMAND  ${PROTOC_EXECUTABLE}
         ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out lite:${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
         DEPENDS ${_abs_file} ${PROTOC_DEPS}
-        COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer compiler on ${_proto}"
+        COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer compiler (lite) on ${_proto}"
         VERBATIM )
     endif()
   endforeach()
