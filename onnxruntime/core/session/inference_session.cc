@@ -1013,17 +1013,11 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
     // Generate and register rewrite rules for level
-    auto rewrite_rules_to_register =
-        transformer_utils::GenerateRewriteRules(level, &custom_list);
-    if (!rewrite_rules_to_register.empty()) {
-      std::unique_ptr<RuleBasedGraphTransformer> graph_rewrite_rules =
-          std::make_unique<TopDownRuleBasedTransformer>(t_name + "_RuleBasedTransformer",
-                                                        "Apply rewrite rules for " + t_name);
-      for (auto& entry : rewrite_rules_to_register) {
-        graph_rewrite_rules->Register(std::move(entry));
-      }
-      transformer_manager.Register(std::move(graph_rewrite_rules), level,
-                                   std::move(providers));
+    std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+        transformer_utils::GenerateRuleBasedGraphTransformer(level, &custom_list, t_name);
+
+    if (rule_transformer) {
+      transformer_manager.Register(std::move(rule_transformer), level, std::move(providers));
     }
 
     // Generate and register transformers for level

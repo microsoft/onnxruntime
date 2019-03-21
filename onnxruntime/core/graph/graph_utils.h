@@ -14,11 +14,14 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain = kOnnxDomainAlias);
 
-Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
-Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
-
 /** Check whether the node has a single input and a single output. */
 bool IsSingleInSingleOutNode(const Node& node);
+
+/** Returns true if the graph has the given input.*/
+bool HasGraphInput(const Graph& graph, const NodeArg* input);
+
+/** Checks if the given node has only constant inputs (initializers). */
+bool IsConstantInputsNode(const Graph& graph, const Node& node);
 
 /** Return the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
@@ -37,14 +40,11 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   }
 }
 
+Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
+Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
+
 /** Remove the given single-input-single-output Node from the Graph. */
 bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
-
-/** Returns true if the graph has the given input.*/
-bool HasGraphInput(const Graph& graph, const NodeArg* input);
-
-/** Checks if the given node has only constant inputs (initializers). */
-bool IsConstantInputsNode(const Graph& graph, const Node& node);
 
 /** Remove all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
