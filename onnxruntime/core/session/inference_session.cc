@@ -230,6 +230,8 @@ class InferenceSession::Impl {
     for (auto& domain : op_domains) {
       SchemasContainer schemas_container;
 
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(domain->domain_, 1, 1000);
+
       schemas_container.domain = domain->domain_;
       schemas_container.baseline_opset_version = 1;
       schemas_container.opset_version = 1000;
@@ -1185,7 +1187,6 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                           const std::vector<std::string>& providers,
                                                           TransformerLevel level) {
-
   return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
 }
 
