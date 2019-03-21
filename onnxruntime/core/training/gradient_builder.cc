@@ -229,11 +229,25 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
                 {GO(0)},
                 {GI(0)})};
   } else {
-    return std::vector<NodeDef>{
+    std::vector<NodeDef> result;
+    auto mask = O(1);
+
+    // TODO: In latter version, when the mask type is enforced to tensor(float),
+    // this conversion might not be needed anymore
+    if (mask.type_proto->tensor_type().elem_type() != TensorProto_DataType_FLOAT) {
+      mask = IA("f_mask");
+      result.push_back(
+          NodeDef("Cast",
+                  {O(1)},
+                  {mask},
+                  {MakeAttribute("to", int64_t(TensorProto_DataType_FLOAT))}));
+    }
+    result.push_back(
         NodeDef("DropoutGrad",
-                {GO(0), O(1)},
-                {GI(0)})};
-  }
+                {GO(0), mask},
+                {GI(0)}));
+    return result;
+  };
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
@@ -299,6 +313,38 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"SoftmaxCrossEntropyGrad", kMSDomain},
               {GO(0), I(0), I(1)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
+  const ArgDef& X = I(0);
+
+  // TODO: ONNX supports unknown shape for the input feed, e.g. [1, 3, -1, 28],
+  // thus the shape of input might be missing at graph construction time.
+  // However, in practice, we haven't seen a single model with unknown input shape.
+  // We need to get the shape at runtime if this case need to be supported.
+  // One way to do it is: scale = Size_Op(X, from=2); scaled_dY = Mul_Op(dY, scale)
+  const auto& x_dims = X.type_proto->tensor_type().shape().dim();
+  ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
+  int64_t scale = 1;
+  for (auto dim = x_dims.begin() + 2; dim < x_dims.end(); dim++) {
+    if (dim->has_dim_value()) {
+      scale *= dim->dim_value();
+    } else {
+      ORT_ENFORCE(false, "Dimension missing");
+    }
+  }
+
+  return std::vector<NodeDef>{
+      NodeDef("Scale",
+              {GO(0)},
+              {IA("scaled_dY")},
+              {MakeAttribute("scale", static_cast<float>(scale))}),
+      NodeDef("Shape",
+              {X},
+              {IA("x_shape")}),
+      NodeDef("Expand",
+              {IA("scaled_dY"), IA("x_shape")},
               {GI(0)})};
 }
 

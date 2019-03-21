@@ -31,9 +31,13 @@ using namespace onnxruntime::training;
 //const std::string PREDICTION_NAME = "prob_1";
 //const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
-const std::string MODEL_NAME = "zfnet512";
-const std::string PREDICTION_NAME = "gpu_0/softmax_1";
-const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
+//const std::string MODEL_NAME = "zfnet512";
+//const std::string PREDICTION_NAME = "gpu_0/softmax_1";
+//const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
+
+const std::string MODEL_NAME = "squeezenet";
+const std::string PREDICTION_NAME = "pool10_1";
+const std::vector<std::string> EXCLUDE_WEIGHTS = {};
 
 const std::string SHARED_PATH = "test_models/";
 const std::string ORIGINAL_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model.onnx";
@@ -65,7 +69,7 @@ int build_grad_graph(int /*argc*/, char* /*args*/[]) {
   // TODO: TERMINATE_IF_FAILED swallows some errors and messes up the call stack. Perhaps, find an alternative for debug mode ?
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));
 
-  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", PREDICTION_NAME, "labels", "loss"}));
+  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"SoftmaxCrossEntropy", PREDICTION_NAME, "labels", "loss", kMSDomain}));
   TERMINATE_IF_FAILED(training_session.Save(GENERATED_MODEL_WITH_COST_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
 
