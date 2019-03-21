@@ -226,7 +226,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
     auto mask = O(1);
 
     // TODO: In latter version, when the mask type is enforced to tensor(float),
-    // this conversion might no be needed anymore
+    // this conversion might not be needed anymore
     if (mask.type_proto->tensor_type().elem_type() != TensorProto_DataType_FLOAT) {
       mask = IA("f_mask");
       result.push_back(
@@ -312,8 +312,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef& X = I(0);
 
-  // TODO: the shape of input might be missing at graph construction time.
-  // Find a way to get it at runtime
+  // TODO: ONNX supports unknown shape for the input feed, e.g. [1, 3, -1, 28],
+  // thus the shape of input might be missing at graph construction time.
+  // However, in practice, we haven't seen a single model with unknown input shape.
+  // We need to get the shape at runtime if this case need to be supported.
+  // One way to do it is: scale = Size_Op(X, from=2); scaled_dY = Mul_Op(dY, scale)
   const auto& x_dims = X.type_proto->tensor_type().shape().dim();
   ORT_ENFORCE(x_dims.size() >= 3, "Input dimension cannot be less than 3.");
   int64_t scale = 1;
