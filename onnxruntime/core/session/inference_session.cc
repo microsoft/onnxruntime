@@ -1027,6 +1027,10 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   };
 
+  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
+              "Allowed values are 1 and 2. Current level is set to " +
+                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+
   if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
     add_transformers(TransformerLevel::Level1, {}, "Level1");
   }

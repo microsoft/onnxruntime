@@ -65,18 +65,24 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
   }
   input_def->SetShape(shape);
 
-  // Replace the input of the nodes following the Unsqueeze node
+  // Keep all output nodes in a list (after removing all edges below, there will be no other way to access them; 
+  // I cannot first update the output defs, because edge removal will not work afterwards).
+  std::vector<NodeIndex*> output_nodes_idx;
+  for (auto it = node.OutputNodesBegin(), end = node.OutputNodesEnd(); it != end; ++it) {
+    auto output_node_idx = (*it).Index();
+    output_nodes_idx.push_back(&output_node_idx);
+  }
+
+  // Remove output edges of the Unsqueeze node.
+  graph_utils::RemoveNodeOutputEdges(graph, node);
+
+  // Replace the input of the nodes following the Unsqueeze node.
   const NodeArg* output_def = node.OutputDefs()[0];
-  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
-    const Node::EdgeEnd& output_edge = *it;
-    auto output_node = graph.GetNode(output_edge.GetNode().Index());
+  for (NodeIndex* idx : output_nodes_idx) {
+    auto output_node = graph.GetNode(*idx);
     if (!output_node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
-
-    // Remove output edges and update input defs of the nodes they point to so that they now get
-    // the initializer as input.
-    graph.RemoveEdge(node.Index(), output_node->Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
     auto& input_defs = output_node->MutableInputDefs();
     for (auto& def : input_defs) {
       if (def == output_def) {
