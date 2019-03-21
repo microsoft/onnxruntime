@@ -235,7 +235,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  so.graph_optimization_level = 2;
+  so.graph_optimization_level = TransformerLevel::Level2;
   InferenceSession session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
