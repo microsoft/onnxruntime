@@ -10,7 +10,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
 # Set C++14 as standard for the whole project
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 14 CACHE STRING "")
 
 # General C# prperties
 if (onnxruntime_BUILD_CSHARP)
