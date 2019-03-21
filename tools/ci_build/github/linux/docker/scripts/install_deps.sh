@@ -65,5 +65,7 @@ tar -jxf /tmp/src/eigen-eigen-323c052e1731.tar.bz2 -C /usr/include
 mv /usr/include/eigen-eigen-323c052e1731 /usr/include/eigen3
 
 rm -rf /tmp/src
+rm -rf /usr/include/google
+rm -rf /usr/lib/libproto*
 
 

@@ -458,9 +458,9 @@ Status OnnxTestCase::ParseModel() {
   Status st = Status::OK();
   std::call_once(model_parsed_, [this, &st]() {
     //parse model
-    ONNX_NAMESPACE::ModelProto* model_pb;
+    ONNX_NAMESPACE::ModelProto* model_pb = nullptr;
     st = loadModelFile(model_url_.c_str(), &model_pb);
-    if (!st.IsOK()) return;
+    if (!st.IsOK() || model_pb == nullptr) return;
     const ONNX_NAMESPACE::GraphProto& graph = model_pb->graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();

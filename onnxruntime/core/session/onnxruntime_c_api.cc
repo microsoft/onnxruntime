@@ -126,8 +126,11 @@ ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);
-  if (status.IsOK())
+  if (status.IsOK()) {
     *out = new OrtEnv(env.release(), default_logging_manager.release());
+    return nullptr;
+  }
+  *out = nullptr;
   return ToOrtStatus(status);
   API_IMPL_END
 }
