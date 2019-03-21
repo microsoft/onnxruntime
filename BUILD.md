@@ -58,7 +58,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build x86 
 1. For Windows, just add --x86 argument when launching build.bat
-2. For Linux, it must be built out of a 32 bit os, meanwhile --x86 argument also needs be specified to build.sh
+2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
 ## Build/Test Flavors for CI
 
