@@ -66,6 +66,7 @@ option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
+option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -86,7 +87,7 @@ if(onnxruntime_USE_OPENMP)
 endif()
 
 if(onnxruntime_CROSS_COMPILING)
-  set(CMAKE_CROSSCOMPILING ON)  
+  set(CMAKE_CROSSCOMPILING ON)
 endif()
 
 #must after OpenMP settings
@@ -213,9 +214,17 @@ else()
   set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
   set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
   set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
-  add_library(protobuf::libprotobuf ALIAS libprotobuf)
+  if (onnxruntime_USE_FULL_PROTOBUF)
+    add_library(protobuf::libprotobuf ALIAS libprotobuf)
+  else()
+    add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
+  endif()
   add_executable(protobuf::protoc ALIAS protoc)
   include(protobuf_function.cmake)
+endif()
+
+if (onnxruntime_USE_FULL_PROTOBUF)
+  add_definitions(-DUSE_FULL_PROTOBUF)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -350,7 +359,7 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    # treat warning as error only on x64 platform. 
+    # treat warning as error only on x64 platform.
     # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
