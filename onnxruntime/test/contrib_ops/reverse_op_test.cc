@@ -170,7 +170,7 @@ void RunTestWrapper<MLFloat16>() {
   std::initializer_list<MLFloat16> expected_vals_1 = {ConvertFloatToMLFloat16(1)};
   std::vector<int64_t> expected_dimensions_1;
   RunTest<MLFloat16>(input_vals_1, input_dimensions_1, reverse_axes_1, expected_vals_1, expected_dimensions_1);
-
+  
   // Test 2 (default axes)
   std::initializer_list<MLFloat16> input_vals_2 = {ConvertFloatToMLFloat16(1), ConvertFloatToMLFloat16(2), ConvertFloatToMLFloat16(3), ConvertFloatToMLFloat16(4), ConvertFloatToMLFloat16(5), ConvertFloatToMLFloat16(6), ConvertFloatToMLFloat16(7), ConvertFloatToMLFloat16(8)};
   std::vector<int64_t> input_dimensions_2 = {2, 4};
@@ -244,10 +244,9 @@ TEST(ReverseOperator, BoolType) {
   RunTestWrapper<bool>();
 }
 
-/*
+
 TEST(ReverseOperator, MLFLoat16Type) {
   RunTestWrapper<MLFloat16>();
 }
-*/
 }  // namespace test
 }  // namespace onnxruntime 

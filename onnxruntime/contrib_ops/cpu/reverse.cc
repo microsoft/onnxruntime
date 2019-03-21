@@ -119,65 +119,74 @@ template <int rank>
 void ReverseImplMLFloat16Type(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
   AllocatorPtr allocator;
   ctx->GetTempSpaceAllocator(&allocator);
-  //ORT_ENFORCE(ctx->GetTempSpaceAllocator(&allocator), "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&allocator).IsOK(), "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
   ORT_ENFORCE(allocator != nullptr, "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
 
   const int64_t len = shape.Size();
   ORT_ENFORCE(len > 0, "Need atleast one float16 element to be processed in Reverse operator");
 
-  float* buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
-  ORT_ENFORCE(buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
+  // allocate intermediate buffers to be used for processing 
+  float* input_buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
+  float* output_buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
+  ORT_ENFORCE(input_buffer && output_buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
 
   const auto& dims = shape.GetDims();
   const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
 
-  // fill the intermediate buffer with the values in the input tensor
+  // fill the intermediate input buffer with the values in the input tensor
   const auto& span = gsl::make_span(input_tensor->Data<MLFloat16>(), len);
-  std::transform(span.cbegin(), span.cend(), buffer, [](const MLFloat16& val) { return math::halfToFloat(val.val); });
+  std::transform(span.cbegin(), span.cend(), input_buffer, [](const MLFloat16& val) { return math::halfToFloat(val.val); });
 
-  // process the intermediate buffer
-  EigenTensorMap<float, rank> eigen_tensor = buffer_as_eigen_tensor<float, rank>(buffer, dims);
-  eigen_tensor = eigen_tensor.reverse(eigen_reverse_axes);
+  // process the intermediate input buffer and use the intermediate output buffer to hold the output
+  EigenTensorMap<float, rank> eigen_tensor_input = buffer_as_eigen_tensor<float, rank>(input_buffer, dims);
+  EigenTensorMap<float, rank> eigen_tensor_output = buffer_as_eigen_tensor<float, rank>(output_buffer, dims);
 
-  // fill output tensor's values with results in intermediate buffer
+  eigen_tensor_output = eigen_tensor_input.reverse(eigen_reverse_axes);
+
+  // fill output tensor's values with results in intermediate output buffer  
   auto* output_data = output_tensor->template MutableData<MLFloat16>();
-  std::transform(buffer, buffer + len, output_data, [](const float& val) { return MLFloat16(math::floatToHalf(val)); });
+  std::transform(output_buffer, output_buffer + len, output_data, [](const float& val) { return MLFloat16(math::floatToHalf(val)); });
 
-  // free the intermediate buffer
-  allocator->Free(buffer);
-
+  // free the intermediate buffers
+  allocator->Free(input_buffer);
+  allocator->Free(output_buffer);
 }
 
 template <int rank>
 void ReverseImplBFloat16Type(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
   AllocatorPtr allocator;
   ctx->GetTempSpaceAllocator(&allocator);
-  //ORT_ENFORCE(ctx->GetTempSpaceAllocator(&allocator), "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
+  ORT_ENFORCE(ctx->GetTempSpaceAllocator(&allocator).IsOK(), "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
   ORT_ENFORCE(allocator != nullptr, "ORT needs couldn't get access to intermediate memory allocator to process float16 data in Reverse operator");
 
   const int64_t len = shape.Size();
   ORT_ENFORCE(len > 0, "Need atleast one float16 element to be processed in Reverse operator");
 
-  float* buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
-  ORT_ENFORCE(buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
+  // allocate intermediate buffers to be used for processing
+  float* input_buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
+  float* output_buffer = static_cast<float*>(allocator->AllocArray(sizeof(float), len));
+  ORT_ENFORCE(input_buffer && output_buffer, "ORT cannot allocate enough memory to process float16 data in Reverse operator");
 
   const auto& dims = shape.GetDims();
   const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
 
-  // fill the intermediate buffer with the values in the input tensor
+  // fill the intermediate input buffer with the values in the input tensor
   const auto& span = gsl::make_span(input_tensor->Data<BFloat16>(), len);
-  std::transform(span.cbegin(), span.cend(), buffer, [](const BFloat16& val) { return val.ToFloat(); });
+  std::transform(span.cbegin(), span.cend(), input_buffer, [](const BFloat16& val) { return val.ToFloat(); });
 
-  // process the intermediate buffer
-  EigenTensorMap<float, rank> eigen_tensor = buffer_as_eigen_tensor<float, rank>(buffer, dims);
-  eigen_tensor = eigen_tensor.reverse(eigen_reverse_axes);
+  // process the intermediate input buffer and use the intermediate output buffer to hold the output
+  EigenTensorMap<float, rank> eigen_tensor_input = buffer_as_eigen_tensor<float, rank>(input_buffer, dims);
+  EigenTensorMap<float, rank> eigen_tensor_output = buffer_as_eigen_tensor<float, rank>(output_buffer, dims);
 
-  // fill output tensor's values with results in intermediate buffer
+  eigen_tensor_output = eigen_tensor_input.reverse(eigen_reverse_axes);
+
+  // fill output tensor's values with results in intermediate output buffer
   auto* output_data = output_tensor->template MutableData<BFloat16>();
-  std::transform(buffer, buffer + len, output_data, [](const float& val) { return BFloat16(val); });
+  std::transform(output_buffer, output_buffer + len, output_data, [](const float& val) { return BFloat16(val); });
 
-  // free the intermediate buffer
-  allocator->Free(buffer);
+  // free the intermediate buffers
+  allocator->Free(input_buffer);
+  allocator->Free(output_buffer);
 }
 
 Status Reverse::Compute(OpKernelContext* p_op_kernel_context) const {
