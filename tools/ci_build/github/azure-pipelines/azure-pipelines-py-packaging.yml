@@ -16,7 +16,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --use_tvm --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -29,6 +29,10 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         ArtifactName: onnxruntime
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -49,7 +53,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -62,6 +66,10 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         ArtifactName: onnxruntime_gpu
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -89,7 +97,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --build_dir $(buildDirectory) --config Release --build_wheel --use_mkldnn'
+        arguments: ' --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
@@ -110,6 +118,10 @@ jobs:
         filename: deactivate
       continueOnError: true
       condition: always()
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -151,7 +163,8 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0"
+      --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
@@ -172,6 +185,10 @@ jobs:
         filename: deactivate
       continueOnError: true
       condition: always()
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -195,9 +212,9 @@ jobs:
         cleanEnvironment: true
 
     - script: |
-        sudo python -m pip install numpy
+        sudo python -m pip install numpy==1.15.0
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --use_mkldnn --build_wheel
+        ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel
       displayName: 'Command Line Script'
 
     - task: CopyFiles@2
@@ -211,5 +228,9 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         ArtifactName: onnxruntime
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml

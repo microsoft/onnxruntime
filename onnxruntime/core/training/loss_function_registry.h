@@ -14,11 +14,11 @@ namespace training {
 
 class LossFunctionRegistry : public GenericRegistry<ILossFunction> {
  public:
-  // Register a list of standard loss functions stacitally.
-  void RegisterStandardLossFunctions();
+  // Register a list of non-operator loss functions stacitally.
+  void RegisterNonOperatorLossFunctions();
 
-  // Register a custom loss function.
-  void RegisterCustomLossFunction(const std::string& loss_func_name);
+  // Register a operator loss function.
+  void RegisterOperatorLossFunction(const std::string& op_name);
 
   static LossFunctionRegistry& GetInstance() {
     static LossFunctionRegistry instance;

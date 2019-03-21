@@ -6,6 +6,23 @@
 #endif
 
 #include "core/session/inference_session_impl.h"
+
+ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
+
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
+  if (status.IsOK())
+    return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
+
 namespace onnxruntime {
 //
 // InferenceSession
@@ -33,17 +50,37 @@ common::Status InferenceSession::Initialize() {
   return impl_->Initialize();
 }
 
+common::Status InferenceSession::Run(const RunOptions& run_options,
+                                     const std::vector<std::string>& feed_names,
+                                     const std::vector<MLValue>& feeds,
+                                     const std::vector<std::string>& output_names,
+                                     std::vector<MLValue>* p_fetches) {
+  return impl_->Run(run_options, feed_names, feeds, output_names, p_fetches);
+}
+
 common::Status InferenceSession::Run(const NameMLValMap& feeds,
                                      const std::vector<std::string>& output_names,
                                      std::vector<MLValue>* p_fetches) {
-  return impl_->Run(feeds, output_names, p_fetches);
+  return Run({}, feeds, output_names, p_fetches);
 }
 
 common::Status InferenceSession::Run(const RunOptions& run_options,
-                                     const NameMLValMap& feeds,
+                                     const NameMLValMap& feeds_map,
                                      const std::vector<std::string>& output_names,
                                      std::vector<MLValue>* p_fetches) {
-  return impl_->Run(run_options, feeds, output_names, p_fetches);
+  std::vector<std::string> feed_names;
+  std::vector<MLValue> feeds;
+
+  auto num_feeds = feeds_map.size();
+  feed_names.reserve(num_feeds);
+  feeds.reserve(num_feeds);
+
+  for (auto& pair : feeds_map) {
+    feed_names.push_back(pair.first);
+    feeds.push_back(pair.second);
+  }
+
+  return Run(run_options, feed_names, feeds, output_names, p_fetches);
 }
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
@@ -66,6 +103,9 @@ void InferenceSession::StartProfiling(const std::string& file_prefix) {
   impl_->StartProfiling(file_prefix);
 }
 
+#ifdef _WIN32
+void InferenceSession::StartProfiling(const std::wstring& file_prefix) { impl_->StartProfiling(file_prefix); }
+#endif
 void InferenceSession::StartProfiling(const logging::Logger* custom_logger) {
   impl_->StartProfiling(custom_logger);
 }
@@ -108,5 +148,9 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 common::Status InferenceSession::LoadCustomOps(const std::vector<std::string>& dso_list) {
   return impl_->LoadCustomOps(dso_list);
+}
+
+common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) {
+  return impl_->AddCustomOpDomains(ops);
 }
 }  // namespace onnxruntime

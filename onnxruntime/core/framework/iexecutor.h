@@ -25,17 +25,22 @@ class IExecutor {
 
   virtual ~IExecutor() = default;
 
+  /**
+   * The lifetime of 'fetches' is limited by 'session_state'
+   */
   common::Status Execute(const SessionState& session_state,
-                         const NameMLValMap& feeds,
-                         const std::vector<std::string>& output_names,
+                         const std::vector<int>& feed_mlvalue_idxs,
+                         const std::vector<MLValue>& feeds,
+                         const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<MLValue>& fetches,
                          const logging::Logger& logger) {
-    return Execute(session_state, feeds, output_names, fetches, {}, logger);
+    return Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, {}, logger);
   }
 
   virtual common::Status Execute(const SessionState& session_state,
-                                 const NameMLValMap& feeds,
-                                 const std::vector<std::string>& output_names,
+                                 const std::vector<int>& feed_mlvalue_idxs,
+                                 const std::vector<MLValue>& feeds,
+                                 const std::vector<int>& fetch_mlvalue_idxs,
                                  std::vector<MLValue>& fetches,
                                  // optional custom allocators. key is index in fetches
                                  const std::unordered_map<size_t, CustomAllocator> fetch_allocators,

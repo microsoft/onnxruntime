@@ -6,6 +6,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
+#include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 
 #ifdef MICROSOFT_INTERNAL
@@ -220,6 +221,118 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
+  // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
+  static const char* Affine_ver1_doc = R"DOC(
+Affine takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the affine function, y = alpha * x + beta,
+is applied to the tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
+      .SinceVersion(1)
+      .SetDoc(Affine_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, 1.0f)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, 0.0f)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* ParametricSoftplus_ver1_doc = R"DOC(
+ParametricSoftplus takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the softplus function, y = alpha * ln(exp(beta * x) + 1), is applied to
+the tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
+      .SinceVersion(1)
+      .SetDoc(ParametricSoftplus_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D input tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* ImageScaler_ver1_doc =
+      R"DOC(Scale and bias the input image. Bias values are stored in
+the same ordering as the image pixel format.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
+      .SinceVersion(1)
+      .SetDoc(ImageScaler_ver1_doc)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* Crop_ver1_doc =
+      R"DOC(Crop and image to the specified spatial dimensions. If scale is given,
+then optionally start the crop offset by the left/top border amounts.
+If scale is not provided, crop the borders as provided.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
+      .SinceVersion(1)
+      .SetDoc(Crop_ver1_doc)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(Affine_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, 1.0f)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, 0.0f)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(ParametricSoftplus_ver1_doc)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D input tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(ImageScaler_ver1_doc)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(Crop_ver1_doc)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
+
+  // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -271,7 +384,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -340,7 +453,7 @@ activation.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(
-The FusedGemm operator schema is the same as Gemm besides it includes attributes 
+The FusedGemm operator schema is the same as Gemm besides it includes attributes
 activation and leaky_relu_alpha.)DOC")
       .Input(
           0,
@@ -472,6 +585,39 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
+  static const char* Tokenizer_ver1_doc = R"DOC(
+  Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
+  If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
+  Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
+  The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
+  the second mode will be used. The first mode breaks each input string into tokens by removing separators.
+
+  Let's assume "separators" is [" "] and consider an example.
+  If input is
+
+  ["Hello World", "I love computer science !"] whose shape is [2],
+
+  then the output would be
+
+ [["Hello", "World", padvalue, padvalue, padvalue],
+ ["I", "love", "computer", "science", "!"]]
+
+ whose shape is [2, 5] because you can find at most 5 tokens per input string.
+ Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
+
+ For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
+ The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
+ This operator searches for the first match starting from the beginning of the considered string,
+ and then launches another search starting from the first remained character after the first matched token.
+ If no match found, this operator will remove the first character from the remained string and do another search.
+ This procedure will be repeated until reaching the end of the considered string.
+
+  Let's consider another example to illustrate the effect of setting "mark" to true.
+  If input is ["Hello", "World"],
+  then the corresponding output would be [0x02, "Hello", "World", 0x03].
+  This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2].
+)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -490,17 +636,50 @@ activation and leaky_relu_alpha.)DOC")
           "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.",
           AttributeProto::STRING)
       .Attr(
+          "tokenexp",
+          "An optional string. Token's regular expression in basic POSIX format"
+          " (http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
+          " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
+          " 'tokenexp' and 'separators' should be set.",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Attr(
           "separators",
-          "The list of separators, two consecutive segments in X connected by a separator would be divided into two tokens.",
-          AttributeProto::STRINGS)
+          "an optional list of strings (type: AttributeProto::STRINGS), each single string in this attribute is a separator."
+          " Two consecutive segments in X connected by a separator would be divided into two tokens."
+          " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
+          " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
+          " one should set the separators to [\"\"], which contains only one empty string."
+          " If 'separators' is a L-element array, there will be L rounds of tokenization using one stop word."
+          " More specifically, in the first round, the first element in 'separators' is used to tokenize each string in the input."
+          " Then, the second element in 'separators' will be used to tokenize the resulted strings produced at the first round.",
+          AttributeProto::STRINGS,
+          OPTIONAL)
       .Attr(
           "mincharnum",
           "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored",
           AttributeProto::INT)
+      .SetDoc(Tokenizer_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      })
-      .SetDoc(R"DOC(Tokenizer divides each string in X into a vector of strings along the last axis. All input strings including attributes are UTF-8 encoded.)DOC");
+
+        // Shape inference
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        auto& input_shape = getInputShape(ctx, 0);
+        auto& dims = input_shape.dim();
+        if (dims.size() < 1 || dims.size() > 2) {
+          fail_shape_inference("Input dimensions are either [C] or [N][C] allowed");
+        }
+        for (auto& dim : dims) {
+          *output_shape.add_dim() = dim;
+        }
+        // Add the last unknown dimension
+        output_shape.add_dim();
+        updateOutputShape(ctx, 0, output_shape);
+      });
 
   // Operators for linear 8 bit quanitzation support.
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
@@ -736,10 +915,6 @@ if the input is 8 bits or in 64 bits if the input is 16 bits.)DOC")
 
         convPoolShapeInference(ctx, true, false, 0, 3);
       });
-      
-    
-          
-
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvInteger)
       .SetDomain(kMSDomain)
@@ -965,7 +1140,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
           OPTIONAL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
-        selected_indices_type->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+        selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
 
         // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
         auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
@@ -981,7 +1156,7 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto num_outputs = ctx.getNumOutputs();
         if (num_outputs > 1) {
           auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
-          valid_outputs_shape->set_elem_type(::onnx::TensorProto_DataType::TensorProto_DataType_INT32);
+          valid_outputs_shape->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
           valid_outputs_shape
               ->mutable_shape()
               ->add_dim()
@@ -996,13 +1171,29 @@ The bounding box coordinates corresponding to the selected indices can then be o
       .Input(0, "X", "An input tensor to hash.", "T1")
       .Output(0, "Y", "32-bit hash value.", "T2")
       .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
-      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned or signed 32-bit integer tensor.")
+      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned and signed 32-bit integer tensor.")
       .Attr(
           "seed",
           "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0.",
           AttributeProto::INT,
           (int64_t)0LL)
+      .Attr(
+          "positive",
+          "If value is 1, output type is uint32_t, else int32_t. Default value is 1.",
+          AttributeProto::INT,
+          (int64_t)1LL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // type inference
+        auto positive_attr = ctx.getAttribute("positive");
+        bool is_positive =
+            positive_attr ? (static_cast<int>(positive_attr->i()) == 1 ? true : false) : true /* default value if attribute not present */;
+        auto output_data_type = ctx.getOutputType(0)->mutable_tensor_type();
+        if (is_positive) {
+          output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32);
+        } else {
+          output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+        }
+
         // Shape inference
         if (!hasInputShape(ctx, 0))
           return;
@@ -1010,39 +1201,6 @@ The bounding box coordinates corresponding to the selected indices can then be o
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(StringNormalizer)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "Strings to normalize", "T")
-      .Output(0, "Y", "Normalized strings", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(string)"},
-          "Input/Output is a string tensor")
-      .Attr(
-          "casechangeaction",
-          "string enum that cases output to be lowercased/uppercases/unchanged. Valid values are \"LOWER\", \"UPPER\", \"NONE\"",
-          AttributeProto::STRING)
-      .Attr(
-          "is_case_sensitive",
-          "Boolean. Whether the identification of stop words in X is case-sensitive.",
-          AttributeProto::INT)
-      .Attr(
-          "stopwords",
-          "List of stop words",
-          AttributeProto::STRINGS,
-          OPTIONAL)
-      .Attr(
-          "locale",
-          "Environment dependent string that denotes the locale according to which output strings needs to be upper/lowercased. Default en_US",
-          AttributeProto::STRING,
-          OPTIONAL)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto output_elem_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_elem_type->set_elem_type(ONNX_NAMESPACE::TensorProto::STRING);
-      })
-      .SetDoc(R"DOC([optional] Step1: Remove elements in X if they match any of the stop words so that the output tensor will not contain any stop words. This operator only accepts [C]- and [1, C]-tensors. If all elements in X are dropped, the output will be the default value of string tensor with shape [1] if input shape is [C] and shape [1, 1] if input shape is [1, C].)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kMSDomain)
@@ -1199,6 +1357,32 @@ Example 4:
   map and from feature map into RoI feature; in each ROI bin,
   the value of the sampled locations are computed directly
   through bilinear interpolation.)DOC");
+
+  // TODO: push this to ONNX
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropy)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(1, "label", "label is 2-D input of shape (batch_size, num_classes).", "T")
+      .Output(0, "Y", "loss.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(2, "label", "label is 2-D input of shape (batch_size, num_classes).", "T")
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops

@@ -6,10 +6,12 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/environment.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/training/training_session.h"
 #include "core/training/training_optimizer.h"
+#include "core/training/training_session.h"
+#include "core/training/weight_updater.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
+//#include "core/graph/constants.h"
 
 #include <random>
 
@@ -147,8 +149,7 @@ static void CreateMLValue(AllocatorPtr alloc,
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                               shape,
                                                               buffer,
-                                                              location,
-                                                              alloc);
+                                                              location);
   p_mlvalue->Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -160,8 +161,10 @@ AllocatorPtr GetAllocator() {
   return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 }
 
-vector<NameMLValMap> fill_feed_dict(const pair<vector<vector<float>>, vector<vector<float>>>& batch) {
-  vector<NameMLValMap> feeds;
+typedef pair<vector<string>, vector<MLValue>> TrainingData;
+
+vector<TrainingData> fill_feed_dict(const pair<vector<vector<float>>, vector<vector<float>>>& batch) {
+  vector<TrainingData> feeds;
 
   const vector<vector<float>>& images = batch.first;
   const vector<vector<float>>& labels = batch.second;
@@ -175,7 +178,7 @@ vector<NameMLValMap> fill_feed_dict(const pair<vector<vector<float>>, vector<vec
     MLValue labelMLValue;
     CreateMLValue(GetAllocator(), label_dims, labels[i], &labelMLValue);
 
-    feeds.push_back(NameMLValMap({{"X", imageMLValue}, {"labels", labelMLValue}}));
+    feeds.push_back(make_pair<vector<string>, vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue}));
   }
 
   return feeds;
@@ -186,20 +189,21 @@ void Evaluate(SessionType& sess, DataSet& data_set, bool use_full_set = false) {
   int true_count = 0;
   int num_examples = use_full_set ? data_set.NumSamples() : 1000;
 
-  vector<NameMLValMap> batch = fill_feed_dict(data_set.NextBatch(num_examples));
+  vector<TrainingData> batch = fill_feed_dict(data_set.NextBatch(num_examples));
 
   vector<string> output_names = {"predictions", "loss"};
   vector<MLValue> fetches;
+  RunOptions run_options;
 
   for (int i = 0; i < batch.size(); i++) {
-    Status s = sess.Run(batch[i], output_names, &fetches);
+    Status s = sess.Run(run_options, batch[i].first, batch[i].second, output_names, &fetches);
 
     const float* prediction_data = fetches[0].Get<Tensor>().template Data<float>();
 
     auto max_class_index = std::distance(prediction_data,
                                          std::max_element(prediction_data, prediction_data + NUM_CLASS));
 
-    const float* label_data = batch[i]["labels"].Get<Tensor>().template Data<float>();
+    const float* label_data = batch[i].second[1].Get<Tensor>().template Data<float>();
 
     // todo:  better way to convert to int
     if (int(label_data[max_class_index]) == 1) {
@@ -226,6 +230,7 @@ int main(int /*argc*/, char* /*args*/[]) {
   mnist::MNIST_dataset<std::vector, std::vector<uint8_t>, uint8_t> dataset = {};
 
   //Step 0 : Read MNIST data
+  DataSet training_set, testing_set;
   bool load_mnist_data = true;
   if (load_mnist_data) {
     dataset = mnist::read_dataset<std::vector, std::vector, uint8_t, uint8_t>(MNIST_DATA_PATH);
@@ -234,15 +239,23 @@ int main(int /*argc*/, char* /*args*/[]) {
     std::cout << "Nbr of training labels = " << dataset.training_labels.size() << std::endl;
     std::cout << "Nbr of test images = " << dataset.test_images.size() << std::endl;
     std::cout << "Nbr of test labels = " << dataset.test_labels.size() << std::endl;
+
+    training_set = DataSet(dataset.training_images, dataset.training_labels);
+    testing_set = DataSet(dataset.test_images, dataset.test_labels);
   }
-  DataSet training_set(dataset.training_images, dataset.training_labels);
-  DataSet testing_set(dataset.test_images, dataset.test_labels);
 
   // Step 1: Load the model and generate gradient graph in a training session.
   SessionOptions so;
   TrainingSession training_session{so};
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));
-  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", "predictions", "labels", "loss"}));
+  // Uncomment this to try adding a loss func with an existing op.
+  // although BW-graph building fail due to the incorrect output shape
+  TERMINATE_IF_FAILED(training_session.AddLossFuncion({"SoftmaxCrossEntropy",
+                                                       "predictions",
+                                                       "labels",
+                                                       "loss",
+                                                       kMSDomain}));
+  //TERMINATE_IF_FAILED(training_session.AddLossFuncion({"MeanSquaredError", "predictions", "labels", "loss"}));
   TERMINATE_IF_FAILED(training_session.Save(GENERATED_MODEL_WITH_COST_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
   TERMINATE_IF_FAILED(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss"));
@@ -250,8 +263,8 @@ int main(int /*argc*/, char* /*args*/[]) {
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
   TERMINATE_IF_FAILED(training_session.Initialize());
 
-  Optimizer<GradientDescent> optimizer(training_session,
-                                       {LEARNING_RATE, GetAllocator()});
+  // Create a WeightUpdater powered by GradientDescent algorithm.
+  WeightUpdater<GradientDescent> weight_updater(training_session, {LEARNING_RATE, GetAllocator()});
 
   cout << "Before training" << endl;
   Evaluate(training_session, testing_set);
@@ -260,6 +273,8 @@ int main(int /*argc*/, char* /*args*/[]) {
   auto output_names_include_gradients = training_session.GetModelOutputNames();
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
+  RunOptions run_option;
+
   // loop through the data
   for (size_t batch_index = 0; batch_index < MAX_STEPS; ++batch_index) {
     NameMLValMap old_weight;
@@ -267,11 +282,11 @@ int main(int /*argc*/, char* /*args*/[]) {
     float total_loss = 0;
 
     // train for a mini batch
-    vector<NameMLValMap> training_batch = fill_feed_dict(training_set.NextBatch(BATCH_SIZE));
+    vector<TrainingData> training_batch = fill_feed_dict(training_set.NextBatch(BATCH_SIZE));
     for (const auto& fw_feeds : training_batch) {
       vector<MLValue> gradient_fetches;  // All gradients and loss are here, 1:1 mapping to the above training_output_names.
 
-      TERMINATE_IF_FAILED(training_session.Run(fw_feeds, training_output_names, &gradient_fetches));
+      TERMINATE_IF_FAILED(training_session.Run(run_option, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches));
 
       // Gradient descent: update weights in the modified model, with the output of Step 5
       // Here we modify the in-memory MLValue so that next training iteration can be run without model saving and reloading.
@@ -296,7 +311,7 @@ int main(int /*argc*/, char* /*args*/[]) {
          << endl;
 
     // After this call, training_session will have the updated weights ready for next Run().
-    optimizer.Optimize(grads_batch);
+    weight_updater.Update(grads_batch);
 
     Evaluate(training_session, testing_set);
 

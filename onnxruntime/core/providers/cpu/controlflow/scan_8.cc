@@ -10,6 +10,7 @@
 #endif
 #include "core/providers/cpu/controlflow/scan.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -92,9 +93,11 @@ class Scan8Impl {
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
 
+  Status CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm);
+
   // Execute the batch, by iterating the sequence in each batch entry
   // and calling the subgraph with each item in the sequence.
-  Status Execute();
+  Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
 
  private:
   // validate inputs and setup batch size and max sequence length.
@@ -159,7 +162,8 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
 
-  status = scan_impl.Execute();
+  // create FeedsFetchesManager if needed and call ScanImpl::Execute
+  status = controlflow::detail::SubgraphExecuteHelper(cached_feeds_fetches_manager_, scan_impl);
 
   return status;
 }
@@ -376,7 +380,13 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
   return status;
 }
 
-Status Scan8Impl::Execute() {
+Status Scan8Impl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
+  return scan::detail::CreateFeedsFetchesManager(subgraph_, num_variadic_inputs_, implicit_inputs_,
+                                                 subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
+                                                 ffm);
+}
+
+Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
   Status status = Status::OK();
 
   // for each batch item, std::vector of LoopStateVariables
@@ -410,10 +420,15 @@ Status Scan8Impl::Execute() {
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, subgraph_, batch_loop_state_variables[b],
-                             scan_input_stream_iterators, sequence_len, num_loop_state_variables_,
-                             num_variadic_inputs_, num_variadic_outputs_, implicit_inputs_,
-                             subgraph_output_names_, output_iterators_);
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[b], scan_input_stream_iterators,
+                             sequence_len, num_loop_state_variables_, num_variadic_inputs_, num_variadic_outputs_,
+                             implicit_inputs_, output_iterators_, ffm, cached_ffm);
+
+    // use the cached info from now on
+    if (ffm) {
+      cached_ffm = ffm;
+      ffm = nullptr;
+    }
 
     // zero out any remaining values in the sequence
     for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {

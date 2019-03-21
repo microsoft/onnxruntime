@@ -11,21 +11,24 @@
 
 namespace onnxruntime {
 class SessionState;
+class ExecutionFrame;
 
 class OpKernelContextInternal : public OpKernelContext {
  public:
-  explicit OpKernelContextInternal(ExecutionFrame& frame,
+  explicit OpKernelContextInternal(const SessionState& session_state,
+                                   IExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
                                    const std::vector<NodeArg*>& implicit_inputs,
                                    const bool& terminate_flag)
       : OpKernelContext(&frame, &kernel, logger),
+        session_state_{session_state},
         implicit_inputs_{implicit_inputs},
         terminate_flag_{terminate_flag} {
   }
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
-    return GetSessionState().GetSubgraphSessionState(GetNodeIndex(), attribute_name);
+    return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
   const MLValue* GetInputMLValue(int index) const {
@@ -34,6 +37,10 @@ class OpKernelContextInternal : public OpKernelContext {
 
   MLValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
+  }
+
+  MLValue* OutputMLValue(int index, const TensorShape& shape) {
+    return OpKernelContext::OutputMLValue(index, shape);
   }
 
   std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const {
@@ -51,6 +58,7 @@ class OpKernelContextInternal : public OpKernelContext {
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
  private:
+  const SessionState& session_state_;
   const std::vector<NodeArg*>& implicit_inputs_;
   const bool& terminate_flag_;
 };

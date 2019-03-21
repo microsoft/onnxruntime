@@ -46,6 +46,14 @@ extern "C" {
 #define ORTCHAR_T char
 #endif
 
+#ifndef ORT_TSTR
+#ifdef _WIN32
+#define ORT_TSTR(X) L##X
+#else
+#define ORT_TSTR(X) (X)
+#endif
+#endif
+
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
 
 #ifdef __cplusplus
@@ -142,6 +150,8 @@ ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
+ORT_RUNTIME_CLASS(Callback);
+ORT_RUNTIME_CLASS(CustomOpDomain);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -195,14 +205,12 @@ ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
 
 // Enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix);
+ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
 
-// Enable the memory pattern optimization.
-// The idea is if the input shapes are the same, we could trace the internal memory allocation
-// and generate a memory pattern for future request. So next time we could just do one allocation
-// with a big chunk for all the internal memory allocation.
+// deprecated
 ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
+// deprecated
 ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 
 // Enable the memory arena on CPU
@@ -284,7 +292,7 @@ ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
  * \param out Should be freed by calling OrtReleaseValue
  */
 ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-               _In_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+               _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
                ONNXTensorElementDataType type, _Out_ OrtValue** out);
 
 // This function doesn't work with string tensor
@@ -316,13 +324,44 @@ ORT_API_STATUS(OrtGetStringTensorDataLength, _In_ const OrtValue* value, _Out_ s
 ORT_API_STATUS(OrtGetStringTensorContent, _In_ const OrtValue* value, _Out_ void* s, size_t s_len,
                _Out_ size_t* offsets, size_t offsets_len);
 
-ORT_API_STATUS(OrtTensorProtoToOrtValue, _Inout_ OrtAllocator* allocator,
-               _In_ const void* input, int input_len, _Out_ OrtValue** out);
+/**
+ * Create an OrtValue in CPU memory from a serialized TensorProto
+ * @param input           serialized TensorProto object
+ * @param input_len       length of 'input'.
+ * @param input_file_path A local file path of where the input was loaded from. Can be NULL if the tensor proto doesn't
+ *                        have any external data or it was loaded from current working dir. This path could be either a
+ *                        relative path or an absolute path.
+ * @param preallocated A preallocated buffer for the tensor. It should be allocated from CPU memory
+ * @param preallocated_size Length of the preallocated buffer in bytes, can be computed from
+ *          the OrtGetTensorMemSizeInBytesFromTensorProto function. This function will return an error if the
+ *          preallocated_size is not enough.
+ * @param out
+ * @return
+ */
+ORT_API_STATUS(OrtTensorProtoToOrtValue, _In_ const void* input, int input_len,
+               _In_opt_ const ORTCHAR_T* input_file_path, _Inout_ void* preallocated, size_t preallocated_size,
+               _Out_ OrtValue** out, _Out_ OrtCallback** deleter);
+
+/**
+ *  f will be freed in this call
+ */
+ORT_API(void, OrtRunCallback, _Frees_ptr_opt_ OrtCallback* f);
+
+/**
+ * calculate the memory requirement for the OrtTensorProtoToOrtValue function
+ */
+ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input, int input_len, size_t alignment,
+               _Out_ size_t* out);
 
 /**
  * Don't free the returned value
  */
 ORT_API(const OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ OrtTypeInfo*);
+
+/**
+ * Return OnnxType from OrtTypeInfo
+ */
+ORT_API(enum ONNXType, OrtOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*);
 
 /**
  * The retured value should be released by calling OrtReleaseTensorTypeAndShapeInfo
@@ -386,6 +425,12 @@ typedef enum OrtMemType {
 ORT_API_STATUS(OrtCreateAllocatorInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out);
 
 /**
+ * Convenience function for special case of OrtCreateAllocatorInfo, for the CPU allocator. Uses name = "Cpu" and id = 0.
+ */
+ORT_API_STATUS(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out)
+ORT_ALL_ARGS_NONNULL;
+
+/**
  * Test if two allocation info are equal
  * \return 0, equal. zero, not equal
  */
@@ -421,6 +466,120 @@ ORT_ALL_ARGS_NONNULL;
  */
 ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status)
 ORT_ALL_ARGS_NONNULL;
+
+/**
+   * APIs to support non-tensor types - map and sequence.
+   * Currently only the following types are supported
+   * Note: the following types should be kept in sync with data_types.h
+   * Map types
+   * =========
+   * std::map<std::string, std::string>
+   * std::map<std::string, int64_t>
+   * std::map<std::string, float>
+   * std::map<std::string, double>
+   * std::map<int64_t, std::string>
+   * std::map<int64_t, int64_t>
+   * std::map<int64_t, float>
+   * std::map<int64_t, double>
+   * 
+   * Sequence types
+   * ==============
+   * std::vector<std::string>
+   * std::vector<int64_t>
+   * std::vector<float>
+   * std::vector<double>
+   * std::vector<std::map<std::string, float>>
+   * std::vector<std::map<int64_t, float>
+   */
+
+/**
+   * If input OrtValue represents a map, you need to retrieve the keys and values
+   * separately. Use index=0 to retrieve keys and index=1 to retrieve values.
+   * If input OrtValue represents a sequence, use index to retrieve the index'th element
+   * of the sequence.
+   */
+ORT_API_STATUS(OrtGetValue, const OrtValue* value, int index, OrtAllocator* allocator, OrtValue** out);
+
+/**
+   * Returns 2 for type map and N for sequence where N is the number of elements
+   * in the sequence.
+   */
+ORT_API_STATUS(OrtGetValueCount, const OrtValue* value, size_t* out);
+
+/**
+   * To construct a map, use num_values = 2 and 'in' should be an arrary of 2 OrtValues
+   * representing keys and values.
+   * To construct a sequence, use num_values = N where N is the number of the elements in the
+   * sequence. 'in' should be an arrary of N OrtValues.
+   * \value_type should be either map or sequence.
+   */
+ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
+               OrtValue** out);
+
+/*
+ * EXPERIMENTAL APIS - Subject to change. Released as a preview to get feedback and enable early testing
+*/
+
+/*
+ * Steps to use a custom op:
+ *   1 Create an OrtCustomOpDomain with the domain name used by the custom ops
+ *   2 Create an OrtCustomOp structure for each op and add them to the domain
+ *   3 Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
+*/
+struct OrtKernelInfo;
+typedef struct OrtKernelInfo OrtKernelInfo;
+
+/*
+ * These allow reading node attributes during kernel creation
+*/
+ORT_API_STATUS(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
+ORT_API_STATUS(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+
+/*
+ * The OrtCustomOp structure defines a custom op's schema and its kernel callbacks. The callbacks are filled in by
+ * the implementor of the custom op.
+*/
+struct OrtCustomOp {
+  uint32_t version;  // Initialize to ORT_API_VERSION
+
+  // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
+  void(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ OrtKernelInfo* info, _Out_ void** op_kernel);
+
+  // Returns the name of the op
+  const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
+
+  // Returns the count and types of the input & output tensors
+  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
+
+  // Op kernel callbacks
+  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
+  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ OrtValue** outputs, _In_ size_t output_count);
+  void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
+};
+typedef struct OrtCustomOp OrtCustomOp;
+
+/*
+* Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
+*/
+ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain, _In_ int op_version_start, _In_ int op_version_end);
+
+/*
+ * Add custom ops to the OrtCustomOpDomain
+ *  Note: The OrtCustomOp* pointer must remain valid until the OrtCustomOpDomain using it is released
+*/
+ORT_API_STATUS(OrtCustomOpDomain_Add, _In_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
+
+/*
+ * Add a custom op domain to the OrtSessionOptions
+ *  Note: The OrtCustomOpDomain* must not be deleted until the sessions using it are released
+*/
+ORT_API_STATUS(OrtAddCustomOpDomain, _In_ OrtSessionOptions* options, OrtCustomOpDomain* custom_op_domain);
+/*
+ * END EXPERIMENTAL
+*/
 
 #ifdef __cplusplus
 }

@@ -11,5 +11,5 @@ TEST_F(CApiTest, run_options) {
   ASSERT_EQ(OrtRunOptionsSetRunLogVerbosityLevel(options.get(), 1), nullptr);
   ASSERT_EQ(OrtRunOptionsSetRunTag(options.get(), "abc"), nullptr);
   ASSERT_STREQ(OrtRunOptionsGetRunTag(options.get()), "abc");
-  ASSERT_EQ(OrtRunOptionsGetRunLogVerbosityLevel(options.get()), (unsigned)1);
+  ASSERT_EQ(OrtRunOptionsGetRunLogVerbosityLevel(options.get()), unsigned(1));
 }

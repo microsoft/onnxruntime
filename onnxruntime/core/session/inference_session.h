@@ -21,6 +21,13 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
+struct OrtCustomOpDomain {
+  std::string domain_;
+  int op_version_start_{};
+  int op_version_end_{};
+  std::vector<OrtCustomOp*> custom_ops_;
+};
+
 namespace onnxruntime {
 class IExecutionProvider;  // forward decl
 class IOBinding;
@@ -45,19 +52,13 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
-  // enable the memory pattern optimization.
-  // The idea is if the input shapes are the same, we could trace the internal memory allocation
-  // and generate a memory pattern for future request. So next time we could just do one allocation
-  // with a big chunk for all the internal memory allocation.
-  bool enable_mem_pattern = true;
-
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
   bool enable_cpu_mem_arena = true;
 
   // the prefix of the profile file. The current time will be appended to the file name.
-  std::string profile_file_prefix = "onnxruntime_profile_";
+  std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
 
   std::string session_logid;                 ///< logger id to use for session output
   unsigned session_log_verbosity_level = 0;  ///< applies to session load, initialization, etc
@@ -143,6 +144,8 @@ class InferenceSession {
   */
   common::Status LoadCustomOps(const std::vector<std::string>& dso_list);
 
+  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
+
   /**
     * Register a custom registry for operator schema and kernels.  If you've one to register, 
     * call this before invoking Initialize().
@@ -176,6 +179,12 @@ class InferenceSession {
     * @return OK if success
     */
   common::Status Initialize();
+
+  common::Status Run(const RunOptions& run_options,
+                     const std::vector<std::string>& feed_names,
+                     const std::vector<MLValue>& feeds,
+                     const std::vector<std::string>& output_names,
+                     std::vector<MLValue>* p_fetches);
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -243,7 +252,9 @@ class InferenceSession {
     *@param file_prefix is the prefix of the profile file. It can include a directory path. 
     */
   void StartProfiling(const std::string& file_prefix);
-
+#ifdef _WIN32
+  void StartProfiling(const std::wstring& file_prefix);
+#endif
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to send profiling events through the logger's ISink.

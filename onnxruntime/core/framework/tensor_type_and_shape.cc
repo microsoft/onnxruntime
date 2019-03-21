@@ -5,6 +5,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/tensor_type_and_shape.h"
 
 #include <assert.h>
 #include <stdexcept>
@@ -14,16 +15,6 @@ using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Tensor;
-
-struct OrtTensorTypeAndShapeInfo {
- public:
-  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  onnxruntime::TensorShape shape;
-
-  OrtTensorTypeAndShapeInfo() = default;
-  OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = delete;
-  OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
-};
 
 #define API_IMPL_BEGIN try {
 #define API_IMPL_END                                          \
@@ -36,7 +27,7 @@ ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo) {
   return new OrtTensorTypeAndShapeInfo();
 }
 
-ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, OrtTensorTypeAndShapeInfo* ptr) {
+ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorTypeAndShapeInfo* ptr) {
   delete ptr;
 }
 
@@ -47,7 +38,7 @@ ORT_API_STATUS_IMPL(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* thi
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSetDims, _In_ OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
+ORT_API_STATUS_IMPL(OrtSetDims, OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
   API_IMPL_BEGIN
   this_ptr->shape = onnxruntime::TensorShape(dim_values, dim_count);
   return nullptr;
@@ -72,8 +63,7 @@ ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShape
 
 struct OrtValue;
 
-namespace {
-inline ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
+ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
     const onnxruntime::DataTypeImpl* cpp_type) {
   ONNXTensorElementDataType type;
   if (cpp_type == onnxruntime::DataTypeImpl::GetType<float>()) {
@@ -109,9 +99,9 @@ inline ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   }
   return type;
 }
-}  // namespace
 
-OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
+OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
+                                 const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
   ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);
   if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
     return OrtCreateStatus(ORT_FAIL, "Not implemented");

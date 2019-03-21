@@ -31,8 +31,10 @@ class TrainingSession {
 
   common::Status Load(const std::string& model_uri);
 
-  /** Register a custom loss function before calling AddLossFuncion, when user wants to customize the loss function.
-  @param loss_func_name The op name to be used as a loss function.
+  /** Add a system provided or an op as loss function to the model.
+  After the call, the model have one more input named as label_name and one more output named as loss_func_output_name.
+  @param loss_func_info The loss function info.
+  @returns Status indicating success or providing an error message.
   @remarks When using a custom/standard op as loss function, 2 ops must have been registered:
              1. an op for loss function, schema:
                  Inputs:
@@ -50,14 +52,6 @@ class TrainingSession {
                      GRADIENT_OF_LABEL
            And also in gradient_builder.cc, the gradient builder must have been registered.
   */
-  common::Status RegisterCustomLossFunction(const std::string& loss_func_name);
-
-  /** Add a system provided or a customized loss function to the model.
-  After the call, the model have one more input named as label_name and one more output named as loss_func_output_name.
-  @param loss_func_info The loss function info.
-  @returns Status indicating success or providing an error message.
-  @remarks The loss_func_name could be either system provided or a custom one.           
-  */
   common::Status AddLossFuncion(const LossFunctionInfo& loss_func_info);
 
   common::Status BuildGradientGraph(const std::vector<std::string>& weights_to_train, const std::string& loss_function_output_name);
@@ -65,7 +59,9 @@ class TrainingSession {
   common::Status Initialize();
 
   // Compute gradients.
-  common::Status Run(const NameMLValMap& feeds,
+  common::Status Run(const RunOptions& run_options,
+                     const std::vector<std::string>& feed_names,
+                     const std::vector<MLValue>& feeds,
                      const std::vector<std::string>& output_names,
                      std::vector<MLValue>* p_fetches);
 

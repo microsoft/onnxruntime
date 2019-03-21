@@ -34,17 +34,17 @@ Status EyeLike::Compute(OpKernelContext* context) const {
   const Tensor* T1 = context->Input<Tensor>(0);
   ORT_ENFORCE(T1 != nullptr);
 
-  auto output_tensor_dtype = has_dtype_ ? static_cast<onnx::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
+  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
   switch (output_tensor_dtype) {
-    case onnx::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return ComputeImpl<float>(context, T1);
-    case onnx::TensorProto_DataType_DOUBLE:
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
       return ComputeImpl<double>(context, T1);
-    case onnx::TensorProto_DataType_INT32:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
       return ComputeImpl<int32_t>(context, T1);
-    case onnx::TensorProto_DataType_UINT64:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
       return ComputeImpl<uint64_t>(context, T1);
-    case onnx::TensorProto_DataType_INT64:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       return ComputeImpl<int64_t>(context, T1);
     default:
       ORT_THROW("Unsupported 'dtype' value: ", output_tensor_dtype);

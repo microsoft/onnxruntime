@@ -24,64 +24,56 @@ struct ArgDef {
   }
 };
 
+struct OpDef {
+  OpDef(const std::string& type, const std::string& domain = kOnnxDomain)
+      : type(type),
+        domain(domain){};
+
+  std::string type;
+  std::string domain;
+};
+
 struct NodeDef {
-  NodeDef(const std::string& op_type,
-          const std::vector<ArgDef>& input_args,
-          const std::vector<ArgDef>& output_args) : op_type(op_type),
-                                                    input_args(input_args),
-                                                    output_args(output_args){};
-  NodeDef(const std::string& op_type,
+  NodeDef(const OpDef& op_def,
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
-          const NodeAttributes& attributes) : op_type(op_type),
-                                              input_args(input_args),
-                                              output_args(output_args),
-                                              attributes(attributes){};
-  NodeDef(const std::string& op_type,
-          const std::vector<ArgDef>& input_args,
-          const std::vector<ArgDef>& output_args,
-          const std::vector<AttributeProto>& attribute_protos) : op_type(op_type),
-                                                                 input_args(input_args),
-                                                                 output_args(output_args) {
-    for (const AttributeProto& a : attribute_protos) {
-      attributes.insert({a.name(), a});
-    }
-  };
+          const NodeAttributes& attributes = NodeAttributes(),
+          const std::string& name = "") : op_type(op_def.type),
+                                          domain(op_def.domain),
+                                          input_args(input_args),
+                                          output_args(output_args),
+                                          attributes(attributes),
+                                          name(name){};
 
   NodeDef(const std::string& op_type,
-          const std::string& name,
-          const std::vector<ArgDef>& input_args,
-          const std::vector<ArgDef>& output_args) : op_type(op_type),
-                                                    name(name),
-                                                    input_args(input_args),
-                                                    output_args(output_args){};
-  NodeDef(const std::string& op_type,
-          const std::string& name,
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
-          const NodeAttributes& attributes) : op_type(op_type),
-                                              name(name),
-                                              input_args(input_args),
-                                              output_args(output_args),
-                                              attributes(attributes){};
+          const NodeAttributes& attributes = NodeAttributes(),
+          const std::string& name = "") : op_type(op_type),
+                                          input_args(input_args),
+                                          output_args(output_args),
+                                          attributes(attributes),
+                                          name(name){};
+
   NodeDef(const std::string& op_type,
-          const std::string& name,
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
-          const std::vector<AttributeProto>& attribute_protos) : op_type(op_type),
-                                                                 name(name),
-                                                                 input_args(input_args),
-                                                                 output_args(output_args) {
+          const std::vector<AttributeProto>& attribute_protos,
+          const std::string& name = "") : op_type(op_type),
+                                          input_args(input_args),
+                                          output_args(output_args),
+                                          name(name) {
     for (const AttributeProto& a : attribute_protos) {
       attributes.insert({a.name(), a});
     }
-  };
+  }
 
   std::string op_type;
-  std::string name;
+  std::string domain = kOnnxDomain;
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
   NodeAttributes attributes;
+  std::string name;
 };
 
 /** GraphAugmenter is a stateless class to add new elements into a Graph.

@@ -23,15 +23,6 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return InferenceSession::Impl::Load(model_uri);
   }
 
-  Status RegisterCustomLossFunction(const std::string& loss_func_name) {
-    try {
-      LossFunctionRegistry::GetInstance().RegisterCustomLossFunction(loss_func_name);
-      return Status::OK();
-    } catch (const OnnxRuntimeException& exp) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register custom loss function.", exp.what());
-    }
-  }
-
   Status AddLossFuncion(const LossFunctionInfo& loss_func_info) {
     loss_func_info_ = loss_func_info;
 
@@ -58,10 +49,12 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return InferenceSession::Impl::Initialize();
   }
 
-  Status Run(const NameMLValMap& feeds,
-             const vector<string>& output_names,
-             vector<MLValue>* p_fetches) {
-    return InferenceSession::Impl::Run(feeds, output_names, p_fetches);
+  Status Run(const RunOptions& run_options,
+             const std::vector<std::string>& feed_names,
+             const std::vector<MLValue>& feeds,
+             const std::vector<std::string>& output_names,
+             std::vector<MLValue>* p_fetches) {
+    return InferenceSession::Impl::Run(run_options, feed_names, feeds, output_names, p_fetches);
   }
 
   NameMLValMap GetWeights() const {
@@ -75,6 +68,9 @@ class TrainingSessionImpl : public InferenceSession::Impl {
   }
 
   Status Save(const string& model_uri, TrainingSession::SaveOption opt) {
+    // Delete the old file before saving.
+    std::remove(model_uri.c_str());
+
     // Have to load the original model again.
     // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
     shared_ptr<Model> new_model;
@@ -152,10 +148,6 @@ Status TrainingSession::Load(const string& model_uri) {
   return impl_->Load(model_uri);
 }
 
-Status TrainingSession::RegisterCustomLossFunction(const std::string& loss_func_name) {
-  return impl_->RegisterCustomLossFunction(loss_func_name);
-}
-
 Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
   return impl_->AddLossFuncion(loss_func_info);
 }
@@ -169,10 +161,12 @@ Status TrainingSession::Initialize() {
 }
 
 // Compute gradients.
-Status TrainingSession::Run(const NameMLValMap& feeds,
-                            const vector<string>& output_names,
-                            vector<MLValue>* p_fetches) {
-  return impl_->Run(feeds, output_names, p_fetches);
+Status TrainingSession::Run(const RunOptions& run_options,
+                            const std::vector<std::string>& feed_names,
+                            const std::vector<MLValue>& feeds,
+                            const std::vector<std::string>& output_names,
+                            std::vector<MLValue>* p_fetches) {
+  return impl_->Run(run_options, feed_names, feeds, output_names, p_fetches);
 }
 
 NameMLValMap TrainingSession::GetWeights() const {
