@@ -48,6 +48,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/custom_ops_author.h"
 #include "core/session/IOBinding.h"
+#include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
 
@@ -362,7 +363,9 @@ class InferenceSession::Impl {
   common::Status Load(std::istream& model_istream) {
     auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
       ModelProto model_proto;
-      const bool result = model_proto.ParseFromIstream(&model_istream);
+
+      google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+      const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
       if (!result) {
         return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                       "Failed to load model because protobuf parsing failed.");
