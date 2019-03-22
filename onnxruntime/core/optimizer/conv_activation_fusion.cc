@@ -37,20 +37,25 @@ void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
 
 }  // namespace
 
-Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, 
+                                       const std::vector<std::string>& compatible_provider_types, 
+                                       int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto node = graph.GetNode(index);
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, compatible_provider_types, graph_level));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || node->GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || 
+        !graph_utils::IsSupportedProvider(*node, compatible_provider_types) || 
+        node->GetOutputEdgesCount() != 1) {
       continue;
     }
     const Node& next_node = *(node->OutputNodesBegin());
-    if (!IsFusableActivation(next_node) || graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    if (!IsFusableActivation(next_node) || 
+        next_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
       continue;
     }
 
@@ -60,12 +65,17 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& fused_conv = graph.AddNode(graph.GenerateNodeName("fused " + conv_node->Name()), "FusedConv",
                                      "fused Conv " + conv_node->Name() + "with activation " + act_node.OpType(),
                                      conv_node->MutableInputDefs(),
-                                     conv_node->MutableOutputDefs(),
+                                     graph.IsNodeOutputsInGraphOutputs(next_node)
+                                         ? const_cast<Node&>(act_node).MutableOutputDefs()
+                                         : conv_node->MutableOutputDefs(),
                                      &conv_node->GetAttributes(),
                                      "com.microsoft");
 
     //Add a new attribute to specify the activation type
     fused_conv.AddAttribute("activation", act_node.OpType());
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    fused_conv.SetExecutionProviderType(conv_node->GetExecutionProviderType());
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {
@@ -75,21 +85,24 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     }
 
-    HandleActivationNodeEdges(graph, act_node, fused_conv);
+    if (graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    
+      HandleActivationNodeEdges(graph, act_node, fused_conv);
 
-    // Replace the input of the node following activation node
-    const NodeArg* act_output_def = act_node.OutputDefs()[0];
-    NodeArg* fused_conv_output_def = fused_conv.MutableOutputDefs()[0];
-    for (auto it = act_node.OutputNodesBegin(); it != act_node.OutputNodesEnd(); ++it) {
-      auto output_node = graph.GetNode((*it).Index());
-      if (!output_node) {
-        return Status(ONNXRUNTIME, INVALID_ARGUMENT);
-      }
+      // Replace the input of the node following activation node
+      const NodeArg* act_output_def = act_node.OutputDefs()[0];
+      NodeArg* fused_conv_output_def = fused_conv.MutableOutputDefs()[0];
+      for (auto it = act_node.OutputNodesBegin(); it != act_node.OutputNodesEnd(); ++it) {
+        auto output_node = graph.GetNode((*it).Index());
+        if (!output_node) {
+          return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+        }
 
-      auto& input_defs = output_node->MutableInputDefs();
-      for (auto& def : input_defs) {
-        if (def == act_output_def) {
-          def = fused_conv_output_def;
+        auto& input_defs = output_node->MutableInputDefs();
+        for (auto& def : input_defs) {
+          if (def == act_output_def) {
+            def = fused_conv_output_def;
+          }
         }
       }
     }

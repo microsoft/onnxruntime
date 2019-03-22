@@ -14,6 +14,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain = kOnnxDomainAlias);
 
+/* Checks whether execution provider assigned to current node is present in the compatible providers list*/
+bool IsSupportedProvider(const Node& node,
+                         const std::vector<std::string>& compatible_providers);
+
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 

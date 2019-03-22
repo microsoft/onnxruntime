@@ -2,20 +2,27 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status UnsqueezeElimination::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
+Status UnsqueezeElimination::ApplyImpl(Graph& graph, bool& modified, 
+                                       const std::vector<std::string>& compatible_provider_types, 
+                                       int graph_level) const {
+
   std::vector<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto& node : graph.Nodes()) {
     // recurse first as there are early exits in the processing here
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
 
-    if (node.OpType() != "Unsqueeze" || node.GetInputEdgesCount() != 0 || graph.IsNodeOutputsInGraphOutputs(node)) {
+    if (node.OpType() != "Unsqueeze" || 
+        node.GetInputEdgesCount() != 0 || 
+        !graph_utils::IsSupportedProvider(node, compatible_provider_types) || 
+        graph.IsNodeOutputsInGraphOutputs(node)) {
       continue;
     }
 

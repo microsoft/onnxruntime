@@ -42,6 +42,17 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
   return true;
 }
 
+bool IsSupportedProvider(const Node& node,
+                         const std::vector<std::string>& compatible_providers) {
+  if (!compatible_providers.empty() && 
+      std::find(compatible_providers.cbegin(), compatible_providers.cend(), 
+          node.GetExecutionProviderType()) == compatible_providers.cend()) {
+    return false;
+  }
+  
+  return true;
+}
+
 Status ForAllMutableSubgraphs(Graph& graph, std::function<Status(Graph&)> func) {
   Status status = Status::OK();
 

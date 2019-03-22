@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ::onnxruntime::common;
 
@@ -25,7 +26,9 @@ Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
   return Status::OK();
 }
 
-Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified,
+                                              const std::vector<std::string>& compatible_provider_types, 
+                                              int graph_level) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -35,13 +38,17 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int 
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
 
+    if (!graph_utils::IsSupportedProvider(*node, compatible_provider_types)) {
+      continue;
+    }
+
     // Apply rewrite rules on current node, then recursively apply rules to subgraphs (if any).
     // Stop further rule application for the current node, if the node gets removed by a rule.
     bool deleted = false;
     ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, GetRewriteRules(), modified, deleted));
 
     if (!deleted) {
-      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+      ORT_RETURN_IF_ERROR(Recurse(*node, modified, compatible_provider_types, graph_level));
     }
   }
 

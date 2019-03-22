@@ -9,17 +9,22 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvAddFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
+Status ConvAddFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, 
+                                const std::vector<std::string>& compatible_provider_types, 
+                                int graph_level) const {
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) ||
+        !graph_utils::IsSupportedProvider(node, compatible_provider_types) ||
+        node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
+        next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;

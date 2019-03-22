@@ -6,6 +6,9 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/matmul_add_fusion.h"
 
 namespace onnxruntime {
 
@@ -52,8 +55,13 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
 
     case TransformerLevel::Level2: {
       std::vector<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
-      transformers.emplace_back(std::make_unique<ConvAddFusion>(), l2_execution_providers);
-      transformers.emplace_back(std::make_unique<ConvMulFusion>(), l2_execution_providers);
+      std::vector<std::string> l2_global = {};
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(), l2_execution_providers);
+      transformers.emplace_back(std::make_unique<ConvBNFusion>(), l2_execution_providers);
+      transformers.emplace_back(std::make_unique<GemmActivationFusion>(), l2_execution_providers);
+      transformers.emplace_back(std::make_unique<MatMulAddFusion>(), l2_execution_providers);
+      transformers.emplace_back(std::make_unique<ConvAddFusion>(), l2_global);
+      transformers.emplace_back(std::make_unique<ConvMulFusion>(), l2_global);
     } break;
 
     default:

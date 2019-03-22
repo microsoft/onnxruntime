@@ -54,7 +54,7 @@ class TransformerMemcpyImpl {
 
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
-common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, const std::vector<std::string>& compatible_provider_types, int graph_level) const {
   for (auto& provider : provider_types_) {
     if (provider != onnxruntime::kCpuExecutionProvider &&
         provider != onnxruntime::kMklDnnExecutionProvider &&
@@ -65,7 +65,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     }
   }
 
-  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximise efficiency.
+  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximize efficiency.
   // e.g. data on GPU prior to an 'If' node. The 'If' must run on CPU, but if the subgraph is GPU based it could
   // consume the data from GPU and we shouldn't insert a memcpy from GPU to CPU prior to the If node, and one from
   // CPU back to GPU when beginning execution of the subgraph. To do that requires inspecting the subgraph (and any
@@ -74,7 +74,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
   // handle any subgraphs in nodes
   for (auto& node : graph.Nodes()) {
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
   }
 
   return Status::OK();

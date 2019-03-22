@@ -73,7 +73,9 @@ class TopDownRuleBasedTransformer : public RuleBasedGraphTransformer {
 
  private:
   // Performs a single top-down traversal of the graph and applies all registered rules.
-  common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  common::Status ApplyImpl(Graph& graph, bool& modified, 
+                           const std::vector<std::string>& compatible_provider_types, 
+                           int graph_level) const override;
 };
 
 }  // namespace onnxruntime

@@ -31,6 +31,8 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
+#include "dummy_graph_transformer.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 #include "gtest/gtest.h"
 
@@ -1343,37 +1345,54 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   run_test(run_number++);
 }
 
-TEST(InferenceSessionTests, TestL1Transformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";  
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1Transformers";
-  so.graph_optimization_level = 1;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
-  Status st = session_object.Initialize();
-  ASSERT_TRUE(st.IsOK()) << st;
-}
-
-TEST(InferenceSessionTests, TestL1AndL2Transformers) {
+// This test validates the RegisterTransformer API
+// It creates and registers a dummy transformer and after session initialize
+// validates that this transformer was called regardless of the graph optimization level set.
+TEST(InferenceSessionTests, TestRegisterTransformers) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = 2;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = i;
+    //static_cast<TransformerLevel>(i);
+    InferenceSession session_object{so, &DefaultLoggingManager()};
 
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());  
+    // Create and register dummy graph transformer
+    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
+    session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
 
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+    session_object.Load(model_uri);
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+
+    // Validate transformer was called after Session.Initialize
+    ASSERT_TRUE(dummy_transformer->IsTransformerInvoked());
+  }
 }
 
+// This test validates session initialize is successful when all the pre-defined
+// L1 and L2 transformers are enabled.
+TEST(InferenceSessionTests, TestL1AndL2Transformers) {
+  // Models which cover all transformers.
+  std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
+                                              "testdata/transform/abs-id-max.onnx",
+                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/matmul_add_fusion/2Input/model.onnx",
+                                              "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
+                                              "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
+
+  for (const auto& model_uri : test_model_uris) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = 2;
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+    ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+  }
+}
+
+// This test validates AddCustomTransformerList api.
 TEST(InferenceSessionTests, TestCustomTransformers) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
@@ -1381,28 +1400,48 @@ TEST(InferenceSessionTests, TestCustomTransformers) {
   so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
   so.graph_optimization_level = 2;
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"});
+  ASSERT_TRUE(session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"}).IsOK());
+
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
-TEST(InferenceSessionTests, DisableAllTransformers) {  
+// Tests a rewrite rule is applied only when the provider assigned to the node
+// is present in the compatible provider list.
+TEST(InferenceSessionTests, TestCompatibleProviders) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
-  so.session_logid = "InferenceSessionTests.DisableAllTransformers";
-  so.graph_optimization_level = 0;
+  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+  so.graph_optimization_level = 2;
+
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider
+  auto dummy_rule = std::make_unique<DummyRewriteRule>("DummyRule");
+  const auto* dummy_rule_ptr = dummy_rule.get();
 
+  auto graph_transformer = std::make_unique<TopDownRuleBasedTransformer>("CUDATopDownTransformer",
+                                                                         "Registered for CUDA");
+  graph_transformer->Register(std::move(dummy_rule));
+  session_object.RegisterGraphTransformer(std::move(graph_transformer), {onnxruntime::kCudaExecutionProvider});
+
+  // Create rule based transformer with a dummy rewrite rule and register it with CPU as compatible provider
+  auto dummy_rule1 = std::make_unique<DummyRewriteRule>("DummyRule1");
+  const auto* dummy_rule1_ptr = dummy_rule1.get();
+
+  auto graph_transformer1 = std::make_unique<TopDownRuleBasedTransformer>("CPUTopDownTransformer", "Registered for CPU");
+  graph_transformer1->Register(std::move(dummy_rule1));
+  session_object.RegisterGraphTransformer(std::move(graph_transformer1), {onnxruntime::kCpuExecutionProvider});
+
+  session_object.Load(model_uri);
   ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  // Validate transformer registered with CUDA as compatible provider is not called.
+  ASSERT_FALSE(dummy_rule_ptr->IsRewriteRuleInvoked());
+
+  // Validate transformer registered with CPU as compatible provider is called.
+  ASSERT_TRUE(dummy_rule1_ptr->IsRewriteRuleInvoked());
 }
 
 }  // namespace test
