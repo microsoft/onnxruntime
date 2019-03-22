@@ -369,18 +369,19 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #endif
 
-/*
+
 #ifdef __GNUG__
 #ifndef __LP64__
   broken_tests["nonzero_example"] = "failed: type mismatch";
+/*
   broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
   broken_tests["tf_nasnet_large"] = "failed: bad allocation";
   broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
   broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
   broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
-#endif
-#endif
 */
+#endif
+#endif
 
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
