@@ -13,7 +13,7 @@ class EliminateSlice : public RewriteRule {
   EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node") {}
 
  private:
-  /** Apply rule when op type is one of the following. */
+  /** Apply rule when op type is the following. */
   const std::string included_op_type_ = "Slice";
 
   bool SatisfyCondition(const Graph& graph, const Node& node) override;

@@ -67,10 +67,10 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
 
   // Keep all output nodes in a list (after removing all edges below, there will be no other way to access them; 
   // I cannot first update the output defs, because edge removal will not work afterwards).
-  std::vector<NodeIndex*> output_nodes_idx;
+  std::vector<NodeIndex> output_nodes_idx;
   for (auto it = node.OutputNodesBegin(), end = node.OutputNodesEnd(); it != end; ++it) {
     auto output_node_idx = (*it).Index();
-    output_nodes_idx.push_back(&output_node_idx);
+    output_nodes_idx.push_back(output_node_idx);
   }
 
   // Remove output edges of the Unsqueeze node.
@@ -78,8 +78,8 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
 
   // Replace the input of the nodes following the Unsqueeze node.
   const NodeArg* output_def = node.OutputDefs()[0];
-  for (NodeIndex* idx : output_nodes_idx) {
-    auto output_node = graph.GetNode(*idx);
+  for (auto idx : output_nodes_idx) {
+    auto output_node = graph.GetNode(idx);
     if (!output_node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }

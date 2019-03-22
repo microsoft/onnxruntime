@@ -57,7 +57,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 }  // namespace onnxruntime
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
-  return OpTypeCondition(node) && graph_utils::IsConstantInputsNode(graph, node);
+  return OpTypeCondition(node) && graph_utils::AllNodeInputsAreConstant(graph, node);
 }
 
 bool ConstantFolding::OpTypeCondition(const Node& node) {

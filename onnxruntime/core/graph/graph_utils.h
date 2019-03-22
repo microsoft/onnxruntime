@@ -18,10 +18,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 bool IsSingleInSingleOutNode(const Node& node);
 
 /** Returns true if the graph has the given input.*/
-bool HasGraphInput(const Graph& graph, const NodeArg* input);
+bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
 /** Checks if the given node has only constant inputs (initializers). */
-bool IsConstantInputsNode(const Graph& graph, const Node& node);
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
 
 /** Return the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);

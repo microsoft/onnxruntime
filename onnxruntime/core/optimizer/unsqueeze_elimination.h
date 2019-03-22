@@ -12,7 +12,7 @@ class UnsqueezeElimination : public RewriteRule {
   UnsqueezeElimination() noexcept : RewriteRule("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
 
  private:
-  /** Apply rule when op type is one of the following. */
+  /** Apply rule when op type is the following. */
   const std::string included_op_type_ = "Unsqueeze";
 
   bool SatisfyCondition(const Graph& graph, const Node& node) override;

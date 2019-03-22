@@ -55,7 +55,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
 
   std::vector<std::string> rule_list = {"EliminateIdentity"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
@@ -74,7 +74,7 @@ TEST(GraphTransformationTests, SliceElimination) {
 
   std::vector<std::string> rule_list = {"EliminateSlice"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
@@ -93,7 +93,7 @@ TEST(GraphTransformationTests, ConstantFolding1) {
 
   std::vector<std::string> rule_list = {"ConstantFolding"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
@@ -115,7 +115,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 
   std::vector<std::string> rule_list = {"UnsqueezeElimination"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
@@ -178,7 +178,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
 
   std::vector<std::string> rule_list = {"UnsqueezeElimination"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
 
   session_object.RegisterGraphTransformer(std::move(rule_transformer));
@@ -200,7 +200,7 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
 
   std::vector<std::string> rule_list = {"UnsqueezeElimination"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
 
   session_object.RegisterGraphTransformer(std::move(rule_transformer));
@@ -223,7 +223,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
 
   std::vector<std::string> rule_list = {"UnsqueezeElimination"};
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list, "Level1");
+      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
   std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();

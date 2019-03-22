@@ -1011,15 +1011,7 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
-    // Generate and register rewrite rules for level
-    std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-        transformer_utils::GenerateRuleBasedGraphTransformer(level, &custom_list, t_name);
-
-    if (rule_transformer) {
-      transformer_manager.Register(std::move(rule_transformer), level, std::move(providers));
-    }
-
+  auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
     for (auto& entry : transformers_to_register) {
@@ -1032,11 +1024,11 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1, {}, "Level1");
+    add_transformers(TransformerLevel::Level1);
   }
 
   if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2, {onnxruntime::kCpuExecutionProvider}, "Level2");
+    add_transformers(TransformerLevel::Level2);
   }
 }
 
