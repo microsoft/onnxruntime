@@ -47,6 +47,8 @@ def should_render_domain(domain):  # type: (Text) -> bool
     #     return False
     # elif ONNX_ML and domain != ONNX_ML_DOMAIN:
     #     return False
+    if domain == ONNX_DOMAIN or domain == '':
+        return False
     return True
 
 
