@@ -75,6 +75,17 @@ ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, u
   options->value.session_log_verbosity_level = session_log_verbosity_level;
 }
 
+// Set Graph optimization level.
+// Returns 0 on success and -1 otherwise
+// Available options are : 0, 1, 2.
+ORT_API(int, OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level) {
+  if (graph_optimization_level >= static_cast<uint32_t>(onnxruntime::TransformerLevel::MaxTransformerLevel)){
+    return -1;
+  }
+  options->value.graph_optimization_level = static_cast<onnxruntime::TransformerLevel>(graph_optimization_level);
+  return 0;
+}
+
 ///How many threads in the session thread pool.
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
   if (session_thread_pool_size <= 0) return -1;

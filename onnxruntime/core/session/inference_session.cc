@@ -48,6 +48,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/custom_ops_author.h"
 #include "core/session/IOBinding.h"
+#include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
 
@@ -57,17 +58,32 @@
 
 using namespace ONNX_NAMESPACE;
 
+constexpr OrtCustomOpApi g_custom_op_api = {
+    &OrtKernelInfoGetAttribute_float,
+    &OrtKernelInfoGetAttribute_int64,
+
+    &OrtGetTensorShapeAndType,
+
+    &OrtGetNumOfDimensions,
+    &OrtGetDimensions,
+    &OrtSetDims,
+
+    &OrtGetTensorMutableData,
+
+    &OrtReleaseTensorTypeAndShapeInfo,
+};
+
 ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
-  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
-  auto status = reinterpret_cast<onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
@@ -110,7 +126,9 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }  // namespace
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
-    op_.CreateKernel(&op_, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
+    if (op_.version != 1)
+      throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
+    op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
   }
 
   ~CustomOpKernel() {
@@ -190,13 +208,13 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                          
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                           const std::vector<std::string>& providers,
-                                          const uint32_t& level) {
+                                          TransformerLevel level) {
     if (p_graph_transformer == nullptr) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
     }
-    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), static_cast<TransformerLevel>(level), providers);
+    return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level, providers);
   }
 
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
@@ -345,7 +363,9 @@ class InferenceSession::Impl {
   common::Status Load(std::istream& model_istream) {
     auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
       ModelProto model_proto;
-      const bool result = model_proto.ParseFromIstream(&model_istream);
+
+      google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+      const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
       if (!result) {
         return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                       "Failed to load model because protobuf parsing failed.");
@@ -952,7 +972,7 @@ class InferenceSession::Impl {
 
   // Registers all the predefined transformers with transformer manager
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 const uint32_t& graph_optimization_level,
+                                 TransformerLevel graph_optimization_level,
                                  const std::vector<std::string>& custom_list) {
     auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
       // Generate and register rewrite rules for level
@@ -969,9 +989,6 @@ class InferenceSession::Impl {
                                      std::move(providers));
       }
 
-      ORT_ENFORCE(graph_optimization_level < static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel),
-                  "Allowed values are 1 and 2. Current level is set to " + std::to_string(graph_optimization_level));
-
       // Generate and register transformers for level
       auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
       for (auto& entry : transformers_to_register) {
@@ -979,11 +996,11 @@ class InferenceSession::Impl {
       }
     };
 
-    if ((graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::Level1)) || !custom_list.empty()) {
+    if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
       add_transformers(TransformerLevel::Level1, {}, "Level1");
     }
 
-    if ((graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::Level2)) || !custom_list.empty()) {
+    if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
       add_transformers(TransformerLevel::Level2, {onnxruntime::kCpuExecutionProvider}, "Level2");
     }
   }
@@ -1165,9 +1182,9 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return impl_->RegisterExecutionProvider(std::move(p_exec_provider));
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                           const std::vector<std::string>& providers,
-                                                          const uint32_t& level) {
+                                                          TransformerLevel level) {
 
   return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
 }
