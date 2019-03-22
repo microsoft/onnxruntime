@@ -29,6 +29,8 @@ class TrainingSession {
 
   ~TrainingSession();
 
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer);
+
   common::Status Load(const std::string& model_uri);
 
   /** Add a system provided or an op as loss function to the model.
@@ -70,6 +72,7 @@ class TrainingSession {
   // 2. save with updated weights and loss function
   // 3. save with updated weights, loss function and gradients
   enum class SaveOption {
+    NO_RELOAD,
     WITH_UPDATED_WEIGHTS,
     WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC,
     WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS

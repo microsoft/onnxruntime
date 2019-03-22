@@ -71,6 +71,10 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     // Delete the old file before saving.
     std::remove(model_uri.c_str());
 
+    if (opt == TrainingSession::SaveOption::NO_RELOAD) {
+      return Model::Save(*model_, model_uri);
+    }
+
     // Have to load the original model again.
     // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
     shared_ptr<Model> new_model;
@@ -116,9 +120,14 @@ class TrainingSessionImpl : public InferenceSession::Impl {
     return GraphAugmenter::AugmentGraph(graph, LossFunctionBuilder().Build(graph, loss_func_info));
   }
 
-  static Status BuildGradientGraph(Graph& graph,
-                                   const std::string& loss_function_output_name,
-                                   const std::vector<std::string>& node_arg_names_to_train) {
+  Status BuildGradientGraph(Graph& graph,
+                            const std::string& loss_function_output_name,
+                            const std::vector<std::string>& node_arg_names_to_train) {
+    // TODO: maybe use a light weigth graph_transformation_mgr_ for just the pre-train
+    // transofomration
+    // Initialize also re-apply the transformation
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr_.ApplyAll(graph));
+
     // Compute the gradient graph def.
     GradientGraphBuilder grad_graph_builder(&graph,
                                             {loss_function_output_name},
@@ -142,6 +151,10 @@ TrainingSession::TrainingSession(const SessionOptions& session_options,
 }
 
 TrainingSession::~TrainingSession() {
+}
+
+Status TrainingSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer) {
+  return impl_->RegisterGraphTransformer(std::move(p_graph_transformer));
 }
 
 Status TrainingSession::Load(const string& model_uri) {

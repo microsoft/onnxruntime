@@ -50,13 +50,17 @@ Status Dropout::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+}  // namespace onnxruntime
+
+namespace onnxruntime {
+namespace contrib {
 ONNX_CPU_OPERATOR_KERNEL(
-    DrouputGrad,
+    DropoutGrad,
     9,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
-    DrouputGrad);
+    DropoutGrad);
 
-Status DrouputGrad::Compute(OpKernelContext* context) const {
+Status DropoutGrad::Compute(OpKernelContext* context) const {
   const Tensor* dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
   Tensor* dX = context->Output(0, shape);
@@ -82,4 +86,5 @@ Status DrouputGrad::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+}  // namespace contrib
 }  // namespace onnxruntime

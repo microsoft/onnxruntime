@@ -37,6 +37,35 @@ GradOpSchema& GradOpSchema::NumOutputs(const std::set<int>& num_outputs_allowed)
   return *this;
 }
 
+GradOpSchema& GradOpSchema::Input(
+    int n,
+    std::string name,
+    std::string description,
+    std::string type_str,
+    ParameterOption param_option,
+    bool is_homogeneous) {
+  op_schema_->Input(n, name, description, type_str, param_option, is_homogeneous);
+  return *this;
+}
+
+GradOpSchema& GradOpSchema::Output(
+    int n,
+    std::string name,
+    std::string description,
+    std::string type_str,
+    ParameterOption param_option,
+    bool is_homogeneous) {
+  op_schema_->Input(n, name, description, type_str, param_option, is_homogeneous);
+  return *this;
+}
+
+GradOpSchema& GradOpSchema::TypeConstraint(std::string type_str,
+                                           std::vector<std::string> constraints,
+                                           std::string description) {
+  op_schema_->TypeConstraint(type_str, constraints, description);
+  return *this;
+}
+
 GradOpSchema& GradOpSchema::VariadicInput() {
   variadic_input_ = true;
   return *this;

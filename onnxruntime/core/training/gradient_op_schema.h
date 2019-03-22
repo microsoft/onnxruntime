@@ -65,6 +65,27 @@ class GradOpSchema {
    */
   GradOpSchema& NumOutputs(const std::set<int>& allowed_output_nums);
 
+  GradOpSchema& Input(
+      int n,
+      std::string name,
+      std::string description,
+      std::string type_str,
+      ParameterOption param_option = ParameterOption::Single,
+      bool is_homogeneous = true);
+
+  GradOpSchema& Output(
+      int n,
+      std::string name,
+      std::string description,
+      std::string type_str,
+      ParameterOption param_option = ParameterOption::Single,
+      bool is_homogeneous = true);
+
+  GradOpSchema& TypeConstraint(
+      std::string type_str,
+      std::vector<std::string> constraints,
+      std::string description);
+
   /**
    * @brief Last Input is variadic
    */
