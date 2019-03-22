@@ -50,7 +50,6 @@ option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
-option(onnxruntime_USE_PREBUILT_PB "Use prebuilt protobuf library" OFF)
 option(onnxruntime_USE_JEMALLOC "Use jecmalloc" OFF)
 option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
@@ -184,44 +183,26 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
-#Here we support three build mode:
-#1. (recommended)onnxruntime_USE_PREBUILT_PB is set (ONNX_CUSTOM_PROTOC_EXECUTABLE should also be set)
-#   We will not build protobuf, will use a prebuilt binary instead. This mode can also support cross-compiling
-#2. onnxruntime_USE_PREBUILT_PB is not set but ONNX_CUSTOM_PROTOC_EXECUTABLE is set
-#   Build Protobuf from source, except protoc.exe. This mode is mainly for cross-compiling
-#3. both onnxruntime_USE_PREBUILT_PB and ONNX_CUSTOM_PROTOC_EXECUTABLE are not set
-#   Compile everything from source code. Slowest option.
+#Here we support two build mode:
+#1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly 
+    for cross-compiling
+#2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
-if(onnxruntime_USE_PREBUILT_PB)
-  get_filename_component(
-     _PROTOBUF_INSTALL_PREFIX
-     ${ONNX_CUSTOM_PROTOC_EXECUTABLE}
-     DIRECTORY)
-  get_filename_component(
-    _PROTOBUF_INSTALL_PREFIX
-    ${_PROTOBUF_INSTALL_PREFIX}/..
-    REALPATH)
-  if(WIN32)
-    include(${_PROTOBUF_INSTALL_PREFIX}/cmake/protobuf-config.cmake)
-  else()
-    include(${_PROTOBUF_INSTALL_PREFIX}/lib64/cmake/protobuf/protobuf-config.cmake)
-  endif()
-  include(protobuf_function.cmake)
+
+# use protobuf as a submodule
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+if (onnxruntime_USE_FULL_PROTOBUF)
+  add_library(protobuf::libprotobuf ALIAS libprotobuf)
 else()
-  # use protobuf as a submodule
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
-  set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
-  if (onnxruntime_USE_FULL_PROTOBUF)
-    add_library(protobuf::libprotobuf ALIAS libprotobuf)
-  else()
-    add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
-  endif()
-  add_executable(protobuf::protoc ALIAS protoc)
-  include(protobuf_function.cmake)
+  add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
 endif()
+add_executable(protobuf::protoc ALIAS protoc)
+include(protobuf_function.cmake)
+
 
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_definitions(-DUSE_FULL_PROTOBUF)
