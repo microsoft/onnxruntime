@@ -58,7 +58,7 @@ struct BinaryElementwisePreparation {
     // When N > 1:  out[id] = op(lhs[id], rhs[id / H % C])
     if (lhs_shape == output_shape) {
       const auto& rhs_dims = rhs_shape.GetDims();
-      int64_t C;
+      int64_t C = 0;
       if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(), [&C](int64_t dim) { if (dim > 1) C = dim; return (dim > 1); })) {
         auto dim_C = std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin() + output_shape.NumDimensions() - rhs_shape.NumDimensions();
         int64_t N = output_shape.SizeToDimension(dim_C);

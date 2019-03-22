@@ -6,6 +6,9 @@ cmake_minimum_required(VERSION 3.11)
 
 # Project
 project(onnxruntime C CXX)
+cmake_policy(SET CMP0069 NEW)
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
@@ -64,6 +67,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stable on older GCCs" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 
@@ -71,6 +75,24 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
+
+if(onnxruntime_ENABLE_LTO)
+  #LTO(or LTCG) is great, in our case it can reduce binary size by 1/3.
+  #cmake can only help us check if the compiler support LTO or not, it can't tell us if the feature works well
+  #Don't enable this option in Ubuntu 16.04, protoc will crash
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
+  #TODO: figure out why nsync doesn't work
+  if(NOT onnxruntime_USE_NSYNC)
+    if(ipo_enabled)
+      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    else()
+      message(WARNING "IPO is not supported: ${ipo_output}")
+    endif()
+  endif()
+endif()
+
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -485,7 +507,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll") 
   endif()
 endif()
 
