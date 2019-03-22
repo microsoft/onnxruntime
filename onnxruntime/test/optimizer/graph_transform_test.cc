@@ -45,6 +45,16 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
   }
   return op_to_count;
 }
+
+void RegisterTransformers(std::vector<std::string>& rules_and_transformers,
+                          TransformerLevel level, GraphTransformerManager& graph_transformation_mgr) {
+  auto transformers_to_register =
+      transformer_utils::GenerateTransformers(level, &rules_and_transformers);
+  for (auto& entry : transformers_to_register) {
+    graph_transformation_mgr.Register(std::move(entry.first), level, std::move(entry.second));
+  }
+}
+
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -54,10 +64,9 @@ TEST(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
   std::vector<std::string> rule_list = {"EliminateIdentity"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  GraphTransformerManager graph_transformation_mgr{5};
+  RegisterTransformers(rule_list, TransformerLevel::Level1, graph_transformation_mgr);
+
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
@@ -73,17 +82,16 @@ TEST(GraphTransformationTests, SliceElimination) {
   ASSERT_TRUE(op_to_count["Slice"] == 5);
 
   std::vector<std::string> rule_list = {"EliminateSlice"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  GraphTransformerManager graph_transformation_mgr{5};
+  RegisterTransformers(rule_list, TransformerLevel::Level1, graph_transformation_mgr);
+
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 3);
 }
 
-TEST(GraphTransformationTests, ConstantFolding1) {
+TEST(GraphTransformationTests, ConstantFolding) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -92,10 +100,9 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
   std::vector<std::string> rule_list = {"ConstantFolding"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  GraphTransformerManager graph_transformation_mgr{5};
+  RegisterTransformers(rule_list, TransformerLevel::Level1, graph_transformation_mgr);
+
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
@@ -113,17 +120,9 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::vector<std::string> rule_list = {"UnsqueezeElimination"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
-  std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
-  std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(rule_transformer));
-  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers =
+      {"UnsqueezeElimination", "ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
@@ -140,8 +139,9 @@ TEST(GraphTransformationTests, FuseConvActivation) {
 
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-    std::unique_ptr<ConvActivationFusion> ConvActivationFusion_transformer = std::make_unique<ConvActivationFusion>();
-    session_object.RegisterGraphTransformer(std::move(ConvActivationFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+
+	std::vector<std::string> rules_and_transformers = {"ConvActivationFusion"};
+    session_object.AddCustomTransformerList(rules_and_transformers);
 
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
@@ -158,9 +158,8 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers = {"ConvBNFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
@@ -176,13 +175,9 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::vector<std::string> rule_list = {"UnsqueezeElimination"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
+  std::vector<std::string> rules_and_transformers = {"UnsqueezeElimination", "ConvMulFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
-  session_object.RegisterGraphTransformer(std::move(rule_transformer));
-  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
   Status st = session_object.Initialize();
   ASSERT_TRUE(st.IsOK()) << st;
 }
@@ -198,13 +193,8 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::vector<std::string> rule_list = {"UnsqueezeElimination"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(rule_transformer));
-  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers = {"UnsqueezeElimination", "ConvAddFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   Status st = session_object.Initialize();
   ASSERT_TRUE(st.IsOK()) << st;
@@ -221,17 +211,9 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::vector<std::string> rule_list = {"UnsqueezeElimination"};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(TransformerLevel::Level1, &rule_list);
-  std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
-  std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
-  std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(rule_transformer));
-  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers =
+    {"UnsqueezeElimination", "ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   Status st = session_object.Initialize();
   ASSERT_TRUE(st.IsOK()) << st;
@@ -249,11 +231,8 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  //std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
-  //std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
-
-  //session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  //session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  // std::vector<std::string> rules_and_transformers = {"ConvMulFusion", "ConvAddFusion"};
+  // session_object.AddCustomTransformerList(rules_and_transformers);
 
   Status st = session_object.Initialize();
   ASSERT_TRUE(st.IsOK()) << st;
@@ -270,9 +249,8 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::unique_ptr<MatMulAddFusion> matmul_add_fusion_transformer = std::make_unique<MatMulAddFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(matmul_add_fusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers = {"MatMulAddFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
@@ -288,9 +266,8 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::unique_ptr<MatMulAddFusion> matmul_add_fusion_transformer = std::make_unique<MatMulAddFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(matmul_add_fusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers = {"MatMulAddFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
@@ -306,9 +283,8 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::unique_ptr<GemmActivationFusion> gemm_activation_fusion_transformer = std::make_unique<GemmActivationFusion>();
-
-  session_object.RegisterGraphTransformer(std::move(gemm_activation_fusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers = {"GemmActivationFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 }
@@ -324,12 +300,8 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
-  std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
-  std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
-  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  std::vector<std::string> rules_and_transformers = {"ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
+  session_object.AddCustomTransformerList(rules_and_transformers);
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 

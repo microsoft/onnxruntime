@@ -67,6 +67,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
   std::vector<TransformerProviderSet> transformers;
 
   // Generate rule-based transformer.
+  bool non_empty_rule_transformer = false;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
       transformer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable);
 
@@ -75,6 +76,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
       std::vector<std::string> l1_execution_providers = {};
       if (rule_transformer) {
         transformers.emplace_back(std::move(rule_transformer), l1_execution_providers);
+        non_empty_rule_transformer = true;
       }
 
       // At the moment, we have only a rule-based transformer for Level1.
@@ -84,8 +86,10 @@ std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
       std::vector<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
       if (rule_transformer) {
         transformers.emplace_back(std::move(rule_transformer), l2_execution_providers);
+        non_empty_rule_transformer = true;
       }
       transformers.emplace_back(std::make_unique<ConvAddFusion>(), l2_execution_providers);
+      transformers.emplace_back(std::make_unique<ConvBNFusion>(), l2_execution_providers);
       transformers.emplace_back(std::make_unique<ConvMulFusion>(), l2_execution_providers);
     } break;
 
@@ -95,7 +99,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
   }
 
   // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
-  if (rule_transformer) {
+  if (non_empty_rule_transformer) {
     transformers_and_rules_to_enable->push_back(transformer_utils::GenerateRuleBasedTransformerName(level));
   }
   if (transformers_and_rules_to_enable != nullptr && !transformers_and_rules_to_enable->empty()) {

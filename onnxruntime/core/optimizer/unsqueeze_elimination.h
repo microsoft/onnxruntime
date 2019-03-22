@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class UnsqueezeElimination : public RewriteRule {
  public:
-  UnsqueezeElimination() noexcept : RewriteRule("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
+  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination", "Eliminate unsqueeze node") {}
 
  private:
   /** Apply rule when op type is the following. */
