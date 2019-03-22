@@ -274,6 +274,23 @@ Sample echo operator.)DOC");
         ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Resize)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Attr(
+          "mode",
+          "Two interpolation modes: nearest (default), and linear (including bilinear, trilinear, etc)",
+          AttributeProto::STRING,
+          std::string("nearest"))
+      .Input(0, "X", "", "T")
+      .Input(1, "scales", "", "tensor(float)")
+      .Output(0, "Y", "N-D tensor after resizing", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
