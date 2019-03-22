@@ -221,7 +221,6 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
-
   // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
   static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
@@ -1149,7 +1148,8 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
           2,
           "selected_indices",
           "selected indices from the boxes tensor. Mostly used for TensorFlow models",
-          "tensor(int32)")
+          "tensor(int32)",
+          OpSchema::Optional)
       .Attr(
           "center_point_box",
           "Integer indicate the format of the box data. The default is 0."
@@ -1164,8 +1164,10 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
         propagateElemTypeFromInputToOutput(ctx, 1, 1);
         propagateShapeFromInputToOutput(ctx, 1, 1);
 
-        auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
-        selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+        if (ctx.getNumOutputs() > 2) {
+          auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
+          selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)

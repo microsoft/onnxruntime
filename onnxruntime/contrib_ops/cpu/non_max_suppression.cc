@@ -239,8 +239,11 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     memset(output_scores_data + start_pos, 0, (num_scores - start_pos) * sizeof(float));
   }
 
-  Tensor* selected_indices = ctx->Output(2, {num_selected});
-  memcpy(selected_indices->MutableData<int32_t>(), selected_index.data(), num_selected * sizeof(int32_t));
+  if (ctx->OutputCount() > 2) {
+    Tensor* selected_indices = ctx->Output(2, {num_selected});
+    ORT_ENFORCE(selected_indices);
+    memcpy(selected_indices->MutableData<int32_t>(), selected_index.data(), num_selected * sizeof(int32_t));
+  }
 
   return Status::OK();
 }
