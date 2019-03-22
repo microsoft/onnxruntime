@@ -163,6 +163,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/VERSION_NUMBER
+      $<TARGET_FILE_DIR:${test_data_target}>
 )
 
 if (onnxruntime_USE_MKLDNN)
