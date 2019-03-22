@@ -15,7 +15,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& domain = kOnnxDomainAlias);
 
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
-Status ForAllSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
+Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
 /** Check whether the node has a single input and a single output. */
 bool IsSingleInSingleOutNode(const Node& node);

@@ -50,10 +50,10 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])){  // Test infinity for equality
+    if (std::isinf(expected[i])) {  // Test infinity for equality
       EXPECT_EQ(expected[i], output[i]);
     } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i  << " to be NaN";
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i << " to be NaN";
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -273,9 +273,14 @@ void OpTester::ExecuteModel(Model& model,
                             std::unordered_map<std::string, MLValue> feeds,
                             std::vector<std::string> output_names,
                             const std::string& provider_type) {
-  std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
-  auto status = session_object.Load(s1);
+  std::string s1;
+  const bool rc = model.ToProto().SerializeToString(&s1);
+  if (!rc) {
+    LOGS_DEFAULT(ERROR) << "Failed to serialize proto to string";
+    return;
+  }
+  std::stringstream sstr(s1);
+  auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();

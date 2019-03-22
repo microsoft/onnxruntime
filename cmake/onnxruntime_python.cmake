@@ -163,13 +163,15 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/VERSION_NUMBER
+      $<TARGET_FILE_DIR:${test_data_target}>
 )
 
 if (onnxruntime_USE_MKLDNN)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB}
+    COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
