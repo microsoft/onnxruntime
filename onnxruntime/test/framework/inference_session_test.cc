@@ -1354,8 +1354,7 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
   for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-    so.graph_optimization_level = i;
-    //static_cast<TransformerLevel>(i);
+    so.graph_optimization_level = static_cast<TransformerLevel>(i);
     InferenceSession session_object{so, &DefaultLoggingManager()};
 
     // Create and register dummy graph transformer
@@ -1385,7 +1384,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   for (const auto& model_uri : test_model_uris) {
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-    so.graph_optimization_level = 2;
+    so.graph_optimization_level = TransformerLevel::Level2;
     InferenceSession session_object{so, &DefaultLoggingManager()};
     ASSERT_TRUE(session_object.Load(model_uri).IsOK());
     ASSERT_TRUE(session_object.Initialize().IsOK());
@@ -1398,7 +1397,7 @@ TEST(InferenceSessionTests, TestCustomTransformers) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = 2;
+  so.graph_optimization_level = TransformerLevel::Level2;
   InferenceSession session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"}).IsOK());
 
@@ -1413,7 +1412,7 @@ TEST(InferenceSessionTests, TestCompatibleProviders) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = 2;
+  so.graph_optimization_level = TransformerLevel::Level2;
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
 

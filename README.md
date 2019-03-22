@@ -63,7 +63,7 @@ If you already have an ONNX model, just [install the runtime](#Installation) for
 | [C](docs/C_API.md) | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
 | [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
 
-&#42;Requires CUDA 9.1 and cuDNN 7.3<br/>
+&#42;Requires CUDA 9.1 and cuDNN 7.1<br/>
 &#42;&#42;Compatible with Python 3.5-3.7
 
 ## System Requirements
