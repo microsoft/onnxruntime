@@ -373,6 +373,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #ifdef __GNUG__
 #ifndef __LP64__
   broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 /*
   broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
   broken_tests["tf_nasnet_large"] = "failed: bad allocation";
