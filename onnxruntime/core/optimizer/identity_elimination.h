@@ -16,9 +16,9 @@ class EliminateIdentity : public RewriteRule {
   /** Apply rule when op type is the following. */
   const std::string included_op_type_ = "Identity";
 
-  bool SatisfyCondition(const Graph& graph, const Node& node) override;
-
   bool OpTypeCondition(const Node& node) override;
+
+  bool MiscConditions(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 };

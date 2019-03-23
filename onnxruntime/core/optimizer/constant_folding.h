@@ -25,9 +25,9 @@ class ConstantFolding : public RewriteRule {
   const std::unordered_set<std::string> excluded_op_types_ =
       {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 
-  bool SatisfyCondition(const Graph& graph, const Node& node) override;
-
   bool OpTypeCondition(const Node& node) override;
+
+  bool MiscConditions(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 

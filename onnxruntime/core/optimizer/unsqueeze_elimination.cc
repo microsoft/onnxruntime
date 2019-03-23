@@ -98,12 +98,12 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
   return Status::OK();
 }  // namespace onnxruntime
 
-bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) {
-  return OpTypeCondition(node) && node.GetInputEdgesCount() == 0 && !graph.IsNodeOutputsInGraphOutputs(node);
-}
-
 bool UnsqueezeElimination::OpTypeCondition(const Node& node) {
   return node.OpType() == included_op_type_;
+}
+
+bool UnsqueezeElimination::MiscConditions(const Graph& graph, const Node& node) {
+  return node.GetInputEdgesCount() == 0 && !graph.IsNodeOutputsInGraphOutputs(node);
 }
 
 }  // namespace onnxruntime
