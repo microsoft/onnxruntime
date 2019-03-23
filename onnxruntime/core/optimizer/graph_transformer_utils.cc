@@ -54,7 +54,8 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
       std::make_unique<RuleBasedGraphTransformer>(transformer_utils::GenerateRuleBasedTransformerName(level),
-                                                  "Apply rewrite rules for Level" + static_cast<uint32_t>(level));
+                                                  "Apply rewrite rules for Level" +
+                                                      std::to_string(static_cast<uint32_t>(level)));
   for (auto& entry : rewrite_rules_to_register) {
     rule_transformer->Register(std::move(entry));
   }
