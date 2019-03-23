@@ -82,7 +82,7 @@ class RewriteRule {
   virtual bool OpTypeCondition(const Node& node) = 0;
 
   /** Conditions other than the ones related to the op type of the node. */
-  virtual bool AdditionalConditions(const Graph& graph, const Node& node) {
+  virtual bool AdditionalConditions(const Graph& /*graph*/, const Node& /*node*/) {
     return true;
   }
 
