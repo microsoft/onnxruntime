@@ -22,7 +22,7 @@ bool EliminateIdentity::OpTypeCondition(const Node& node) {
   return node.OpType() == included_op_type_;
 }
 
-bool EliminateIdentity::MiscConditions(const Graph& /*graph*/, const Node& node) {
+bool EliminateIdentity::AdditionalConditions(const Graph& /*graph*/, const Node& node) {
   return graph_utils::IsSingleInSingleOutNode(node);
 }
 

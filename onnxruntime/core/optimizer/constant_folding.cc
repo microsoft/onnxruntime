@@ -60,7 +60,7 @@ bool ConstantFolding::OpTypeCondition(const Node& node) {
   return excluded_op_types_.find(node.OpType()) == excluded_op_types_.end();
 }
 
-bool ConstantFolding::MiscConditions(const Graph& graph, const Node& node) {
+bool ConstantFolding::AdditionalConditions(const Graph& graph, const Node& node) {
   return graph_utils::AllNodeInputsAreConstant(graph, node);
 }
 

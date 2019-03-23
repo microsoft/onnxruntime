@@ -18,7 +18,7 @@ class EliminateSlice : public RewriteRule {
 
   bool OpTypeCondition(const Node& node) override;
 
-  bool MiscConditions(const Graph& graph, const Node& node) override;
+  bool AdditionalConditions(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& removed) override;
 };

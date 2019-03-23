@@ -102,7 +102,7 @@ bool UnsqueezeElimination::OpTypeCondition(const Node& node) {
   return node.OpType() == included_op_type_;
 }
 
-bool UnsqueezeElimination::MiscConditions(const Graph& graph, const Node& node) {
+bool UnsqueezeElimination::AdditionalConditions(const Graph& graph, const Node& node) {
   return node.GetInputEdgesCount() == 0 && !graph.IsNodeOutputsInGraphOutputs(node);
 }
 

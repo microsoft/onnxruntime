@@ -25,7 +25,7 @@ It is advisable to add the more selective checks first, because those will lead 
 cannot be applied on a node. One such check is the predefined OpTypeCondition check that all rules should 
 implement, and which determines whether the op type of the node is compatible with the rule (e.g., to trigger 
 Unsqueeze elimination, the op type of the node has to be Unsqueeze). Additional conditions should be added
-in the MiscConditions method.
+in the AdditionalConditions method.
 - Apply is the actual body of the rule that will be executed if the checks in SatisfyCondition are passed
 successfully. Note that additional, more complex checks can be included in the Apply if putting them in the
 SatisfyCondition would lead to duplicate work (e.g., when we make a check on a Node attribute, but we need
@@ -33,7 +33,6 @@ that attribute to execute the rule too).
 
 In general, simple fast checks are a better fit for SatisfyCondition, whereas more complex ones can be 
 added in the Apply.
-
 */
 class RewriteRule {
  public:
@@ -74,16 +73,16 @@ class RewriteRule {
   a more complex pattern matching (conditions on the ascending or descending nodes of the
   node for which this rule was triggered) or some other properties of the nodes. 
   At the moment each rule should implement the predefined OpTypeCondition check. If there
-  are additional checks required, they should be added in the MiscConditions check. */
+  are additional checks required, they should be added in the AdditionalConditions check. */
   bool SatisfyCondition(const Graph& graph, const Node& node) {
-    return OpTypeCondition(node) && MiscConditions(graph, node);
+    return OpTypeCondition(node) && AdditionalConditions(graph, node);
   }
 
   /** Returns true if the op type of the node is compatible with this rewrite rule. */
   virtual bool OpTypeCondition(const Node& node) = 0;
 
   /** Conditions other than the ones related to the op type of the node. */
-  virtual bool MiscConditions(const Graph& graph, const Node& node) {
+  virtual bool AdditionalConditions(const Graph& graph, const Node& node) {
     return true;
   }
 
