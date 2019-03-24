@@ -25,7 +25,7 @@ class IdentityOp final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
     ORT_ENFORCE(X != nullptr);
-    Tensor* Y = context->Output<Tensor>(0);
+    Tensor* Y = context->Output(0, X->Shape());
 
     CopyCpuTensor(*X, *Y);
 

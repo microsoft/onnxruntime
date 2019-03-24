@@ -209,7 +209,7 @@ inline void CopyCpuTensor(const Tensor& src, Tensor& target) {
   const void* src_data = src.DataRaw();
   void* target_data = target.MutableDataRaw();
 
-  if (src_data != out_data) {
+  if (src_data != target_data) {
     if (src.DataType() != DataTypeImpl::GetType<std::string>()) {
       memcpy(target_data, src_data, src.Size());
     } else {
