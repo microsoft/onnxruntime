@@ -224,7 +224,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     inputs = {&sum_0};
     outputs = {loop_var_0_out};
 
-    graph.AddNode("identity", "Identity", "Output sum as loop_var_0_out", inputs, outputs);
+    graph.AddNode("identity", kIdentity, "Output sum as loop_var_0_out", inputs, outputs);
   }
 
   // Concat sum with loop_var_1
@@ -436,7 +436,7 @@ TEST(Loop, InfiniteLoopTermination) {
       inputs = {&cond_in};
       outputs = {&cond_out};
 
-      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+      graph.AddNode("cond_in_identity", kIdentity, "Forward cond_in to cond_out", inputs, outputs);
     }
 
     // outer_scope_0 -> loop_var_0_out
@@ -444,7 +444,7 @@ TEST(Loop, InfiniteLoopTermination) {
       inputs = {&outer_scope_0};
       outputs = {&loop_var_0_out};
 
-      graph.AddNode("loop_var_out", "Identity", "Forward outer_scope_0 to loop_var_0_out", inputs, outputs);
+      graph.AddNode("loop_var_out", kIdentity, "Forward outer_scope_0 to loop_var_0_out", inputs, outputs);
     }
 
     graph.SetInputOrder({&iter_num_in, &cond_in, &outer_scope_0});

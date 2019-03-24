@@ -53,7 +53,7 @@ class Squeeze final : public OpKernel, public SqueezeBase {
 
     Tensor* Y = context->Output(0, TensorShape(output_shape));
 
-    CopyCpuTensor(X, Y);
+    CopyCpuTensor(*X, *Y);
 
     return Status::OK();
   }

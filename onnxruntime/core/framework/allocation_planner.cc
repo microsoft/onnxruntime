@@ -512,7 +512,7 @@ class PlannerImpl {
           // ideally this is temporary, and a future ONNX change to allow empty variadic inputs means we don't
           // have converted models that unnecessarily add loop state variables. if the value is just being
           // passed through an implicit input should be used instead.
-          if (parent_node_ && pnode->OpType() == "Identity" && parent_node_->OpType() == "Loop") {
+          if (parent_node_ && pnode->OpType() == kIdentity && parent_node_->OpType() == "Loop") {
             const auto& input_name = pnode->InputDefs()[0]->Name();
             const auto input_index = Index(input_name);
             const auto& alloc_plan = AllocPlan(input_index);

@@ -33,7 +33,7 @@ class Reshape final : public OpKernel {
 
     Tensor* Y = context->Output(0, TensorShape(shape));
 
-    CopyCpuTensor(X, Y);
+    CopyCpuTensor(*X, *Y);
 
     return Status::OK();
   }
@@ -55,7 +55,7 @@ class Reshape_1 final : public OpKernel {
 
     Tensor* Y = context->Output(0, TensorShape(shape));
 
-    CopyCpuTensor(X, Y);
+    CopyCpuTensor(*X, *Y);
 
     return Status::OK();
   }

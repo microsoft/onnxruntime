@@ -25,7 +25,7 @@ class Flatten final : public OpKernel {
 
     Tensor* Y = context->Output(0, TensorShape({X_shape.SizeToDimension(axis_), X_shape.SizeFromDimension(axis_)}));
 
-    CopyCpuTensor(X, Y);
+    CopyCpuTensor(*X, *Y);
 
     return Status::OK();
   }

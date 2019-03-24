@@ -50,7 +50,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count[kIdentity] == 1);
 
   std::unique_ptr<TopDownRuleBasedTransformer> rule_transformer =
       std::make_unique<TopDownRuleBasedTransformer>("RuleTransformer1", "First rule transformer");
@@ -60,7 +60,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 0);
+  ASSERT_TRUE(op_to_count[kIdentity] == 0);
 }
 
 TEST(GraphTransformationTests, SliceElimination) {

@@ -41,7 +41,7 @@ class ExpandDims final : public OpKernel {
     }
 
     Tensor* Y = context->Output(0, TensorShape(expanded_shape));
-    CopyCpuTensor(X, Y);
+    CopyCpuTensor(*X, *Y);
 
     return Status::OK();
   }

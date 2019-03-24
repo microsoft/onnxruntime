@@ -14,7 +14,7 @@ class EliminateIdentity : public RewriteRule {
 
  private:
   /** Apply rule when op type is one of the following. */
-  const std::string included_op_type_ = "Identity";
+  const std::string included_op_type_ = kIdentity;
 
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 

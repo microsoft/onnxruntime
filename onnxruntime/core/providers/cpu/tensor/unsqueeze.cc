@@ -53,7 +53,7 @@ Status Unsqueeze::Compute(OpKernelContext* ctx) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareCompute(ctx, p));
 
-  CopyCpuTensor(p.input_tensor, p.output_tensor);
+  CopyCpuTensor(*p.input_tensor, *p.output_tensor);
 
   return Status::OK();
 }

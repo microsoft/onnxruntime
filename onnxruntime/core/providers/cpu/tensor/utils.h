@@ -139,26 +139,25 @@ struct SliceSkips : std::vector<int64_t> {
 // This provides easy sequential iteration over a subset of a tensor given a span of starts & extents
 template <typename T>
 struct SliceIterator {
-    SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
-        : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents), indices_(extents.size(), 0) {
+  SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
+      : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents), indices_(extents.size(), 0) {
     auto& dims = tensor_.Shape().GetDims();
 
     Init(dims, starts);
   }
-    
-    // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
-    // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
-    // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
-    SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
+
+  // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
+  // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
+  // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
+  SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, gsl::span<const int64_t> extents)
       : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents), indices_(extents.size(), 0) {
     auto& dims = tensor_shape.GetDims();
-    
+
     Init(dims, starts);
   }
 
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts) {
-
     ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && static_cast<ptrdiff_t>(dims.size()) == extents_.size());
 
     size_t pitch = 1;
@@ -206,17 +205,18 @@ struct SliceIterator {
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
 };
 
-inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
-  void* target = tgt->MutableDataRaw();
-  const void* source = src->DataRaw();
+inline void CopyCpuTensor(const Tensor& src, Tensor& target) {
+  const void* src_data = src.DataRaw();
+  void* target_data = target.MutableDataRaw();
 
-  if (target != source) {
-    auto is_string_type = (src->DataType() == DataTypeImpl::GetType<std::string>());
-    if (is_string_type) {
-      for (int64_t i = 0; i < src->Shape().Size(); ++i)
-        static_cast<std::string*>(target)[i] = static_cast<const std::string*>(source)[i];
+  if (src_data != out_data) {
+    if (src.DataType() != DataTypeImpl::GetType<std::string>()) {
+      memcpy(target_data, src_data, src.Size());
     } else {
-      memcpy(target, source, src->Shape().Size() * src->DataType()->Size());
+      // handle std::string
+      const std::string* src_strings = src.template Data<std::string>();
+      std::string* target_strings = target.template MutableData<std::string>();
+      std::copy(src_strings, src_strings + src.Shape().Size(), target_strings);
     }
   }
 }
