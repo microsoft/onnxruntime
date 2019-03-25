@@ -1063,13 +1063,13 @@ class InferenceSession::Impl {
   std::unordered_set<std::string> model_input_names_;
   std::unordered_set<std::string> model_output_names_;
 
-// Environment for this session
-// not used now; we'll need it when we introduce threadpool
-// statically allocated pointer, no need to manage its lifetime.
-//Env* env_;
+  // Environment for this session
+  // not used now; we'll need it when we introduce threadpool
+  // statically allocated pointer, no need to manage its lifetime.
+  //Env* env_;
 
-// Threadpool for this session
-//thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
+  // Threadpool for this session
+  //thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
 #ifdef USE_EIGEN_THREADPOOL
   std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
 #else
@@ -1185,6 +1185,7 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                           const std::vector<std::string>& providers,
                                                           TransformerLevel level) {
+                                                            
   return impl_->RegisterGraphTransformer(std::move(p_graph_transformer), providers, level);
 }
 
