@@ -293,6 +293,29 @@ TEST(TfIdfVectorizerTest, Int32_TF_UniAndBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(TfIdfVectorizerTest, Int32_TF_UniAndBigrams_Skip5Empty) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  // s=5, , Min=1, Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 1, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{1,0};
+  std::vector<int32_t> input = {};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{0};
+  // We consider both 1-grams and 2-grams so get all the counts here
+  std::vector<float> output = {};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 TEST(TfIdfVectorizerTest, Int32_TF_BatchUniAndBigrams_Skip5) {
   OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=5, Min=1, Max=2, weights empty, int32
