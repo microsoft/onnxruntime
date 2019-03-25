@@ -81,7 +81,7 @@ void RunReverseTestWrapper() {
   std::vector<int64_t> reverse_axes_6 = {-1, 1};
   std::initializer_list<T> expected_vals_6 = {8, 7, 6, 5, 4, 3, 2, 1};
   std::vector<int64_t> expected_dimensions_6 = {2, 4};
-  RunReverseTest<T>(input_vals_5, input_dimensions_6, reverse_axes_6, expected_vals_6, expected_dimensions_6, OpTester::ExpectResult::kExpectFailure, "axes attribute has duplicates in Reverse operator");
+  RunReverseTest<T>(input_vals_6, input_dimensions_6, reverse_axes_6, expected_vals_6, expected_dimensions_6, OpTester::ExpectResult::kExpectFailure, "axes attribute has duplicates in Reverse operator");
 }
 
 template <>
