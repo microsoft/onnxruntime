@@ -83,7 +83,7 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
     .Output(
         0,
         "Y",
-        "1-D Tensor of the range.",
+        "Tensor with same shape of input.",
         "T")
       .SetDoc(ReverseSequence_ver1_doc)
     .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
