@@ -594,3 +594,5 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
   include(onnxruntime_unittests.cmake)
 endif()
+
+include (onnxruntime_external_ops.cmake)
