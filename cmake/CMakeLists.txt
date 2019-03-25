@@ -6,11 +6,14 @@ cmake_minimum_required(VERSION 3.11)
 
 # Project
 project(onnxruntime C CXX)
+cmake_policy(SET CMP0069 NEW)
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
 # Set C++14 as standard for the whole project
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 14 CACHE STRING "")
 
 # General C# prperties
 if (onnxruntime_BUILD_CSHARP)
@@ -50,7 +53,6 @@ option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
-option(onnxruntime_USE_PREBUILT_PB "Use prebuilt protobuf library" OFF)
 option(onnxruntime_USE_JEMALLOC "Use jecmalloc" OFF)
 option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
@@ -65,13 +67,33 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stable on older GCCs" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_HOSTING "Build ONNX hosting service" ON) #TODO: make default off before going into master
+option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
+
+if(onnxruntime_ENABLE_LTO)
+  #LTO(or LTCG) is great, in our case it can reduce binary size by 1/3.
+  #cmake can only help us check if the compiler support LTO or not, it can't tell us if the feature works well
+  #Don't enable this option in Ubuntu 16.04, protoc will crash
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
+  #TODO: figure out why nsync doesn't work
+  if(NOT onnxruntime_USE_NSYNC)
+    if(ipo_enabled)
+      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    else()
+      message(WARNING "IPO is not supported: ${ipo_output}")
+    endif()
+  endif()
+endif()
+
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -87,7 +109,7 @@ if(onnxruntime_USE_OPENMP)
 endif()
 
 if(onnxruntime_CROSS_COMPILING)
-  set(CMAKE_CROSSCOMPILING ON)  
+  set(CMAKE_CROSSCOMPILING ON)
 endif()
 
 #must after OpenMP settings
@@ -184,39 +206,29 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
-#Here we support three build mode:
-#1. (recommended)onnxruntime_USE_PREBUILT_PB is set (ONNX_CUSTOM_PROTOC_EXECUTABLE should also be set)
-#   We will not build protobuf, will use a prebuilt binary instead. This mode can also support cross-compiling
-#2. onnxruntime_USE_PREBUILT_PB is not set but ONNX_CUSTOM_PROTOC_EXECUTABLE is set
-#   Build Protobuf from source, except protoc.exe. This mode is mainly for cross-compiling
-#3. both onnxruntime_USE_PREBUILT_PB and ONNX_CUSTOM_PROTOC_EXECUTABLE are not set
-#   Compile everything from source code. Slowest option.
+#Here we support two build mode:
+#1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly 
+#   for cross-compiling
+#2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
-if(onnxruntime_USE_PREBUILT_PB)
-  get_filename_component(
-     _PROTOBUF_INSTALL_PREFIX
-     ${ONNX_CUSTOM_PROTOC_EXECUTABLE}
-     DIRECTORY)
-  get_filename_component(
-    _PROTOBUF_INSTALL_PREFIX
-    ${_PROTOBUF_INSTALL_PREFIX}/..
-    REALPATH)
-  if(WIN32)
-    include(${_PROTOBUF_INSTALL_PREFIX}/cmake/protobuf-config.cmake)
-  else()
-    include(${_PROTOBUF_INSTALL_PREFIX}/lib64/cmake/protobuf/protobuf-config.cmake)
-  endif()
-  include(protobuf_function.cmake)
-else()
-  # use protobuf as a submodule
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
-  set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-  set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+
+# use protobuf as a submodule
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+if (onnxruntime_USE_FULL_PROTOBUF)
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
-  add_executable(protobuf::protoc ALIAS protoc)
-  include(protobuf_function.cmake)
+else()
+  add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
+endif()
+add_executable(protobuf::protoc ALIAS protoc)
+include(protobuf_function.cmake)
+
+
+if (onnxruntime_USE_FULL_PROTOBUF)
+  add_definitions(-DUSE_FULL_PROTOBUF)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -351,7 +363,7 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W4")
     endif()
 
-    # treat warning as error only on x64 platform. 
+    # treat warning as error only on x64 platform.
     # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
@@ -496,7 +508,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll") 
   endif()
 endif()
 
@@ -557,13 +569,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
 endif()
 
-if (onnxruntime_ENABLE_PYTHON)
-  if(UNIX)
-    set(CMAKE_SKIP_BUILD_RPATH ON)
-  endif()
-  include(onnxruntime_python.cmake)
-endif()
-
 if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
@@ -573,6 +578,12 @@ endif()
 # some of the tests rely on the shared libs to be
 # built; hence the ordering
 if (onnxruntime_BUILD_UNIT_TESTS)
+  if (onnxruntime_ENABLE_PYTHON)
+    if(UNIX)
+      set(CMAKE_SKIP_BUILD_RPATH ON)
+    endif()
+    include(onnxruntime_python.cmake)
+  endif()
   # we need to make sure this is turned off since it
   # turned ON by the previous step when building a shared lib
   set(CMAKE_SKIP_BUILD_RPATH OFF)

@@ -13,7 +13,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/util/protobuf_parsing_utils.h"
 
 #include "gsl/pointers"
 #include "gsl/gsl_util"
@@ -207,7 +207,8 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
-  const bool result = p_model_proto->ParseFromIstream(&model_istream);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
@@ -352,18 +353,20 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
 
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  if (!model_proto->ParseFromFileDescriptor(fd)) {
+  FileInputStream fs(fd);
+  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #else
   // CNTK uses ORT as a submodule in order to use its GraphIR code.
   // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
-  // This code block is needed to support CNTK and any other 
+  // This code block is needed to support CNTK and any other
   // GraphIR client that will be built with protobuf at a version older than 3.2.0.
   FileInputStream fs(fd);
   CodedInputStream cis(&fs);
 
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB. 
+  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
   cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
   if (!model_proto->ParseFromCodedStream(&cis)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
@@ -384,7 +387,8 @@ Status Model::Save(Model& model, int p_fd) {
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToProto();
-  const bool result = model_proto.SerializeToFileDescriptor(p_fd);
+  google::protobuf::io::FileOutputStream output(p_fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
   } else {
