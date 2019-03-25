@@ -14,6 +14,7 @@ class MaxPoolGrad final : public OpKernel {
  public:
   explicit MaxPoolGrad(const OpKernelInfo& info) : OpKernel(info) {
     output_tensor_shapes_ = InferOutputShapes(info);
+    ORT_ENFORCE(!output_tensor_shapes_[0].empty());
   }
 
   Status Compute(OpKernelContext* context) const override;
