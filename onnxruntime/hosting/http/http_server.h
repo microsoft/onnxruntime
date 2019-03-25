@@ -24,7 +24,13 @@ namespace http = beast::http;      // from <boost/beast/http.hpp>
 namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
-using handler_fn = std::function<void(std::string, std::string, std::string, HttpContext&)>;
+struct Details {
+  net::ip::address address;
+  unsigned short port;
+  int threads;
+};
+
+using start_fn = std::function<void(Details&)>;
 
 // Accepts incoming connections and launches the sessions
 // Each method returns the app itself so methods can be chained
@@ -34,14 +40,14 @@ class App {
 
   App& Bind(net::ip::address address, unsigned short port);
   App& NumThreads(int threads);
-  App& Post(const std::string& route, const handler_fn& fn);
+  App& RegisterStartup(const start_fn& fn);
+  App& RegisterPost(const std::string& route, const handler_fn& fn);
   App& Run();
 
  private:
-  const std::shared_ptr<Routes> routes = std::make_shared<Routes>();
-  net::ip::address address_;
-  unsigned short port_;
-  int threads_;
+  const std::shared_ptr<Routes> routes_ = std::make_shared<Routes>();
+  start_fn on_start_ = {};
+  Details http_details{};
 };
 }  // namespace hosting
 }  // namespace onnxruntime

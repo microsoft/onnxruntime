@@ -9,19 +9,11 @@
 namespace onnxruntime {
 namespace hosting {
 
-namespace beast = boost::beast;
-namespace http = beast::http;
-
 void BadRequest(HttpContext& context, const std::string& error_message) {
   auto json_error = R"({"error_code": 400, "error_message": )" + error_message + " }";
 
-  http::response<http::string_body> res{http::status::bad_request, context.request.version()};
-  res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(context.request.keep_alive());
-  res.body() = std::string(json_error);
-  res.prepare_payload();
-  context.response = res;
+  context.response.result(400);
+  context.response.body() = std::string(json_error);
 }
 
 // TODO: decide whether this should be a class
@@ -29,13 +21,13 @@ void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
              HttpContext& context,
-             HostingEnvironment& env) {
+             std::shared_ptr<HostingEnvironment> env) {
   PredictRequest predictRequest{};
-  auto logger = env.GetLogger();
+  auto logger = env->GetLogger();
 
-  LOGS(logger, VERBOSE) << "Name: " << name
-                        << "Version: " << version
-                        << "Action: " << action;
+  LOGS(logger, VERBOSE) << "Name: " << name;
+  LOGS(logger, VERBOSE) << "Version: " << version;
+  LOGS(logger, VERBOSE) << "Action: " << action;
 
   auto body = context.request.body();
   auto status = GetRequestFromJson(body, predictRequest);
@@ -57,6 +49,8 @@ void Predict(const std::string& name,
   res.set(http::field::content_type, "application/json");
   res.keep_alive(context.request.keep_alive());
   context.response = res;
+  context.response.result(200);
+  context.response.body() = body;
 };
 
 }  // namespace hosting

@@ -16,7 +16,7 @@ namespace hosting {
 
 class Executor {
  public:
-  explicit Executor(HostingEnvironment& hosting_env) : env_(hosting_env) {}
+  explicit Executor(std::shared_ptr<HostingEnvironment> hosting_env) : env_(hosting_env) {}
 
   // Prediction method
   google::protobuf::util::Status predict(const std::string& name, const std::string& version, const std::string& request_id,
@@ -36,7 +36,7 @@ class Executor {
                                      /* out */ onnx::TensorProto& tensor_proto);
 
  private:
-  HostingEnvironment& env_;
+  std::shared_ptr<HostingEnvironment> env_;
 };
 }  // namespace hosting
 }  // namespace onnxruntime

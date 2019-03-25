@@ -3,7 +3,7 @@ jobs:
   pool: Hosted Ubuntu 1604
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - script: 'tools/ci_build/github/linux/hosting_run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -k $(acr.key) -x "--config Debug --build_hosting --use_openmp"'
+    - script: 'tools/ci_build/github/linux/hosting_run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -k $(acr.key) -x "--config Debug --build_hosting --use_openmp --use_full_protobuf"'
       displayName: 'Debug Build'
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
@@ -12,7 +12,7 @@ jobs:
   pool: Hosted Ubuntu 1604
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - script: 'tools/ci_build/github/linux/hosting_run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -k $(acr.key) -x "--config Release --build_hosting --use_openmp"'
+    - script: 'tools/ci_build/github/linux/hosting_run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -k $(acr.key) -x "--config Release --build_hosting --use_openmp --use_full_protobuf"'
       displayName: 'Release Build'
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'

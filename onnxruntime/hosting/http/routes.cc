@@ -47,7 +47,6 @@ http::status Routes::ParseUrl(http::verb method,
   }
 
   if (func_table.empty()) {
-    std::cout << "Unsupported method: [" << method << "]" << std::endl;
     return http::status::method_not_allowed;
   }
 
@@ -62,7 +61,6 @@ http::status Routes::ParseUrl(http::verb method,
   }
 
   if (!found_match) {
-    std::cerr << "Path not found: [" << url << "]" << std::endl;
     return http::status::not_found;
   }
 

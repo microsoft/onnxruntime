@@ -11,6 +11,7 @@
 #include "core/framework/framework_common.h"
 #include "core/graph/basic_types.h"
 #include "core/common/logging/logging.h"
+#include "core/optimizer/graph_transformer_level.h"
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -59,11 +60,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
   // set graph optimization level
-  // allowed levels are 0, 1, 2
-  // 0 -> disable all optimizations
-  // 1 -> enable basic optimizations
-  // 2 -> enable all optimizations
-  unsigned graph_optimization_level = 0;
+  TransformerLevel graph_optimization_level = TransformerLevel::Default;
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
@@ -136,9 +133,9 @@ class InferenceSession {
     * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
     * @return OK if success.
     */
-  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                           
+  common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                           const std::vector<std::string>& providers = {},
-                                          const uint32_t& level = 2);
+                                          TransformerLevel level = TransformerLevel::Level2);
 
   /**
     * Enable a custom set of transformers. Call this before invoking Initialize().

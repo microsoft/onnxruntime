@@ -87,35 +87,30 @@ void HttpSession::Send(Msg&& msg) {
 
   http::async_write(self_->socket_, *ptr,
                     net::bind_executor(strand_,
-                                       [self_, close = ptr->need_eof()](beast::error_code ec, std::size_t bytes) {
+                                       [ self_, close = ptr->need_eof() ](beast::error_code ec, std::size_t bytes) {
                                          self_->OnWrite(ec, bytes, close);
                                        }));
 }
 
 template <typename Body, typename Allocator>
-void HttpSession::HandleRequest(boost::beast::http::request<Body, boost::beast::http::basic_fields<Allocator> >&& req) {
+void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator> >&& req) {
   HttpContext context{};
-  context.request = req;
+  context.request = std::move(req);
 
-  std::string path = req.target().to_string();
-  std::string model_name;
-  std::string model_version;
-  std::string action;
+  // TODO: set request id
+  std::string path = context.request.target().to_string();
+  std::string model_name, model_version, action;
   handler_fn func;
-  http::status status = routes_->ParseUrl(req.method(), path, model_name, model_version, action, func);
+  http::status status = routes_->ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 
   if (http::status::ok == status && func != nullptr) {
     func(model_name, model_version, action, context);
   } else {
-    http::response<http::string_body> res{status, req.version()};
-    res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-    res.set(http::field::content_type, "text/plain");
-    res.keep_alive(req.keep_alive());
-    res.body() = std::string("Something failed\n");
-    res.prepare_payload();
-    context.response = res;
+    context.response.result(status);
   }
 
+  context.response.keep_alive(context.request.keep_alive());
+  context.response.prepare_payload();
   return Send(std::move(context.response));
 }
 

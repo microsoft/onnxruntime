@@ -17,6 +17,7 @@ namespace hosting {
 class HostingEnvironment {
  public:
   HostingEnvironment();
+  HostingEnvironment(const HostingEnvironment&) = delete;
 
   const onnxruntime::logging::Logger& GetLogger();
   std::shared_ptr<onnxruntime::InferenceSession> GetSession() const;

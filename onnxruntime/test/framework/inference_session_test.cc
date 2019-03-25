@@ -681,9 +681,10 @@ static void TestBindHelper(const std::string& log_str,
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, run_provider_type);
 
-  std::stringstream s1;
-  p_model->ToProto().SerializeToOstream(&s1);
-  ASSERT_TRUE(session_object.Load(s1).IsOK());
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -709,9 +710,10 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, kCpuExecutionProvider);
 
-  std::stringstream s1;
-  p_model->ToProto().SerializeToOstream(&s1);
-  ASSERT_TRUE(session_object.Load(s1).IsOK());
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
@@ -869,9 +871,10 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
 
-  std::stringstream s1;
-  model_proto.SerializeToOstream(&s1);
-  auto status = session_object.Load(s1);
+  std::string s1;
+  model_proto.SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   status = session_object.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -1348,7 +1351,7 @@ TEST(InferenceSessionTests, TestL1Transformers) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.TestL1Transformers";
-  so.graph_optimization_level = 1;
+  so.graph_optimization_level = TransformerLevel::Level1;
   InferenceSession session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
@@ -1364,7 +1367,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = 2;
+  so.graph_optimization_level = TransformerLevel::Level2;
   InferenceSession session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
@@ -1379,7 +1382,7 @@ TEST(InferenceSessionTests, TestCustomTransformers) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = 2;
+  so.graph_optimization_level = TransformerLevel::Level2;
   InferenceSession session_object{so, &DefaultLoggingManager()};
   session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"});
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
@@ -1395,7 +1398,7 @@ TEST(InferenceSessionTests, DisableAllTransformers) {
 
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.DisableAllTransformers";
-  so.graph_optimization_level = 0;
+  so.graph_optimization_level = TransformerLevel::Default;
   InferenceSession session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
