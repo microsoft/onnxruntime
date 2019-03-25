@@ -1046,13 +1046,13 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
              "T2", OpSchema::Optional)
 
       .Output(0, "Y", "Matrix multiply results from A * B", "T3")
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input A data types as 8-bit integer tensor")
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data types as 8-bit integer tensor")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain input A data types as 8-bit or 16-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"}, "Constrain input B data types as 8-bit or 16-bit integer tensor")
       .TypeConstraint("T3",
                       {"tensor(int32)", "tensor(uint32)"},
                       "Constrain output Y data types as 32-bit integer tensor."
-                      "T3 must be tensor(uint32) when both T1 and T2 are tensor(uint8),"
-                      "or must be tensor(int32) when either T1 or T2 is tensor(int8).")
+                      "T3 must be tensor(uint32) when both T1 and T2 are unsigned,"
+                      "or must be tensor(int32) when either T1 or T2 is signed.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto a_type = ctx.getInputType(0);
         auto b_type = ctx.getInputType(1);

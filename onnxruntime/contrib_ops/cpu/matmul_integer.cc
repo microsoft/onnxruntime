@@ -13,17 +13,22 @@
 namespace onnxruntime {
 namespace contrib {
 
-// only register this operator if low precision computation is enabled.
 ONNX_OPERATOR_KERNEL_EX(
     MatMulInteger,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T1", {DataTypeImpl::GetTensorType<uint8_t>(),
+                               DataTypeImpl::GetTensorType<int8_t>(),
+                               DataTypeImpl::GetTensorType<uint16_t>(),
+                               DataTypeImpl::GetTensorType<int16_t>()})
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(),
+                               DataTypeImpl::GetTensorType<int8_t>(),
+                               DataTypeImpl::GetTensorType<uint16_t>(),
+                               DataTypeImpl::GetTensorType<int16_t>()})
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulInteger<uint8_t, uint8_t, int32_t>);
+    MatMulInteger);
 
 Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
                         int32_t* result_data, const int lhs_offset, const int rhs_offset,
@@ -43,8 +48,7 @@ Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
   return Status::OK();
 }
 
-template<>
-Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) const {
+Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
   auto b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
@@ -53,36 +57,44 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
-  // validate zero points
-  int32_t a_offset = 0;
-  int32_t b_offset = 0;
-  if (has_a_zero_point_) {
-    auto a_zero_point = ctx->Input<Tensor>(2);
-    ORT_ENFORCE(a_zero_point->Shape().NumDimensions() == 0 || 
-        (a_zero_point->Shape().NumDimensions() == 1 && a_zero_point->Shape().GetDims().size() == 1), 
-        "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
-    a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
-  }
-  if (has_b_zero_point_) {
-    auto b_zero_point = ctx->Input<Tensor>(3);
-    ORT_ENFORCE(b_zero_point->Shape().NumDimensions() == 0 || 
-        (b_zero_point->Shape().NumDimensions() == 1 && b_zero_point->Shape().GetDims().size() == 1),
-        "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
-    b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
-  }
+  // special case for uint8 x uint8 -> int32
+  if (a->DataType() == DataTypeImpl::GetType<uint8_t>() &&
+      b->DataType() == DataTypeImpl::GetType<uint8_t>() &&
+      y->DataType() == DataTypeImpl::GetType<int32_t>()) {
+    // validate zero points
+    int32_t a_offset = 0;
+    int32_t b_offset = 0;
+    if (has_a_zero_point_) {
+      auto a_zero_point = ctx->Input<Tensor>(2);
+      ORT_ENFORCE(a_zero_point->Shape().NumDimensions() == 0 ||
+                      (a_zero_point->Shape().NumDimensions() == 1 && a_zero_point->Shape().GetDims().size() == 1),
+                  "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+      a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
+    }
+    if (has_b_zero_point_) {
+      auto b_zero_point = ctx->Input<Tensor>(3);
+      ORT_ENFORCE(b_zero_point->Shape().NumDimensions() == 0 ||
+                      (b_zero_point->Shape().NumDimensions() == 1 && b_zero_point->Shape().GetDims().size() == 1),
+                  "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+      b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
+    }
 
-  for (int i = 0; i < helper.OutputOffsets().size(); i++) {
-    GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
-                     b->template Data<uint8_t>() + helper.RightOffsets()[i],
-                     y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
-                     a_offset,
-                     b_offset,
-                     static_cast<int>(helper.M()),
-                     static_cast<int>(helper.N()),
-                     static_cast<int>(helper.K()));
+    for (int i = 0; i < helper.OutputOffsets().size(); i++) {
+      GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
+                       b->template Data<uint8_t>() + helper.RightOffsets()[i],
+                       y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+                       a_offset,
+                       b_offset,
+                       static_cast<int>(helper.M()),
+                       static_cast<int>(helper.N()),
+                       static_cast<int>(helper.K()));
+    }
+  } else {
+    // TODO: generic implementation using Eigen
+    ORT_NOT_IMPLEMENTED("Not implemented MatMulInteger types");
   }
-
   return Status::OK();
 }
+
 }  // namespace contrib
 }  // namespace onnxruntime
