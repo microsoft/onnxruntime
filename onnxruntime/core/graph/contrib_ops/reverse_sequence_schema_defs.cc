@@ -57,6 +57,40 @@ static const char* Input_Data_Format_ver1_doc = R"DOC(
 or batch major (e.g. [batch_size, seq_length, ...]). Must be one of time_major (default), or batch_major.
 )DOC";
 
+void ReverseSequenceShapeInference(InferenceContext& ctx) {
+  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  if (!hasNInputShapes(ctx, 2)) {
+    return;
+  }
+
+  auto data_format = getAttribute(ctx, "data_format", "time_major");
+  auto& first_input_shape = getInputShape(ctx, 0);
+  if (first_input_shape.dim_size() < 2) {
+    fail_shape_inference("First input tensor must have rank >= 2");
+  }
+
+  TensorShapeProto::Dimension batch_size;
+  if (data_format == "time_major") {
+    batch_size = first_input_shape.dim(1);
+  } else {
+    batch_size = first_input_shape.dim(0);
+  }
+
+  if (batch_size.has_dim_value()) {
+    auto& seq_len_input_shape = getInputShape(ctx, 1);
+    auto batch_dim = seq_len_input_shape.dim(0);
+    if (batch_dim.has_dim_value()) {
+      if (static_cast<int64_t>(batch_dim.dim_value()) != static_cast<int64_t>(batch_size.dim_value())) {
+        fail_shape_inference("Batch size mismatch for input and sequence_lens.")
+      }
+    }
+
+    fail_shape_inference("Batch size must match for the first two inputs")
+  }
+
+  propagateShapeFromInputToOutput(ctx, 0, 0);
+}
+
 OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
   return op_schema
     .SetDomain(kMSDomain)
@@ -88,7 +122,7 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
         "Tensor with same shape of input.",
         "T")
       .SetDoc(ReverseSequence_ver1_doc)
-    .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ReverseSequenceShapeInference);
 }
 
 }  // namespace contrib
