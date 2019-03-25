@@ -55,52 +55,6 @@ Status handle_scalar_tensor(const Tensor* input_tensor, Tensor* output_tensor, c
   return Status::OK();
 }
 
-#define ProcessType(type, ml_data_type, rank, dims)                                                                                                            \
-  const ConstEigenTensorMap<type, rank> input = buffer_as_const_eigen_tensor<type, rank>(static_cast<const type*>(input_tensor->DataRaw(ml_data_type)), dims); \
-  EigenTensorMap<type, rank> output = buffer_as_eigen_tensor<type, rank>(static_cast<type*>(output_tensor->MutableDataRaw(ml_data_type)), dims);               \
-  output = input.reverse(eigen_reverse_axes);
-
-template <int rank>
-void ReverseImpl(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
-  const auto& dtype = input_tensor->DataType();
-  const auto& dims = shape.GetDims();
-  const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
-
-  if (dtype == DataTypeImpl::GetType<float>()) {
-    ProcessType(float, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
-    ProcessType(double, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<bool>()) {
-    ProcessType(bool, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    ProcessType(int8_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-    ProcessType(int16_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-    ProcessType(int32_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-    ProcessType(int64_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-    ProcessType(uint8_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-    ProcessType(uint16_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-    ProcessType(uint32_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-    ProcessType(uint64_t, dtype, rank, dims)
-  } else if (dtype == DataTypeImpl::GetType<std::string>()) {
-    const ConstEigenTensorMap<std::string, rank> input = buffer_as_const_eigen_tensor<std::string, rank>(static_cast<const std::string*>(input_tensor->template Data<std::string>()), dims);
-    EigenTensorMap<std::string, rank> output = buffer_as_eigen_tensor<std::string, rank>(static_cast<std::string*>(output_tensor->template MutableData<std::string>()), dims);
-    output = input.reverse(eigen_reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-    ReverseImplMLFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes);
-  } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
-    ReverseImplBFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes);
-  } else {
-    ORT_THROW("Unsupported input datatype for Reverse operator. Got ", dtype);
-  }
-}
-
 template <int rank>
 void ReverseImplMLFloat16Type(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
   AllocatorPtr allocator;
@@ -173,6 +127,52 @@ void ReverseImplBFloat16Type(const OpKernelContext* ctx, const Tensor* input_ten
   // free the intermediate buffers
   allocator->Free(input_buffer);
   allocator->Free(output_buffer);
+}
+
+#define ProcessType(type, ml_data_type, rank, dims)                                                                                                            \
+  const ConstEigenTensorMap<type, rank> input = buffer_as_const_eigen_tensor<type, rank>(static_cast<const type*>(input_tensor->DataRaw(ml_data_type)), dims); \
+  EigenTensorMap<type, rank> output = buffer_as_eigen_tensor<type, rank>(static_cast<type*>(output_tensor->MutableDataRaw(ml_data_type)), dims);               \
+  output = input.reverse(eigen_reverse_axes);
+
+template <int rank>
+void ReverseImpl(const OpKernelContext* ctx, const Tensor* input_tensor, Tensor* output_tensor, const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
+  const auto& dtype = input_tensor->DataType();
+  const auto& dims = shape.GetDims();
+  const auto& eigen_reverse_axes = vector_to_eigen_array<rank>(reverse_axes);
+
+  if (dtype == DataTypeImpl::GetType<float>()) {
+    ProcessType(float, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<double>()) {
+    ProcessType(double, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<bool>()) {
+    ProcessType(bool, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
+    ProcessType(int8_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
+    ProcessType(int16_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
+    ProcessType(int32_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+    ProcessType(int64_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
+    ProcessType(uint8_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
+    ProcessType(uint16_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
+    ProcessType(uint32_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
+    ProcessType(uint64_t, dtype, rank, dims)
+  } else if (dtype == DataTypeImpl::GetType<std::string>()) {
+    const ConstEigenTensorMap<std::string, rank> input = buffer_as_const_eigen_tensor<std::string, rank>(static_cast<const std::string*>(input_tensor->template Data<std::string>()), dims);
+    EigenTensorMap<std::string, rank> output = buffer_as_eigen_tensor<std::string, rank>(static_cast<std::string*>(output_tensor->template MutableData<std::string>()), dims);
+    output = input.reverse(eigen_reverse_axes);
+  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
+    ReverseImplMLFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes);
+  } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
+    ReverseImplBFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes);
+  } else {
+    ORT_THROW("Unsupported input datatype for Reverse operator. Got ", dtype);
+  }
 }
 
 Status Reverse::Compute(OpKernelContext* p_op_kernel_context) const {
