@@ -197,7 +197,6 @@ Status Reverse::Compute(OpKernelContext* p_op_kernel_context) const {
       // check for implicit and explicit dupes in axes attribute
       // explicit dupes (e.g.) 0 and 0
       // implicit dupes (e.g.) -1 and 1 for an input tensor of rank 2
-      // TODO: Do we need checks like these ? It could unnecessarily affect run-time perf
       if (axis < 0) {
         if (axes_elements.find(axis + rank) != axes_elements.end())
           ORT_THROW("axes attribute has duplicates in Reverse operator");
