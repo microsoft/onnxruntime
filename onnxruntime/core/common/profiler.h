@@ -64,6 +64,11 @@ class Profiler {
   */
   std::string EndProfiling();
 
+  static Profiler& Instance() {
+    ORT_ENFORCE(instance_ != nullptr);
+    return *instance_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
@@ -79,6 +84,8 @@ class Profiler {
   bool max_events_reached{false};
   static constexpr size_t max_num_events_ = 1000000;
   bool profile_with_logger_{false};
+
+  static Profiler* instance_;
 };
 
 }  // namespace profiling

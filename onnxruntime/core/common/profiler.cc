@@ -7,6 +7,8 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
+Profiler* Profiler::instance_ = nullptr;
+
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   return std::chrono::high_resolution_clock::now();
 }
@@ -14,6 +16,8 @@ using namespace std::chrono;
 void Profiler::Initialize(const logging::Logger* session_logger) {
   ORT_ENFORCE(session_logger != nullptr);
   session_logger_ = session_logger;
+  ORT_ENFORCE(instance_ == nullptr);  // can only have one profiler instance
+  instance_ = this;
 }
 
 void Profiler::StartProfiling(const logging::Logger* custom_logger) {
