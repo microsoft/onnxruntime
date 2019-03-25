@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
 #include "core/platform/threadpool.h"
+#include "core/common/common.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #if defined(_MSC_VER)
@@ -61,7 +61,9 @@ class Barrier {
 class ThreadPool::Impl : public Eigen::NonBlockingThreadPool {
  public:
   Impl(const std::string& name, int num_threads)
-      : Eigen::NonBlockingThreadPool(num_threads) {}
+      : Eigen::NonBlockingThreadPool(num_threads) {
+    ORT_UNUSED_PARAMETER(name);
+  }
 
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
@@ -101,7 +103,9 @@ class ThreadPool::Impl : public Eigen::NonBlockingThreadPool {
 class ThreadPool::Impl : public TaskThreadPool {
  public:
   Impl(const std::string& name, int num_threads)
-      : TaskThreadPool(num_threads) {}
+      : TaskThreadPool(num_threads) {
+    ORT_UNUSED_PARAMETER(name);
+  }
 
   void Schedule(std::function<void()> fn) {
     std::packaged_task<void()> task(fn);

@@ -777,8 +777,11 @@ Return Value:
 
 --*/
 {
-
-#if defined(MLAS_HAS_THREADING_SUPPORT)
+#if !defined(MLAS_HAS_THREADING_SUPPORT)
+    if (ExternalThreadPool == nullptr) {
+        return false;
+    }
+#endif
 
     MLAS_CONV_WORK_BLOCK WorkBlock;
 
@@ -824,24 +827,6 @@ Return Value:
     MlasExecuteThreaded(MlasConvOperationThreaded, &WorkBlock, Index, ExternalThreadPool);
 
     return true;
-
-#else
-
-    //
-    // No threading implementation is available.
-    //
-
-    MLAS_UNREFERENCED_PARAMETER(Parameters);
-    MLAS_UNREFERENCED_PARAMETER(Input);
-    MLAS_UNREFERENCED_PARAMETER(Filter);
-    MLAS_UNREFERENCED_PARAMETER(Bias);
-    MLAS_UNREFERENCED_PARAMETER(WorkingBuffer);
-    MLAS_UNREFERENCED_PARAMETER(Output);
-
-    return false;
-
-#endif
-
 }
 
 void
@@ -896,8 +881,6 @@ Return Value:
 
     const MLAS_CONV_ALGORITHM Algorithm = Parameters->Algorithm;
 
-#if defined(MLAS_HAS_THREADING_SUPPORT)
-
     //
     // Schedule batches of GEMMs across multiple threads.
     //
@@ -922,12 +905,16 @@ Return Value:
         WorkBlock.Output = Output;
         WorkBlock.TargetThreadCount = TargetThreadCount;
 
+#if defined(MLAS_HAS_THREADING_SUPPORT)
         MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ExternalThreadPool);
-
         return;
-    }
-
+#else
+        if (ExternalThreadPool != nullptr) {
+          MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ExternalThreadPool);
+          return;
+        }
 #endif
+    }
 
     //
     // Iterate over each batch and group.

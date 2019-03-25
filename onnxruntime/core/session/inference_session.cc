@@ -11,6 +11,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <list>
+#include <thread>
 
 #include "core/common/logging/logging.h"
 #include "core/platform/notification.h"
