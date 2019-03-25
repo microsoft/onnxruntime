@@ -46,24 +46,6 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
   return op_to_count;
 }
 
-// Takes as input an onnx file uri and a list of transformers and rules. Then it creates,
-// initializes, and returns an inference session.
-std::unique_ptr<InferenceSession> CreateSession(const std::string& model_uri,
-                                                std::vector<std::string>& rules_and_transformers) {
-  SessionOptions so;
-  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  std::unique_ptr<InferenceSession> session_object = 
-	  std::make_unique<InferenceSession>(so, &DefaultLoggingManager());
-  if (!session_object->Load(model_uri).IsOK()) {
-    return std::unique_ptr<InferenceSession>{};
-  }
-  session_object->AddCustomTransformerList(rules_and_transformers);
-  if (!session_object->Initialize().IsOK()) {
-    return std::unique_ptr<InferenceSession>{};
-  }
-  return session_object;
-}
-
 // Takes a list of transformers and rules; creates a transformer manager and registers the transformers/rules
 // to it; applies the transformers/rules to the given graph.
 void RegisterAndApplyTransformers(Graph& graph, std::vector<std::string>& rules_and_transformers) {
@@ -87,9 +69,6 @@ TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::vector<std::string> rule_list = {"EliminateIdentity"};
 
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rule_list));
-
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -106,9 +85,6 @@ TEST(GraphTransformationTests, IdentityElimination) {
 TEST(GraphTransformationTests, SliceElimination) {
   string model_uri = MODEL_FOLDER + "slice-elim.onnx";
   std::vector<std::string> rule_list = {"EliminateSlice"};
-
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rule_list));
 
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
@@ -127,9 +103,6 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::vector<std::string> rule_list = {"ConstantFolding"};
 
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rule_list));
-
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -147,9 +120,6 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::vector<std::string> rules_and_transformers =
       {"UnsqueezeElimination", "ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
-
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
 
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
@@ -179,15 +149,12 @@ TEST(GraphTransformationTests, FuseConvActivation) {
   for (std::string act : activations) {
     std::string model_uri = MODEL_FOLDER + "fusion/conv_" + act + ".onnx";
 
-    // Check that session gets initialized properly.
-    ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
-
-	// Check that transformations actually happen.
+    // Check that transformations actually happen.
     std::shared_ptr<Model> model;
     ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
     Graph& graph = model->MainGraph();
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-	// TODO: Add before checks.
+    // TODO: Add before checks.
 
     RegisterAndApplyTransformers(graph, rules_and_transformers);
 
@@ -199,9 +166,6 @@ TEST(GraphTransformationTests, FuseConvActivation) {
 TEST(GraphTransformationTests, FuseConvBNNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
   std::vector<std::string> rules_and_transformers = {"ConvBNFusion"};
-
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
 
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
@@ -220,9 +184,6 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-mul-no-bias.onnx";
   std::vector<std::string> rules_and_transformers = {"UnsqueezeElimination", "ConvMulFusion"};
 
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
-
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -239,9 +200,6 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
 TEST(GraphTransformationTests, FuseConvAddNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-no-bias.onnx";
   std::vector<std::string> rules_and_transformers = {"UnsqueezeElimination", "ConvAddFusion"};
-
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
 
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
@@ -261,9 +219,6 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
   std::vector<std::string> rules_and_transformers =
       {"UnsqueezeElimination", "ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
 
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
-
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -280,9 +235,6 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d.onnx";
   std::vector<std::string> rules_and_transformers = {"ConvMulFusion", "ConvAddFusion"};
-
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
 
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
@@ -301,9 +253,6 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
   std::vector<std::string> rules_and_transformers = {"MatMulAddFusion"};
 
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
-
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -320,9 +269,6 @@ TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
 TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/model.onnx";
   std::vector<std::string> rules_and_transformers = {"MatMulAddFusion"};
-
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
 
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
@@ -341,9 +287,6 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
   std::vector<std::string> rules_and_transformers = {"GemmActivationFusion"};
 
-  // Check that session gets initialized properly.
-  ASSERT_TRUE(CreateSession(model_uri, rules_and_transformers));
-
   // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -361,10 +304,12 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";
   std::vector<std::string> rules_and_transformers = {"ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
 
-  // Check that session gets initialized properly.
-  std::unique_ptr<InferenceSession> session_object = CreateSession(model_uri, rules_and_transformers);
-  
-  ASSERT_TRUE(session_object);
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  session_object.AddCustomTransformerList(rules_and_transformers);
+  ASSERT_TRUE(session_object.Initialize().IsOK());
 
   NameMLValMap feeds;
   RunOptions run_options;
@@ -384,7 +329,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   output_names.push_back("PROD");
   std::vector<MLValue> fetches;
 
-  ASSERT_TRUE(session_object->Run(run_options, feeds, output_names, &fetches).IsOK());
+  ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
   auto prod_f = MLFloat16(math::floatToHalf(6.0));
   std::vector<int64_t> expected_dims_prod = {1, 1, 2, 2};
