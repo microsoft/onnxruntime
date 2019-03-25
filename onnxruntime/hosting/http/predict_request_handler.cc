@@ -42,15 +42,9 @@ void Predict(const std::string& name,
 
   std::string response_body{};
   status = GenerateResponseInJson(response, response_body);
-  http::response<http::string_body> res{std::piecewise_construct,
-                                        std::make_tuple(response_body),
-                                        std::make_tuple(http::status::ok, context.request.version())};
-  res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(context.request.keep_alive());
-  context.response = res;
+  context.response.body() = response_body;
   context.response.result(200);
-  context.response.body() = body;
+  context.response.set(http::field::content_type, "application/json");
 };
 
 }  // namespace hosting
