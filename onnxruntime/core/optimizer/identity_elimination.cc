@@ -18,12 +18,8 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& 
   return Status::OK();
 }
 
-bool EliminateIdentity::OpTypeCondition(const Node& node) {
-  return node.OpType() == included_op_type_;
-}
-
-bool EliminateIdentity::AdditionalConditions(const Graph& /*graph*/, const Node& node) {
-  return graph_utils::IsSingleInSingleOutNode(node);
+bool EliminateIdentity::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
+  return node.OpType() == included_op_type_ && graph_utils::IsSingleInSingleOutNode(node);
 }
 
 }  // namespace onnxruntime

@@ -56,12 +56,9 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   return Status::OK();
 }  // namespace onnxruntime
 
-bool ConstantFolding::OpTypeCondition(const Node& node) {
-  return excluded_op_types_.find(node.OpType()) == excluded_op_types_.end();
-}
-
-bool ConstantFolding::AdditionalConditions(const Graph& graph, const Node& node) {
-  return graph_utils::AllNodeInputsAreConstant(graph, node);
+bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
+  return excluded_op_types_.find(node.OpType()) == excluded_op_types_.end() &&
+         graph_utils::AllNodeInputsAreConstant(graph, node);
 }
 
 void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,

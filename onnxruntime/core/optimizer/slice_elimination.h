@@ -16,9 +16,7 @@ class EliminateSlice : public RewriteRule {
   /** Apply rule when op type is the following. */
   const std::string included_op_type_ = "Slice";
 
-  bool OpTypeCondition(const Node& node) override;
-
-  bool AdditionalConditions(const Graph& graph, const Node& node) override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& removed) override;
 };
