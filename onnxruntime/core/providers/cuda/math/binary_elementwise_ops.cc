@@ -34,10 +34,10 @@ static Status ComputeOutputShape(const std::string& node_name, const TensorShape
     int64_t out_dim = std::max(lhs_dim, rhs_dim);
     if (lhs_dim != out_dim && lhs_dim != 1)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
-                                     " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
     if (rhs_dim != out_dim && rhs_dim != 1)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i,
-                                     " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
     output_dims[out_rank - 1 - i] = out_dim;
   }
   out_shape = TensorShape(output_dims);
@@ -106,7 +106,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
     Prepare(context, 0, &prepare);                                                                               \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                            \
+    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         prepare.lhs_padded_strides.GpuPtr(),                                                                     \
@@ -125,20 +125,20 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
 
-  // since different ops has different types, we cannot use BINARY_OPS() directly
-  // the postfix of means the types supported by the op:
-  // B: uint8_t
-  // W: uint16_t
-  // U: uint32_t
-  // Z: uint64_t
-  // C: int8_t
-  // S: int16_t
-  // I: int32_t
-  // L: int64_t
-  // H: float16
-  // F: float
-  // D: double
-  // O: bool
+// since different ops has different types, we cannot use BINARY_OPS() directly
+// the postfix of means the types supported by the op:
+// B: uint8_t
+// W: uint16_t
+// U: uint32_t
+// Z: uint64_t
+// C: int8_t
+// S: int16_t
+// I: int32_t
+// L: int64_t
+// H: float16
+// F: float
+// D: double
+// O: bool
 
 #define BINARY_OP_HFD(name, ver)        \
   BINARY_OP_TYPED(name, ver, MLFloat16) \

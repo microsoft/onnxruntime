@@ -133,7 +133,7 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   }
   std::vector<int64_t> pads;
   if (dynamic_padding) {
-    for (size_t i = 0; i < Pads->Size(); ++i) {
+    for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
       pads.push_back(Pads->Data<int64_t>()[i]);
     }
   } else {

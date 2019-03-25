@@ -5,6 +5,7 @@
 
 namespace onnxruntime {
 namespace cuda {
+
 ONNX_OPERATOR_KERNEL_EX(
     Concat,
     kOnnxDomain,
@@ -22,6 +23,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
 
   int64_t output_offset = 0;
   auto element_bytes = p.output_tensor->DataType()->Size();
+
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
 
@@ -36,9 +38,12 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
         cudaMemcpyDeviceToDevice));
 
     output_offset += prep.axis_pitch;
+
+    const Tensor* data = ctx->Input<Tensor>(input_index);
   }
+
   return Status::OK();
-}
+}  // namespace cuda
 
 }  // namespace cuda
 }  // namespace onnxruntime

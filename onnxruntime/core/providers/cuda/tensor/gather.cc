@@ -8,6 +8,7 @@
 
 namespace onnxruntime {
 namespace cuda {
+
 ONNX_OPERATOR_KERNEL_EX(
     Gather,
     kOnnxDomain,
