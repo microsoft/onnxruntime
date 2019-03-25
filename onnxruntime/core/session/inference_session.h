@@ -68,7 +68,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
   // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level1;
+  TransformerLevel graph_optimization_level = TransformerLevel::Default;
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;

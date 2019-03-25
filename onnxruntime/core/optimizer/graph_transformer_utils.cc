@@ -21,7 +21,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
       // rules.push_back(std::make_unique<UnsqueezeElimination>());
-      rules.push_back(std::make_unique<ConstantFolding>());
+      // rules.push_back(std::make_unique<ConstantFolding>());
       break;
 
     case TransformerLevel::Level2:
