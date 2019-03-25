@@ -277,7 +277,6 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       // Use tokenexp
       re2::RE2::Options options;
       options.set_longest_match(true);
-      options.set_posix_syntax(true);
       std::unique_ptr<re2::RE2> regex(new re2::RE2(tokenexp, options));
       if (!regex->ok()) {
         ORT_THROW("Can not digest regex: ", regex->error());

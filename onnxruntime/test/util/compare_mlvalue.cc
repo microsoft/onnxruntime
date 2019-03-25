@@ -4,7 +4,13 @@
 #include "test/compare_mlvalue.h"
 #include <cmath>
 #include <sstream>
-#include <google/protobuf/text_format.h>
+
+#ifdef USE_FULL_PROTOBUF
+#include <google/protobuf/message.h>
+#else
+#include <google/protobuf/message_lite.h>
+#endif
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "Eigen/Core"
@@ -349,7 +355,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //}
     std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
     {
-      OrtTensorTypeAndShapeInfo* t1;
+      OrtTensorTypeAndShapeInfo* t1 = nullptr;
       ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(o, &t1));
       info.reset(t1);
     }
@@ -363,13 +369,16 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
     std::vector<int64_t> shape = GetTensorShape(info.get());
-    if (!AreShapesEqual(shape, t.shape())) {
-      std::string result;
-      if (!google::protobuf::TextFormat::PrintToString(t.shape(), &result)) {
-        result = "(unknown)";
-      }
+    const auto& tensor_shape_proto = t.shape();
+    if (!AreShapesEqual(shape, tensor_shape_proto)) {
       std::ostringstream oss;
-      oss << "Tensor shape mismatch, model file expects '" << result << "', real output is ";
+      oss << "Tensor shape mismatch, model file expects '";
+      if (tensor_shape_proto.dim_size() == 0) {
+        oss << "(unknown)";
+      } else {
+        oss << tensor_shape_proto;
+      }
+      oss << "', real output is ";
       VectorToString(shape, oss);
       return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
     }

@@ -157,7 +157,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"b9ce57acb12f71776a3130ed6f031cc00757de3c",
+               "commitHash":"7de7e5d02bf687f971e7668963649728356e0c20",
                "repositoryUrl":"https://github.com/intel/mkl-dnn.git"
             }
          }
