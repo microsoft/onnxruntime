@@ -294,6 +294,9 @@ class InferenceSession {
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
+  /// convenience pointer to logger. should always be the same as session_state_.Logger();
+  const logging::Logger* session_logger_;
+
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method
   // returns a shared_ptr only. Ideally factory functions should always return
@@ -303,9 +306,6 @@ class InferenceSession {
 
   // Immutable state for each op in the model. Shared by all executors.
   SessionState session_state_;
-
-  /// convenience pointer to logger. should always be the same as session_state_.Logger();
-  const logging::Logger* session_logger_;
 
   // names of model inputs and outputs used for quick validation.
   std::unordered_set<std::string> required_model_input_names_;
