@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "session.h"
 #include "listener.h"
+#include "session.h"
 #include "util.h"
 
 namespace onnxruntime {

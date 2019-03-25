@@ -32,6 +32,7 @@ class Routes {
  private:
   std::vector<std::pair<std::string, handler_fn>> post_fn_table;
   std::vector<std::pair<std::string, handler_fn>> get_fn_table;
+  // TODO: server error callback
 };
 
 }  //namespace hosting
