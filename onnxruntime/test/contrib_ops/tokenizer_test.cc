@@ -809,5 +809,26 @@ TEST(ContribOpTest, TokenizerExpression_RegDot) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(ContribOpTest, TokenizerExpression_RegChar) {
+  OpTester test("Tokenizer", opset_ver, domain);
+  const std::string tokenexp(u8"\\w");
+  InitTestAttr(test, true, {}, 1, tokenexp);
+
+  std::vector<int64_t> dims{1};
+  std::vector<std::string> input{u8"a;;;b"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<int64_t> output_dims(dims);
+  output_dims.push_back(int64_t(4));
+  std::vector<std::string> output{
+      start_mark,
+      u8"a",
+      u8"b",
+      end_mark};
+
+  test.AddOutput<std::string>("Y", output_dims, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
