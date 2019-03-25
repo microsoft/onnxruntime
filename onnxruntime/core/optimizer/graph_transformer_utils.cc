@@ -48,10 +48,10 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
                                                          const std::vector<std::string>* transformers_to_enable) {
   std::vector<TransformerProviderSet> transformers;
   switch (level) {
-    case TransformerLevel::Level1: {
-      std::vector<std::string> l1_execution_providers = {};
-      transformers.emplace_back(std::make_unique<UnsqueezeElimination>(), l1_execution_providers);
-    } break;
+    case TransformerLevel::Level1: /*{
+      //std::vector<std::string> l1_execution_providers = {};
+      //transformers.emplace_back(std::make_unique<UnsqueezeElimination>(), l1_execution_providers);
+    }*/ break;
 
     case TransformerLevel::Level2: {
       std::vector<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
