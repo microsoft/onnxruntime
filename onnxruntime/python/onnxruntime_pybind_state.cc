@@ -232,6 +232,8 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   m.def(
       "get_all_operator_schema", 
       []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
@@ -239,8 +241,11 @@ void addGlobalMethods(py::module& m) {
       },
       "Return a vector of OpSchema all registed operators"
   );
+#endif  
 }
 
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 void addOpSchemaSubmodule(py::module& m){
   auto schemadef = m.def_submodule("schemadef");
@@ -326,6 +331,8 @@ void addOpSchemaSubmodule(py::module& m){
 
 
 }
+
+#endif //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 void addObjectMethods(py::module& m) {
   // allow unit tests to redirect std::cout and std::cerr to sys.stdout and sys.stderr
@@ -549,7 +556,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addGlobalMethods(m);
   addObjectMethods(m);
 
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   addOpSchemaSubmodule(m);
+#endif
+  
 }
 
 }  // namespace python

@@ -69,6 +69,10 @@ Use the individual flags to only run the specified stages.
                         help='''Downloads test data without running the tests''')
     parser.add_argument("--test_data_url", help="Test data URL.")
     parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
+
+    # generate documentaiton
+    parser.add_argument("--gen_doc", action='store_true', help="Generate documentation on contrib ops")
+
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
     parser.add_argument("--cuda_version", help="The version of CUDA toolkit to use. Auto-detect if not specified. e.g. 9.0")
@@ -339,6 +343,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
+    if args.gen_doc:
+        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
+
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
     if is_windows():
@@ -586,6 +593,16 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     if not os.path.exists(os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')):
         raise BuildError("Couldn't build protoc.exe for host. Failing build.")
 
+def generate_documentation(source_dir, build_dir, configs):
+    #copy the gen_doc.py
+    shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
+                os.path.join(build_dir,configs[0], configs[0]))
+    run_subprocess([
+                     sys.executable,
+                     'gen_doc.py',
+                     '--output_path', os.path.join(source_dir, docs, 'ContribOperators.md')
+                   ], 
+                   cwd = os.path.join(build_dir,configs[0], configs[0]))
 def main():
     args = parse_arguments()
 
@@ -713,7 +730,10 @@ def main():
     if args.build:
         if args.build_wheel:
             build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt)
-
+    
+    if args.gen_doc:
+        generate_documentation(source_dir, build_dir, configs)
+        
     log.info("Build complete")
 
 if __name__ == "__main__":

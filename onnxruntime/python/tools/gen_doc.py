@@ -376,5 +376,4 @@ if __name__ == '__main__':
 
     class Args(object):
         output = args.output_path
-        #os.path.join(docs_dir, 'Operators' + ext)
     main(Args)
