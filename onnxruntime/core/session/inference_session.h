@@ -307,6 +307,11 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  // names of model inputs and outputs used for quick validation.
+  std::unordered_set<std::string> required_model_input_names_;
+  std::unordered_set<std::string> model_input_names_;
+  std::unordered_set<std::string> model_output_names_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
@@ -389,11 +394,6 @@ class InferenceSession {
   InputDefList required_input_def_list_;
   std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
-
-  // names of model inputs and outputs used for quick validation.
-  std::unordered_set<std::string> required_model_input_names_;
-  std::unordered_set<std::string> model_input_names_;
-  std::unordered_set<std::string> model_output_names_;
 
 // Environment for this session
 // not used now; we'll need it when we introduce threadpool
