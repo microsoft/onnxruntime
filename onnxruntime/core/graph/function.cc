@@ -15,7 +15,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto_->input_size());
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto_->output_size());
   std::unordered_map<std::string, std::vector<std::string>> type_constraint_map;
-
+  std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   for (auto& node : onnx_func_proto_->node()) {
     const auto node_op_schema = schema_registry->GetSchema(node.op_type(), (int)onnx_func_proto_->since_version(), node.domain());
@@ -49,6 +49,14 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
         }
       }
     }
+
+    // If an subgraph node attribute has a specified
+    // type attribute, we add its referenced attribute
+    // into the op's schema
+    for (auto& attr : node.attribute()) {
+      if (attr.has_ref_attr_name() && attr.has_type())
+        attribute_type_map[attr.ref_attr_name()] = attr.type();
+    }
   }
 
   int i = 0;
@@ -64,6 +72,11 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
 
   for (auto& tc : type_constraint_map) {
     op_schema_->TypeConstraint(tc.first, tc.second, "");
+  }
+
+  for (auto& attribute_name : onnx_func_proto_->attribute()) {
+    if (attribute_type_map.count(attribute_name))
+      op_schema_->Attr(attribute_name, "", attribute_type_map[attribute_name], false);
   }
 }
 
