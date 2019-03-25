@@ -14,6 +14,7 @@ class Graph;
 class GraphTransformerManager;
 class InsertCastTransformer;
 class KernelRegistryManager;
+class Node;
 class NodeArg;
 class SessionState;
 
@@ -33,7 +34,8 @@ class SessionStateInitializer {
                           KernelRegistryManager& kernel_registry_manager);
 
   // First perform any transformations and create the execution plan
-  common::Status CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
+  common::Status CreatePlan(const Node* parent_node,
+                            const std::vector<NodeArg*>& outer_scope_node_args,
                             bool enable_sequential_execution);
 
   // initialize tensors, and save. save kernels and input/output node mappings
