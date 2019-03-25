@@ -312,6 +312,9 @@ class InferenceSession {
   std::unordered_set<std::string> model_input_names_;
   std::unordered_set<std::string> model_output_names_;
 
+  // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
+  std::basic_string<PATH_CHAR_TYPE> model_location_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
@@ -416,8 +419,5 @@ class InferenceSession {
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   InsertCastTransformer insert_cast_transformer_;
-
-  // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
-  std::basic_string<PATH_CHAR_TYPE> model_location_;
 };
 }  // namespace onnxruntime
