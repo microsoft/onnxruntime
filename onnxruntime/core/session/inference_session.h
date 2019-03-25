@@ -278,8 +278,6 @@ class InferenceSession {
   std::string EndProfiling();
 
  protected:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
-
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
@@ -294,11 +292,27 @@ class InferenceSession {
     */
   common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
 
+  common::Status DoPostLoadProcessing(onnxruntime::Model& model);
+
+  // The model served by this inference session instance.
+  // Currently this has to be a shared ptr because the Model::Load method
+  // returns a shared_ptr only. Ideally factory functions should always return
+  // unique_ptr for maximum flexibility. Client can always upgrade it to shared_ptr
+  // if they need.
+  std::shared_ptr<onnxruntime::Model> model_;
+
+  // Immutable state for each op in the model. Shared by all executors.
+  SessionState session_state_;
+
+  /// convenience pointer to logger. should always be the same as session_state_.Logger();
+  const logging::Logger* session_logger_;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
-
-  common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
   common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
@@ -360,9 +374,6 @@ class InferenceSession {
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_;
 
-  /// convenience pointer to logger. should always be the same as session_state_.Logger();
-  const logging::Logger* session_logger_;
-
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
@@ -371,18 +382,8 @@ class InferenceSession {
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 
-  // The model served by this inference session instance.
-  // Currently this has to be a shared ptr because the Model::Load method
-  // returns a shared_ptr only. Ideally factory functions should always return
-  // unique_ptr for maximum flexibility. Client can always upgrade it to shared_ptr
-  // if they need.
-  std::shared_ptr<onnxruntime::Model> model_;
-
   // A set of executors that can run in parallel.
   std::vector<std::unique_ptr<IExecutor>> executors_;  // TODO do we need this vector?
-
-  // Immutable state for each op in the model. Shared by all executors.
-  SessionState session_state_;
 
   ModelMetadata model_metadata_;
   InputDefList required_input_def_list_;
