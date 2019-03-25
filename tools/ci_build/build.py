@@ -537,7 +537,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
             #limit concurrency to 1
             run_subprocess([exe,'-x', '-c', '1'] + cmd, cwd=cwd)
           else:
-            run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+            run_subprocess([exe] + cmd, cwd=cwd)
         else:
           if provider == 'tensorrt':
             run_subprocess([exe, '-c', '1'] + cmd, cwd=cwd)
