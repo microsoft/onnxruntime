@@ -49,15 +49,16 @@ else
 fi
 
 set +e
-
+mkdir -p ~/.cache/onnxruntime
+mkdir -p ~/.onnx
 if [ $BUILD_DEVICE = "cpu" ]; then
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     docker run -h $HOSTNAME \
-        --rm \
         --name "onnxruntime-$BUILD_DEVICE" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
-        --volume "$BUILD_DIR:/home/onnxruntimedev" \
+        --volume "$BUILD_DIR:/build" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
+        --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
@@ -67,8 +68,9 @@ else
         --rm \
         --name "onnxruntime-$BUILD_DEVICE" \
         --volume "$SOURCE_ROOT:/onnxruntime_src" \
-        --volume "$BUILD_DIR:/home/onnxruntimedev" \
+        --volume "$BUILD_DIR:/build" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
+        --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &

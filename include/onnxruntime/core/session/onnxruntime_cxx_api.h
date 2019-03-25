@@ -117,13 +117,13 @@ class SessionOptionsWrapper {
   }
 #ifdef _WIN32
   OrtSession* OrtCreateSession(_In_ const wchar_t* model_path) {
-    OrtSession* ret;
+    OrtSession* ret = nullptr;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #else
   OrtSession* OrtCreateSession(_In_ const char* model_path) {
-    OrtSession* ret;
+    OrtSession* ret = nullptr;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
