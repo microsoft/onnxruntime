@@ -20,9 +20,9 @@ class DummyGraphTransformer : public GraphTransformer {
  private:
   mutable bool transformer_invoked_;
 
-  Status ApplyImpl(Graph& graph, bool& modified,
-                   const std::vector<std::string>& complatible_provider_types,
-                   int graph_level) const override {
+  Status ApplyImpl(Graph& /*graph*/, bool& /*modified*/,
+                   const std::vector<std::string>& /*complatible_provider_types*/,
+                   int /*graph_level*/) const override {
     transformer_invoked_ = true;
     return Status::OK();
   }  
@@ -43,15 +43,15 @@ class DummyRewriteRule : public RewriteRule {
   const std::string included_op_type_ = "Dummy";
   bool rewrite_rule_invoked_;
 
-  bool SatisfyCondition(const Graph& graph, const Node& node) override {
+  bool SatisfyCondition(const Graph& /*graph*/, const Node& /*node*/) override {
       return true;
   }
 
-  bool OpTypeCondition(const Node& node) override {
+  bool OpTypeCondition(const Node& /*node*/) override {
       return true;
   }
 
-  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override {
+  Status Apply(Graph& /*graph*/, Node& /*node*/, bool& /*modified*/, bool& /*deleted*/) override {
     rewrite_rule_invoked_ = true;
     return Status::OK();
   } 
