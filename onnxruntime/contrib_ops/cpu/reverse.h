@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include <unordered_set>
-#include "core\util\eigen_common_wrapper.h"
+#include "core/util/eigen_common_wrapper.h"
 
 namespace onnxruntime {
 namespace contrib {
