@@ -56,7 +56,7 @@ std::vector<TransformerProviderSet> GenerateTransformers(const TransformerLevel&
     case TransformerLevel::Level2: {
       std::vector<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
       std::vector<std::string> l2_global = {};
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(), l2_execution_providers);
+      //transformers.emplace_back(std::make_unique<ConvActivationFusion>(), l2_execution_providers);
       transformers.emplace_back(std::make_unique<ConvBNFusion>(), l2_execution_providers);
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(), l2_execution_providers);
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(), l2_execution_providers);

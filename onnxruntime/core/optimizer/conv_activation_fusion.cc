@@ -85,7 +85,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified,
       }
     }
 
-    if (graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    if (!graph.IsNodeOutputsInGraphOutputs(next_node)) {
     
       HandleActivationNodeEdges(graph, act_node, fused_conv);
 
