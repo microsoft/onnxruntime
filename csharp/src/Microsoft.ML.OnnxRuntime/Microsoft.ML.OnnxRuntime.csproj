@@ -7,6 +7,11 @@
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
+    <!--internal build related properties-->
+    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+
     <!--- packaging properties -->
     <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
     <Authors>Microsoft</Authors>
@@ -14,12 +19,8 @@
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <PackageLicenseUrl>https://github.com/Microsoft/onnxruntime/blob/master/LICENSE</PackageLicenseUrl>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
-    <!--internal build related properties-->
-    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
-    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
 
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -64,7 +65,7 @@
           Visible="false"
     />
 
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt"
           PackagePath="\"
           Pack="true"
           Visible="false"
@@ -90,6 +91,10 @@
 
   </ItemGroup>
 
+  <ItemGroup>
+    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE"/>
+  </ItemGroup>
+
   <Target Name="ObtainPackageVersion" BeforeTargets="Build;Pack">
     <ReadLinesFromFile File="$(OnnxRuntimeCsharpRoot)\..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
@@ -104,6 +109,7 @@
       <PackageVersion Condition="'$(IsReleaseBuild)'!='true'">$(PackageVersion)-dev-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
+    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
   </Target>
 
   <ItemGroup>

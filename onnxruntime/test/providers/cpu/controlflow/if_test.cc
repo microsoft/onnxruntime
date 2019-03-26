@@ -16,12 +16,14 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+namespace {
 struct RunOptions {
   bool include_dim_values_in_main_graph = false;
   int symbolic_dim_value_in_main_graph = -1;
   bool include_dim_values_in_subgraph = true;
   bool mixed_execution_providers = false;
 };
+}
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
 

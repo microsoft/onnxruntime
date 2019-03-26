@@ -126,8 +126,11 @@ ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);
-  if (status.IsOK())
+  if (status.IsOK()) {
     *out = new OrtEnv(env.release(), default_logging_manager.release());
+    return nullptr;
+  }
+  *out = nullptr;
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -337,11 +340,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
   API_IMPL_END
 }
 
-ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain, int op_version_start, int op_version_end) {
+ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain) {
   auto custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   custom_op_domain->domain_ = domain;
-  custom_op_domain->op_version_start_ = op_version_start;
-  custom_op_domain->op_version_end_ = op_version_end;
   return custom_op_domain.release();
 }
 
@@ -370,11 +371,6 @@ ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* mo
       options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
   if (options != nullptr) {
-    if (!options->custom_op_paths.empty()) {
-      status = sess->LoadCustomOps(options->custom_op_paths);
-      if (!status.IsOK())
-        return ToOrtStatus(status);
-    }
     if (!options->custom_op_domains_.empty()) {
       status = sess->AddCustomOpDomains(options->custom_op_domains_);
       if (!status.IsOK())
@@ -558,7 +554,6 @@ ORT_API_STATUS_IMPL(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* 
   ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) { \
     delete reinterpret_cast<REAL_TYPE*>(value);                   \
   }
-
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN

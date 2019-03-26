@@ -15,6 +15,9 @@
 #include <core/platform/ort_mutex.h>
 #include <core/framework/data_types.h>
 #include <core/framework/ml_value.h>
+#include <sstream>
+#include <map>
+#include <regex>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -40,7 +43,6 @@
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
 #endif
 #include <google/protobuf/util/delimited_message_util.h>
-#include <google/protobuf/text_format.h>
 #include "tml.pb.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
@@ -388,34 +390,66 @@ Status OnnxTestCase::GetPostProcessing(bool* value) {
   return Status::OK();
 }
 
+static std::string trim_str(const std::string& s) {
+  std::string ltrim = std::regex_replace(s, std::regex("^\\s+"), std::string(""));
+  std::string result = std::regex_replace(ltrim, std::regex("\\s+$"), std::string(""));
+  return result;
+}
+
+static bool read_config_file(const std::basic_string<PATH_CHAR_TYPE>& path, std::map<std::string, std::string>& fc) {
+  std::ifstream infile(path);
+  if (!infile.good()) {
+    return false;
+  }
+
+  for (std::string line; std::getline(infile, line);) {
+    std::istringstream ss(line);
+    if (line.empty()) {
+      continue;
+    }
+    std::vector<std::string> tokens;
+    for (std::string token; std::getline(ss, token, ':');) {
+      std::string trimmed_token = trim_str(token);
+      if (trimmed_token.empty()) {
+        continue;
+      }
+      tokens.push_back(trimmed_token);
+    }
+    fc[tokens[0]] = tokens[1];
+  }
+  return true;
+}
+
 Status OnnxTestCase::ParseConfig() {
   std::call_once(config_parsed_, [this]() {
     std::basic_string<PATH_CHAR_TYPE> config_path =
         ReplaceFilename<std::basic_string<PATH_CHAR_TYPE>>(model_url_, ORT_TSTR("config.txt"));
-    int config_fd;
-    auto st = Env::Default().FileOpenRd(config_path, config_fd);
-    if (st.IsOK()) {
-      google::protobuf::io::FileInputStream f(config_fd);
-      f.SetCloseOnDelete(true);
-      //parse model
-      onnxruntime::proto::TestCaseConfig config_pb;
-      if (!google::protobuf::TextFormat::Parse(&f, &config_pb)) {
-        LOGF_DEFAULT(ERROR, "Parse config failed");
-        return;
-      } else {
-        per_sample_tolerance_ = config_pb.per_sample_tolerance();
-        relative_per_sample_tolerance_ = config_pb.relative_per_sample_tolerance();
-        post_processing_ = config_pb.post_processing();
-        return;
+    /* Note: protobuf-lite doesn't support reading protobuf files as text-format. Config.txt is exactly that.
+       That's the reason I've to parse the file in a different way to read the configs. Currently
+       this affects 2 tests - fp16_tiny_yolov2 and fp16_inception_v1. It's not clear why we've to use protobuf
+       to represent simple config files that have only key-value pairs.
+     */
+    std::map<std::string, std::string> fc;
+    if (read_config_file(config_path, fc)) {
+      if (fc.count("per_sample_tolerance")) {
+        per_sample_tolerance_ = stod(fc["per_sample_tolerance"]);
       }
-    }
-    per_sample_tolerance_ = 1e-3;
-    relative_per_sample_tolerance_ = 1e-5;
+      if (fc.count("relative_per_sample_tolerance")) {
+        relative_per_sample_tolerance_ = stod(fc["relative_per_sample_tolerance"]);
+      }
+      if (fc.count("post_processing")) {
+        post_processing_ = fc["post_processing"] == "true" ? true : false;
+      }
+      return;
+    } else {
+      per_sample_tolerance_ = 1e-3;
+      relative_per_sample_tolerance_ = 1e-5;
 #ifdef USE_CUDA
-    relative_per_sample_tolerance_ = 0.017;  // to resolve random MNIST test failure
+      relative_per_sample_tolerance_ = 0.017;  // to resolve random MNIST test failure
 #endif
-    post_processing_ = false;
-    return;
+      post_processing_ = false;
+      return;
+    }
   });
   return Status::OK();
 }
@@ -424,9 +458,9 @@ Status OnnxTestCase::ParseModel() {
   Status st = Status::OK();
   std::call_once(model_parsed_, [this, &st]() {
     //parse model
-    ONNX_NAMESPACE::ModelProto* model_pb;
+    ONNX_NAMESPACE::ModelProto* model_pb = nullptr;
     st = loadModelFile(model_url_.c_str(), &model_pb);
-    if (!st.IsOK()) return;
+    if (!st.IsOK() || model_pb == nullptr) return;
     const ONNX_NAMESPACE::GraphProto& graph = model_pb->graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();
