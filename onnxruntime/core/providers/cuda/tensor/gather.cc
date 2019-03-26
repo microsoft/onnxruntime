@@ -8,6 +8,15 @@
 
 namespace onnxruntime {
 namespace cuda {
+namespace {
+void PrintData(int64_t* buffer, const void* data, int64_t count, std::string name) {
+  cudaMemcpy(buffer, data, 2 * count, cudaMemcpyDeviceToHost);
+  std::cout << name << ":" << std::endl;
+  for (int64_t i = 0; i < count; ++i) {
+    std::cout << buffer[i] << std::endl;
+  }
+}
+};  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
     Gather,
@@ -54,6 +63,12 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
 
   const TensorShape& input_shape = p.input_tensor->Shape();
+
+  if (OpKernel::Node().Name().compare("Gather__633") == 0 || OpKernel::Node().Name().compare("Gather__285") == 0 || OpKernel::Node().Name().compare("Gather__639") == 0 || OpKernel::Node().Name().compare("Gather__287") == 0 || OpKernel::Node().Name().compare("Gather__642") == 0) {
+    int64_t buffer[40];
+    PrintData(buffer, p.input_tensor->DataRaw(), 8, OpKernel::Node().Name());
+    PrintData(buffer, p.indices_tensor->DataRaw(), 8, OpKernel::Node().Name());
+  }
 
   const int64_t block_size = input_shape.SizeFromDimension(p.axis + 1);
   size_t N = p.indices_tensor->Shape().Size();
