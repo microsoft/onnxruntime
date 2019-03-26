@@ -37,8 +37,7 @@ static const std::string MODEL_FOLDER = "testdata/transform/";
 
 // Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int>
-CountOpsInGraph(const Graph& graph) {
+std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
   std::map<std::string, int> op_to_count;
   for (auto& node : graph.Nodes()) {
     op_to_count[node.OpType()] =
