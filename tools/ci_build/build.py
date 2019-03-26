@@ -594,15 +594,22 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
         raise BuildError("Couldn't build protoc.exe for host. Failing build.")
 
 def generate_documentation(source_dir, build_dir, configs):
-    #copy the gen_doc.py
-    shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
-                os.path.join(build_dir,configs[0], configs[0]))
-    run_subprocess([
-                     sys.executable,
-                     'gen_doc.py',
-                     '--output_path', os.path.join(source_dir, docs, 'ContribOperators.md')
-                   ], 
-                   cwd = os.path.join(build_dir,configs[0], configs[0]))
+    operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
+    for config in configs:
+        #copy the gen_doc.py
+        shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
+                    os.path.join(build_dir,config, config))
+        run_subprocess([
+                        sys.executable,
+                        'gen_doc.py',
+                        '--output_path', operator_doc_path
+                    ], 
+                    cwd = os.path.join(build_dir,config, config))
+        
+    docdiff = run_subprocess(['git', 'diff', operator_doc_path], capture=True).stdout
+    if len(docdiff) > 0:
+        raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in")
+
 def main():
     args = parse_arguments()
 
@@ -733,7 +740,7 @@ def main():
     
     if args.gen_doc:
         generate_documentation(source_dir, build_dir, configs)
-        
+
     log.info("Build complete")
 
 if __name__ == "__main__":
