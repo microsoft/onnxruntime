@@ -39,7 +39,7 @@ def display_number(v):  # type: (int) -> Text
 
 
 def should_render_domain(domain):  # type: (Text) -> bool
-    if domain == ONNX_DOMAIN or domain == '' or domain == ONNX_ML_DOMAIN:
+    if domain == ONNX_DOMAIN or domain == '' or domain == ONNX_ML_DOMAIN or domain == 'ai.onnx.ml':
         return False
     return True
 
