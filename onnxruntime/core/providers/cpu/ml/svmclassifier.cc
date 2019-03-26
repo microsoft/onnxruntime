@@ -76,7 +76,7 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
 }
 
 template <typename LabelType>
-int _set_score_svm(Tensor* Y, float maxweight, const int64_t maxclass, const int64_t n,
+int _set_score_svm(Tensor* Y, float max_weight, const int64_t maxclass, const int64_t n,
                    POST_EVAL_TRANSFORM post_transform_, const std::vector<float>& proba_, bool weights_are_all_positive_,
                    const std::vector<LabelType>& classlabels, LabelType posclass, LabelType negclass) {
   int write_additional_scores = -1;
@@ -84,16 +84,16 @@ int _set_score_svm(Tensor* Y, float maxweight, const int64_t maxclass, const int
   if (classlabels.size() == 2) {
     write_additional_scores = post_transform_ == POST_EVAL_TRANSFORM::NONE ? 2 : 0;
     if (proba_.size() == 0) {
-      if (weights_are_all_positive_ && maxweight >= 0.5)
+      if (weights_are_all_positive_ && max_weight >= 0.5)
         output_data[n] = classlabels[1];
-      else if (maxweight > 0 && !weights_are_all_positive_)
+      else if (max_weight > 0 && !weights_are_all_positive_)
         output_data[n] = classlabels[1];
       else
         output_data[n] = classlabels[maxclass];
     } else {
       output_data[n] = classlabels[maxclass];
     }
-  } else if (maxweight > 0) {
+  } else if (max_weight > 0) {
     output_data[n] = posclass;
   } else {
     output_data[n] = negclass;
@@ -109,7 +109,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
 
   Tensor* Y = ctx->Output(0, TensorShape({N}));
-  
+
   int64_t nb_columns = class_count_;
   if (proba_.size() == 0 && vector_count_ > 0) {
     if (class_count_ > 2)
@@ -205,14 +205,14 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       std::copy(estimates.begin(), estimates.end(), scores.begin());
     }
 
-    float maxweight = 0;
+    float max_weight = 0;
     if (votes.size() > 0) {
       auto it_maxvotes = std::max_element(votes.begin(), votes.end());
       maxclass = std::distance(votes.begin(), it_maxvotes);
     } else {
-      auto it_maxweight = std::max_element(scores.begin(), scores.end());
-      maxclass = std::distance(scores.begin(), it_maxweight);
-      maxweight = *it_maxweight;
+      auto it_max_weight = std::max_element(scores.begin(), scores.end());
+      maxclass = std::distance(scores.begin(), it_max_weight);
+      max_weight = *it_max_weight;
     }
 
     // write top class
@@ -221,11 +221,11 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     if (rho_.size() == 1) {
       if (using_strings_) {
         write_additional_scores = _set_score_svm<std::string>(
-            Y, maxweight, maxclass, n, post_transform_, proba_,
+            Y, max_weight, maxclass, n, post_transform_, proba_,
             weights_are_all_positive_, classlabels_strings_, "1", "0");
       } else {
         write_additional_scores = _set_score_svm<int64_t>(
-            Y, maxweight, maxclass, n, post_transform_, proba_,
+            Y, max_weight, maxclass, n, post_transform_, proba_,
             weights_are_all_positive_, classlabels_ints_, 1, 0);
       }
     } else {  //multiclass
