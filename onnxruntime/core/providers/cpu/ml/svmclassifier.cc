@@ -76,26 +76,27 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
 }
 
 template <typename LabelType>
-int _set_score_svm(Tensor* Y, const float& maxweight, const int64_t& maxclass, const int64_t& n,
+int _set_score_svm(Tensor* Y, float maxweight, const int64_t maxclass, const int64_t n,
                    POST_EVAL_TRANSFORM post_transform_, const std::vector<float>& proba_, bool weights_are_all_positive_,
-                   const std::vector<LabelType>& classlabels, const LabelType& posclass, const LabelType& negclass) {
+                   const std::vector<LabelType>& classlabels, LabelType posclass, LabelType negclass) {
   int write_additional_scores = -1;
+  auto output_data = Y->template MutableData<LabelType>();
   if (classlabels.size() == 2) {
     write_additional_scores = post_transform_ == POST_EVAL_TRANSFORM::NONE ? 2 : 0;
     if (proba_.size() == 0) {
       if (weights_are_all_positive_ && maxweight >= 0.5)
-        Y->template MutableData<LabelType>()[n] = classlabels[1];
+        output_data[n] = classlabels[1];
       else if (maxweight > 0 && !weights_are_all_positive_)
-        Y->template MutableData<LabelType>()[n] = classlabels[1];
+        output_data[n] = classlabels[1];
       else
-        Y->template MutableData<LabelType>()[n] = classlabels[maxclass];
+        output_data[n] = classlabels[maxclass];
     } else {
-      Y->template MutableData<LabelType>()[n] = classlabels[maxclass];
+      output_data[n] = classlabels[maxclass];
     }
   } else if (maxweight > 0) {
-    Y->template MutableData<LabelType>()[n] = posclass;
+    output_data[n] = posclass;
   } else {
-    Y->template MutableData<LabelType>()[n] = negclass;
+    output_data[n] = negclass;
   }
   return write_additional_scores;
 }
@@ -108,11 +109,16 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
 
   Tensor* Y = ctx->Output(0, TensorShape({N}));
-  std::vector<int64_t> dims;
-  int64_t nc = (proba_.size() > 0 || vector_count_ == 0)
-                   ? class_count_
-                   : (class_count_ > 2 ? class_count_ * (class_count_ - 1) / 2 : 2);
-  dims = {static_cast<int64_t>(N), static_cast<int64_t>(nc)};
+  
+  int64_t nb_columns = class_count_;
+  if (proba_.size() == 0 && vector_count_ > 0) {
+    if (class_count_ > 2)
+      nb_columns = class_count_ * (class_count_ - 1) / 2;
+    else
+      nb_columns = 2;
+  }
+
+  std::vector<int64_t> dims{N, nb_columns};
   Tensor* Z = ctx->Output(1, TensorShape(dims));
 
   const T* x_data = X->template Data<T>();
@@ -128,7 +134,6 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> votes;
 
     if (vector_count_ == 0 && mode_ == SVM_TYPE::SVM_LINEAR) {
-      // This was in the original code but it does not appear in libsvm or scikit-learn.
       for (int64_t j = 0; j < class_count_; j++) {  //for each class
         auto val = kernel_dot(x_data, current_weight_0, coefficients_, feature_count_ * j,
                               feature_count_, get_kernel_type());
@@ -146,10 +151,9 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
         kernels.push_back(val);
       }
       votes.resize(class_count_, 0);
-      double sum;
       for (int64_t i = 0; i < class_count_; i++) {        // for each class
         for (int64_t j = i + 1; j < class_count_; j++) {  // for each class
-          sum = 0;
+          double sum = 0;
           int64_t start_index_i = starting_vector_[i];  // *feature_count_;
           int64_t start_index_j = starting_vector_[j];  // *feature_count_;
 
@@ -182,10 +186,9 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       std::vector<float> probsp2(num, 0.f);
       std::vector<float> estimates(class_count_, 0.f);
       int64_t index = 0;
-      int64_t p1, p2;
       for (int64_t i = 0; i < class_count_; ++i) {
-        p1 = i * class_count_ + i + 1;
-        p2 = (i + 1) * class_count_ + i;
+        int64_t p1 = i * class_count_ + i + 1;
+        int64_t p2 = (i + 1) * class_count_ + i;
         for (int64_t j = i + 1; j < class_count_; ++j, ++index) {
           float val1 = sigmoid_probability(scores[index], proba_[index], probb_[index]);
           float val2 = std::max(val1, 1.0e-7f);
@@ -200,9 +203,6 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
       // copy probabilities back into scores
       scores.resize(estimates.size());
       std::copy(estimates.begin(), estimates.end(), scores.begin());
-      // } else if (proba_.size() == 0) {
-      // Normalization will be changed in 0.21.
-      // See https://github.com/scikit-learn/scikit-learn/pull/10440
     }
 
     float maxweight = 0;

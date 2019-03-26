@@ -30,29 +30,28 @@ class SVMCommon {
   KERNEL get_kernel_type() const { return kernel_type_; }
 
   float kernel_dot(const T* A, int64_t a, const std::vector<float>& B, int64_t b, int64_t len, KERNEL k) const {
-    double sum = 0.f;
+    double sum = 0;
     const T* pA = A + a;
     const float* pB = &B[b];
     if (k == KERNEL::POLY) {
       for (int64_t i = len; i > 0; --i, ++pA, ++pB)
-        sum += *pB * static_cast<float>(*pA);
+        sum += *pA * *pB;
       sum = gamma_ * sum + coef0_;
       sum = std::pow(sum, degree_);
     } else if (k == KERNEL::SIGMOID) {
       for (int64_t i = len; i > 0; --i, ++pA, ++pB)
-        sum += *pB * static_cast<float>(*pA);
+        sum += *pA * *pB;
       sum = gamma_ * sum + coef0_;
       sum = std::tanh(sum);
     } else if (k == KERNEL::RBF) {
-      float val;
       for (int64_t i = len; i > 0; --i, ++pA, ++pB) {
-        val = static_cast<float>(*pA) - *pB;
+        double val = *pA - *pB;
         sum += val * val;
       }
       sum = std::exp(-gamma_ * sum);
     } else if (k == KERNEL::LINEAR) {
       for (int64_t i = len; i > 0; --i, ++pA, ++pB)
-        sum += *pB * static_cast<float>(*pA);
+        sum += *pA * *pB;
     }
     return (float)sum;
   }
