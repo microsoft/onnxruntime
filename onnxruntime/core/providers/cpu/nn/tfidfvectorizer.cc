@@ -454,20 +454,17 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
     b_dim = 1;
     C = input_dims[0];
     if (C < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions where C >= 0 and B > 0");
-    }
   } else if (input_dims.size() == 2) {
     B = input_dims[0];
     C = input_dims[1];
     b_dim = B;
-    if (B < 1 || C < 0) {
+    if (B < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions where C >= 0 and B > 0");
+                    "Input shape must have either [C] or [B,C] dimensions with B > 0.");
     }
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+                  "Input shape must have either [C] or [B,C] dimensions with B > 0.");
   }
 
   // Frequency holder allocate [B..output_size_]
@@ -476,6 +473,9 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
   frequencies.resize(b_dim * impl.output_size_, 0);
 
   if (input_shape.Size() == 0) {
+    // TfidfVectorizer may receive an empty input when it follows a Tokenizer
+    // (for example for a string containing only stopwords).
+    // The operator returns an empty output as well.
     OutputResult(ctx, B, frequencies);
     return Status::OK();
   }
