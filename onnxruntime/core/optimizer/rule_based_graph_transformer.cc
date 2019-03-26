@@ -26,7 +26,7 @@ Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
   return Status::OK();
 }
 
-Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 

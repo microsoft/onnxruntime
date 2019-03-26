@@ -236,12 +236,12 @@ bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
   return true;
 }
 
-bool HasGraphInput(const Graph& graph, const NodeArg* input) {
+bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
-bool IsConstantInputsNode(const Graph& graph, const Node& node) {
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
@@ -250,7 +250,7 @@ bool IsConstantInputsNode(const Graph& graph, const Node& node) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should not
     // appear in the graph's inputs (that is the only way to guarantee it will always be constant).
-    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || HasGraphInput(graph, input_def)) {
+    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || IsGraphInput(graph, input_def)) {
       return false;
     }
   }

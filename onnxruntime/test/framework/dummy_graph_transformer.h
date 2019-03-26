@@ -43,11 +43,7 @@ class DummyRewriteRule : public RewriteRule {
 
   bool SatisfyCondition(const Graph& /*graph*/, const Node& /*node*/) override {
       return true;
-  }
-
-  bool OpTypeCondition(const Node& /*node*/) override {
-      return true;
-  }
+  }  
 
   Status Apply(Graph& /*graph*/, Node& /*node*/, bool& /*modified*/, bool& /*deleted*/) override {
     rewrite_rule_invoked_ = true;

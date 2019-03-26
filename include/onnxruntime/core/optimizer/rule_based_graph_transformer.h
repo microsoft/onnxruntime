@@ -59,19 +59,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
 
  private:
   std::vector<std::unique_ptr<RewriteRule>> rules_;
-};
 
-/**
-@class TopDownRuleBasedTransformer
-
-This is a rule-based Graph transformer that applies rules by performing top-down passes of the Graph.
-*/
-class TopDownRuleBasedTransformer : public RuleBasedGraphTransformer {
- public:
-  TopDownRuleBasedTransformer(const std::string& name, const std::string& desc)
-      : RuleBasedGraphTransformer(name, desc) {}
-
- private:
   // Performs a single top-down traversal of the graph and applies all registered rules.
   common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
