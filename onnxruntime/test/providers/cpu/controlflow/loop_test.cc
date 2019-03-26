@@ -17,13 +17,14 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+namespace {
 struct RunOptions {
   bool include_dim_values_in_main_graph = true;
   bool include_dim_values_in_subgraph = false;
   bool include_types_in_subgraph = false;
   bool mixed_execution_providers = false;
 };
-
+}
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
 
 static const float kOuterNodeAddValue = 3.f;

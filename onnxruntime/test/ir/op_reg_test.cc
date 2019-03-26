@@ -11,6 +11,7 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+#ifndef DISABLE_CONTRIB_OPS
 TEST(OpRegistrationTest, AffineOp) {
   auto op = OpSchemaRegistry::Schema("Affine");
   EXPECT_TRUE(nullptr != op);
@@ -26,6 +27,7 @@ TEST(OpRegistrationTest, AffineOp) {
   EXPECT_EQ(attr_beta.name, "beta");
   EXPECT_EQ(attr_beta.type, AttrType::AttributeProto_AttributeType_FLOAT);
 }
+#endif
 
 TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   Model model("traditionalMl");
