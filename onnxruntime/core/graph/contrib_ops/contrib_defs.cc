@@ -5,6 +5,7 @@
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/reverse_sequence_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
@@ -18,9 +19,9 @@ void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool u
 }
 namespace onnxruntime {
 namespace contrib {
-using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
-using ::ONNX_NAMESPACE::OpSchema;
+using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::OpSchema;
+using ONNX_NAMESPACE::OPTIONAL;
 
 void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx) {
   if (!hasInputShape(ctx, input1Idx) && !hasInputShape(ctx, input2Idx)) {
@@ -221,7 +222,6 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
-
   // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
   static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
@@ -585,6 +585,7 @@ activation and leaky_relu_alpha.)DOC")
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(ReverseSequence, RegisterReverseSequenceOpSchema);
 
   static const char* Tokenizer_ver1_doc = R"DOC(
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
