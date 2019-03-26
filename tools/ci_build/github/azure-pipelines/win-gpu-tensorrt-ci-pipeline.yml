@@ -4,8 +4,12 @@ jobs:
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     CUDA_VERSION: '10.0'
+    # There are some tests in 20190130.zip that TensorRT can't run. Instead here use 20181210 opset8 for TensorRT test.
+    TestDataUrl: https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
+    TestDataChecksum: a966def7447f4ff04f5665bca235b3f3
+
   steps:
-    - template: templates/set-test-data-variables-step.yml
+    # - template: templates/set-test-data-variables-step.yml
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:
@@ -58,7 +62,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update --msvc_toolset=14.11'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_full_protobuf --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update --msvc_toolset=14.11'
         workingDirectory: "$(Build.BinariesDirectory)"
 
     - task: VSBuild@1
@@ -75,7 +79,7 @@ jobs:
       displayName: 'Test Debug'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_full_protobuf --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
         workingFolder: '$(Build.BinariesDirectory)'
     - task: VSBuild@1
       displayName: 'Build C# Debug'
@@ -111,7 +115,7 @@ jobs:
       displayName: 'Test Release'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --build_shared_lib  --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --use_openmp --use_mkldnn --build_shared_lib  --enable_onnx_tests --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --use_full_protobuf --use_tensorrt --tensorrt_home="C:\local\TensorRT-5.0.4.3" --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
         workingFolder: "$(Build.BinariesDirectory)"
 
     - task: VSBuild@1
@@ -139,6 +143,10 @@ jobs:
         testResultsFiles: '**\*.results.xml'
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
-      condition: succeededOrFailed()
-    - template: templates/clean-agent-build-directory-step.yml
+      condition: succeededOrFailed()      
 
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+      
+    - template: templates/clean-agent-build-directory-step.yml

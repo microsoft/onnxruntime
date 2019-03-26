@@ -152,8 +152,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
       if (input_tensor_elem_type != current_tensor_elem_type)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
-                               TensorProto_DataType_Name(static_cast<TensorProto_DataType>(input_tensor_elem_type)), " != ",
-                               TensorProto_DataType_Name(static_cast<TensorProto_DataType>(current_tensor_elem_type)));
+                               static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                               static_cast<TensorProto_DataType>(current_tensor_elem_type));
 
       if (input_tensor_type.has_shape()) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
@@ -172,8 +172,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
       if (input_tensor_elem_type != current_tensor_elem_type) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SparseTensor element type mismatch. ",
-                               TensorProto_DataType_Name(static_cast<TensorProto_DataType>(input_tensor_elem_type)), " != ",
-                               TensorProto_DataType_Name(static_cast<TensorProto_DataType>(current_tensor_elem_type)));
+                               static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                               static_cast<TensorProto_DataType>(current_tensor_elem_type));
       }
       if (input_tensor_type.has_shape()) {
         auto& current_tensor_type = *current_type.mutable_sparse_tensor_type();

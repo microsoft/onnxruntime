@@ -26,7 +26,6 @@ class GraphTransformerManager {
   common::Status ApplyTransformers(Graph& graph, const TransformerLevel& level) const;
 
  private:
-  GraphTransformerManager() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
 
   const std::vector<std::string>& GetProvidersForTransformer(const std::string& name) const {

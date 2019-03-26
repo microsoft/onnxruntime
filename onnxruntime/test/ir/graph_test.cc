@@ -12,7 +12,6 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include "google/protobuf/util/message_differencer.h"
 #ifdef _MSC_VER
 #pragma warning(pop)
 #else
@@ -34,7 +33,6 @@
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
-using google::protobuf::util::MessageDifferencer;
 
 static bool RegisterCustomSchemas() {
   OPERATOR_SCHEMA(Variable_DFS)
@@ -330,16 +328,8 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
-  bool equal_proto_1_and_2 = MessageDifferencer::MessageDifferencer::Equals(model_proto, model_proto2);
-  std::string diff;
-  if (!equal_proto_1_and_2) {
-    MessageDifferencer d;
-    d.ReportDifferencesToString(&diff);
-    d.Compare(model_proto, model_proto2);
-  } else {
-    diff = "it's fine";
-  }
-  EXPECT_TRUE(equal_proto_1_and_2) << diff;
+  bool equal_proto_1_and_2 = model_proto.SerializeAsString() == model_proto2.SerializeAsString();
+  EXPECT_TRUE(equal_proto_1_and_2);
 
   // Load the model again to ensure that it's still the right thing.
   //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
@@ -537,11 +527,13 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
-  std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
+  std::string s1;
+  //std::stringstream s1;
+  model.ToProto().SerializeToString(&s1);
 
   ModelProto model_proto;
-  const bool result = model_proto.ParseFromIstream(&s1);
+  //  const bool result = model_proto.ParseFromIstream(&s1);
+  const bool result = model_proto.ParseFromString(s1);
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
@@ -591,11 +583,12 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
-  std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
+  std::string s1;
+  //std::stringstream s1;
+  model.ToProto().SerializeToString(&s1);
 
   ModelProto model_proto;
-  const bool result = model_proto.ParseFromIstream(&s1);
+  const bool result = model_proto.ParseFromString(s1);
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
