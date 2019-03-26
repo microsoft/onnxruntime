@@ -183,7 +183,6 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
   test.Run();
 }
 
-#ifndef DISABLE_CONTRIB_OPS
 TEST(ActivationOpTest, ParametricSoftplus) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
@@ -199,7 +198,6 @@ TEST(ActivationOpTest, ParametricSoftplus) {
                          },
                          {{"alpha", alpha}, {"beta", beta}});
 }
-#endif
 
 TEST(ActivationOpTest, Softplus) {
   TestUnaryElementwiseOp("Softplus",

@@ -36,9 +36,6 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kAllocateOutput:
       out << "AllocateOutput";
       break;
-    case AllocKind::kShare:
-      out << "Share";
-      break;
   }
   return out;
 }
@@ -100,8 +97,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
 
 class PlannerImpl {
  public:
-  PlannerImpl(const Node* parent_node,
-              const onnxruntime::GraphViewer& graph_viewer,
+  PlannerImpl(const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args,
               const ExecutionProviders& providers,
               const KernelRegistryManager& kernel_registry,
@@ -110,7 +106,6 @@ class PlannerImpl {
               SequentialExecutionPlan& plan)
       : context_{context},
         plan_{plan},
-        parent_node_{parent_node},
         graph_viewer_{graph_viewer},
         outer_scope_node_args_{outer_scope_node_args},
         execution_providers_{providers},
@@ -124,7 +119,6 @@ class PlannerImpl {
   const ISequentialPlannerContext& context_;
   SequentialExecutionPlan& plan_;
 
-  const Node* parent_node_;
   const onnxruntime::GraphViewer& graph_viewer_;
   const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
@@ -183,8 +177,7 @@ class PlannerImpl {
     info.p_def_site = p_def_site;
   }
 
-  // Reuse/Alias/Share between two MLValue indexes
-  void Reuse(MLValueIndex reused, MLValueIndex reused_for, AllocKind alloc_kind) {
+  void Reuse(MLValueIndex reused, MLValueIndex reused_for) {
     ORT_ENFORCE(reused != reused_for);
     // find original buffer underlying ml-value we want to reuse:
     MLValueIndex original = Buffer(reused);
@@ -195,7 +188,7 @@ class PlannerImpl {
 
     // update allocation plan (for use at execution-time)
     auto& symplan = AllocPlan(reused_for);
-    symplan.alloc_kind = alloc_kind;
+    symplan.alloc_kind = AllocKind::kReuse;
     symplan.reused_buffer = original;
   }
 
@@ -505,30 +498,17 @@ class PlannerImpl {
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
         MLValueIndex reused;
         if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
-          // node_output is graph's output, so we can't reuse intermediate buffer
+          // node_output is graph's output, so we can't reuse intermedia buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
-
-          // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph.
-          // ideally this is temporary, and a future ONNX change to allow empty variadic inputs means we don't
-          // have converted models that unnecessarily add loop state variables. if the value is just being
-          // passed through an implicit input should be used instead.
-          if (parent_node_ && pnode->OpType() == "Identity" && parent_node_->OpType() == "Loop") {
-            const auto& input_name = pnode->InputDefs()[0]->Name();
-            const auto input_index = Index(input_name);
-            const auto& alloc_plan = AllocPlan(input_index);
-            if (alloc_plan.alloc_kind == AllocKind::kPreExisting) {
-              Reuse(input_index, current, AllocKind::kShare);
-            }
-          }
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (FindReusableInput(*pnode, output_arg_num, &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
-          Reuse(reused, current, AllocKind::kReuse);
+          Reuse(reused, current);
         } else if (!context_.EnableParallelExecution() && FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
-          Reuse(reused, current, AllocKind::kReuse);
+          Reuse(reused, current);
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
@@ -630,8 +610,7 @@ Status PlannerImpl::CreatePlan() {
   return Status::OK();
 }
 
-Status SequentialPlanner::CreatePlan(const Node* parent_node,
-                                     const onnxruntime::GraphViewer& graph_viewer,
+Status SequentialPlanner::CreatePlan(const onnxruntime::GraphViewer& graph_viewer,
                                      const std::vector<const NodeArg*>& outer_scope_node_args,
                                      const ExecutionProviders& providers,
                                      const KernelRegistryManager& kernel_registry,
@@ -641,7 +620,7 @@ Status SequentialPlanner::CreatePlan(const Node* parent_node,
   // allocate/reset here so we know it's clean
   plan = std::make_unique<SequentialExecutionPlan>();
 
-  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args,
+  PlannerImpl planner(graph_viewer, outer_scope_node_args,
                       providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
 
   return planner.CreatePlan();

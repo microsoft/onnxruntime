@@ -1,7 +1,6 @@
 syntax = "proto3";
 
 import "onnx-ml.proto";
-
 package onnxruntime.proto;
 
 //must sync with data_types.h

@@ -395,12 +395,6 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(MLValue& mlvalue, int mlvalue
                                                                  per_alloc_plan.create_fence_if_async));
       break;
     }
-    case AllocKind::kShare: {
-      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      // copy at the MLValue level so the shared_ptr for the data is shared between the two MLValue instances
-      mlvalue = GetMutableMLValue(reuse_mlvalue_index);
-      break;
-    }
     default: {
       std::ostringstream ostr;
       ostr << "Invalid allocation kind: " << static_cast<std::underlying_type<AllocKind>::type>(alloc_kind);

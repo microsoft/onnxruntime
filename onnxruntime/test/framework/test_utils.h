@@ -9,8 +9,8 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
-#ifdef USE_TENSORRT 
-#include "core/providers/tensorrt/tensorrt_execution_provider.h"
+#ifdef USE_TRT 
+#include "core/providers/trt/trt_execution_provider.h"
 #endif
 
 namespace onnxruntime {
@@ -21,8 +21,8 @@ IExecutionProvider* TestCPUExecutionProvider();
 IExecutionProvider* TestCudaExecutionProvider();
 #endif
 
-#ifdef USE_TENSORRT
-IExecutionProvider* TestTensorrtExecutionProvider();
+#ifdef USE_TRT
+IExecutionProvider* TestTRTExecutionProvider();
 #endif
 
 template <typename T>

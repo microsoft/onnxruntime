@@ -13,7 +13,8 @@ enum CBLAS_ORDER { CblasRowMajor = 101,
 enum CBLAS_TRANSPOSE {
   CblasNoTrans = 111,
   CblasTrans = 112,
-  CblasConjTrans = 113
+  CblasConjTrans = 113,
+  AtlasConj = 114
 };
 enum CBLAS_UPLO { CblasUpper = 121,
                   CblasLower = 122 };

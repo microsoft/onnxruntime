@@ -681,10 +681,9 @@ static void TestBindHelper(const std::string& log_str,
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, run_provider_type);
 
-  std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  ASSERT_TRUE(session_object.Load(sstr).IsOK());
+  std::stringstream s1;
+  p_model->ToProto().SerializeToOstream(&s1);
+  ASSERT_TRUE(session_object.Load(s1).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -710,10 +709,9 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, kCpuExecutionProvider);
 
-  std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  ASSERT_TRUE(session_object.Load(sstr).IsOK());
+  std::stringstream s1;
+  p_model->ToProto().SerializeToOstream(&s1);
+  ASSERT_TRUE(session_object.Load(s1).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
@@ -871,10 +869,9 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
 
-  std::string s1;
-  model_proto.SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  auto status = session_object.Load(sstr);
+  std::stringstream s1;
+  model_proto.SerializeToOstream(&s1);
+  auto status = session_object.Load(s1);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   status = session_object.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -1344,68 +1341,6 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   int run_number = 0;
   run_test(run_number++);
   run_test(run_number++);
-}
-
-TEST(InferenceSessionTests, TestL1Transformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";  
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1Transformers";
-  so.graph_optimization_level = TransformerLevel::Level1;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
-  Status st = session_object.Initialize();
-  ASSERT_TRUE(st.IsOK()) << st;
-}
-
-TEST(InferenceSessionTests, TestL1AndL2Transformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = TransformerLevel::Level2;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());  
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-}
-
-TEST(InferenceSessionTests, TestCustomTransformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = TransformerLevel::Level2;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"});
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-}
-
-TEST(InferenceSessionTests, DisableAllTransformers) {  
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.DisableAllTransformers";
-  so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
 }
 
 }  // namespace test

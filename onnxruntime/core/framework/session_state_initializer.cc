@@ -59,8 +59,7 @@ SessionStateInitializer::SessionStateInitializer(const std::basic_string<PATH_CH
       kernel_registry_manager_{kernel_registry_manager},
       logger_{session_state.Logger()} {}
 
-common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
-                                                   const std::vector<NodeArg*>& outer_scope_node_args,
+common::Status SessionStateInitializer::CreatePlan(const std::vector<NodeArg*>& outer_scope_node_args,
                                                    bool enable_sequential_execution) {
   auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
 
@@ -84,7 +83,7 @@ common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
     // CreatePlan will create a new SequentialExecutionPlan instance that we will
     // save into the session state.
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(*graph_viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -92,7 +91,7 @@ common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
     // Parallel execution still uses same allocation plan, but has limitation of memory buffer reuse.
     SequentialPlannerContext context(true /* enable parallel execution */);
     ORT_RETURN_IF_ERROR(
-        SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args, execution_providers_,
+        SequentialPlanner::CreatePlan(*graph_viewer, valid_outer_scope_node_args, execution_providers_,
                                       kernel_registry_manager_, mlvalue_name_idx_map, context, exec_plan));
 
     session_state_.SetExecutionPlan(std::move(exec_plan));
@@ -113,13 +112,12 @@ common::Status SessionStateInitializer::InitializeAndSave(const std::vector<Node
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(
-      SaveInitializedTensors(
-          env, graph_loc_, graph_, exec_plan, execution_providers_, mlvalue_name_idx_map,
-          session_state_.GetMutableWeightsBuffers(),
-          [this](int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status {
-            return session_state_.AddInitializedTensor(idx, value, &d);
-          },
-          logger_));
+      SaveInitializedTensors(env, graph_loc_, graph_, exec_plan, execution_providers_, mlvalue_name_idx_map,
+                             session_state_.GetMutableWeightsBuffers(),
+                             [this](int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status {
+                               return session_state_.AddInitializedTensor(idx, value, &d);
+                             },
+                             logger_));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
@@ -327,7 +325,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     id_to_initialized_tensor[mlvalue_index] = entry.second;
   }
   for (const auto& entry : id_to_initialized_tensor) {
-    size_t len = 0;
+    size_t len;
     ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<alignment>(*entry.second, &len));
     ORT_RETURN_IF_ERROR(planner.TraceAllocation(entry.first, len));
   }

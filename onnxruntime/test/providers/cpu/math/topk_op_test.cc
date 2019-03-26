@@ -8,8 +8,7 @@
 namespace onnxruntime {
 namespace test {
 
-static void RunTest(int op_set,
-                    int64_t k,
+static void RunTest(int64_t k,
                     const std::vector<float>& input_vals,
                     const std::vector<int64_t>& input_dimensions,
                     const std::vector<float>& expected_vals,
@@ -18,131 +17,122 @@ static void RunTest(int op_set,
                     int64_t axis = -1,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& expected_err_str = "") {
-  OpTester test("TopK", op_set);
-
-  // Attributes
-  if (axis != -1)
+  OpTester test("TopK");
+  test.AddAttribute("k", k);
+  if (axis != -1) {
     test.AddAttribute("axis", axis);
-  if (op_set <= 9)
-    test.AddAttribute("k", k);
+  }
 
-  // Inputs
   test.AddInput<float>("X", input_dimensions, input_vals);
-  if (op_set == 10)
-    test.AddInput<int64_t>("K", {1}, {k});
-
-  // Outputs
   test.AddOutput<float>("Values", expected_dimensions, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices);
-
-  // Run test and check results
   test.Run(expect_result, expected_err_str);
 }
 
-TEST(TopKOperator, Top1DefaultAxisOpset9) {
+TEST(TopKOperator, Top1DefaultAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
   std::vector<float> expected_vals = {0.4f, 0.3f};
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {2, 1};
-  RunTest(9, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
+  RunTest(1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
 }
 
-TEST(TopKOperator, Top2DefaultAxisOpset9) {
+TEST(TopKOperator, Top2DefaultAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.4f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
   std::vector<float> expected_vals = {0.4f, 0.3f, 0.4f, 0.3f};
   std::vector<int64_t> expected_indices = {3, 1, 2, 1};
   std::vector<int64_t> expected_dimensions = {2, 2};
-  RunTest(9, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
+  RunTest(2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
 }
 
-TEST(TopKOperator, Top3DefaultAxisOpset9) {
+TEST(TopKOperator, Top3DefaultAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.4f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
   std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.4f, 0.3f, 0.2f};
   std::vector<int64_t> expected_indices = {3, 1, 2, 2, 1, 3};
   std::vector<int64_t> expected_dimensions = {2, 3};
-  RunTest(9, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
+  RunTest(3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
 }
 
-TEST(TopKOperator, TopAllDefaultAxisOpset9) {
+TEST(TopKOperator, TopAllDefaultAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
   std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.1f, 0.3f, 0.3f, 0.2f, 0.1f};
   std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
   std::vector<int64_t> expected_dimensions = {2, 4};
-  RunTest(9, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
+  RunTest(4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
 }
 
-TEST(TopKOperator, Top1ExplicitAxisOpset9) {
+TEST(TopKOperator, Top1ExplicitAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {4, 2};
   std::vector<float> expected_vals = {0.3f, 0.4f};
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {1, 2};
   int64_t axis = 0;
-  RunTest(9, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+  RunTest(1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
-TEST(TopKOperator, Top2ExplicitAxisOpset9) {
+TEST(TopKOperator, Top2ExplicitAxis) {
   std::vector<float> input_vals = {0.0f, 1.0f, 2.0f, 11.0f, 08.0f, 5.0f, 6.0f, 7.0f, 4.0f, 9.0f, 10.0f, 3.0f};
   std::vector<int64_t> input_dimensions = {3, 4};
   std::vector<float> expected_vals = {8.0f, 9.0f, 10.0f, 11.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   std::vector<int64_t> expected_indices = {1, 2, 2, 0, 2, 1, 1, 1};
   std::vector<int64_t> expected_dimensions = {2, 4};
   int64_t axis = 0;
-  RunTest(9, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+  RunTest(2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
-TEST(TopKOperator, Top3ExplicitAxisOpset9) {
+TEST(TopKOperator, Top3ExplicitAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {4, 2};
   std::vector<float> expected_vals = {0.3f, 0.4f, 0.2f, 0.3f, 0.1f, 0.3f};
   std::vector<int64_t> expected_indices = {3, 1, 1, 0, 0, 2};
   std::vector<int64_t> expected_dimensions = {3, 2};
   int64_t axis = 0;
-  RunTest(9, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+  RunTest(3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
-TEST(TopKOperator, TopAllExplicitAxisOpset9) {
+
+TEST(TopKOperator, TopAllExplicitAxis) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {4, 2};
   std::vector<float> expected_vals = {0.3f, 0.4f, 0.2f, 0.3f, 0.1f, 0.3f, 0.1f, 0.2f};
   std::vector<int64_t> expected_indices = {3, 1, 1, 0, 0, 2, 2, 3};
   std::vector<int64_t> expected_dimensions = {4, 2};
   int64_t axis = 0;
-  RunTest(9, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+  RunTest(4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
-TEST(TopKOperator, TopAllExplicitAxis1DInputOpset9) {
+TEST(TopKOperator, TopAllExplicitAxis1DInput) {
   std::vector<float> input_vals = {93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 285.0f, 527.0f, 862.0f};
   std::vector<int64_t> input_dimensions = {13};
   std::vector<float> expected_vals = {983.0f, 978.0f, 971.0f, 862.0f, 723.0f, 695.0f, 531.0f, 527.0f, 483.0f, 285.0f, 247.0f, 242.0f, 93.0f};
-  std::vector<int64_t> expected_indices = {7, 3, 2, 12, 9, 1, 8, 11, 4, 10, 5, 6, 0};
+  std::vector<int64_t> expected_indices = {7, 3, 2, 12, 9, 1, 8, 11, 4, 10, 5, 6,0};
   std::vector<int64_t> expected_dimensions = {13};
   int64_t axis = 0;
-  RunTest(9, 13, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+  RunTest(13, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
-TEST(TopKOperator, Top1ExplicitAxisMultiDInputOpset9) {
+TEST(TopKOperator, Top1ExplicitAxisMultiDInput) {
   std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   std::vector<int64_t> input_dimensions = {2, 2, 2};
   std::vector<float> expected_vals = {3, 4, 7, 8};
   std::vector<int64_t> expected_indices = {1, 1, 1, 1};
   std::vector<int64_t> expected_dimensions = {2, 1, 2};
   int64_t axis = 1;
-  RunTest(9, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
+  RunTest(1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
 }
 
-TEST(TopKOperator, InvalidKOpset9) {
+TEST(TopKOperator, InvalidK) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
   std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.1f, 0.3f, 0.3f, 0.2f, 0.1f};
   std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
   std::vector<int64_t> expected_dimensions = {2, 4};
-  RunTest(9,
-          0,
+  RunTest(0,
           input_vals,
           input_dimensions,
           expected_vals,
@@ -151,120 +141,6 @@ TEST(TopKOperator, InvalidKOpset9) {
           1,
           OpTester::ExpectResult::kExpectFailure,
           "Invalid value for attribute k");
-}
-
-TEST(TopKOperator, Top1DefaultAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.4f, 0.3f};
-  std::vector<int64_t> expected_indices = {3, 1};
-  std::vector<int64_t> expected_dimensions = {2, 1};
-  RunTest(10, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
-}
-
-TEST(TopKOperator, Top2DefaultAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.4f, 0.2f};
-  std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.4f, 0.3f, 0.4f, 0.3f};
-  std::vector<int64_t> expected_indices = {3, 1, 2, 1};
-  std::vector<int64_t> expected_dimensions = {2, 2};
-  RunTest(10, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
-}
-
-TEST(TopKOperator, Top3DefaultAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.4f, 0.2f};
-  std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.4f, 0.3f, 0.2f};
-  std::vector<int64_t> expected_indices = {3, 1, 2, 2, 1, 3};
-  std::vector<int64_t> expected_dimensions = {2, 3};
-  RunTest(10, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
-}
-
-TEST(TopKOperator, TopAllDefaultAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.1f, 0.3f, 0.3f, 0.2f, 0.1f};
-  std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
-  std::vector<int64_t> expected_dimensions = {2, 4};
-  RunTest(10, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions);
-}
-
-TEST(TopKOperator, Top1ExplicitAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {4, 2};
-  std::vector<float> expected_vals = {0.3f, 0.4f};
-  std::vector<int64_t> expected_indices = {3, 1};
-  std::vector<int64_t> expected_dimensions = {1, 2};
-  int64_t axis = 0;
-  RunTest(10, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
-}
-
-TEST(TopKOperator, Top2ExplicitAxisOpset10) {
-  std::vector<float> input_vals = {0.0f, 1.0f, 2.0f, 11.0f, 08.0f, 5.0f, 6.0f, 7.0f, 4.0f, 9.0f, 10.0f, 3.0f};
-  std::vector<int64_t> input_dimensions = {3, 4};
-  std::vector<float> expected_vals = {8.0f, 9.0f, 10.0f, 11.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-  std::vector<int64_t> expected_indices = {1, 2, 2, 0, 2, 1, 1, 1};
-  std::vector<int64_t> expected_dimensions = {2, 4};
-  int64_t axis = 0;
-  RunTest(10, 2, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
-}
-
-TEST(TopKOperator, Top3ExplicitAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {4, 2};
-  std::vector<float> expected_vals = {0.3f, 0.4f, 0.2f, 0.3f, 0.1f, 0.3f};
-  std::vector<int64_t> expected_indices = {3, 1, 1, 0, 0, 2};
-  std::vector<int64_t> expected_dimensions = {3, 2};
-  int64_t axis = 0;
-  RunTest(10, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
-}
-
-TEST(TopKOperator, TopAllExplicitAxisOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {4, 2};
-  std::vector<float> expected_vals = {0.3f, 0.4f, 0.2f, 0.3f, 0.1f, 0.3f, 0.1f, 0.2f};
-  std::vector<int64_t> expected_indices = {3, 1, 1, 0, 0, 2, 2, 3};
-  std::vector<int64_t> expected_dimensions = {4, 2};
-  int64_t axis = 0;
-  RunTest(10, 4, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
-}
-
-TEST(TopKOperator, TopAllExplicitAxis1DInputOpset10) {
-  std::vector<float> input_vals = {93.0f, 695.0f, 971.0f, 978.0f, 483.0f, 247.0f, 242.0f, 983.0f, 531.0f, 723.0f, 285.0f, 527.0f, 862.0f};
-  std::vector<int64_t> input_dimensions = {13};
-  std::vector<float> expected_vals = {983.0f, 978.0f, 971.0f, 862.0f, 723.0f, 695.0f, 531.0f, 527.0f, 483.0f, 285.0f, 247.0f, 242.0f, 93.0f};
-  std::vector<int64_t> expected_indices = {7, 3, 2, 12, 9, 1, 8, 11, 4, 10, 5, 6, 0};
-  std::vector<int64_t> expected_dimensions = {13};
-  int64_t axis = 0;
-  RunTest(10, 13, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
-}
-
-TEST(TopKOperator, Top1ExplicitAxisMultiDInputOpset10) {
-  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
-  std::vector<int64_t> input_dimensions = {2, 2, 2};
-  std::vector<float> expected_vals = {3, 4, 7, 8};
-  std::vector<int64_t> expected_indices = {1, 1, 1, 1};
-  std::vector<int64_t> expected_dimensions = {2, 1, 2};
-  int64_t axis = 1;
-  RunTest(10, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, axis);
-}
-
-TEST(TopKOperator, InvalidKOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.1f, 0.3f, 0.3f, 0.2f, 0.1f};
-  std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
-  std::vector<int64_t> expected_dimensions = {2, 4};
-  RunTest(10,
-          0,
-          input_vals,
-          input_dimensions,
-          expected_vals,
-          expected_indices,
-          expected_dimensions,
-          1,
-          OpTester::ExpectResult::kExpectFailure,
-          "value of k should be greater than 0");
 }
 
 }  // namespace test

@@ -56,10 +56,6 @@ The build script runs all unit tests by default (for native builds and skips tes
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
-## Build x86 
-1. For Windows, just add --x86 argument when launching build.bat
-2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
-
 ## Build/Test Flavors for CI
 
 ### CI Build Environments
@@ -115,24 +111,6 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 ### MKL-DNN
 To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn --use_mklml`
-
-### Tensor RT
-ONNX Runtime supports the Tensort RT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
-
-The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6. 
-
- - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
- - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
- - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. 
-- The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
-
-You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
-
-```
-./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
-
-```
-
 
 ### OpenBLAS
 #### Windows

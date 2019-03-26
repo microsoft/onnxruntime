@@ -40,8 +40,6 @@ def generate_abs_op_test(type, X, top_test_folder):
         model_def = helper.make_model(graph_def, producer_name='onnx-example')
         #final_model = onnx.utils.polish_model(model_def)
         final_model = model_def
-        if is_raw:
-            onnx.external_data_helper.convert_model_to_external_data(final_model, True)
         onnx.save(final_model, os.path.join(test_folder, 'model.onnx'))
         expected_output_array = np.abs(X)
         expected_output_tensor = numpy_helper.from_array(expected_output_array)
@@ -87,6 +85,7 @@ def test_size(output_dir):
     generate_size_op_test(TensorProto.FLOAT, np.random.randn(100, 3000, 10).astype(np.float32), os.path.join(output_dir,'test_size_float'))
     generate_size_op_test(TensorProto.STRING, np.array(['abc', 'xy'], dtype=np.bytes_), os.path.join(output_dir,'test_size_string'))
 
+np.array(['abc', 'xy'])
 args = parse_arguments()
 os.makedirs(args.output_dir,exist_ok=True)
 test_abs(args.output_dir)

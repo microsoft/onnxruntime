@@ -14,7 +14,6 @@ limitations under the License.
 #pragma once
 
 #include <memory>
-#include <ostream>
 #include <string>
 #include "core/common/ml_status.h"
 

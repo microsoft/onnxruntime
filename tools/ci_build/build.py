@@ -64,7 +64,8 @@ Use the individual flags to only run the specified stages.
     # enable ONNX tests
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
-    parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. ")
+    parser.add_argument("--pb_home", help="Path to protobuf installation")
+    parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. Will be overridden by {pb_home}/bin/protoc.exe if {pb_home} is set.")
     parser.add_argument("--download_test_data", action="store_true",
                         help='''Downloads test data without running the tests''')
     parser.add_argument("--test_data_url", help="Test data URL.")
@@ -80,9 +81,6 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
-    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
-                        "before building the python binding.")
-    parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
@@ -127,10 +125,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice packages")
     parser.add_argument("--brain_slice_client_package_name", help="Name of brainslice client package")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
-    parser.add_argument("--use_tensorrt", action='store_true', help="Build with TensorRT")
-    parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
-    parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
+    parser.add_argument("--use_trt", action='store_true', help="Build with trt")
+    parser.add_argument("--trt_path", action='store_true', help="Path to trt dir")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -205,9 +201,8 @@ def install_ubuntu_deps(args):
         except Exception as e:
             raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
-def install_python_deps(numpy_version=""):
-    dep_packages = ['setuptools', 'wheel']
-    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
+def install_python_deps():
+    dep_packages = ['setuptools', 'wheel', 'numpy==1.15.0']
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -282,7 +277,7 @@ def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure
                 log.debug("creating shortcut %s -> %s"  % (src_model_dir, dest_model_dir))
                 run_subprocess(['mklink', '/D', '/J', dest_model_dir, src_model_dir], shell=True)
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, pb_home, path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
@@ -295,7 +290,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-                 "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
@@ -311,14 +305,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_BRAINSLICE=" + ("ON" if args.use_brainslice else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"),
+                 "-Donnxruntime_USE_TRT=" + ("ON" if args.use_trt else "OFF"),
                  "-Donnxruntime_ENABLE_TRAINING=" + ("ON"),
-                 "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-                 "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf else "OFF"),
-                 "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -327,6 +318,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_BRAINSLICE_LIB_PATH=%s/%s" % (args.brain_slice_package_path, args.brain_slice_package_name),
             "-Donnxruntime_BS_CLIENT_PACKAGE=%s/%s" % (args.brain_slice_package_path, args.brain_slice_client_package_name),
             "-Donnxruntime_BRAINSLICE_dynamic_lib_PATH=%s/%s" % (args.brain_slice_package_path, bs_shared_lib_name)]
+
+    if args.use_trt:
+        cmake_args += ["-DTENSORRT_ROOT=%s" % args.trt_path]
 
     if args.use_llvm:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
@@ -339,7 +333,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
-    if path_to_protoc_exe:
+    if pb_home:
+        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=" + os.path.join(pb_home,'bin','protoc'), '-Donnxruntime_USE_PREBUILT_PB=ON']
+
+    elif path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
@@ -457,23 +454,7 @@ def setup_cuda_vars(args):
 
     return cuda_home, cudnn_home
 
-def setup_tensorrt_vars(args):
-
-    tensorrt_home = ""
-
-    if (args.use_tensorrt):
-        tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
-
-        tensorrt_home_valid = (tensorrt_home != None and os.path.exists(tensorrt_home))
-
-        if (not tensorrt_home_valid):
-            raise BuildError("tensorrt_home paths must be specified and valid.",
-                             "tensorrt_home='{}' valid={}."
-                             .format(tensorrt_home, tensorrt_home_valid))
-
-    return tensorrt_home
-
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -482,9 +463,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                        cwd=cwd, dll_path=dll_path)
 
         if enable_python_tests:
-            # Disable python tests for TensorRT because many tests are not supported yet
-            if enable_tensorrt:
-                return
             if is_windows():
                 cwd = os.path.join(cwd, config)
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
@@ -500,16 +478,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
                 if config != 'Debug':
                     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
-            if not args.skip_keras_test:
-                try:
-                    import onnxmltools
-                    import keras
-                    onnxml_test = True
-                except ImportError:
-                    warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
-                    onnxml_test = False
-                if onnxml_test:
-                    run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
+            try:
+                import onnxmltools
+                import keras
+                onnxml_test = True
+            except ImportError:
+                warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
+                onnxml_test = False
+            if onnxml_test:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
@@ -528,33 +505,26 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd += ["-j", str(num_parallel_models)]
 
         if config != 'Debug' and os.path.exists(model_dir):
-          if provider == 'tensorrt':
-            model_dir = os.path.join(model_dir, "opset8")
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
-
+        
         if enable_parallel_executor_test:
-          run_subprocess([exe] + cmd, cwd=cwd)
+          run_subprocess([exe] + cmd, cwd=cwd)  
           if provider == 'mkldnn':
             #limit concurrency to 1
             run_subprocess([exe,'-x', '-c', '1'] + cmd, cwd=cwd)
           else:
             run_subprocess([exe,'-x'] + cmd, cwd=cwd)
         else:
-          if provider == 'tensorrt':
-            run_subprocess([exe, '-c', '1'] + cmd, cwd=cwd)
-          else:
-            run_subprocess([exe] + cmd, cwd=cwd)
+          run_subprocess([exe] + cmd, cwd=cwd)
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        if use_tensorrt:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
-        elif use_cuda:
+        if use_cuda:
             run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
         else:
             run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
@@ -604,9 +574,6 @@ def main():
         else:
             args.test = True
 
-    if args.use_tensorrt:
-        args.use_cuda = True
-
     if args.build_wheel:
         args.enable_pybind = True
 
@@ -624,9 +591,6 @@ def main():
 
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
-
-    # if using tensorrt, setup tensorrt paths
-    tensorrt_home = setup_tensorrt_vars(args)
 
     os.makedirs(build_dir, exist_ok=True)
 
@@ -665,7 +629,7 @@ def main():
             if not is_docker():
                 install_python_deps()
         if (args.enable_pybind and is_windows()):
-            install_python_deps(args.numpy_version)
+            install_python_deps()
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
 
@@ -681,7 +645,7 @@ def main():
         elif args.arm or args.arm64:
             path_to_protoc_exe = os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')
 
-        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
+        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, args.pb_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
     if (args.clean):
@@ -691,18 +655,14 @@ def main():
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
     if (args.test):
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm, args.use_tensorrt)
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm)
         # run the onnx model tests if requested explicitly.
         if (args.enable_onnx_tests):
             # directory from ONNX submodule with ONNX test data
             onnx_test_data_dir = '/data/onnx'
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
-            if args.use_tensorrt:
-              # Disable some onnx unit tests that TensorRT parser doesn't supported yet
-              onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', False, 1)
-            elif args.use_cuda:
+            if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 1)
@@ -715,7 +675,7 @@ def main():
 
     if args.build:
         if args.build_wheel:
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda)
 
     log.info("Build complete")
 

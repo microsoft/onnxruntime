@@ -4,12 +4,10 @@
 #include "core/framework/environment.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
-#ifndef DISABLE_CONTRIB_OPS
-#include "core/graph/contrib_ops/contrib_defs.h"
-#endif
 
 #ifdef ENABLE_TRAINING
 #include "core/training/gradient_builder_registry.h"
@@ -40,9 +38,7 @@ Status Environment::Initialize() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       // Register contributed schemas.
       // The corresponding kernels are registered inside the appropriate execution provider.
-#ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
-#endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
       RegisterOnnxFunctionBuilder();

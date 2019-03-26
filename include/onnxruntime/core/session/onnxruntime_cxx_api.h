@@ -104,9 +104,6 @@ class SessionOptionsWrapper {
   void SetSessionLogVerbosityLevel(uint32_t session_log_verbosity_level) {
     OrtSetSessionLogVerbosityLevel(value.get(), session_log_verbosity_level);
   }
-  int SetSessionGraphOptimizationLevel(uint32_t graph_optimization_level) {
-    return OrtSetSessionGraphOptimizationLevel(value.get(), graph_optimization_level);
-  }
   void SetSessionThreadPoolSize(int session_thread_pool_size) {
     OrtSetSessionThreadPoolSize(value.get(), session_thread_pool_size);
   }
@@ -117,17 +114,20 @@ class SessionOptionsWrapper {
   }
 #ifdef _WIN32
   OrtSession* OrtCreateSession(_In_ const wchar_t* model_path) {
-    OrtSession* ret = nullptr;
+    OrtSession* ret;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #else
   OrtSession* OrtCreateSession(_In_ const char* model_path) {
-    OrtSession* ret = nullptr;
+    OrtSession* ret;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #endif
+  void AppendCustomOpLibPath(_In_ const char* lib_path) {
+    OrtAppendCustomOpLibPath(value.get(), lib_path);
+  }
 };
 inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;

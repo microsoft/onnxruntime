@@ -94,29 +94,9 @@ class WindowsEnv : public Env {
   void ExecuteTask(const Task& t) const override {
     t.f();
   }
-
-  static common::Status GetFileSizeIfUnknown(const wchar_t* fname, HANDLE hFile, size_t& length) {
-    if (length > 0) return Status::OK();
-    LARGE_INTEGER filesize;
-    if (!GetFileSizeEx(hFile, &filesize)) {
-      int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
-    }
-    if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "ReadFileAsString: File is too large");
-    }
-    length = static_cast<size_t>(filesize.QuadPart);
-    return Status::OK();
-  }
-
-  common::Status ReadFileAsString(const wchar_t* fname, int64_t offset, void*& p, size_t& len,
-                                  OrtCallback& deleter) const override {
+  common::Status ReadFileAsString(const wchar_t* fname, void*& p, size_t& len, OrtCallback& deleter) const override {
     if (!fname) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ReadFileAsString: 'fname' cannot be NULL");
-    }
-    if (offset > 0 && len == 0) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "ReadFileAsString: please specify length to read");
     }
     deleter.f = nullptr;
     deleter.param = nullptr;
@@ -126,26 +106,22 @@ class WindowsEnv : public Env {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(fname), " fail, errcode =", err);
     }
     std::unique_ptr<void, decltype(&CloseHandle)> handler_holder(hFile, CloseHandle);
-    ORT_RETURN_IF_ERROR(GetFileSizeIfUnknown(fname, hFile, len));
+    LARGE_INTEGER filesize;
+    if (!GetFileSizeEx(hFile, &filesize)) {
+      int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(fname), " fail, errcode =", err);
+    }
     // check the file file for avoiding allocating a zero length buffer
-    if (len == 0) {  // empty file
+    if (filesize.QuadPart == 0) {  // empty file
       p = nullptr;
       len = 0;
       return Status::OK();
     }
-    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(len)));
+    std::unique_ptr<char[]> buffer(reinterpret_cast<char*>(malloc(filesize.QuadPart)));
     char* wptr = reinterpret_cast<char*>(buffer.get());
-    size_t length_remain = len;
-    DWORD bytes_read = 0;
-    if (offset > 0) {
-      LARGE_INTEGER liCurrentPosition;
-      liCurrentPosition.QuadPart = offset;
-      if (SetFilePointerEx(hFile, liCurrentPosition, &liCurrentPosition, FILE_BEGIN) != TRUE) {
-        int err = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(fname), " fail, errcode =", err);
-      }
-    }
-    for (; length_remain > 0; wptr += bytes_read, length_remain -= bytes_read) {
+    auto length_remain = filesize.QuadPart;
+    DWORD readed = 0;
+    for (; length_remain > 0; wptr += readed, length_remain -= readed) {
       //read at most 1GB each time
       DWORD bytes_to_read;
       if (length_remain > (1 << 30)) {
@@ -153,19 +129,20 @@ class WindowsEnv : public Env {
       } else {
         bytes_to_read = static_cast<DWORD>(length_remain);
       }
-      if (ReadFile(hFile, wptr, bytes_to_read, &bytes_read, nullptr) != TRUE) {
+      if (ReadFile(hFile, wptr, bytes_to_read, &readed, nullptr) != TRUE) {
         int err = GetLastError();
         p = nullptr;
         len = 0;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail, errcode =", err);
       }
-      if (bytes_read != bytes_to_read) {
+      if (readed != bytes_to_read) {
         p = nullptr;
         len = 0;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(fname), " fail: unexpected end");
       }
     }
     p = buffer.release();
+    len = filesize.QuadPart;
     deleter.f = DeleteBuffer;
     deleter.param = p;
     return common::Status::OK();

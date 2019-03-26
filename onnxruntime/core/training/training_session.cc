@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/model.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/loss_function_builder.h"
 #include "core/training/training_session.h"
@@ -11,98 +10,188 @@ using namespace std;
 namespace onnxruntime {
 namespace training {
 
-static Status AddLossFuncionInternal(Graph& graph,
-                                     const LossFunctionInfo& loss_func_info) {
-  return GraphAugmenter::AugmentGraph(graph, LossFunctionBuilder().Build(graph, loss_func_info));
+class TrainingSessionImpl : public InferenceSession::Impl {
+ public:
+  TrainingSessionImpl(const SessionOptions& session_options,
+                      logging::LoggingManager* logging_manager = nullptr)
+      : InferenceSession::Impl(session_options, logging_manager) {}
+
+  ~TrainingSessionImpl() {}
+
+  Status Load(const string& model_uri) {
+    original_model_uri_ = model_uri;
+    return InferenceSession::Impl::Load(model_uri);
+  }
+
+  Status AddLossFuncion(const LossFunctionInfo& loss_func_info) {
+    loss_func_info_ = loss_func_info;
+
+    try {
+      ORT_RETURN_IF_ERROR(AddLossFuncion(model_->MainGraph(), loss_func_info_));
+    } catch (const OnnxRuntimeException& exp) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
+    }
+    return DoPostLoadProcessing(*model_);
+  }
+
+  Status BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
+    // Fill weights_to_train_ according to weights_to_train
+    weights_to_train_ = weights_to_train;
+
+    ORT_RETURN_IF_ERROR(BuildGradientGraph(model_->MainGraph(),
+                                           loss_function_output_name,
+                                           weights_to_train_));
+
+    return DoPostLoadProcessing(*model_);
+  }
+
+  Status Initialize() {
+    return InferenceSession::Impl::Initialize();
+  }
+
+  Status Run(const RunOptions& run_options,
+             const std::vector<std::string>& feed_names,
+             const std::vector<MLValue>& feeds,
+             const std::vector<std::string>& output_names,
+             std::vector<MLValue>* p_fetches) {
+    return InferenceSession::Impl::Run(run_options, feed_names, feeds, output_names, p_fetches);
+  }
+
+  NameMLValMap GetWeights() const {
+    return session_state_.GetInitializedTensors(weights_to_train_);
+  }
+
+  Status UpdateWeights(const NameMLValMap& new_weights) {
+    session_state_.UpdateInitializedTensors(new_weights);
+    VLOGS(*session_logger_, 1) << "Done updating weights";
+    return Status::OK();
+  }
+
+  Status Save(const string& model_uri, TrainingSession::SaveOption opt) {
+    // Delete the old file before saving.
+    std::remove(model_uri.c_str());
+
+    // Have to load the original model again.
+    // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
+    shared_ptr<Model> new_model;
+    ORT_RETURN_IF_ERROR(Model::Load(original_model_uri_, new_model));
+    ORT_RETURN_IF_ERROR(new_model->UpdateWeights(GetWeights()));
+
+    if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
+        opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
+      ORT_RETURN_IF_ERROR(AddLossFuncion(new_model->MainGraph(), loss_func_info_));
+    }
+
+    if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
+      ORT_RETURN_IF_ERROR(BuildGradientGraph(new_model->MainGraph(),
+                                             loss_func_info_.loss_name_,
+                                             weights_to_train_));
+    }
+
+    return Model::Save(*new_model, model_uri);
+  }
+
+  std::unordered_set<std::string> GetModelInputNames() const {
+    return model_input_names_;
+  }
+
+  std::unordered_set<std::string> GetModelOutputNames() const {
+    return model_output_names_;
+  }
+
+  std::unordered_set<std::string> GetModelInitializers() const {
+    const auto& initialized_tensors = model_->MainGraph().GetAllInitializedTensors();
+    std::unordered_set<std::string> model_initializers_;
+    std::transform(initialized_tensors.begin(),
+                   initialized_tensors.end(),
+                   std::inserter(model_initializers_, model_initializers_.end()),
+                   [](const auto& pair) { return pair.first; });
+
+    return model_initializers_;
+  }
+
+ private:
+  static Status AddLossFuncion(Graph& graph,
+                               const LossFunctionInfo& loss_func_info) {
+    return GraphAugmenter::AugmentGraph(graph, LossFunctionBuilder().Build(graph, loss_func_info));
+  }
+
+  static Status BuildGradientGraph(Graph& graph,
+                                   const std::string& loss_function_output_name,
+                                   const std::vector<std::string>& node_arg_names_to_train) {
+    // Compute the gradient graph def.
+    GradientGraphBuilder grad_graph_builder(&graph,
+                                            {loss_function_output_name},
+                                            node_arg_names_to_train,
+                                            loss_function_output_name);
+    GraphAugmenter::GraphDefs gradient_graph_def;
+    ORT_RETURN_IF_ERROR(grad_graph_builder.Build(gradient_graph_def));
+
+    return GraphAugmenter::AugmentGraph(graph, gradient_graph_def);
+  }
+
+  vector<string> weights_to_train_;
+  string original_model_uri_;
+
+  LossFunctionInfo loss_func_info_;
+};
+
+TrainingSession::TrainingSession(const SessionOptions& session_options,
+                                 logging::LoggingManager* logging_manager)
+    : impl_(make_unique<TrainingSessionImpl>(session_options, logging_manager)) {
 }
 
-static Status BuildGradientGraphInternal(Graph& graph,
-                                         const std::string& loss_function_output_name,
-                                         const std::vector<std::string>& node_arg_names_to_train) {
-  // Compute the gradient graph def.
-  GradientGraphBuilder grad_graph_builder(&graph,
-                                          {loss_function_output_name},
-                                          node_arg_names_to_train,
-                                          loss_function_output_name);
-  GraphAugmenter::GraphDefs gradient_graph_def;
-  ORT_RETURN_IF_ERROR(grad_graph_builder.Build(gradient_graph_def));
+TrainingSession::~TrainingSession() {
+}
 
-  return GraphAugmenter::AugmentGraph(graph, gradient_graph_def);
+Status TrainingSession::Load(const string& model_uri) {
+  return impl_->Load(model_uri);
 }
 
 Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
-  loss_func_info_ = loss_func_info;
-
-  try {
-    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(model_->MainGraph(), loss_func_info_));
-  } catch (const OnnxRuntimeException& exp) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
-  }
-  return DoPostLoadProcessing(*model_);
+  return impl_->AddLossFuncion(loss_func_info);
 }
 
 Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
-  // Fill weights_to_train_ according to weights_to_train
-  weights_to_train_ = weights_to_train;
+  return impl_->BuildGradientGraph(weights_to_train, loss_function_output_name);
+}
 
-  ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
-                                                 loss_function_output_name,
-                                                 weights_to_train_));
+Status TrainingSession::Initialize() {
+  return impl_->Initialize();
+}
 
-  return DoPostLoadProcessing(*model_);
+// Compute gradients.
+Status TrainingSession::Run(const RunOptions& run_options,
+                            const std::vector<std::string>& feed_names,
+                            const std::vector<MLValue>& feeds,
+                            const std::vector<std::string>& output_names,
+                            std::vector<MLValue>* p_fetches) {
+  return impl_->Run(run_options, feed_names, feeds, output_names, p_fetches);
 }
 
 NameMLValMap TrainingSession::GetWeights() const {
-  return session_state_.GetInitializedTensors(weights_to_train_);
+  return impl_->GetWeights();
 }
 
 Status TrainingSession::UpdateWeights(const NameMLValMap& new_weights) {
-  session_state_.UpdateInitializedTensors(new_weights);
-  VLOGS(*session_logger_, 1) << "Done updating weights";
-  return Status::OK();
+  return impl_->UpdateWeights(new_weights);
 }
 
-Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOption opt) {
-  // Delete the old file before saving.
-  std::remove(model_uri.c_str());
-
-  // Have to load the original model again.
-  // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
-  shared_ptr<Model> new_model;
-  ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model));
-  ORT_RETURN_IF_ERROR(new_model->UpdateWeights(GetWeights()));
-
-  if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
-      opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
-    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(new_model->MainGraph(), loss_func_info_));
-  }
-
-  if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
-    ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
-                                                   loss_func_info_.loss_name_,
-                                                   weights_to_train_));
-  }
-
-  return Model::Save(*new_model, model_uri);
+Status TrainingSession::Save(const string& model_uri, SaveOption opt) {
+  return impl_->Save(model_uri, opt);
 }
 
 std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {
-  return model_input_names_;
+  return impl_->GetModelInputNames();
 }
 
 std::unordered_set<std::string> TrainingSession::GetModelOutputNames() const {
-  return model_output_names_;
+  return impl_->GetModelOutputNames();
 }
 
 std::unordered_set<std::string> TrainingSession::GetModelInitializers() const {
-  const auto& initialized_tensors = model_->MainGraph().GetAllInitializedTensors();
-  std::unordered_set<std::string> model_initializers;
-  std::transform(initialized_tensors.begin(),
-                 initialized_tensors.end(),
-                 std::inserter(model_initializers, model_initializers.end()),
-                 [](const auto& pair) { return pair.first; });
-
-  return model_initializers;
+  return impl_->GetModelInitializers();
 }
+
 }  // namespace training
 }  // namespace onnxruntime

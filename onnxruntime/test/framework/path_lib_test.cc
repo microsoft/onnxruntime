@@ -32,6 +32,11 @@ TEST(PathTest, windows_root) {
 TEST(PathTest, root) {
   PATH_EXPECT("\\", "\\");
 }
+TEST(PathTest, invalid_double_slash) {
+  std::basic_string<ORTCHAR_T> ret;
+  auto st = onnxruntime::GetDirNameFromFilePath(ORT_TSTR("\\\\"), ret);
+  ASSERT_FALSE(st.IsOK());
+}
 #else
 TEST(PathTest, simple) {
   PATH_EXPECT("/Windows", "/Windows/a.txt");

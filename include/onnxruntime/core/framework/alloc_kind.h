@@ -26,8 +26,7 @@ enum class AllocKind {
   kReuse = 1,
   kPreExisting = 2,
   kAllocateStatically = 3,
-  kAllocateOutput = 4,
-  kShare = 5
+  kAllocateOutput = 4
 };
 
 std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind);

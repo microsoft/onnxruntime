@@ -65,6 +65,7 @@ class TransposeBase {
   std::vector<int64_t> perm_;
 };
 
+template <typename T>
 class Transpose final : public OpKernel, public TransposeBase {
  public:
   Transpose(const OpKernelInfo& info) : OpKernel(info), TransposeBase(info) {}

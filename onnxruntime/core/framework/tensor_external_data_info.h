@@ -10,23 +10,18 @@
 namespace onnxruntime {
 class ExternalDataInfo {
  private:
-#ifdef _WIN32
-  using OFFSET_TYPE = int64_t;
-#else
-  using OFFSET_TYPE = off_t;
-#endif
   std::basic_string<ORTCHAR_T> rel_path_;
-  OFFSET_TYPE offset_ = 0;
-
-  // 0 means the whole file
-  size_t length_ = 0;
+  //-1 means doesn't exist
+  ptrdiff_t offset_;
+  //-1 means doesn't exist
+  ptrdiff_t length_;
   std::string checksum_;
 
  public:
   const std::basic_string<ORTCHAR_T>& GetRelPath() const { return rel_path_; }
 
-  OFFSET_TYPE GetOffset() const { return offset_; }
-  size_t GetLength() const { return length_; }
+  ptrdiff_t GetOffset() const { return offset_; }
+  ptrdiff_t GetLength() const { return length_; }
 
   const std::string& GetChecksum() const { return checksum_; }
 

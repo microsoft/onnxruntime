@@ -103,7 +103,7 @@ class LoopImpl {
 
  private:
   void CreateInitialFeeds(std::vector<MLValue>& feeds);
-  void SaveOutputsAndUpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs);
+  void UpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs);
 
   // create the single Loop output from a collection of per-iteration outputs
   Status ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_output, int output_index);
@@ -266,7 +266,7 @@ void LoopImpl::CreateInitialFeeds(std::vector<MLValue>& feeds) {
   }
 }
 
-void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs) {
+void LoopImpl::UpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs) {
   // last_output: cond, loop vars..., loop output...
   // next_input: iter_num, cond, loop_vars. iter_num is re-used
 
@@ -331,7 +331,7 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
 
   while (iter_num_value < max_trip_count_ && *condition_mlvalue_.GetMutable<Tensor>()->MutableData<bool>()) {
     if (iter_num_value != 0) {
-      SaveOutputsAndUpdateFeeds(fetches, feeds);
+      UpdateFeeds(fetches, feeds);
       fetches.clear();
     }
 

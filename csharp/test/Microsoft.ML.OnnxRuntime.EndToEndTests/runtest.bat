@@ -5,8 +5,6 @@ REM Licensed under the MIT License.
 SETLOCAL EnableDelayedExpansion
 
 set LocalNuGetRepo=%1
-IF "%2"=="" (SET TargetFramework=netcoreapp2.1) ELSE (SET TargetFramework=%2)
-ECHO Target Framework is %TargetFramework%
 REM WorkingDirectory is Build.SourcesDirectory\csharp
 set /p MajorVersionNumber=<..\VERSION_NUMBER
 set VersionSuffix=

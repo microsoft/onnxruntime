@@ -122,10 +122,9 @@ bool PerformanceRunner::Initialize() {
     fprintf(stderr, "Nuphar is not supported in this build");
     return false;
 #endif
-  } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
-#ifdef USE_TENSORRT
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+  } else if (provider_name == onnxruntime::kTRTExecutionProvider) {
+#ifdef USE_TRT
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
 #else
     fprintf(stderr, "TensorRT is not supported in this build");
     return false;

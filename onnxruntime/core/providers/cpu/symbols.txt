@@ -6,6 +6,7 @@ OrtAllocatorInfoGetId
 OrtAllocatorInfoGetMemType
 OrtAllocatorInfoGetName
 OrtAllocatorInfoGetType
+OrtAppendCustomOpLibPath
 OrtCastTypeInfoToTensorInfo
 OrtCloneSessionOptions
 OrtCompareAllocatorInfo
@@ -61,7 +62,6 @@ OrtReleaseTensorTypeAndShapeInfo
 OrtReleaseTypeInfo
 OrtReleaseValue
 OrtRun
-OrtRunCallback
 OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
@@ -77,7 +77,6 @@ OrtSessionOptionsAppendExecutionProvider_CPU
 OrtSetDims
 OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
-OrtSetSessionGraphOptimizationLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue

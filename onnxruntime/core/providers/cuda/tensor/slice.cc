@@ -40,13 +40,13 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes);
+    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                        input_dimensions, starts, output_dims));
+                        dimension_count, input_dimensions, starts, output_dims));
 
   } else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
-	                    input_dimensions, starts, output_dims));
+	                    dimension_count, input_dimensions, starts, output_dims));
   }
 
   TensorShape output_shape(output_dims);

@@ -63,7 +63,7 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr) {
+                   int provider_type, bool custom_op, OrtCustomOpDomain* custom_op_domain_ptr = nullptr) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
@@ -89,6 +89,9 @@ void TestInference(OrtEnv* env, T model_uri,
 #endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
+  }
+  if (custom_op) {
+    sf.AppendCustomOpLibPath("libonnxruntime_custom_op_shared_lib_test.so");
   }
   if (custom_op_domain_ptr) {
     ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(sf, custom_op_domain_ptr));
@@ -148,21 +151,36 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), nullptr);
+  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), false);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
                         CApiTestWithProvider,
                         ::testing::Values(0, 1, 2, 3, 4));
 
+#ifndef _WIN32
+//doesn't work, failed in type comparison
+TEST_F(CApiTest, DISABLED_custom_op) {
+  std::cout << "Running custom op inference" << std::endl;
+  std::vector<size_t> dims_x = {3, 2};
+  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, true);
+}
+#endif
+
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(const OrtCustomOpApi& ort, OrtValue* value) {
+  OrtTensorDimensions(OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info;
-    ORT_THROW_ON_ERROR(ort.GetTensorShapeAndType(value, &info));
-    auto dimensionCount = ort.GetNumOfDimensions(info);
+    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &info));
+    auto dimensionCount = OrtGetNumOfDimensions(info);
     resize(dimensionCount);
-    ort.GetDimensions(info, data(), dimensionCount);
-    ort.ReleaseTensorTypeAndShapeInfo(info);
+    OrtGetDimensions(info, data(), dimensionCount);
+    OrtReleaseTensorTypeAndShapeInfo(info);
   }
 
   size_t ElementCount() const {
@@ -173,42 +191,38 @@ struct OrtTensorDimensions : std::vector<int64_t> {
   }
 };
 
-// Once we use C++17 this could be replaced with std::size
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
-  MyCustomKernel(const OrtCustomOpApi& ort, const OrtKernelInfo& /*info*/) : ort_(ort) {
+  MyCustomKernel(OrtKernelInfo& /*info*/) {
   }
 
   void GetOutputShape(OrtValue** inputs, size_t /*input_count*/, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
-    OrtTensorDimensions dimensions(ort_, inputs[0]);
-    ORT_THROW_ON_ERROR(ort_.SetDims(info, dimensions.data(), dimensions.size()));
+    OrtTensorDimensions dimensions(inputs[0]);
+    ORT_THROW_ON_ERROR(OrtSetDims(info, dimensions.data(), dimensions.size()));
   }
 
   void Compute(OrtValue** inputs, size_t /*input_count*/, OrtValue** outputs, size_t /*output_count*/) {
     const float* X;
     const float* Y;
-    ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
-    ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(inputs[1], reinterpret_cast<void**>(const_cast<float**>(&Y))));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], reinterpret_cast<void**>(const_cast<float**>(&X))));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[1], reinterpret_cast<void**>(const_cast<float**>(&Y))));
 
     float* out;
-    ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
 
-    int64_t size = OrtTensorDimensions(ort_, inputs[0]).ElementCount();
+    int64_t size = OrtTensorDimensions(inputs[0]).ElementCount();
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
   }
-
- private:
-  const OrtCustomOpApi& ort_;
 };
 
 struct MyCustomOp : OrtCustomOp {
   MyCustomOp() {
     OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](OrtCustomOp* /*this_*/, const OrtCustomOpApi* api, const OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*api, *info); };
+    OrtCustomOp::CreateKernel = [](OrtCustomOp* /*this_*/, OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*info); };
     OrtCustomOp::GetName = [](OrtCustomOp* /*this_*/) { return "Foo"; };
 
     static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
@@ -235,11 +249,11 @@ TEST_F(CApiTest, custom_op_handler) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   MyCustomOp custom_op;
-  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("");
+  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("", 5, 7);
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain);
-  OrtReleaseCustomOpDomain(custom_op_domain);
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, false, false,
+                           custom_op_domain);
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
