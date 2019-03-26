@@ -346,7 +346,7 @@ class InferenceSession {
 
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                  TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list);
+                                 std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
