@@ -70,6 +70,7 @@ option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stable on older GCCs" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
+option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -206,7 +207,7 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 #Here we support two build mode:
-#1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly 
+#1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
@@ -228,6 +229,10 @@ include(protobuf_function.cmake)
 
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_definitions(-DUSE_FULL_PROTOBUF)
+endif()
+
+if (onnxruntime_DISABLE_CONTRIB_OPS)
+  add_definitions(-DDISABLE_CONTRIB_OPS)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -507,7 +512,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll") 
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:nvinfer.dll")
   endif()
 endif()
 
